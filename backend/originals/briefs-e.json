@@ -1,0 +1,890 @@
+{
+  "stories": [
+    {
+      "slot": "S56",
+      "slug": "gap-at-kilometre-forty",
+      "title": "The Gap at Kilometre Forty",
+      "logline": "Latvia, 23 August 1989: two million people will hold hands across three countries at seven o'clock, and a farm-bus driver has until then to fill her village's stretch of road - with no keys and a Party chairman watching.",
+      "themes": [
+        "quiet defiance",
+        "belonging",
+        "old loves and old loyalties",
+        "a country finding its voice"
+      ],
+      "request": {
+        "primary_genre": "historical",
+        "genres": [
+          "historical"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "long",
+        "image_style": "auto",
+        "topic": "23 August 1989. At 7pm a human chain will stretch from Tallinn to Vilnius, and Ausma Liepina's village has promised to fill one kilometre of it. At dawn the collective farm's bus keys vanish on orders from Riga. She has eleven hours, thirty-eight passengers and a chairman she once nearly married.",
+        "where_and_when": "Rural Latvia on 23 August 1989: a Soviet collective farm village among rye fields and birch woods, a rattling yellow farm bus, the Riga road, and one assigned kilometre of highway north of the city filling with people at dusk",
+        "characters": [
+          {
+            "name": "Ausma Liepina",
+            "isHero": true,
+            "background": "51, has driven the farm bus for twenty-two years and never once been late. Widowed, sharp-tongued, keeps her opinions under her headscarf. Wants to stand on that road more than she has wanted anything since 1958. Hides a pre-war Latvian flag sewn inside a cushion.",
+            "appearance": "stocky broad-shouldered woman, weathered pink face, pale blue eyes, grey-blonde hair under a faded green headscarf, man's brown work jacket over a flowered dress, rubber boots, a heavy ring of spare bus keys on string"
+          },
+          {
+            "name": "Peteris Zarins",
+            "background": "54, chairman of the collective farm and a Party member, ordered to make sure nobody from the farm goes. Tired, careful, secretly listens to Radio Free Europe in his barn. Was engaged to Ausma for one summer in 1956 and never told her why he broke it off.",
+            "appearance": "tall thin man with a slight stoop, long lined face, thick grey moustache, black-rimmed glasses, grey suit that is too big for him, Party pin on the lapel, a cardboard folder always under his arm"
+          },
+          {
+            "name": "Dace Kronberga",
+            "background": "17, Ausma's granddaughter, has made the passenger list, a banner and a plan, and thinks her grandmother is far too cautious. Loud, brave, secretly terrified the soldiers will come. Keeps a transistor radio pressed to her ear for the organisers' broadcasts.",
+            "appearance": "skinny teenage girl, long straight white-blonde hair in a ponytail, freckled nose, oversized denim jacket covered in hand-drawn badges, jeans rolled at the ankle, a small silver transistor radio"
+          }
+        ],
+        "moments": [
+          "Dawn: the bus keys are gone from the farm office, and Peteris says he has no idea where they could be",
+          "Ausma hot-wires the bus the way her late husband taught her, while half the village watches from behind curtains",
+          "The bus breaks down at a crossroads and Latvian Radio announces which stretches of road still have gaps",
+          "Peteris drives up in the farm's own car, and the question is whether he has come to stop them",
+          "Seven o'clock: fifteen minutes of hands held on the highway, and one more hand than Ausma expected"
+        ],
+        "story_values": [
+          "courage",
+          "solidarity"
+        ],
+        "avoid": "violence, soldiers attacking civilians, speeches about politics; real leaders only in the background",
+        "writing_style": "grounded, warm, dry Baltic humour; the big history seen through tea flasks, bus parts and neighbours' gossip; the ending earned by small details"
+      }
+    },
+    {
+      "slot": "S57",
+      "slug": "eleven-days-missing",
+      "title": "Eleven Days Missing",
+      "logline": "When the Duchy of Orlen switches calendars and eleven days vanish overnight, a parish registrar must decide what to do with twins born on a day that legally never happened.",
+      "themes": [
+        "the absurdity of rules",
+        "what makes a person real",
+        "small kindness against big paperwork",
+        "time"
+      ],
+      "request": {
+        "primary_genre": "historical",
+        "genres": [
+          "historical",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "By ducal decree, the day after the 2nd of Harvestmonth is the 14th: eleven days never happen. At midnight the miller's widow has twins, one before the change, one after. The second was born on a day that does not exist and cannot inherit the mill, and the Duke's auditor arrives Friday.",
+        "where_and_when": "Hessel, a river town in the Duchy of Orlen, an invented little country in an age like the 1750s: no magic, only wigs, quill pens, water mills, church bells, printed decrees nailed to doors, and a very angry town with eleven days of rent in dispute",
+        "characters": [
+          {
+            "name": "Perpetua Gall",
+            "isHero": true,
+            "background": "44, parish registrar of Hessel for twenty years, unmarried, adores a clean ledger and has never altered an entry. Tidy, dry, privately soft-hearted. Her own birthday fell in the vanished eleven days and she is quietly furious nobody noticed.",
+            "appearance": "small round woman with rosy cheeks, iron-grey hair in a severe bun under a white linen cap, spectacles on a ribbon, plum-coloured wool dress with ink-stained cuffs, a huge leather-bound register under one arm"
+          },
+          {
+            "name": "Absalom Fenwright",
+            "background": "61, the Duke's Calendar Commissioner, sent to audit every register in the province. Pedantic, pompous, and secretly heartbroken by the reform: the old calendar was his late wife's life's work. Counts everything, including sugar lumps.",
+            "appearance": "very tall bony man with a long nose and a powdered wig slightly askew, black coat with silver buttons, dusty travelling boots, a brass pocket calendar he checks constantly"
+          },
+          {
+            "name": "Tansy Muckle",
+            "background": "29, the miller's widow, now mother of twin boys and owner of a mill her late husband's cousin would dearly like to claim. Loud, practical, unafraid of anyone in a wig. Will throw flour at officials.",
+            "appearance": "big strong freckled woman with wild ginger curls, flour-dusted apron over a green homespun dress, sleeves rolled to the elbow, two swaddled babies in a laundry basket at her hip"
+          }
+        ],
+        "moments": [
+          "The church clock strikes midnight on the 2nd, the town wakes on the 14th, and the twins arrive on either side of the bells",
+          "Perpetua writes the second baby's birth into the register and finds the page for that day does not exist",
+          "The cousin marches in with a lawyer, demanding the mill for the only legal heir",
+          "Absalom's audit, the sugar lumps, and the old calendar he still carries in his coat",
+          "Perpetua's one forged-and-true entry, and a birthday party for three people nobody thought had one"
+        ],
+        "story_values": [
+          "kindness",
+          "fairness"
+        ],
+        "avoid": "cruelty to babies, harm to children, cynical mockery of the characters",
+        "writing_style": "brisk, witty, affectionate, like a comic period farce; sharp dialogue, a little absurd, with real warmth under the jokes"
+      }
+    },
+    {
+      "slot": "S58",
+      "slug": "island-calling",
+      "title": "Island Calling",
+      "logline": "When the North Sea breaks the dikes of Zeeland in 1953, a village switchboard girl with her dead father's illegal radio becomes the only voice her drowning island has.",
+      "themes": [
+        "community",
+        "courage under pressure",
+        "grief and repair",
+        "the sea"
+      ],
+      "request": {
+        "primary_genre": "historical",
+        "genres": [
+          "historical",
+          "adventure"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 10,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "Night of 31 January 1953: a storm surge floods Schouwen-Duiveland and every phone line dies. Neeltje Kodde, 19, digs up the transmitter her father hid from the Germans. Sending on it is illegal, but for ten days she is the island's only link to the mainland, and her list of the missing grows.",
+        "where_and_when": "The island of Schouwen-Duiveland in Zeeland, the Netherlands, 1 February to November 1953: flooded polders, farmhouses up to their eaves in grey water, church towers, dike breaches, rowing boats, army ducks, and a telephone exchange above a bakery",
+        "characters": [
+          {
+            "name": "Neeltje Kodde",
+            "isHero": true,
+            "background": "19, night operator at the village telephone exchange. Her father, a pre-war radio amateur, taught her Morse and died in 1951. Shy on the phone, fierce in Morse. Wants to be useful; hides that sending on his transmitter is illegal and that she broke off her engagement a month ago.",
+            "appearance": "slight young woman, pale windburnt cheeks, blonde hair in two plaits pinned up, big grey wool jumper over a flowered dress, man's rubber waders, headphones round her neck, a battered Bakelite Morse key"
+          },
+          {
+            "name": "Adriaan Moerland",
+            "background": "24, mussel fisherman with a flat-bottomed boat, the fiance Neeltje left without explanation. Stubborn, quiet, unbeatable on the water. Takes her messages out to the stranded because nobody else knows the drowned roads. Thinks she left him for a city boy; she did not.",
+            "appearance": "broad young man, sunburnt face, big nose, dark curly hair under a knitted blue cap, heavy navy fisherman's sweater, oilskin trousers, oar-callused hands, a coil of rope over his shoulder"
+          },
+          {
+            "name": "Klazina Hoogstrate",
+            "background": "71, farmer's widow who refuses to leave her attic until her cows are safe. Proud, funny, unmovable. Knew Neeltje's father better than anyone guessed, and has his last letter in her Bible.",
+            "appearance": "small wiry old woman, deep-lined face, the starched white lace cap of the old island costume, black dress and shawl, clogs, a lantern held up at an attic window"
+          }
+        ],
+        "moments": [
+          "The water arrives in the dark, the exchange board goes dead light by light, and Neeltje lifts the floorboard",
+          "Her first shaky message reaches a radio amateur on the mainland, who answers",
+          "Adriaan rows her list of names out across the flooded polder, farm by farm, and they do not talk about the engagement",
+          "Klazina will not leave the attic without her cows, so the whole village plans a cattle rescue by boat",
+          "November: the last dike gap is closed with a huge concrete caisson, and the island is dry enough to walk home"
+        ],
+        "story_values": [
+          "courage",
+          "community"
+        ],
+        "avoid": "graphic drowning or bodies, gore; real rescuers and officials only in the background",
+        "writing_style": "tight, vivid, cinematic short chapters that each end on a message sent or received; plain Dutch stoicism, dry humour, grief kept under the surface"
+      }
+    },
+    {
+      "slot": "S59",
+      "slug": "the-heidelberg-summer",
+      "title": "The Heidelberg Summer",
+      "logline": "Melbourne, 1956: a young Hungarian interpreter at the Olympic Village has three weeks to help her cousin decide whether to go home to a crushed revolution or disappear into Australia.",
+      "themes": [
+        "exile and home",
+        "family loyalty",
+        "sport and politics",
+        "starting over"
+      ],
+      "request": {
+        "primary_genre": "historical",
+        "genres": [
+          "historical",
+          "romance"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "anime",
+        "topic": "November 1956. The Hungarian Olympic team lands in Melbourne to learn Soviet tanks have crushed the revolution at home. Ilona Szendrei, a refugee who fled in 1949, volunteers as their interpreter and finds her cousin is the team masseur. The Games last seventeen days; after that he must choose.",
+        "where_and_when": "Melbourne, Australia, 22 November to 8 December 1956, the Olympic Games: the athletes' village at Heidelberg West, hot trams, the swimming stadium, Hungarian migrant cafes in Carlton, jacarandas and sudden summer storms",
+        "characters": [
+          {
+            "name": "Ilona Szendrei",
+            "isHero": true,
+            "background": "25, came to Australia as a displaced person in 1949 and works in a Collins Street hat shop. Brisk, funny, fiercely Australian until someone speaks Hungarian to her. Wants her cousin safe. Hides that she has never written home, because she is afraid of who might read it.",
+            "appearance": "small young woman with a heart-shaped face, sharp dark eyes, short dark curls under a little navy straw hat, cream cotton dress with a red belt, white gloves, an interpreter's armband, a notebook full of names"
+          },
+          {
+            "name": "Gyula Racz",
+            "background": "31, masseur to the Hungarian team, gentle, big-handed, a joker who stops joking when the news comes. His wife and small daughter are in Budapest. If he stays, he may never see them; if he goes back, he may never leave again.",
+            "appearance": "big solid man with a boxer's flat nose, thinning fair hair combed straight back, kind creased eyes, red team tracksuit with the national crest, towel over his shoulder, a photo of a little girl in his breast pocket"
+          },
+          {
+            "name": "Bernard Kilfoyle",
+            "background": "29, Olympic Village liaison officer, an Irish-Catholic Melbourne boy who fought in Korea and now handles paperwork, lost luggage and diplomats. Polite, stubborn, falls for Ilona's temper. Knows exactly which forms turn a visitor into a refugee.",
+            "appearance": "lean freckled man with sunburnt ears, ginger hair in a short back and sides, pale grey suit jacket over his arm in the heat, loosened tie, official lanyard pass, a clipboard thick with forms"
+          }
+        ],
+        "moments": [
+          "The team arrives to news of the tanks, and in the Village the athletes pull down the communist-era flag and raise the old national one",
+          "Ilona and Gyula at a Carlton cafe, eating strudel that tastes almost right, talking about everything except the choice",
+          "The water polo match against the USSR, watched from the stands with a crowd full of Hungarian migrants",
+          "Bernard shows Ilona the forms, and she realises choosing for Gyula would be easier than letting him choose",
+          "The closing ceremony, where the athletes walk out mixed together, and Gyula makes up his mind"
+        ],
+        "story_values": [
+          "loyalty",
+          "freedom"
+        ],
+        "avoid": "blood or injury described graphically, real athletes as main characters, political speeches",
+        "writing_style": "luminous, emotional, anime-cinematic: heat haze, cicadas, bright pools, small gestures carrying huge feelings; gentle humour between the heartbreak"
+      }
+    },
+    {
+      "slot": "S60",
+      "slug": "nine-oclock-zanzibar",
+      "title": "Nine O'Clock, Zanzibar",
+      "logline": "Zanzibar, August 1896: a cap embroiderer has two days to get her little brother out of the Sultan's palace before the British warships open fire at nine o'clock.",
+      "themes": [
+        "family",
+        "a city between empires",
+        "courage without weapons",
+        "the cost of pride"
+      ],
+      "request": {
+        "primary_genre": "historical",
+        "genres": [
+          "historical",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "long",
+        "image_style": "watercolor",
+        "topic": "25 August 1896: the Sultan of Zanzibar dies, a rival cousin seizes the palace, and thousands of men rush to defend it, among them Zuhura's seventeen-year-old brother. British warships anchor offshore with an ultimatum: surrender by nine on the 27th. She has two nights to get him out.",
+        "where_and_when": "Stone Town, Zanzibar, 25-27 August 1896: narrow alleys, carved wooden doors with brass studs, the harbour full of dhows and grey warships, clove-scented warehouses, the whitewashed palace and its lighthouse on the waterfront, a Goan photographer's studio",
+        "characters": [
+          {
+            "name": "Zuhura binti Salim",
+            "isHero": true,
+            "background": "23, embroiders white kofia caps for the merchants of Stone Town and knows everyone's gossip. Quick, wry, practical, raised her brother after their mother died. Wants him home by dawn. Hides that she was the one who told him the palace was paying guards.",
+            "appearance": "tall slim young woman with dark brown skin, high cheekbones, a small gold nose stud, a black cotton shawl over her head and a patterned kanga wrapped over her dress, henna on her fingertips, a needle case and a white embroidered cap in her hand"
+          },
+          {
+            "name": "Khamis bin Salim",
+            "background": "17, her brother, dock porter, hungry for money and glory and certain the palace cannot fall. Loyal to his friends inside, ashamed of being afraid. Plays a small wooden flute when he is nervous.",
+            "appearance": "lanky teenage boy with close-cropped hair and a wisp of first moustache, bare feet, white kanzu robe dirty at the hem, an old muzzle-loading rifle too big for him, a little wooden flute tucked in his belt"
+          },
+          {
+            "name": "Aurelio Mascarenhas",
+            "background": "57, Goan photographer whose studio overlooks the harbour. Courteous, nosy, knows every British officer and every palace guard by sight because he has photographed them all. Owns a skiff and a telescope and has his own reasons for wanting the bombardment to end quickly.",
+            "appearance": "round-bellied man with light brown skin, white walrus moustache, gold-rimmed pince-nez, crumpled white linen suit and a straw boater, a brass telescope under his arm, fingers stained with photographic chemicals"
+          }
+        ],
+        "moments": [
+          "Noon, 25 August: the Sultan is dead, the palace gates close, and Khamis runs toward them instead of away",
+          "Zuhura talks her way into the palace courtyard with a basket of caps and finds her brother proud and terrified",
+          "From Aurelio's roof, the warships swinging their guns toward the waterfront in the evening light",
+          "The last night: a plan with a skiff, a borrowed uniform and a flute tune only the siblings know",
+          "Nine o'clock on the 27th, the shortest war in history, and what is left of the waterfront when the smoke clears"
+        ],
+        "story_values": [
+          "family",
+          "courage"
+        ],
+        "avoid": "gore, graphic deaths, glorifying war; slavery treated with honesty and without spectacle; real sultans and officers only in the background; restarting or replaying a day, repeating the courtyard visit, the rescue happening after the guns fire",
+        "writing_style": "lush but taut prose, a ticking clock in every chapter; sensory Stone Town detail (cloves, salt, lamp oil, the call to prayer) and warm, teasing sibling dialogue",
+        "beats": [
+          "25 Aug, noon: Sultan Hamad is dead; Khalid seizes the palace. Zuhura repeats gossip - 3 rupees and rice a day to guard it - and Khamis drops the sack he mends and runs to the gates. She hides it.",
+          "25 Aug, dusk: in harbour only Philomel, Thrush, Sparrow; an ultimatum is rumour. In Aurelio's studio his glass plates show every palace guard; the gate guard Juma owes Zuhura for caps.",
+          "26 Aug, morning, the one courtyard visit: Juma lets her in with caps. Khamis, proud, terrified, won't leave Fadil or Saidi, enslaved and armed by his owner. She whispers: answer Mama's supper call.",
+          "26 Aug, afternoon: St George with Admiral Rawson, and Racoon, anchor; the ultimatum is issued - haul down the flag by 9 on the 27th. Aurelio's nephew Tomas lends his customs uniform for a price.",
+          "26 Aug, evening, Aurelio's roof: five warships swing their guns toward the waterfront in the last light. Plan: skiff under the sea wall at 4am, Aurelio in customs uniform, the four-note call.",
+          "27 Aug, 3-5am: the skiff slips past a British picket boat on the uniform's authority. Under the lighthouse Zuhura whistles the call; Khamis answers on Father's mangrove flute, but does not come.",
+          "27 Aug, first light to 8:30: Khamis climbs down the sea wall with Saidi. They hide in a clove warehouse; Zuhura confesses the pay remark; Khamis forgives her. Fadil stayed inside.",
+          "27 Aug, 9:00-9:38: five ships fire; the palace falls, the Glasgow sinks, Khalid flees. After, the siblings search the ruins and find Fadil wounded, alive. Saidi will not go back to his owner."
+        ]
+      }
+    },
+    {
+      "slot": "S61",
+      "slug": "going-down-at-seven-twelve",
+      "title": "Going Down at 7:12",
+      "logline": "A Valparaiso funicular operator has six weeks until his hundred-year-old lift closes for good, and he has a secret: in thirty-one years he has never ridden it.",
+      "themes": [
+        "endings",
+        "fear and routine",
+        "the people we see every day",
+        "a city of stairs"
+      ],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": [
+          "sliceOfLife",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Heriberto Carcamo has run the Ascensor Santa Brigida from its top-station booth for thirty-one years. In six weeks it closes for restoration and he retires. He knows every passenger by name, and has never once ridden down: he is terrified of heights. His granddaughter is filming a school project.",
+        "where_and_when": "Valparaiso, Chile, in the present day, late autumn: a century-old wooden funicular car climbing a steep hill of painted tin houses, murals, stray dogs, fog off the Pacific, the port cranes below and endless stairs",
+        "characters": [
+          {
+            "name": "Heriberto Carcamo",
+            "isHero": true,
+            "background": "67, operator of the funicular, widower, famous for knowing what every regular will say before they say it. Courteous, stubborn, secretly vain about his handwritten logbooks. Walks the 212 stairs down every evening rather than ride the car he runs.",
+            "appearance": "short barrel-chested man, brown weathered face, bushy white eyebrows, neat grey moustache, navy cardigan over a pressed shirt, flat cap, reading glasses on a cord, one hand always on the big brass lever"
+          },
+          {
+            "name": "Marisol Ulloa",
+            "background": "63, fishmonger at the port market, has ridden the 7:12 down every weekday for nineteen years and argued with Heriberto on every one of them. Loud, generous, recently diagnosed with bad knees she refuses to discuss. Cannot do the stairs if the lift closes.",
+            "appearance": "big-boned woman with a round laughing face, dyed burgundy hair in a clip, gold hoop earrings, rubber apron over a purple fleece, white rubber boots, a plastic shopping bag of lemons"
+          },
+          {
+            "name": "Javiera Carcamo",
+            "background": "15, his granddaughter, filming 'The Last Weeks of the Ascensor' for school. Sarcastic, curious, patient in a way she hides. Figures out his secret in chapter two and decides not to say anything yet.",
+            "appearance": "tall thin teenager with long dark hair in a messy bun, brown skin, braces, oversized grey school hoodie, black jeans and scuffed sneakers, a phone on a little tripod"
+          }
+        ],
+        "moments": [
+          "The notice goes up: six weeks until closure, and Marisol announces she will complain every single day until then",
+          "Javiera's camera catches her grandfather taking the stairs in the fog while the car goes down empty",
+          "A tourist couple, a man with a cello and a funeral party all ride on the same rainy Thursday",
+          "Marisol misses the 7:12 for the first time in nineteen years, and Heriberto closes the booth to go and find her",
+          "The last run: the whole hill turns out, and Heriberto steps into the car"
+        ],
+        "story_values": [
+          "courage",
+          "friendship"
+        ],
+        "avoid": "anyone dying, melodrama, mocking the fear of heights, tourist-postcard cliche",
+        "writing_style": "warm, observant, gently funny; each chapter built around small rituals and repeated jokes that change meaning by the end; Chilean rhythm in the dialogue"
+      }
+    },
+    {
+      "slot": "S62",
+      "slug": "side-b",
+      "title": "Side B",
+      "logline": "In a Hanoi rainstorm, a teenage girl brings a snapped cassette to a pavement repairman: the only recording of her grandmother's voice, and he has one evening to splice it.",
+      "themes": [
+        "memory",
+        "repair",
+        "strangers' kindness",
+        "grief with a laugh in it"
+      ],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": [
+          "sliceOfLife"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Thu Ha's grandmother died last month, and the only recording of her voice is a cassette whose tape has just snapped. Thinh, who fixes radios on a Hanoi pavement, says he can splice it before the rain floods the street. The power cuts. They wait under his tarpaulin. The tape is not what she expected.",
+        "where_and_when": "A narrow Hanoi street in the Old Quarter, present day, one monsoon evening: a pavement repair stall under a blue tarpaulin, tangled electric wires overhead, scooters in the rain, plastic stools, a glass of iced tea, a power cut",
+        "characters": [
+          {
+            "name": "Pham Van Thinh",
+            "isHero": true,
+            "background": "68, has repaired radios and cassette players on the same pavement for forty years and refuses to learn phones. Grumpy, precise, secretly sentimental; keeps a box of tapes nobody came back for. Talks to machines more than people.",
+            "appearance": "thin wiry old man, deeply tanned lined face, cropped white hair, thick magnifying spectacles, faded olive shirt with sleeves rolled, rubber flip-flops, a tiny screwdriver behind his ear and a roll of clear tape"
+          },
+          {
+            "name": "Nguyen Thu Ha",
+            "background": "16, top of her class, has not cried since the funeral and is proud of it. Polite, impatient, scrolling her phone to avoid feeling anything. Borrowed the cassette player from her grandmother's room without asking her father.",
+            "appearance": "slim teenage girl with a straight black fringe and long ponytail, white school ao dai with jeans rolled underneath because of the rain, clear plastic raincoat, sneakers, holding a battered pink cassette player"
+          }
+        ],
+        "moments": [
+          "The cassette unspools in Thu Ha's hands at the stall and Thinh sighs as if she has brought him a wounded bird",
+          "The power cuts and he splices the tape by the light of her phone, lecturing her about proper care of magnetic tape",
+          "The tape plays: her grandmother loudly scolding someone for recording over her favourite radio drama",
+          "Then, after the scolding, the lullaby, and Thu Ha finally cries while Thinh pretends to be busy with a radio"
+        ],
+        "story_values": [
+          "kindness"
+        ],
+        "avoid": "melodrama, sentimentality laid on thick, any romance between the two",
+        "writing_style": "small, precise, tender; rain sounds, street smells and hands at work; understated humour; end on an image, not a speech"
+      }
+    },
+    {
+      "slot": "S63",
+      "slug": "say-it-in-nains-words",
+      "title": "Say It in Nain's Words",
+      "logline": "Her grandmother's dementia has taken her English and left only Welsh, so a Cardiff pharmacist who never learned it joins a night class of farmers to talk to her again before it's too late.",
+      "themes": [
+        "language as love",
+        "family memory",
+        "learning late",
+        "belonging"
+      ],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": [
+          "sliceOfLife",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "long",
+        "image_style": "cinematic",
+        "topic": "Nain is ninety-one and dementia has taken her English; she speaks only Welsh now, the language her granddaughter Bethan was never taught. Bethan moves to the Llyn peninsula for a year and joins a chapel-vestry night class of farmers, racing the disease to hold one real conversation.",
+        "where_and_when": "The Llyn peninsula in North Wales, present day, from September to the following summer: a care home by the sea, a cold chapel vestry with a tea urn, stone farmhouses, wet sheep, a caravan park out of season, and a village eisteddfod",
+        "characters": [
+          {
+            "name": "Bethan Pryce",
+            "isHero": true,
+            "background": "41, hospital pharmacist from Cardiff, divorced, efficient, used to being good at things and terrible at Welsh mutations. Wants to say sorry to Nain for something from when she was fifteen. Hides that she took a year's unpaid leave and cannot really afford it.",
+            "appearance": "tall woman with a strong jaw, fair skin with windburnt cheeks, dark bobbed hair going grey at the parting, round tortoiseshell glasses, yellow waterproof jacket, walking boots, a dog-eared Welsh grammar full of sticky notes"
+          },
+          {
+            "name": "Gwenllian Morgan",
+            "background": "91, Nain, former headmistress of the village school, sharp as a tack in Welsh and lost in English. Thinks some days it is 1962. Still corrects everyone's grammar, and still sings in the care home's lounge when nobody asks her to.",
+            "appearance": "tiny frail old woman with bright blue eyes, fine white hair set in soft curls, pink lipstick, lavender cardigan buttoned wrong, tartan skirt, pearls, a hymn book always on her lap"
+          },
+          {
+            "name": "Emlyn Rees-Jones",
+            "background": "74, retired sheep farmer who teaches the Welsh night class in the chapel vestry for free. Patient, silly, merciless about homework. Lost his wife two years ago and teaches so the evenings are not empty. Taught by Gwenllian as a boy.",
+            "appearance": "stocky bald man with a huge white beard, ruddy cheeks, green checked shirt under a hand-knitted brown jumper, corduroy trousers, wellies left at the door, a biscuit tin of flashcards"
+          }
+        ],
+        "moments": [
+          "Bethan's first class: she introduces herself as a small sheep by mistake and the whole class adopts it as her nickname",
+          "Winter: Nain does not know who Bethan is, but corrects her mutation perfectly and laughs",
+          "Emlyn takes the class carol singing at the care home, and Nain sings every verse while Bethan mouths along",
+          "Spring: the first real sentence exchanged between them, about the weather, which is enough",
+          "The village eisteddfod, where Bethan recites a poem Nain taught Emlyn sixty years ago"
+        ],
+        "story_values": [
+          "family",
+          "perseverance"
+        ],
+        "avoid": "a death scene, pity for people with dementia, mocking the Welsh language, lecturing about politics",
+        "writing_style": "quiet, funny, cinematic realism; Welsh words dropped in with meaning clear from context; rain, tea and classroom comedy carrying the grief; restrained, earned emotion"
+      }
+    },
+    {
+      "slot": "S64",
+      "slug": "four-days-to-the-mehndi",
+      "title": "Four Days to the Mehndi",
+      "logline": "A stern Karachi tax officer who has never danced in his life has four days to learn, in secret, from the neighbour's teenage son, before his daughter's mehndi.",
+      "themes": [
+        "fathers and daughters",
+        "letting go",
+        "dignity and joy",
+        "family"
+      ],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": [
+          "sliceOfLife",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Naveed Chaudhry has never danced, not even at his own wedding. His daughter Hira's mehndi is in four days, and her cousins have planned a family dance with a slot for the bride's father. He pays the neighbour's seventeen-year-old son to teach him on the roof at night. His knees disagree.",
+        "where_and_when": "Karachi, Pakistan, in the present day, the week of a December wedding: a Punjabi family's flat rooftop among water tanks and kite strings, sea breeze at night, a house full of relatives and marigolds, and a mehndi night in a lit-up garden",
+        "characters": [
+          {
+            "name": "Naveed Chaudhry",
+            "isHero": true,
+            "background": "56, senior income-tax officer, widower, famous in the family for never smiling in photos. Loves his daughter enormously and has no idea how to show it. Secretly hums old film songs in the car. Has a bad left knee and a worse sense of rhythm.",
+            "appearance": "heavyset man with a neat grey beard, thick eyebrows, receding hair oiled back, reading glasses in his shirt pocket, grey shalwar kameez under a brown woollen waistcoat, sensible leather sandals, a knee brace hidden underneath"
+          },
+          {
+            "name": "Arsalan Baig",
+            "background": "17, the neighbour's son, posts dance videos online and failed his maths exam, a fact Naveed discovers and exploits. Cheeky, kind, a surprisingly strict teacher. Wants someone to take him seriously.",
+            "appearance": "skinny teenager with a big swept-up hairstyle, light brown skin, thin moustache attempt, black hoodie over a white shalwar, bright white sneakers, a phone speaker in one hand"
+          },
+          {
+            "name": "Hira Chaudhry",
+            "background": "26, the bride, an architect, her father's daughter in every stubborn way. Knows something is going on on the roof and assumes it is a secret business problem. Misses her mother most this week.",
+            "appearance": "young woman with a strong nose and kohl-lined eyes, long black hair in a braid with marigolds, yellow and green mehndi outfit, bangles to the elbow, hands freshly patterned with dark henna"
+          }
+        ],
+        "moments": [
+          "The dance list is read out at dinner and Naveed's name is on it; he says nothing and goes to the roof",
+          "Night lessons among the water tanks: Arsalan teaching steps, Naveed trading them for maths tutoring",
+          "The knee gives way the night before, and Naveed decides he will not dance after all",
+          "At the mehndi, the music changes to his late wife's favourite old song, and he dances anyway, badly and completely"
+        ],
+        "story_values": [
+          "love",
+          "courage"
+        ],
+        "avoid": "mocking the father, crude jokes, family cruelty, melodrama about the mother's death",
+        "writing_style": "funny, fast, affectionate; Punjabi-and-Urdu family chaos in the dialogue; a dry narrator who lets the final moment land in silence"
+      }
+    },
+    {
+      "slot": "S65",
+      "slug": "a-place-for-a-stranger",
+      "title": "A Place for a Stranger",
+      "logline": "Every Christmas Eve for sixty years a Polish great-grandmother has laid a place for an unexpected guest, and this year a soaked delivery rider actually knocks.",
+      "themes": [
+        "hospitality",
+        "family",
+        "loneliness",
+        "tradition"
+      ],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": [
+          "sliceOfLife",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "On Christmas Eve Polish families wait for the first star, then eat, with one empty place laid for an unexpected guest. Halina, 84, is hosting Wigilia against everyone's advice. Tonight, for the first time in sixty years, somebody actually knocks: a soaked delivery rider with the wrong address.",
+        "where_and_when": "Lodz, Poland, on Christmas Eve in the present day: a fourth-floor flat in a grey tenement with a courtyard, snow turning to sleet, a table with white cloth over a handful of hay, twelve dishes, carp, pierogi, beetroot soup, and a candle in the window",
+        "characters": [
+          {
+            "name": "Halina Wroblewska",
+            "isHero": true,
+            "background": "84, retired tram-depot bookkeeper, widowed, insists on cooking all twelve Christmas Eve dishes alone even though her daughter wants to host. Proud, funny, bossy, a little deaf in one ear on purpose. Has laid the empty place every year since 1964 and never told anyone why.",
+            "appearance": "tiny stooped old woman with a sharp face, pale papery skin, dyed chestnut hair set in firm curls, navy wool dress with a cameo brooch, fleece slippers, an apron over everything, a wooden spoon she points at people"
+          },
+          {
+            "name": "Taras Hnatiuk",
+            "background": "31, Ukrainian delivery rider, three years in Poland, sends most of his money home to his mother in Vinnytsia. Polite, soaked, embarrassed, and trying very hard not to think about it being Christmas Eve alone. Was an accountant back home.",
+            "appearance": "lanky man with a long pale face, hollow cheeks, wet dark hair plastered to his forehead, stubble, a bright green delivery jacket over a hoodie, cycling gloves, an insulated delivery backpack dripping sleet"
+          },
+          {
+            "name": "Kuba Wroblewski",
+            "background": "12, Halina's great-grandson, appointed official watcher for the first star and taking it more seriously than anyone expected. Wants a phone for Christmas. The first one to understand what the empty place is for.",
+            "appearance": "round-faced boy with messy mousy hair, glasses fogging up, a Christmas jumper with a reindeer on it, school trousers, socks with holes, nose pressed to the frosted window"
+          }
+        ],
+        "moments": [
+          "Kuba scans the sleet-grey sky for the first star while four generations argue in a very small kitchen",
+          "The doorbell: a delivery rider with someone else's pizza, and Halina says come in before anyone can stop her",
+          "Taras sits in the empty place, shares the Christmas wafer with each of them in turn, and nobody quite knows what to say",
+          "Halina finally tells Kuba who the empty place was first laid for"
+        ],
+        "story_values": [
+          "hospitality",
+          "kindness"
+        ],
+        "avoid": "melodrama, politics or war scenes, mocking the old woman or the migrant, sentimentality laid on thick; brands",
+        "writing_style": "warm, funny, crowded with food and family noise; small gestures carry the feeling; end quietly on the candle in the window"
+      }
+    },
+    {
+      "slot": "S66",
+      "slug": "the-star-that-would-not-fit",
+      "title": "The Star That Would Not Fit",
+      "logline": "An eight-year-old in Samarkand helps her grandfather rebuild a broken tile pattern before Navruz, and learns how mirrors, spins and shapes make the patterns fit together.",
+      "themes": [
+        "patterns everywhere",
+        "grandparents",
+        "patience",
+        "making beautiful things"
+      ],
+      "request": {
+        "primary_genre": "educational",
+        "genres": [
+          "educational",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Symmetry and tessellation. A storm cracks the tile panel over the courtyard gate just before Navruz, and Zulfiya's grandfather is a tile master. To rebuild it she learns mirror symmetry, turning symmetry, and why squares, triangles and hexagons fit with no gaps but a five-sided tile never can.",
+        "where_and_when": "Samarkand, Uzbekistan, in March before Navruz, the present day: a family courtyard house with a vine trellis and a blue tiled gate, a grandfather's workshop full of clay and glazes, and the great tiled squares of the old city glittering in spring sun",
+        "characters": [
+          {
+            "name": "Zulfiya Karimova",
+            "isHero": true,
+            "background": "8, loves drawing, hates waiting, and wants to prove to her cousin that girls can be tile masters. Asks 'but why does it fit?' about everything. Gets impatient and then very, very careful.",
+            "appearance": "small girl with brown skin, rosy cheeks, two long black plaits tied with red ribbons, a colourful ikat-patterned dress over leggings, a paint-spattered apron, a pencil behind her ear and a square of blue tile in her hand"
+          },
+          {
+            "name": "Bahodir Yusupov",
+            "background": "72, Zulfiya's grandfather, a master tile maker who has repaired old buildings all his life. Slow, patient, likes to answer a question with a game. Pretends his eyes are too tired to find the pattern so Zulfiya has to.",
+            "appearance": "tall thin old man with a long white beard, deep smile lines, a square black-and-white embroidered skullcap, a long quilted striped robe over a white shirt, clay-dusted hands, a small hand mirror in his pocket"
+          },
+          {
+            "name": "Sanjar Karimov",
+            "background": "10, Zulfiya's cousin, a know-it-all who is right just often enough to be annoying. Good at counting, bad at losing. Becomes her best helper when he realises the pentagon problem stumps him too.",
+            "appearance": "sturdy boy with a buzz cut, big ears, brown skin, blue tracksuit top and jeans, a football under one arm and a ruler sticking out of his pocket"
+          }
+        ],
+        "moments": [
+          "Grandfather puts a little mirror down the middle of a broken tile and Zulfiya sees the missing half appear",
+          "Spinning a paper star to find how many turns make it look exactly the same again",
+          "Zulfiya and Sanjar try to cover the courtyard floor with paper squares, triangles and hexagons, and every one fits",
+          "They cut out five-sided shapes, and no matter how they push them, gaps appear, so they add little stars to fill them",
+          "Navruz morning: the rebuilt gate glitters, and Zulfiya shows the neighbours where the mirrors are hiding"
+        ],
+        "story_values": [
+          "patience",
+          "curiosity"
+        ],
+        "avoid": "anything frightening, injury, a wrong fact about shapes; keep the maths correct and simple",
+        "writing_style": "playful, simple sentences for young readers; every idea shown with paper, mirrors and tiles the characters hold; warm family humour"
+      }
+    },
+    {
+      "slot": "S67",
+      "slug": "eya-and-the-thinnest-moon",
+      "title": "Eya and the Thinnest Moon",
+      "logline": "On the last evening of Ramadan, a seven-year-old in Kairouan wants to be first to spot the new moon, and her grandfather shows her with an orange and a lamp why the moon changes shape.",
+      "themes": [
+        "wonder",
+        "the sky",
+        "family traditions",
+        "patience"
+      ],
+      "request": {
+        "primary_genre": "educational",
+        "genres": [
+          "educational"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "Why the moon has phases. If the thin new crescent is seen tonight, Eid is tomorrow, and Eya wants to spot it first. On the rooftop her grandfather shows her with an orange and a lamp that the moon makes no light of its own, and we see more or less of its sunlit half as it circles the Earth.",
+        "where_and_when": "A flat whitewashed rooftop in the old medina of Kairouan, Tunisia, at sunset on the last evening of Ramadan, the present day: blue doors below, the square minaret of the Great Mosque, pigeons, washing lines, and neighbours on every roof looking west",
+        "characters": [
+          {
+            "name": "Eya Jaziri",
+            "isHero": true,
+            "background": "7, fizzing with impatience, has promised her whole class she will see the moon first. Talks very fast. Thinks the moon gets eaten and grows back. Very good at spotting things.",
+            "appearance": "small girl with light brown skin, big dark eyes, curly brown hair in a puffy ponytail with a yellow clip, orange hooded jacket over a new Eid dress, pink trainers, a toy telescope made from a kitchen-roll tube"
+          },
+          {
+            "name": "Mongi Jaziri",
+            "background": "68, her grandfather, a retired maths teacher who has watched for the new moon from this rooftop every year of his life. Calm, playful, answers with experiments. Carries an orange in his pocket for exactly this conversation.",
+            "appearance": "slim elderly man with warm brown skin, short white beard, gold-rimmed glasses, a cream wool jebba robe, a red felt chechia cap, leather slippers, an orange in one hand and a small oil lamp in the other"
+          }
+        ],
+        "moments": [
+          "Eya counts every roof with someone on it, all looking west where the sun went down",
+          "Grandfather holds the orange beside the lamp: one half always lit, and Eya walks round it to watch the lit part grow from a sliver to full and shrink again",
+          "Clouds come, and grandfather explains the old rule: if nobody sees the crescent, the month simply counts to thirty days",
+          "The clouds part low in the west, and Eya sees the thinnest silver smile, its bright side facing where the sun set"
+        ],
+        "story_values": [
+          "curiosity",
+          "patience"
+        ],
+        "avoid": "anything frightening, falling from the roof, any wrong fact about the moon (phases are never caused by Earth's shadow)",
+        "writing_style": "bright, bouncy, simple sentences for young readers; the science shown through the orange, the lamp and what Eya sees; cosy family warmth"
+      }
+    },
+    {
+      "slot": "S68",
+      "slug": "shontelle-guards-the-nest",
+      "title": "Shontelle Guards the Nest",
+      "logline": "An eight-year-old in Barbados helps guard a hawksbill turtle nest for two whole months, and has to convince the whole beach to turn off its lights on hatching night.",
+      "themes": [
+        "care for nature",
+        "patience",
+        "community",
+        "new life"
+      ],
+      "request": {
+        "primary_genre": "educational",
+        "genres": [
+          "educational",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "How sea turtles nest and hatch. Shontelle finds hawksbill turtle tracks on her beach and the turtle-watch volunteer lets her help guard the nest. She learns that warm sand makes more girl turtles, that eggs take about two months, and that hatchlings find the sea by heading for the brightest horizon.",
+        "where_and_when": "The west coast of Barbados, from July to September, the present day: a quiet sandy beach with sea grape trees, fishing boats pulled up on the sand, a beach restaurant with strings of bright lights, and warm starry nights",
+        "characters": [
+          {
+            "name": "Shontelle Griffith",
+            "isHero": true,
+            "background": "8, lives by the beach with her grandmother, collects shells and facts, cannot keep a secret for more than an hour. Impatient. Discovers she can be very, very still when it matters.",
+            "appearance": "small girl with dark brown skin, hair in two big puffs with blue bobbles, a turquoise swimsuit under oversized denim shorts, bare sandy feet, a red torch and a notebook with a turtle sticker"
+          },
+          {
+            "name": "Everton Bynoe",
+            "background": "60, retired fisherman who now volunteers for the turtle watch, patrolling the beach at night. Slow-talking, funny, knows every turtle by her flipper tag number. Says the sea taught him patience and the turtles taught him more.",
+            "appearance": "tall lean man with very dark skin, grey stubble, a faded blue fishing cap, a turtle-watch T-shirt, rolled-up khaki trousers, a red-light head torch, a clipboard in a plastic bag"
+          },
+          {
+            "name": "Lorna Babb",
+            "background": "52, owns the beach restaurant whose bright lights shine right on the nest. Loud, busy, not a villain: her restaurant pays for her son's schooling. Needs to be persuaded, not shamed, to switch the lights off on hatching nights.",
+            "appearance": "plump woman with brown skin and a wide smile, short grey-streaked locs under a patterned headwrap, flowered apron over a yellow blouse, a notepad and pen, sandals"
+          }
+        ],
+        "moments": [
+          "Shontelle finds tractor-like tracks up the sand at dawn and Everton shows her where the mother turtle dug her nest",
+          "Everton pushes a thermometer into warm sand and explains that the temperature of the nest decides how many babies are girls or boys",
+          "Shontelle counts down the weeks on a calendar and figures out the lights at Lorna's restaurant could lead the hatchlings the wrong way",
+          "Shontelle's drawings convince Lorna, and the whole restaurant eats dinner in the dark",
+          "Hatching night: tiny turtles scramble toward the moonlit sea, and every one of them finds it"
+        ],
+        "story_values": [
+          "care for nature",
+          "patience"
+        ],
+        "avoid": "anything frightening, predators eating hatchlings, harm to turtles, touching or picking up turtles, wrong facts about turtles; brands",
+        "writing_style": "lively, warm, simple sentences for young readers; the science shown through what Shontelle sees, measures and does; Bajan warmth and gentle humour in the dialogue"
+      }
+    },
+    {
+      "slot": "S69",
+      "slug": "wumpini-reads-the-bee-dance",
+      "title": "Wumpini Reads the Bee Dance",
+      "logline": "A nine-year-old in northern Ghana learns to read the secret dance honeybees use to tell each other where flowers are, and races her uncle to the flowering trees.",
+      "themes": [
+        "nature's secret languages",
+        "curiosity",
+        "respect for small creatures",
+        "teamwork"
+      ],
+      "request": {
+        "primary_genre": "educational",
+        "genres": [
+          "educational",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "How honeybees communicate with the waggle dance. Wumpini's uncle has a glass-sided hive, and he bets her she cannot find the bees' flowers before he does. Watching, she learns that a bee's waggle points the way compared to the sun, and a longer waggle means the flowers are farther away.",
+        "where_and_when": "A farming village near Tamale in northern Ghana, a hot dry-season afternoon in the present day: red earth, shea trees in flower, round mud houses with thatched roofs, a guinea fowl yard, and a small wooden bee hive with a glass window under a shade shelter",
+        "characters": [
+          {
+            "name": "Wumpini Alhassan",
+            "isHero": true,
+            "background": "9, fastest runner in her class, used to be scared of bees and now wants to be a beekeeper. Competitive, clever, loves a bet. Carries a notebook for drawing arrows.",
+            "appearance": "tall lanky girl with dark brown skin, short cropped hair, bright green school shirt and brown skirt, bare dusty feet, a mesh bee veil pushed back on her head, a pencil and a notebook"
+          },
+          {
+            "name": "Iddrisu Abukari",
+            "background": "45, Wumpini's uncle, farmer and beekeeper, calm with bees and noisy with people. Loves a riddle. Built the glass-window hive himself so the village children could watch the bees without disturbing them.",
+            "appearance": "broad smiling man with dark brown skin, short greying beard, a round embroidered cap, a loose striped smock in blue and white, a clay smoker puffing gentle smoke, bee veil on a string round his neck"
+          }
+        ],
+        "moments": [
+          "Uncle Iddrisu puffs smoke to calm the hive and Wumpini sees one bee wiggling in a strange figure-of-eight on the comb",
+          "She draws the dance's arrow in her notebook: the waggle points a little to the left of straight up, so the flowers are a little to the left of the sun",
+          "A second bee does a quick round dance, and uncle explains that means flowers very close by",
+          "Wumpini runs toward the sun and a little left, and finds the flowering shea trees humming with bees, a moment before her uncle"
+        ],
+        "story_values": [
+          "curiosity",
+          "respect for nature"
+        ],
+        "avoid": "bee stings, anything frightening, harm to bees, any wrong fact about bees",
+        "writing_style": "sunny, playful, simple sentences for young readers; the science shown through what Wumpini watches, draws and does; gentle teasing between niece and uncle"
+      }
+    },
+    {
+      "slot": "S70",
+      "slug": "teddy-builds-a-bridge",
+      "title": "Teddy Builds a Bridge",
+      "logline": "When his craft-stick bridge collapses a week before the class contest, a seven-year-old in Pittsburgh gets help from his grandmother, a retired ironworker who knows why triangles never give up.",
+      "themes": [
+        "trying again",
+        "how things work",
+        "grandparents",
+        "building"
+      ],
+      "request": {
+        "primary_genre": "educational",
+        "genres": [
+          "educational",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "How bridges carry weight. Teddy's bridge of craft sticks folds flat under six pennies, a week before the class contest. His grandmother takes him onto a real steel bridge to show him why triangles keep their shape when squares squash, and how a beam gets squeezed on top and stretched underneath.",
+        "where_and_when": "Pittsburgh, Pennsylvania, in autumn, the present day: a city of rivers and hundreds of bridges, a yellow steel truss bridge with a footpath, a kitchen table covered in glue and sticks, and a busy second-grade classroom",
+        "characters": [
+          {
+            "name": "Teddy Kowalczyk",
+            "isHero": true,
+            "background": "7, loves trucks and anything that moves, hates when things break and says 'I quit' about four times a day. Very good at noticing. Wants to win so his grandmother can see his bridge on the classroom shelf.",
+            "appearance": "small chubby boy with pale skin and pink cheeks, messy straw-coloured hair, a missing front tooth, a too-big orange hard hat, black-and-yellow striped sweatshirt, jeans with glue on the knees"
+          },
+          {
+            "name": "Bernadette Kowalczyk",
+            "background": "74, Teddy's grandmother, one of the first women ironworkers in the city, walked high steel for thirty years. Tough, funny, calls every bridge by its first name. Knows more than she says and lets Teddy discover it.",
+            "appearance": "short strong old woman with a white pixie cut, weathered pale skin, crinkly blue eyes, a red flannel shirt, work boots, a denim jacket covered in union pins, reading glasses on a beaded chain"
+          },
+          {
+            "name": "Josefina Ruelas",
+            "background": "8, Teddy's best friend and contest rival, builds arches and thinks triangles are boring. Neat, serious, a very good loser. Her arch teaches Teddy that arches push outward and need strong ends.",
+            "appearance": "tall girl with light brown skin, a long black braid, purple glasses, a purple puffer vest over a unicorn T-shirt, a ruler and a glue stick in her fist"
+          }
+        ],
+        "moments": [
+          "Teddy's square-box bridge leans, wobbles and squashes flat under the sixth penny",
+          "On the steel bridge, Grandma Bernadette shows him the triangles everywhere and lets him push a square of sticks into a slanted shape, then try the same with a triangle",
+          "Bending a long stick: Teddy feels the top squeeze and the bottom stretch, and learns why beams need help",
+          "Josefina's arch pushes its ends apart until they tape them down, and Teddy adds triangles to his own bridge",
+          "Contest day: Teddy's triangle bridge holds a whole jar of pennies"
+        ],
+        "story_values": [
+          "perseverance",
+          "friendship"
+        ],
+        "avoid": "anything frightening, injury, falls from heights, wrong facts about how bridges work; brands",
+        "writing_style": "cheerful, simple sentences for young readers; every idea shown with sticks, pennies and real bridges; funny grandmother-grandson banter"
+      }
+    }
+  ]
+}

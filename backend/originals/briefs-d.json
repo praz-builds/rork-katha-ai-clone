@@ -1,0 +1,724 @@
+{
+  "stories": [
+    {
+      "slot": "S44",
+      "slug": "hello-from-up-there",
+      "title": "Hello From Up There",
+      "logline": "A nine-year-old on the Kenyan coast turns her great-aunt's old TV dish into a radio station to rescue her school's tiny satellite before its battery runs flat.",
+      "themes": [
+        "curiosity",
+        "teamwork",
+        "how satellites work",
+        "looking up"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Mwanaisha's class built a satellite the size of a milk carton, and it went up on a rocket. Now it has gone quiet. It passes over her town for just nine minutes at a time, and its battery is fading. With a rusty TV dish and a lot of maths, she has four passes to wake it up.",
+        "where_and_when": "Malindi on the Kenyan coast, a few years from now; a flat roof with a satellite dish, coconut palms, a school science room with one laptop, warm Indian Ocean evenings, and the space centre just down the coast",
+        "characters": [
+          {
+            "name": "Mwanaisha Chande",
+            "isHero": true,
+            "background": "9, the smallest girl in Standard Four and the loudest asker of questions. Keeps a notebook of satellite pass times. Afraid that if the satellite fails, everyone will say her school should never have tried.",
+            "appearance": "small Swahili girl, dark brown skin, hair in neat cornrows with orange beads, big gap-toothed grin, green school jumper over a checked dress, a pencil behind her ear, holding a notebook covered in stars"
+          },
+          {
+            "name": "Faraji Chande",
+            "background": "6, her little brother, who cannot sit still and is very good at climbing. Thinks the satellite is lonely. Accidentally has the best idea in the whole story.",
+            "appearance": "skinny little boy, dark brown skin, shaved head, huge ears, oversized red football shirt down to his knees, bare dusty feet, one sandal in his hand"
+          },
+          {
+            "name": "Mwanamisi Kombo",
+            "background": "68, their great-aunt, who fixed telephone lines for forty years and still has a ham radio she talks to the whole world on. Grumbles that nobody writes letters any more. Secretly the proudest person on the roof.",
+            "appearance": "round, strong elderly Swahili woman, reading glasses on a beaded chain, bright yellow kanga wrapped over her head and shoulders, a screwdriver in her apron pocket, big laugh"
+          }
+        ],
+        "moments": [
+          "Mwanaisha watches the satellite cross the sky as a moving star and learns it goes all the way round the Earth in about ninety minutes",
+          "Aunt Mwanamisi and the children point the old TV dish by hand and hear the satellite's faint beep",
+          "They work out the satellite is spinning with its solar panels facing away from the Sun, which is why it is hungry",
+          "Faraji's idea: send the wake-up command at the start of the pass, when the satellite is lowest and loudest",
+          "On the last pass the satellite answers, and sends back a photo of the coast with their town in it"
+        ],
+        "story_values": [
+          "curiosity",
+          "perseverance"
+        ],
+        "avoid": "anything frightening, danger to the children, adults solving it for them, mocking failure",
+        "writing_style": "warm, funny and bouncy, short sentences for young readers; true space science (orbits, radio, solar power) explained through what the children do and see"
+      }
+    },
+    {
+      "slot": "S45",
+      "slug": "garua",
+      "title": "Garúa",
+      "logline": "In a Lima that has lived on fog for thirty years, a woman who built the fog nets on her hill learns her own son's rain machine will take the fog away.",
+      "themes": [
+        "water and belonging",
+        "mothers and sons",
+        "progress and its cost",
+        "community"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Lima, 2044: the desert city has never had real rain. Yolanda Ccori's hillside drinks from fog nets she strung decades ago. Now her estranged son returns with a plan to seed the coastal fog into rain over the whole city. In thirty days, the first test will empty the sky above her hill.",
+        "where_and_when": "Lima, Peru, 2044; the sand hills of Villa María del Triunfo with black fog nets and blue water tanks, the grey winter garúa, a university atmospheric lab in Miraflores, and nucleation towers rising along the cliffs above the Pacific",
+        "characters": [
+          {
+            "name": "Yolanda Ccori",
+            "isHero": true,
+            "background": "61, came down from Ayacucho as a girl, raised her son alone and built the hill's water system with her own hands. Runs the neighbourhood water committee like an army. Has never told her son why she stopped answering his letters.",
+            "appearance": "short sturdy Andean woman, brown weathered skin, long grey braid, gold front tooth, red cardigan over a wool skirt, rubber boots, a coil of nylon cord over one shoulder"
+          },
+          {
+            "name": "Álvaro Ccori",
+            "background": "34, atmospheric physicist, the first of the hill to get a doctorate. Believes rain would save millions. Came home to prove something to his mother and cannot admit it. Still counts fog droplets on his sleeve without thinking.",
+            "appearance": "lanky young Peruvian man, light brown skin, thick black hair, wire glasses, grey university fleece with a laptop bag, rain gauge sticking out of a pocket"
+          },
+          {
+            "name": "Wilmer Taype",
+            "background": "16, Yolanda's apprentice on the nets, who has never seen rain and badly wants to. Caught between them, and the one who finds the problem with Álvaro's numbers.",
+            "appearance": "wiry teenage boy, dark brown skin, shaved sides with a curly top, oversized secondhand football jersey, work gloves, a phone with a cracked screen full of weather apps"
+          }
+        ],
+        "moments": [
+          "Dawn on the hill: Yolanda shows the reader how a fog net fills a tank drop by drop, and Álvaro's car climbs the sand road",
+          "At the lab Álvaro shows the towers, and Yolanda sees her hill drawn as an empty space on his map",
+          "Wilmer discovers the model predicts rain over rich Miraflores and dry skies over the hills",
+          "The first test: the fog lifts over the hill, and the whole neighbourhood watches the nets hang empty",
+          "Mother and son redesign the plan together on the hill, net by net, before the second test"
+        ],
+        "story_values": [
+          "honesty",
+          "community"
+        ],
+        "avoid": "villain scientists, corporate dystopia, disaster clichés, poverty shown as misery, easy reconciliation",
+        "writing_style": "lyrical but grounded, grey and silver light, the textures of fog, sand and water; tender, dry-humoured family dialogue; science made concrete"
+      }
+    },
+    {
+      "slot": "S46",
+      "slug": "splashdown-off-son-tra",
+      "title": "Splashdown Off Son Tra",
+      "logline": "A Da Nang fisherwoman rows out into the dark to reach a space capsule that came down in the wrong sea, and finds the astronaut is the girl she loved at sixteen.",
+      "themes": [
+        "first love",
+        "the sea and the sky",
+        "what we leave behind",
+        "courage"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "romance"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Vietnam's first crewed capsule comes home forty kilometres off target, into the night bay under Son Tra mountain. The navy is two hours away and the tide is turning. Kha Quế Chi, a fisherwoman, is the only boat close enough, and the name on the capsule is one she has not said aloud in twenty years.",
+        "where_and_when": "Da Nang, Vietnam, a few years from now; a night bay under Son Tra mountain, round basket boats and squid-fishing lights, the city's bridges glowing across the water, one scorched capsule rocking under a torn parachute",
+        "characters": [
+          {
+            "name": "Kha Quế Chi",
+            "isHero": true,
+            "background": "43, squid fisher who took over her father's boat, never married, reads the tide by the smell of the wind. Stayed when everyone left. Kept every newspaper clipping about the astronaut and hid them in a biscuit tin.",
+            "appearance": "strong compact Vietnamese woman, sun-dark skin, short practical hair under a conical hat pushed back, faded blue work shirt, rolled trousers, bare feet, a headlamp and a coil of rope"
+          },
+          {
+            "name": "Hứa Mộng Tuyền",
+            "background": "43, air force pilot turned astronaut, the girl who left the village for flight school. Composed on television, shaking now. Brought something from Chi into orbit and never told anyone why.",
+            "appearance": "tall lean Vietnamese woman, pale from months in orbit, sweat-soaked short black hair, white pressure suit unzipped to the waist, national flag patch, a small carved wooden fish on a cord round her wrist"
+          }
+        ],
+        "moments": [
+          "Chi sees the fireball and the parachute and turns her boat before anyone else understands what fell",
+          "She reaches the rocking capsule and has to open the hatch from outside by torchlight",
+          "Tuyền, too weak to stand after months in space, is carried into the fishing boat like a catch",
+          "Waiting for the navy under the squid lights, the two women finally talk about the night Tuyền left"
+        ],
+        "story_values": [
+          "courage",
+          "tenderness"
+        ],
+        "avoid": "explicit content, death or serious injury, military jingoism, melodrama",
+        "writing_style": "spare, luminous, close to Chi; the sensory detail of salt, engine oil and scorched metal; restrained dialogue carrying twenty years of feeling"
+      }
+    },
+    {
+      "slot": "S47",
+      "slug": "nine-minutes-over-goonhilly",
+      "title": "Nine Minutes Over Goonhilly",
+      "logline": "A solar storm has blinded every satellite, and three astronauts can only come home if a 74-year-old Cornish radio amateur and her grandson get the numbers right in nine-minute bursts.",
+      "themes": [
+        "old skills",
+        "grandparents and grandchildren",
+        "the kindness of strangers",
+        "grace under pressure"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "A solar storm has knocked out satellites and the power grid, and a space lab's crew has lost its navigation computer. In Cornwall, retired radio engineer Wenna Trethowan can reach them by ham radio for nine minutes each pass. Before dawn, she has to talk them into a safe return.",
+        "where_and_when": "The Lizard peninsula, Cornwall, in a winter of the near future; a stone cottage near the giant dishes of the old Goonhilly earth station, blackout across the county, candles, a car battery powering a radio, auroras shimmering green over the sea",
+        "characters": [
+          {
+            "name": "Wenna Trethowan",
+            "isHero": true,
+            "background": "74, spent her career on the Goonhilly dishes and has talked to astronauts on amateur radio for fun since the 1990s. Proud, sharp, lonely since her husband died. Hides that her hands shake now when she has to write fast.",
+            "appearance": "small wiry white Cornish woman, cropped white hair, deep smile lines, oversized hand-knitted navy jumper, fingerless gloves, headphones over one ear, a pencil and a pad of graph paper"
+          },
+          {
+            "name": "Jory Trethowan",
+            "background": "15, her grandson, sent to stay with her after trouble at school. Surly, brilliant at maths, sure he is useless to everybody. Has never done a sum that mattered before tonight.",
+            "appearance": "gangly pale teenage boy, messy dark fringe in his eyes, black hoodie, school trousers, a scientific calculator and a tatty paperback of trig tables"
+          },
+          {
+            "name": "Commander Ifeoluwa Adebanjo",
+            "background": "46, British-Nigerian engineer, commanding a three-person laboratory crew. Jokes when frightened. Promised her twin daughters she would be home for their birthday on Saturday.",
+            "appearance": "strong tall Black woman, close-cropped natural hair floating in zero gravity, blue flight overalls covered in patches, a headset mic, a photo of two girls taped beside her"
+          }
+        ],
+        "moments": [
+          "The lights go out across Cornwall, and Wenna's radio crackles with a calm voice asking if anyone can hear them",
+          "Wenna remembers she can work out when the lab passes over from the old way, with pencil and paper",
+          "Jory checks her sums, and finds the mistake that would have sent the crew in steep",
+          "The final nine-minute pass: burn time counted aloud, second by second, into the static",
+          "Dawn, a green aurora fading, and a message from a boat in the Atlantic: three parachutes seen"
+        ],
+        "story_values": [
+          "competence",
+          "family"
+        ],
+        "avoid": "deaths of the crew, government conspiracy, gore, mocking the old or the young",
+        "writing_style": "tense and warm, ticking-clock pacing with a dry Cornish sense of humour; technical detail kept clear and human; the grandmother-grandson rapport carries the story"
+      }
+    },
+    {
+      "slot": "S48",
+      "slug": "a-glacier-for-phyang",
+      "title": "A Glacier for Phyang",
+      "logline": "In a Himalayan village whose glacier has vanished, a young engineer has one winter to grow a new one by hand, and the village downstream says she is stealing their water.",
+      "themes": [
+        "climate and ingenuity",
+        "inheritance",
+        "neighbours and rivals",
+        "patience"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Ladakh, 2039: the glacier above Phyang is gone, and without its spring meltwater the barley will fail. Skarma Yangdol comes home from the city to build an artificial glacier, a tower of ice. Every winter night counts, and the village downstream says her pipes are drying their stream.",
+        "where_and_when": "Phyang and the Indus valley in Ladakh, India, one winter in 2039; minus twenty-five nights, a whitewashed monastery on the hill, stone houses with flat roofs of stacked firewood, bare poplars, solar pumps humming beside a growing cone of blue ice",
+        "characters": [
+          {
+            "name": "Skarma Yangdol",
+            "isHero": true,
+            "background": "29, hydraulic engineer who left Ladakh for a job in Bengaluru and came back when her father fell ill. Brilliant, impatient, never sure she belongs in either place. Talks to her ice tower when she thinks nobody is listening.",
+            "appearance": "compact young Ladakhi woman, wind-reddened cheeks, straight black hair under a red wool hat, puffy black down jacket over a traditional goncha robe, cracked lip balm, a thermal camera on a strap"
+          },
+          {
+            "name": "Nawang Stobdan",
+            "background": "81, her grandfather, who walked up to the old glacier every summer of his life. Forgetful about today, precise about 1960. Knows where the cold air pools in winter, which no sensor has found.",
+            "appearance": "tiny bent Ladakhi man, deeply lined brown face, thin white moustache, maroon wool robe tied with a sash, fur-lined cap with ear flaps, prayer wheel in one hand and a walking stick"
+          },
+          {
+            "name": "Konchok Rabgais",
+            "background": "47, headman of the downstream village, an apple farmer and a good father. Believes the ice tower steals the winter trickle his orchard needs. Not wrong about everything.",
+            "appearance": "broad-shouldered Ladakhi man, square face with a trimmed grey beard, sheepskin coat over a woollen sweater, sunglasses pushed up, a thermos of butter tea"
+          }
+        ],
+        "moments": [
+          "Skarma climbs with her grandfather to the bare rock where the glacier used to be",
+          "The first freezing night: the sprinkler pipe splits and she learns why her city design fails in Ladakh",
+          "Konchok's orchard runs dry, and he closes the valve on her pipe in front of the whole village",
+          "Nawang, lost in memory, leads her to a shaded gully where the old people used to store ice",
+          "Spring: the tower melts slowly into both villages' channels, and Konchok carries the first jug to her door"
+        ],
+        "story_values": [
+          "ingenuity",
+          "cooperation"
+        ],
+        "avoid": "villains, corporate dystopia, apocalypse tone, exoticising Ladakhi culture, easy fixes",
+        "writing_style": "quiet, precise and hopeful, with the blue cold of winter nights and the science of ice made tactile; slow-burn tension between neighbours; dry humour"
+      }
+    },
+    {
+      "slot": "S49",
+      "slug": "what-the-river-kills",
+      "title": "What the River Kills",
+      "logline": "In a world where antibiotics have stopped working, a Tbilisi phage hunter has twenty-one days to find the one virus in the river that can save a dying boy.",
+      "themes": [
+        "science as hope",
+        "strangers who become family",
+        "old knowledge",
+        "racing time"
+      ],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": [
+          "scifi",
+          "thriller",
+          "mystery"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Tbilisi, 2033. Antibiotics no longer stop the infection spreading through a seven-year-old boy flown in from Ukraine. Dr Eteri Gogoberidze hunts phages, the viruses that kill bacteria, in sewers and rivers. She has three weeks to find one that matches his strain, and the bacteria keep changing.",
+        "where_and_when": "Tbilisi, Georgia, winter 2033; the fast grey Mtkvari river, a crumbling Soviet-era phage institute with a basement of frozen samples, balconies of the old town, sulphur baths, hospital corridors, a city full of patients who came because nowhere else had anything left",
+        "characters": [
+          {
+            "name": "Dr Eteri Gogoberidze",
+            "isHero": true,
+            "background": "41, microbiologist at the phage institute, the third generation of her family there. Brilliant, stubborn, working without enough money. Lost a patient last year and still hasn't forgiven herself. Brings a flask of wine to the lab and never drinks it.",
+            "appearance": "tall bony Georgian woman, olive skin, a mane of dark hair going grey, heavy dark eyebrows, long black wool coat over a lab coat, rubber waders, a rack of sample tubes in a canvas bag"
+          },
+          {
+            "name": "Bohdan Hrytsenko",
+            "background": "38, lorry driver from Kharkiv and the boy's father. Speaks no Georgian, and his Russian is rusty. Can't bear to sit in the hospital doing nothing, so he drives Eteri to every drain and riverbank. He knows the boy caught the infection somewhere they both went.",
+            "appearance": "big heavy-set Ukrainian man, fair stubble, sunburned neck, shaved head under a knitted cap, padded work jacket, a child's drawing folded in his breast pocket"
+          },
+          {
+            "name": "Revaz Chkhartishvili",
+            "background": "84, retired scientist who kept the institute's Soviet phage collection alive through thirty years of power cuts. Sharp-tongued and vain. Once made a mistake that he has buried in the archive.",
+            "appearance": "small stooped Georgian man, white moustache, heavy black-rimmed glasses, three-piece suit gone shiny at the elbows, a cane and a ring of old brass keys"
+          }
+        ],
+        "moments": [
+          "Eteri takes her first sample from the Mtkvari at dawn while Bohdan holds the torch",
+          "A phage clears the boy's bacteria in the dish, and the first treatment brings his fever down",
+          "The bacteria become resistant, and the boy gets worse",
+          "During a citywide power cut, Revaz leads them to the basement freezers and a sample labelled only with a date in 1983",
+          "Eteri realises where the infection began, and it changes which phages she must combine",
+          "The boy wakes and asks for his father in Ukrainian, and Eteri finally drinks the wine"
+        ],
+        "story_values": [
+          "perseverance",
+          "compassion"
+        ],
+        "avoid": "evil AI, corporate villains, bioterror plots, graphic medical gore, the death of the child",
+        "writing_style": "urgent and humane, like a medical thriller with a big heart; lab work made vivid and exact; winter city texture; dialogue across broken languages"
+      }
+    },
+    {
+      "slot": "S50",
+      "slug": "cholpon-and-the-yak-who-ate-hats",
+      "title": "Cholpon and the Yak Who Ate Hats",
+      "logline": "The yurt comes down at dawn, the baby yak has run off up the mountain with Grandpa's hat in its mouth, and eight-year-old Cholpon has until sunset to bring them both back.",
+      "themes": [
+        "bravery",
+        "family",
+        "mountain life",
+        "silliness"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "comedy"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "watercolor",
+        "topic": "Tomorrow at dawn the family packs the yurt and leaves the summer pasture by Song-Köl lake. But Boorsok, the naughty baby yak, has run off up the mountain with Grandpa's felt hat in his mouth. Grandpa's knee is too sore to climb, so eight-year-old Cholpon must fetch them both by sunset.",
+        "where_and_when": "The summer pasture beside Song-Köl lake, high in the mountains of Kyrgyzstan, late August; a white felt yurt, grazing horses, a cold rushing stream, fat marmots whistling from their burrows, snowy peaks and a huge blue sky",
+        "characters": [
+          {
+            "name": "Cholpon Sadyrbekova",
+            "isHero": true,
+            "background": "8, the youngest in the family, told she is too small for everything. Very fast, very stubborn, can whistle louder than any grown-up. Secretly scared of the stream.",
+            "appearance": "small Kyrgyz girl, rosy wind-burned cheeks, two long black plaits, pink quilted jacket over a flowery dress, red rubber boots, a coil of rope over her shoulder"
+          },
+          {
+            "name": "Boorsok",
+            "background": "A baby yak, named after the fried dough he steals. Greedy, playful, loves hats more than grass. Has no idea he is in trouble.",
+            "appearance": "a round fluffy baby yak with shaggy black-and-white fur, stubby little horns, a big wet nose and a white felt hat hanging from his mouth"
+          },
+          {
+            "name": "Toktosun Sadyrbekov",
+            "background": "76, Cholpon's grandfather, an old horseman with a sore knee who talks to her from the yurt door with a very loud whistle code. Tells tall tales but knows the mountain perfectly.",
+            "appearance": "stocky old Kyrgyz man, deep smile lines, wispy white beard, bald head without his hat, long quilted chapan coat, leaning on a carved walking stick"
+          }
+        ],
+        "moments": [
+          "Boorsok snatches Grandpa's hat off his head during tea and bolts up the hill",
+          "Cholpon crosses the cold stream on wobbly stepping stones, counting Grandpa's whistles",
+          "A family of marmots whistle at her, and she follows Boorsok's hoof prints and hat fluff",
+          "She finds Boorsok stuck on a ledge, the hat still in his mouth, and coaxes him down with boorsok bread",
+          "At sunset they march back into camp, the hat a bit chewed, and Grandpa puts it on anyway"
+        ],
+        "story_values": [
+          "bravery",
+          "kindness"
+        ],
+        "avoid": "anything frightening, injury, animals being hurt, wolves, scolding or shaming the child",
+        "writing_style": "playful and warm, short sentences for young readers, funny sound words, a real sense of the high mountains; the child solves every problem herself"
+      }
+    },
+    {
+      "slot": "S51",
+      "slug": "the-puffling-patrol",
+      "title": "The Puffling Patrol",
+      "logline": "It is puffling night on an Icelandic island, and eight-year-old Ylfa has until morning to chase one very lost, very stubborn baby puffin through town and get it back to the sea.",
+      "themes": [
+        "helping wild things",
+        "island life",
+        "bravery in the dark",
+        "friendship"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "comedy"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Every August, baby puffins on Heimaey fly toward the town lights by mistake, and children rescue them. Ylfa, eight, finally gets to join the Puffling Patrol, but her puffling escapes her box and leads her all over town. She has to catch it and get it to the sea cliffs by morning.",
+        "where_and_when": "Heimaey in the Westman Islands, Iceland, a late August night and morning; colourful tin-roofed houses, the fishing harbour, streetlights, black lava fields from the 1973 eruption, grassy cliffs full of puffin burrows and the grey Atlantic below",
+        "characters": [
+          {
+            "name": "Ylfa Guðlaugsdóttir",
+            "isHero": true,
+            "background": "8, the youngest on the Patrol, who has practised catching pufflings with a sock for a whole year. Brave, clumsy, talks to birds out loud. Worries she will be the only one who fails to save hers.",
+            "appearance": "small Icelandic girl, pale rosy skin, white-blonde hair in a messy bun, huge grey knitted lopapeysa sweater with a pattern round the neck, yellow wellies, a torch and a cardboard box with air holes"
+          },
+          {
+            "name": "Bárður Hilmisson",
+            "background": "10, her neighbour and the Patrol's self-appointed expert, who has saved fourteen pufflings and tells everyone. Secretly afraid of the dark, so he sings very loudly.",
+            "appearance": "tall skinny Icelandic boy, freckles, ginger hair sticking up, blue rain jacket, reflective vest far too big, a fishing net on a long pole"
+          },
+          {
+            "name": "Valgerður Einarsdóttir",
+            "background": "71, Ylfa's grandmother, retired harbour pilot who has done the Patrol every year for sixty years. Knows the true facts about puffins, makes excellent pancakes, and never runs.",
+            "appearance": "short round elderly Icelandic woman, weathered cheeks, cropped silver hair, thick red knitted hat, orange fisherman's oilskin coat, rubber boots, a flask of cocoa"
+          }
+        ],
+        "moments": [
+          "Ylfa catches her first puffling under a parked car, and it pops out of the box in the kitchen",
+          "The puffling hops through the harbour, into a stack of fish crates and past a very confused cat",
+          "Bárður and Ylfa corner it at the bakery door, where Grandma explains why pufflings follow the lights",
+          "Morning at the cliffs: Grandma shows how to lift the puffling gently toward the wind",
+          "The puffling flaps, lands in the sea, bobs up and swims away, and Ylfa cheers loudest of all"
+        ],
+        "story_values": [
+          "kindness",
+          "bravery"
+        ],
+        "avoid": "anything frightening, birds getting hurt, dangerous cliffs, anyone being scolded harshly",
+        "writing_style": "bouncy and funny, short sentences for young readers; true facts about pufflings (why they follow lights, daytime release, they can swim) taught through what the children do"
+      }
+    },
+    {
+      "slot": "S52",
+      "slug": "back-to-plymouth-town",
+      "title": "Back to Plymouth Town",
+      "logline": "Her father's calypso tapes are buried in a basement in Montserrat's forbidden ash city, and Dolores Sweeney has one tide and one quiet day of the volcano to bring them out.",
+      "themes": [
+        "home and exile",
+        "music as memory",
+        "fathers and daughters",
+        "risk"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "When the volcano buried Montserrat's capital, the only recordings of her father's calypsos stayed in a radio station basement. Now her mother is dying and wants to hear his voice once more. Dolores slips into the exclusion zone by sea. The observatory says the lava dome could collapse any hour.",
+        "where_and_when": "Montserrat, the Caribbean, the present day; the grey ash ghost-town of Plymouth with church steeples poking out of hardened mud, the smoking Soufrière Hills volcano, a black-sand landing beach, a small boat, green hills of the island's safe north",
+        "characters": [
+          {
+            "name": "Dolores Sweeney",
+            "isHero": true,
+            "background": "52, ferry mechanic who was evacuated as a teenager and came back when most people didn't. Practical, blunt, never cries in public. Has not been inside Plymouth since the morning the ash came down in 1995.",
+            "appearance": "strong broad Black Montserratian woman, grey-streaked short twists under a bandana, grease-stained overalls with sleeves rolled up, a dust mask round her neck, a headlamp and a battered toolbag"
+          },
+          {
+            "name": "Tyrell Daly",
+            "background": "19, her nephew, fisherman with a small boat and no fear, which worries her. Never saw Plymouth alive. Wants to go because the island's young people have only ever known it as a ruin.",
+            "appearance": "tall lanky young Black man, clean-shaven, short fade, sleeveless vest and board shorts, bare feet, a whistle on a cord, a waterproof bag over his shoulder"
+          },
+          {
+            "name": "Dr Rennard Balgobin",
+            "background": "39, Trinidadian volcanologist at the observatory, who has to decide whether to report them. Kind, rule-bound, falling in love with the island. His readings are the story's clock.",
+            "appearance": "slim Indo-Trinidadian man, light brown skin, neat beard, orange hi-vis vest over a sweat-soaked shirt, hard hat, a radio and a gas-detector clipped to his belt"
+          }
+        ],
+        "moments": [
+          "At dawn Tyrell runs the boat onto black sand under the steaming dome",
+          "Dolores walks her own childhood street buried up to the second-floor windows and finds her school's roof at her feet",
+          "They dig down to the basement door of the radio station while Rennard's voice counts earthquakes on the radio",
+          "The dome rumbles, and they run for the boat with the tapes wrapped in Tyrell's shirt",
+          "Her mother listens to the scratchy tape on the porch in the north, and sings the chorus"
+        ],
+        "story_values": [
+          "courage",
+          "love"
+        ],
+        "avoid": "deaths, graphic injury, disaster-movie spectacle, poverty clichés, patois caricature",
+        "writing_style": "tight, physical and atmospheric, ash, heat and sulphur on every page; Montserratian voices written with respect and wit; the ticking volcano felt in every scene"
+      }
+    },
+    {
+      "slot": "S53",
+      "slug": "four-oclock-ferry-to-tarkwa-bay",
+      "title": "Four O'Clock Ferry to Tarkwa Bay",
+      "logline": "Lagos is flooded, the island's pharmacy boat has sunk, and a dispatch rider has until the last ferry to get a cooler of insulin across the city.",
+      "themes": [
+        "hustle and heart",
+        "the city as obstacle course",
+        "unlikely allies",
+        "doing the right thing"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "Rainy-season floods have stopped Lagos. The boat that carries medicine to Tarkwa Bay island has sunk, and twelve people there need insulin by tonight. Adaobi Okwuosa, a motorbike courier, takes the job. The last ferry leaves at four, and she has three hours to cross a flooded city.",
+        "where_and_when": "Lagos, Nigeria, the present day in rainy season; flooded streets in Lekki and Victoria Island, gridlocked yellow buses, the Third Mainland Bridge over the lagoon, the stilt houses of Makoko, jetties, and the beach island of Tarkwa Bay",
+        "characters": [
+          {
+            "name": "Adaobi Okwuosa",
+            "isHero": true,
+            "background": "26, dispatch rider saving to finish her pharmacy degree. Fearless on a bike, allergic to asking for help. Owes her landlord two months' rent and has been offered the rent money to ditch the job and take a better-paying one.",
+            "appearance": "lean young Igbo woman, dark brown skin, short locs tucked under a scuffed white helmet, bright orange rain poncho over jeans, knee pads, a blue medicine cooler strapped to her back"
+          },
+          {
+            "name": "Olalekan Oyenusi",
+            "background": "31, the pharmacist who hired her. Anxious, rule-bound, talks nonstop, insists on riding along. Turns out to know every shortcut in Lagos from his childhood as a bus conductor's son.",
+            "appearance": "round-faced Yoruba man, plump, dark brown skin, neat moustache, white pharmacist's coat soaked through over a tie, trousers rolled to the knee, an umbrella that keeps turning inside out"
+          },
+          {
+            "name": "Senami Hounkpatin",
+            "background": "60, Egun canoe woman from Makoko who never leaves the water if she can help it. Charges a fortune and haggles like a queen. Has a grandson on Tarkwa Bay who needs the insulin too.",
+            "appearance": "tall bony Egun woman, very dark skin, head wrapped in a green and gold scarf, faded wrapper tied at the chest, strong bare arms, a long wooden paddle"
+          }
+        ],
+        "moments": [
+          "Adaobi's bike stalls in waist-deep water on the Lekki road, and she carries the cooler over her head",
+          "A yellow bus roof becomes a bridge when Olalekan talks the conductor into it",
+          "The Third Mainland Bridge is jammed, so they bargain with Senami for a canoe through Makoko",
+          "The ferry is pulling away at four, and Senami paddles them straight across its bow",
+          "Twelve people on Tarkwa Bay get their insulin at sunset, and Senami refuses to take any money"
+        ],
+        "story_values": [
+          "kindness",
+          "grit"
+        ],
+        "avoid": "death, medical gore, crime-thriller clichés, poverty porn, pidgin written as a joke",
+        "writing_style": "fast, funny and loud, like a comic strip in motion; Lagos energy in every line, with some Nigerian Pidgin in the dialogue; action told through sharp visual beats"
+      }
+    },
+    {
+      "slot": "S54",
+      "slug": "rising-water-under-greenbrier",
+      "title": "Rising Water Under Greenbrier",
+      "logline": "Two teenagers are trapped deep in a West Virginia cave, a storm is coming over the ridge, and the only person who knows the flooded passage is the teacher they both ran away from.",
+      "themes": [
+        "second chances",
+        "courage in the dark",
+        "the land underneath",
+        "trust"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Two sixteen-year-olds went into Swago Hollow Cave and haven't come out. A thunderstorm will flood its lowest passage by midnight. Darlene Skaggs, a middle-school science teacher and cave surveyor, knows the cave better than anyone. She has to go in after them before the water rises.",
+        "where_and_when": "Greenbrier County, West Virginia, the present day in early autumn; limestone karst farm country, sinkholes in cow pastures, a small-town fire hall, and deep inside the invented Swago Hollow Cave: mud crawls, a stream, a flowstone waterfall and a chamber called the Cathedral",
+        "characters": [
+          {
+            "name": "Darlene Skaggs",
+            "isHero": true,
+            "background": "49, middle-school science teacher who maps caves on weekends. Divorced, dry-witted, has not gone underground since a rescue went wrong years ago. The trapped girl is a student she failed last spring.",
+            "appearance": "short solid white Appalachian woman, weathered face, grey-blonde ponytail, mud-caked red coveralls, a battered helmet with three headlamps, a survey notebook in a plastic bag"
+          },
+          {
+            "name": "Hollis Ratliff",
+            "background": "58, volunteer fire chief and dairy farmer, Darlene's ex-husband. Organises everything from the surface, ignores every rule he disagrees with. Still keeps her old cave map pinned inside his truck.",
+            "appearance": "big heavyset white man, sunburnt neck, grey buzz cut, bushy moustache, fire-department jacket over overalls, muddy boots, a radio in each hand"
+          },
+          {
+            "name": "Jolene Mullins",
+            "background": "16, clever, angry, a runaway risk. Went into the cave to get away from home for a night and brought a friend who can't swim. Has kept both of them alive with surprising calm.",
+            "appearance": "skinny pale teenage girl, freckles, dyed purple hair plastered with mud, oversized camo hoodie, one working phone light, a bandage she tied herself on her friend's ankle"
+          }
+        ],
+        "moments": [
+          "Rain starts on the ridge while Darlene pulls on coveralls she swore she would never wear again",
+          "Darlene squeezes through a tight mud crawl while Hollis's voice fades on the cave radio",
+          "The stream rises past her knees, and she climbs the flowstone waterfall to find an older way round",
+          "In the Cathedral, Jolene's light finds Darlene's face, and neither of them knows what to say",
+          "Leading two teens out as the passage floods behind them, with the surface team pulling the rope"
+        ],
+        "story_values": [
+          "courage",
+          "forgiveness"
+        ],
+        "avoid": "deaths, graphic injury, hillbilly stereotypes, heroics that ignore real cave safety",
+        "writing_style": "claustrophobic, physical and exact, like a real caving account, with small-town warmth and humour on the surface; clear spatial action; true caving and cave-rescue technique"
+      }
+    },
+    {
+      "slot": "S55",
+      "slug": "bones-in-the-nemegt",
+      "title": "Bones in the Nemegt",
+      "logline": "A Mongolian palaeontologist and the camel herder she hires race fossil poachers across the Gobi to a dinosaur skull before a sandstorm buries it, and fall for each other on the way.",
+      "themes": [
+        "heritage",
+        "the desert's time",
+        "love under pressure",
+        "what belongs to whom"
+      ],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": [
+          "adventure",
+          "romance"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "A herder's photo shows a Tarbosaurus skull washed out by a storm in the Nemegt Basin. Poachers have seen it too, and a buyer abroad is waiting. Palaeontologist Munkhzul Otgonbayar has three days, an old truck and a camel herder she just met to reach it before them and the next sandstorm.",
+        "where_and_when": "The Nemegt Basin in the Gobi Desert, southern Mongolia, late spring in the present day; red sandstone cliffs, gravel plains, a herder's ger with a solar panel, camels, a Soviet-era truck, a sandstorm coming across the steppe",
+        "characters": [
+          {
+            "name": "Munkhzul Otgonbayar",
+            "isHero": true,
+            "background": "34, palaeontologist at a museum in Ulaanbaatar, great in the lab and uneasy in the field. Rules-first, lists everything, funny without meaning to be. Has never told her family she prefers women.",
+            "appearance": "slim Mongolian woman, pale gold-brown skin, bobbed black hair under a wide-brimmed canvas hat, round glasses gone dusty, khaki field shirt with rolled sleeves, a rock hammer and a brush in her belt"
+          },
+          {
+            "name": "Khulan Zorigt",
+            "background": "38, camel herder and driver who knows every dry riverbed in the southern Gobi. Laughs at everything, especially Munkhzul. Widowed young and raising a nephew. She could have sold the photo to the poachers and chose not to.",
+            "appearance": "tall weathered Mongolian woman, wind-burned cheeks, long black hair in a single braid, blue del robe with an orange sash over trousers and riding boots, a turquoise earring, a camel whip"
+          },
+          {
+            "name": "Erdenebat Lkhagva",
+            "background": "61, former expedition guide who now sells fossils to middlemen. Lost his whole herd in a terrible winter and never got over it. Used to be Munkhzul's first field teacher.",
+            "appearance": "stocky grey-haired Mongolian man, deeply lined face, thin moustache, sun-faded army jacket, a sheepskin hat, binoculars, a pickup truck with smuggled crates under a tarp"
+          }
+        ],
+        "moments": [
+          "Khulan's truck breaks down on the gravel plain, and Munkhzul learns to fix it with a hammer and wire",
+          "They reach the cliffs at dusk and find Erdenebat's camp already there",
+          "Munkhzul faces her old teacher across the half-dug skull while the sky turns brown",
+          "In the sandstorm the two women shelter under the truck, and Khulan tells her about her husband",
+          "At dawn the skull is safely plastered in a jacket, and Munkhzul asks Khulan to come to Ulaanbaatar"
+        ],
+        "story_values": [
+          "integrity",
+          "courage"
+        ],
+        "avoid": "violence, gunfights, explicit content, exoticising nomadic life, the poacher as a cartoon villain",
+        "writing_style": "wide-open and sensory, the colours and silence of the Gobi; brisk adventure pacing with a slow-burn romance built on teasing and competence; real field palaeontology"
+      }
+    }
+  ]
+}

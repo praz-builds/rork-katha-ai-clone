@@ -1,0 +1,633 @@
+{
+  "version": 1,
+  "notes": "Katha Originals slate. `request` is sent to generate-story unchanged; `themes` feeds buildCoverPrompt the way the model's returned themes do in production. Every character is unique to its story - check-briefs.ts enforces it.",
+  "stories": [
+    {
+      "slug": "cartographers-heir",
+      "title": "The Cartographer's Heir",
+      "logline": "In a delta empire where whatever the Imperial Atlas draws becomes true, the daughter of an executed mapmaker inherits the one atlas that can redraw the Crown.",
+      "themes": ["inheritance", "truth and power", "the cost of rewriting the world", "loyalty"],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": ["fantasy", "adventure"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 15,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "In the river empire of Vessary, whatever the Imperial Atlas draws becomes real - rivers move, borders harden, towns vanish. Ilse Marrow's father was hanged for drawing a river wrong. Now his unfinished atlas has found her, and every line she adds to it comes true.",
+        "where_and_when": "Vessary, an invented empire of silt islands, canal cities and stilt-towns on a vast monsoon delta; lamplit map offices, tide bells, flat-bottomed barges; an age of brass instruments and sealing wax",
+        "characters": [
+          {
+            "name": "Ilse Marrow",
+            "isHero": true,
+            "background": "24, junior copyist at the Imperial Map Office, left-handed in an office that forbids it. Precise, stubborn, funny when frightened. Hides that she can read tide-charts better than her masters. Wants her father's name cleared more than she wants to be safe.",
+            "appearance": "wiry young woman, cropped copper hair, heavy freckles, ink-stained left hand, patched grey oilcloth coat full of brass pens and dividers, thin wire spectacles pushed up on her head"
+          },
+          {
+            "name": "Tobiah Quell",
+            "background": "58, Surveyor-General of Vessary and the man who signed her father's sentence. Gentle, patient, genuinely kind to his clerks, and certain that an atlas must answer to one hand. Believes he is preventing a civil war.",
+            "appearance": "tall stooped man, neat silver beard, one clouded eye, long charcoal robes with brass chain of office"
+          },
+          {
+            "name": "Captain Sunniva Dray",
+            "background": "36, river smuggler who runs goods through channels the Atlas says do not exist. Loud, generous, mercenary until she is not. Owed Ilse's father a debt she has never admitted to.",
+            "appearance": "very tall broad-shouldered woman, shaved head tattooed with tide lines, sun-dark skin, rope-scarred hands, long red sash"
+          }
+        ],
+        "moments": [
+          "Ilse inks a single footbridge into the atlas and wakes to find it standing over the canal",
+          "The Surveyor-General invites her to tea and shows her the page where her father drew his last river",
+          "A town Ilse erased by accident has to be drawn back, house by house, before dawn",
+          "Sunniva's barge sails a channel that exists only on Ilse's page"
+        ],
+        "story_values": ["courage", "honesty"],
+        "avoid": "graphic torture, gore",
+        "writing_style": "rich but clear prose, wry humour under pressure"
+      }
+    },
+    {
+      "slug": "low-orbit-lullaby",
+      "title": "Low Orbit Lullaby",
+      "logline": "On a space station being shut down for good, the last comms technician hears a child singing on a channel that has been dead for thirty years.",
+      "themes": ["loneliness", "grief", "being heard", "what we owe the forgotten"],
+      "request": {
+        "primary_genre": "scifi",
+        "genres": ["scifi", "mystery"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 10,
+        "chapter_length": "standard",
+        "image_style": "cinematic",
+        "topic": "Station Harrow is being decommissioned and burned up in the atmosphere in eleven days. Tomasz Wierzbicki, its last night-shift comms technician, starts hearing a child sing a Polish lullaby through the static of his hearing aid - on a channel no one has used since the station's first year.",
+        "where_and_when": "Station Harrow, an ageing research station in low Earth orbit in 2091, half its modules already dark; worn handrails, taped cables, Earth always turning in the windows",
+        "characters": [
+          {
+            "name": "Tomasz Wierzbicki",
+            "isHero": true,
+            "background": "38, Polish comms technician, nine years aboard, quietly dreading going home to a planet with nobody on it for him. Hard of hearing since a pressure accident; his hearing aid picks up what the station's speakers do not. Methodical, self-mocking, kind to machines.",
+            "appearance": "heavyset man with a grey-streaked dark beard, tired kind eyes, beige hearing aid behind left ear, faded navy station coverall with sleeves pushed up, mug clipped to his belt"
+          },
+          {
+            "name": "Dr Haruka Ishida",
+            "background": "61, the station physician and Harrow's longest-serving crew member. Dry, unflappable, keeps a bonsai alive in zero-g. She was aboard in the first year, and she has not told anyone what happened to the family module.",
+            "appearance": "small upright Japanese woman, silver bob, reading glasses on a cord, white medical jacket over a grey coverall"
+          },
+          {
+            "name": "Beatriz Salgado",
+            "background": "29, Brazilian liaison from the salvage company that owns Harrow's debt. Sent to make sure the shutdown happens on schedule. Brisk, ambitious, underpaid, and more curious than her contract allows.",
+            "appearance": "athletic woman with brown skin, dark hair in a tight braid, bright orange company flight jacket covered in patches, tablet strapped to her forearm"
+          }
+        ],
+        "moments": [
+          "Tomasz hears a child singing a Polish lullaby through his hearing aid; the station recording of the same channel is silent",
+          "The fixed truth, never changed: in year one the Nowak family module lost pressure; Ola Nowak, 7, and her mother died; her father recorded Ola singing before evacuation",
+          "The sealed family module still holds air, and a transmitter running on a dead man's loop",
+          "Haruka first lies that the module was empty, then admits she sealed it herself and knew Ola's name",
+          "With hours left before burn-up, Tomasz chooses to carry Ola's recording home instead of silencing it"
+        ],
+        "story_values": ["compassion"],
+        "avoid": "body horror, graphic death, human remains, anyone surviving decades alone, contradictions in the Nowak family history",
+        "writing_style": "quiet, precise, cinematic; tension from silence",
+        "beats": [
+          "Day 11 to burn-up, night shift: Tomasz hears a child sing 'Aa, kotki dwa' through his hearing aid on channel 7, dead since 2061; the station recording of it is silent. (Truth: see ch2.)",
+          "Day 10: he traces an analogue carrier to sealed family module C4. (Truth, fixed: in 2061 C4 lost pressure; Ola Nowak, 7, and her mother Ewa died; bodies went home to Earth.)",
+          "Day 9: Beatriz, auditing his hours, pulls the 2061 file: C4 housed the Nowaks - Piotr, Ewa, Ola; sealed 3 October 2061 by H. Ishida, MD. (Truth: Piotr looped a recording of Ola singing.)",
+          "Day 8: Haruka says C4 was always empty storage - but she names the song before Tomasz does, and her hands stop on the bonsai. Tomasz and the reader know she is lying.",
+          "Day 6: Tomasz and Beatriz crawl the dark ring to C4; the hatch gauge shows the module still holds air after thirty years. Beatriz's orders: vent it and purge channel 7.",
+          "Day 5: inside C4 - no one, no remains: drawings, a small cardigan on a hook, and a transmitter on a battery loop Piotr wired in 2061. Piotr died in Gdansk in 2079: a dead man's loop.",
+          "Day 4: Haruka confesses: she was 31, she treated Ola and Ewa, she knew Ola; at Piotr's request she sealed C4 with the song running, and every year on Ola's birthday she listens.",
+          "Day 2: the company refuses any delay and orders the loop wiped; Beatriz finds Piotr's sister Irena, 80, still in Gdansk, and risks her contract to delay the purge.",
+          "Burn-up minus 20 hours: last hours aboard; Tomasz and Haruka in C4 hear the song together one last time, and Haruka says goodbye to Ola aloud.",
+          "Burn-up minus 5 hours, the last shuttle: Tomasz chooses to carry Ola's recording home to Irena instead of silencing it; Harrow burns up in the window; he has someone on Earth now."
+        ]
+      }
+    },
+    {
+      "slug": "last-train-from-shimla",
+      "title": "The Last Train from Shimla",
+      "logline": "Winter 1962: the toy train down from Shimla is snowbound in a tunnel, and a railway inspector has one night to find who in first class is not who they claim to be.",
+      "themes": ["secrets", "duty", "a country changing", "trust among strangers"],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": ["mystery", "historical"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "cinematic",
+        "topic": "December 1962. The last narrow-gauge train of the season leaves Shimla in a blizzard and stops dead inside Barog tunnel. By morning a passenger in the first-class carriage is dead, the telegraph line is cut, and railway inspector Rosalind D'Souza is the only official aboard.",
+        "where_and_when": "The Kalka-Shimla narrow-gauge railway in the Himalayan foothills, December 1962, during the war with China; a snowbound first-class carriage with teak panels, oil lamps and frost on the windows",
+        "characters": [
+          {
+            "name": "Rosalind D'Souza",
+            "isHero": true,
+            "background": "44, Goan telegraph and traffic inspector for Northern Railway, the only woman at her grade. Widowed, unsentimental, reads people the way she reads timetables. Counts everything. Has been passed over for promotion three times and knows exactly why.",
+            "appearance": "sturdy woman in her forties, black hair in a low bun with a streak of grey, cat-eye spectacles, dark green wool sari under an oversized men's railway greatcoat, pocket watch on a chain"
+          },
+          {
+            "name": "Major Harbans Grewal",
+            "background": "70, retired Sikh army officer travelling to Delhi to see a grandson off to the front. Courteous, observant, grieving something older than this war. Rosalind's most useful witness and her most obvious suspect.",
+            "appearance": "tall lean elderly Sikh man, white beard, navy turban, tweed overcoat with a row of faded medal ribbons, silver-topped walking stick"
+          },
+          {
+            "name": "Vivienne Castellane",
+            "background": "31, French film actress travelling under a false name after a scandal in Bombay. Charming, theatrical, and far better at lying than anyone else aboard - which makes her the one Rosalind cannot afford to believe or dismiss.",
+            "appearance": "slender woman with a sleek black bob, red lipstick, camel coat with a fur collar, dark sunglasses worn indoors"
+          }
+        ],
+        "moments": [
+          "Stopped inside Barog tunnel, the first-class lamps all fail together",
+          "The dead man's pocket holds a railway telegram he never sent",
+          "The woman booked as Mrs Hale is unmasked and admits what she took",
+          "The Major asks Rosalind to leave one question unasked, and she does",
+          "The answer rests on a timetable only Rosalind has memorised"
+        ],
+        "story_values": ["justice"],
+        "avoid": "gore; times, seats or stops not in the beats; Solan or Dharampur before the tunnel; a changed telegram; a second poison; the Major's plea twice or its answer; dining car; bitter-almond smell; real brands or hotels (Paris Match, Cecil Hotel); pasted moment wording; addressing the reader",
+        "writing_style": "classic fair-play mystery, crisp dialogue, period detail worn lightly",
+        "beats": [
+          "14 Dec 1962: at Shimla Kohli carries the Major's case; lamps die. (A: Bhalla alone; B: 'Mrs Hale'; 4-berth: Major, Kohli, Rosalind) (Solan 18:30-18:45; Barog 19:08 halt 90s, room shut; slide 19:20)",
+          "15 Dec 06:30: Bhalla dead in coupe A, flask empty; Major's veronal 6 short. Wire (text: 'GREWAL SIGNED FALSE CERTIFICATES POLICE MEET KALKA BHALLA') (truth: Kohli forged, dosed Solan coffee)",
+          "Midpoint, noon: Rosalind unmasks 'Mrs Hale' (booked at Shimla) as Vivienne; Bhalla blackmailed her. Between Barog and the slide she took her photo from coupe A: he was snoring, flask empty.",
+          "Dusk: Kohli's false alibi: he filled the flask at Barog, gave it to Bhalla awake. Once, the Major asks her to leave one question unasked (did he read what Kohli had him sign?). She never asks.",
+          "Reveal in the 4-berth: (Barog 19:08 halt 90s, room shut) so the coffee was Solan's; Kohli had the Major's case. Kohli breaks. 16 Dec: Dharampur gang digs out; Kalka police. Question unanswered."
+        ]
+      }
+    },
+    {
+      "slug": "mirror-of-salt",
+      "title": "Mirror of Salt",
+      "logline": "During the rainy season on the world's largest salt flat, a young tour driver agrees to carry a sealed case across the mirror - and finds out why nobody else would.",
+      "themes": ["family", "home", "greed versus the land", "keeping your word"],
+      "request": {
+        "primary_genre": "adventure",
+        "genres": ["adventure", "thriller"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "When the rains turn Bolivia's Salar de Uyuni into a sky-wide mirror, Mateo Quispe drives tourists across it for a living. A Swedish scientist pays triple for him to carry one sealed case to a research hut on the far side. Before they leave town, two trucks are following them.",
+        "where_and_when": "Salar de Uyuni and the Bolivian altiplano in the present-day rainy season; a salt flat flooded into a mirror, volcanoes on the horizon, salt hotels, a lithium-mine boom town",
+        "characters": [
+          {
+            "name": "Mateo Quispe",
+            "isHero": true,
+            "background": "26, Aymara, runs a one-jeep tour company from Uyuni to pay for his sisters' school. Knows every channel of the salt flat by feel. Talks too much, drives too fast, never breaks a promise. Wants to stay on the altiplano when everyone his age is leaving.",
+            "appearance": "wiry young Aymara man, sun-browned face, grin with a chipped front tooth, bright orange windbreaker, knitted chullo hat with ear flaps, mirrored sunglasses"
+          },
+          {
+            "name": "Greta Lindqvist",
+            "background": "52, Swedish geochemist who has spent ten years measuring the salt flat's brine. Blunt, precise, allergic to small talk. The case holds samples that prove the new lithium mine is poisoning the water, and she has already been offered money to lose them.",
+            "appearance": "tall rawboned woman, white-blonde hair under a wide-brimmed sun hat, zinc cream on her nose, many-pocketed khaki field vest"
+          },
+          {
+            "name": "Don Evaristo Mamani",
+            "background": "74, Mateo's grandfather, a retired radio operator who still runs a short-wave set from his kitchen. Knows every trucker on the altiplano by voice. Guides them across the flat over the radio when the phones go dead.",
+            "appearance": "small weathered elderly man, deep lines around his eyes, grey woollen poncho, headphones around his neck, battered felt hat"
+          }
+        ],
+        "moments": [
+          "Mateo's jeep drives into the mirror at dawn and the sky is above and below them",
+          "Don Evaristo talks them past a roadblock using only trucker gossip",
+          "The case is stolen at a salt hotel, and Greta reveals she brought a decoy",
+          "A night chase with headlights off, steering by the stars reflected in the water"
+        ],
+        "story_values": ["loyalty", "courage"],
+        "avoid": "graphic violence, animal harm",
+        "writing_style": "fast, vivid, funny; short chapters that end on a turn"
+      }
+    },
+    {
+      "slug": "the-morning-ferry",
+      "title": "The Morning Ferry",
+      "logline": "Every morning a literary translator and the ferry's tea-seller cross the Bosphorus together without saying a word - until the day she leaves her notebook on his tray.",
+      "themes": ["slow love", "language and silence", "belonging", "second chances"],
+      "request": {
+        "primary_genre": "romance",
+        "genres": ["romance", "sliceOfLife"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Defne Aksoy takes the 7:40 ferry from Kadikoy to Karakoy every weekday and buys one tea from the same man. In three years they have exchanged eleven words. Then she leaves her notebook of unfinished translations on his tray, and he writes an answer in the margin.",
+        "where_and_when": "Istanbul in autumn, the present day: the Kadikoy-Karakoy ferry across the Bosphorus, gulls and simit sellers, tulip glasses of tea, rain on the upper deck, an old apartment in Moda",
+        "characters": [
+          {
+            "name": "Defne Aksoy",
+            "isHero": true,
+            "background": "31, translates Russian poetry into Turkish for a small publisher that pays late. Precise with words on paper and hopeless with them out loud. Still living in her late grandmother's flat, still not sure she deserves it.",
+            "appearance": "young Turkish woman with a cloud of curly black hair, large tortoiseshell glasses, mustard-yellow wool scarf, long charcoal coat, ink on her fingers"
+          },
+          {
+            "name": "Kerem Yildiz",
+            "background": "34, sells tea on the ferry, and was a promising architecture student until his father's stroke. Reads every newspaper left on board. Draws the skyline on paper napkins and throws them away. Has noticed Defne for three years and decided it was none of his business.",
+            "appearance": "broad-shouldered Turkish man with warm brown skin, short dark beard, laugh lines, white shirt with rolled sleeves under a navy ferry-company vest, a tray of tulip glasses balanced on one hand"
+          },
+          {
+            "name": "Nesrin Hanim",
+            "background": "81, Defne's downstairs neighbour, a retired opera prompter who has decided Defne's love life is her final production. Meddling, glamorous, and right far more often than is comfortable.",
+            "appearance": "tiny elderly woman with dyed auburn hair in a perfect set, pearl earrings, emerald cardigan, cane with a brass duck-head handle"
+          }
+        ],
+        "moments": [
+          "Kerem's first note in the margin corrects her translation of a single word - and he is right",
+          "A storm cancels the ferry and strands them both at the pier with one umbrella",
+          "Nesrin stages a dinner that goes spectacularly wrong",
+          "Defne reads her finished translation aloud on the upper deck"
+        ],
+        "story_values": ["kindness", "honesty"],
+        "avoid": "infidelity, cruelty played as romance",
+        "writing_style": "tender, observant, gently funny; small gestures carry the feeling"
+      }
+    },
+    {
+      "slug": "woven-air",
+      "title": "Woven Air",
+      "logline": "Bengal, 1757: a young muslin weaver smuggles a warning to the Nawab inside the pattern of a cloth - while the East India Company officer who commissioned it watches every thread.",
+      "themes": ["craft as resistance", "empire", "courage in small hands", "what is lost"],
+      "request": {
+        "primary_genre": "historical",
+        "genres": ["historical", "thriller"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Murshidabad, spring 1757. The finest muslin in the world is called woven air. Shirin Bano, a nineteen-year-old weaver, discovers the East India Company is buying the Nawab's generals, and the only message that can reach the palace unread is one she weaves into a cloth.",
+        "where_and_when": "Murshidabad and the weaving villages along the Bhagirathi river in Bengal, spring 1757, the months before the Battle of Plassey; pit looms under thatch, river ghats, the Nawab's palace, Company warehouses",
+        "characters": [
+          {
+            "name": "Shirin Bano",
+            "isHero": true,
+            "background": "19, a muslin weaver from a family of weavers who have supplied the Nawab's court for generations. Quick-fingered, proud, impatient with caution. Learned to read from the pattern books, which almost nobody knows.",
+            "appearance": "slight young Bengali woman, long black braid, kohl-lined eyes, plain indigo cotton sari with the end tucked at her waist, fine white threads caught on her sleeves"
+          },
+          {
+            "name": "Gopinath Basak",
+            "background": "55, master weaver and Shirin's teacher, whose hands are failing. Cautious because he has seen what happens to weavers who refuse the Company. Knows the old code of motifs that court weavers once used to send messages.",
+            "appearance": "thin grey-haired Bengali man, white dhoti and shawl, round steel spectacles, knotted swollen knuckles"
+          },
+          {
+            "name": "Captain Edmund Hale",
+            "background": "28, East India Company officer charged with securing Murshidabad's cloth trade. Clever, courteous, curious about the craft, and wholly committed to the Company's plan. The danger is that he is starting to understand the patterns.",
+            "appearance": "lean young Englishman, sunburned pale skin, fair hair tied back, scarlet Company coat worn open in the heat, notebook in his hand"
+          }
+        ],
+        "moments": [
+          "Shirin overhears two generals bargaining in a Company warehouse",
+          "Gopinath teaches her the old motif code by lamplight, knot by knot",
+          "Captain Hale runs the finished cloth through his fingers and asks what the border means",
+          "The cloth reaches the palace - and history does not change the way she hoped"
+        ],
+        "story_values": ["courage", "integrity"],
+        "avoid": "graphic violence, torture",
+        "writing_style": "sensory and exact, grounded in craft detail; historically honest"
+      }
+    },
+    {
+      "slug": "the-landlady-investigates",
+      "title": "The Landlady Also Investigates",
+      "logline": "The widow who owns the rooms of London's most famous consulting detective has been solving his cases before he wakes up for years. This time the client is at her door, not his.",
+      "themes": ["being underestimated", "friendship", "wit", "Victorian London"],
+      "request": {
+        "primary_genre": "fanfiction",
+        "genres": ["fanfiction", "mystery", "comedy"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "A classic consulting-detective story told from downstairs. Mrs Adelaide Pruett lets rooms to a brilliant, impossible detective and his doctor friend, and has quietly solved half their cases while making the breakfast. When a frightened governess comes to the door while both men are away in Devon, Mrs Pruett takes the case herself.",
+        "where_and_when": "Victorian London, 1891: a lodging house on a busy West End street, gaslight and fog, hansom cabs, a scullery, pawnshops and a grand house in Belgravia",
+        "characters": [
+          {
+            "name": "Mrs Adelaide Pruett",
+            "isHero": true,
+            "background": "63, widowed landlady of a famous detective's lodgings. Reads laundry, tradesmen's boots and household accounts the way he reads cigar ash. Tart, unflappable, entirely unimpressed by genius. Has never been thanked properly and has stopped expecting it.",
+            "appearance": "plump sharp-eyed woman in her sixties, grey hair in a neat bun under a lace cap, black bombazine dress with a white apron, a ring of keys at her waist, sleeves rolled to the elbow"
+          },
+          {
+            "name": "Kit Dawlish",
+            "background": "12, leader of the street boys the detective pays for information. Cheeky, fearless, deeply loyal to Mrs Pruett because she feeds him. Knows every alley in the West End and every pawnbroker's price.",
+            "appearance": "skinny boy with a mop of brown hair, freckles, a man's flat cap far too big for him, patched jacket, bare scuffed knees"
+          },
+          {
+            "name": "Miss Honora Vane",
+            "background": "26, governess in a wealthy Belgravia household, clever, frightened and proud. She came to see the detective about a child's missing locket and a dismissal she did not earn, and would rather die than be pitied.",
+            "appearance": "tall pale young woman with auburn hair pinned severely, plain grey governess dress with a high collar, worn gloves, a small carpet bag"
+          }
+        ],
+        "moments": [
+          "Mrs Pruett deduces the governess's whole story from the mud on her hem before she has taken off her coat",
+          "Kit is caught in the Belgravia house and Mrs Pruett has to talk her way in as a replacement cook",
+          "The detective comes home, announces the solution, and finds she solved it the day before",
+          "A final breakfast where he almost says thank you"
+        ],
+        "story_values": ["cleverness", "respect"],
+        "avoid": "graphic violence",
+        "writing_style": "witty, brisk, affectionate pastiche of a Victorian detective story, original characters only"
+      }
+    },
+    {
+      "slug": "the-show-home",
+      "title": "The Show Home",
+      "logline": "An estate agent selling the last houses on a new-build estate notices the staged family photos in the show home have started to look like her own family.",
+      "themes": ["home", "exhaustion", "what the land remembers", "a mother's fear"],
+      "request": {
+        "primary_genre": "horror",
+        "genres": ["horror", "mystery"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "Danielle Okafor has three weeks to sell the last nine houses on Meadowgate, a new-build estate outside Leeds built on an old farm. She works out of the show home. Then the stock photos in its picture frames start to change, one face at a time, until the family in them is hers.",
+        "where_and_when": "Meadowgate, a half-finished new-build housing estate on former farmland on the edge of Leeds, England, in wet November in the present day; identical red-brick houses, mud, streetlights on empty roads, one lit show home",
+        "characters": [
+          {
+            "name": "Danielle Okafor",
+            "isHero": true,
+            "background": "35, British-Nigerian estate agent and single mother, working every hour she can to keep her son in the same school. Practical, sceptical, running on coffee. Has taught herself not to notice things she cannot afford to deal with.",
+            "appearance": "tired woman in her thirties with dark brown skin, long box braids tied back, navy blazer over a white shirt, lanyard with a company name badge, muddy trainers she changes out of at the door"
+          },
+          {
+            "name": "Kayode Okafor",
+            "background": "9, Danielle's son, who has to sit in the show home after school doing homework. Serious, polite, obsessed with drawing floor plans. The first to notice the house has one more room than the plans show.",
+            "appearance": "small boy with close-cropped hair, school jumper too big for him, glasses, always holding a pencil and a sketchbook"
+          },
+          {
+            "name": "Aldous Penhale",
+            "background": "86, the last farmer to work the land before it was sold, living in the one cottage left standing at the edge of the estate. Courteous, confused on bad days, painfully clear on good ones about what his family buried in the top field.",
+            "appearance": "stooped very old man in a waxed jacket and flat cap, white stubble, pale watery eyes, walks with a shepherd's crook"
+          }
+        ],
+        "moments": [
+          "Danielle straightens a picture frame and the smiling stock-photo boy is wearing Kayode's school jumper",
+          "Kayode draws the show home's floor plan from memory and there is a room at the centre with no door",
+          "Aldous tells her what the farm used to plant in the top field, and why they stopped",
+          "Danielle has to go back into the show home at night to bring her son out"
+        ],
+        "story_values": ["love", "courage"],
+        "avoid": "harm to children shown on the page, gore",
+        "writing_style": "creeping domestic dread, restrained and specific; the ordinary made wrong"
+      }
+    },
+    {
+      "slug": "lola-swipes-right",
+      "title": "Lola Swipes Right",
+      "logline": "A Winnipeg IT guy sets up his seventy-eight-year-old grandmother's dating profile as a joke. She gets more matches in a week than he has in five years.",
+      "themes": ["family", "love at any age", "grief and laughter", "generations"],
+      "request": {
+        "primary_genre": "comedy",
+        "genres": ["comedy", "romance"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "Paolo Dimaculangan, 29, fixes computers and avoids dating. To make his widowed grandmother laugh, he sets her up on a dating app. Within a week Lola Tessie has twelve matches, a spreadsheet, and a date with a retired curling coach - and she wants Paolo as her wingman. And to fix his own profile.",
+        "where_and_when": "Winnipeg, Canada, in deep January in the present day; a Filipino-Canadian family's crowded split-level house, a church hall karaoke night, a frozen curling rink, snowbanks taller than cars",
+        "characters": [
+          {
+            "name": "Paolo Dimaculangan",
+            "isHero": true,
+            "background": "29, IT support technician, eldest grandson, family fixer of printers and feelings. Kind, anxious, sarcastic as armour. Has not been on a date since a breakup he still describes as 'fine'.",
+            "appearance": "round-faced Filipino-Canadian man, black hair sticking up, round glasses, grey hoodie printed with a cartoon cat, lanyard with a helpdesk badge, winter boots unlaced"
+          },
+          {
+            "name": "Lola Teresita 'Tessie' Dimaculangan",
+            "background": "78, retired nurse, widowed two years, sharper than everyone in the family and bored out of her mind. Runs the parish karaoke night like a military operation. Treats online dating as a research project and Paolo as her unpaid assistant.",
+            "appearance": "small energetic elderly Filipina woman, short permed grey hair, gold-rimmed glasses, sequinned purple cardigan, red lipstick, walker with tennis balls on the feet"
+          },
+          {
+            "name": "Gordon McAllister",
+            "background": "81, retired curling coach and widower of Scottish descent. Courtly, stubborn, a terrible dancer who dances anyway. Takes Lola's twelve-question interview completely seriously.",
+            "appearance": "tall rangy elderly white man, bushy white eyebrows, red plaid scarf, old team jacket, carrying a curling broom like a walking stick"
+          }
+        ],
+        "moments": [
+          "Lola reviews her matches at the dinner table with the whole family voting",
+          "Paolo chaperones a first date at a curling rink and falls on the ice",
+          "Lola secretly rewrites Paolo's profile and it works",
+          "A karaoke duet that makes the entire parish cry"
+        ],
+        "story_values": ["family", "joy"],
+        "avoid": "mocking age or disability, sexual humour",
+        "writing_style": "warm, quick, laugh-out-loud comedy with real feeling underneath"
+      }
+    },
+    {
+      "slug": "the-girl-who-borrowed-the-moon",
+      "title": "The Girl Who Borrowed the Moon",
+      "logline": "In a drought-starved mountain village, a girl takes the moon down from the sky to light her grandmother home - and the tiger who keeps the night comes to collect it.",
+      "themes": ["sacrifice", "bargains", "grandmothers", "the night"],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": ["folktale", "fantasy"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "standard",
+        "image_style": "anime",
+        "topic": "A folktale told the old way. In a year of drought, Hae-won's grandmother walks over the mountain to trade for rice and does not come home before dark. Hae-won climbs to the highest pine, takes the moon down in her skirt to light the path - and the Tiger of the Mountain, who keeps the night, comes down to ask for it back.",
+        "where_and_when": "A mountain village of thatched houses in an old Korea of folktales; pine forests, stone steps, rice paddies cracked by drought, a vast moon, a tiger who can walk as a man",
+        "characters": [
+          {
+            "name": "Hae-won",
+            "isHero": true,
+            "background": "15, a rice farmer's daughter raised by her grandmother. Fearless in the way of someone who has never been told no by anything bigger than a goat. Clever with riddles, bad at patience, loves her grandmother more than the sky.",
+            "appearance": "sturdy teenage girl with a long black braid tied with a red ribbon, sun-browned cheeks, white jeogori jacket and faded blue skirt, straw sandals, holding a glowing moon wrapped in cloth"
+          },
+          {
+            "name": "Grandmother Ok-sun",
+            "background": "72, village storyteller, midwife and haggler. Knows every bargain the old spirits ever made and has never told Hae-won the one she made herself, long ago, with the tiger.",
+            "appearance": "tiny bent old woman with white hair in a low knot, deeply lined face, grey hanbok, a bundle of rice on her back tied with straw rope"
+          },
+          {
+            "name": "The Tiger of Inwang Mountain",
+            "background": "Ageless keeper of the night. Courteous, hungry, bound by the old rules of bargains and riddles. Walks into the village as a tall man in a black gat hat. Has waited sixty years for the grandmother to keep a promise.",
+            "appearance": "enormous striped tiger with gold eyes; in human form a very tall man in a black horsehair gat hat and long dark robe with faint stripes in the weave"
+          }
+        ],
+        "moments": [
+          "Hae-won climbs the tallest pine and lifts the moon out of the sky like a lantern",
+          "The whole valley goes dark and the Tiger walks into the village asking politely for his moon",
+          "Three riddles in the grandmother's kitchen",
+          "The grandmother's old bargain comes due, and Hae-won pays it differently"
+        ],
+        "story_values": ["love", "cleverness"],
+        "avoid": "gore",
+        "writing_style": "told like a folktale spoken aloud: rhythmic, spare, with repetitions and a moral that is earned not stated"
+      }
+    },
+    {
+      "slug": "tavi-and-the-pocket-thunderstorm",
+      "title": "Tavi and the Pocket Thunderstorm",
+      "logline": "An eight-year-old in Auckland catches a thundercloud small enough to fit in a jam jar, and it teaches her how weather really works - one very wet lesson at a time.",
+      "themes": ["curiosity", "the water cycle", "friendship", "being brave about storms"],
+      "request": {
+        "primary_genre": "educational",
+        "genres": ["educational", "adventure"],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Tavi Faleolo is scared of thunderstorms. One windy afternoon a baby thundercloud gets stuck in her grandmother's lemon tree, and she catches it in a jam jar. The cloud, Rumble, can rain, make tiny lightning, and explain exactly how. Together they learn the water cycle, why lightning comes before thunder, and how to stay safe.",
+        "where_and_when": "Auckland, New Zealand, in spring; a Samoan family's house with a big garden, a lemon tree, a washing line, volcano hills and fast-changing weather over the harbour",
+        "characters": [
+          {
+            "name": "Tavi Faleolo",
+            "isHero": true,
+            "background": "8, Samoan-New Zealander, asks why about everything, keeps a notebook of questions, hides under the table when it thunders. Braver than she thinks.",
+            "appearance": "small girl with brown skin, big curly dark hair in two puffs, yellow raincoat, red gumboots, holding a glass jam jar with a tiny grey cloud inside"
+          },
+          {
+            "name": "Rumble",
+            "background": "A very young thundercloud who got separated from its storm. Excitable, sneezes drizzle, grumbles thunder when upset. Knows everything about weather because it is weather.",
+            "appearance": "a small round fluffy grey cloud with a happy face and tiny sparks of lightning, dripping little raindrops"
+          },
+          {
+            "name": "Nana Losa",
+            "background": "70, Tavi's grandmother, a retired science teacher who grows the best lemons on the street. Patient, funny, pretends not to notice the cloud in the jar for exactly as long as it takes Tavi to be ready to tell her.",
+            "appearance": "big-hearted elderly Samoan woman, grey hair in a bun with a red hibiscus flower, floral puletasi dress, gardening gloves, big smile"
+          }
+        ],
+        "moments": [
+          "Rumble rains on the kitchen floor and Tavi learns where rain comes from",
+          "Counting between the flash and the boom to work out how far away the storm is",
+          "Nana Losa shows Tavi how to stay safe when a real storm comes",
+          "Tavi lets Rumble go home to its storm and is not scared of the thunder any more"
+        ],
+        "story_values": ["curiosity", "bravery"],
+        "avoid": "anything frightening, injury",
+        "writing_style": "playful, simple sentences for young readers, with accurate science explained through what the characters see and do"
+      }
+    },
+    {
+      "slug": "tuesday-tea-at-number-nine",
+      "title": "Tuesday Tea at Number Nine",
+      "logline": "For eleven years a retired Edinburgh postman has put the kettle on every Tuesday for anyone who comes. This Tuesday, nobody comes - except a teenager delivering the wrong parcel.",
+      "themes": ["loneliness", "community", "unlikely friendship", "small kindnesses"],
+      "request": {
+        "primary_genre": "sliceOfLife",
+        "genres": ["sliceOfLife"],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "long",
+        "image_style": "watercolor",
+        "topic": "Every Tuesday since his wife died, Hamish Baird has laid out tea at Number Nine for his old postal round: whoever comes, comes. One by one they have stopped coming. This Tuesday the only knock is Yusra, sixteen, delivering the wrong parcel for her uncle's shop, in a hurry, and in the rain.",
+        "where_and_when": "A tenement street in Leith, Edinburgh, on a rainy Tuesday afternoon in the present day; a tidy ground-floor flat with a good teapot, net curtains, a coal-effect fire, the shop on the corner",
+        "characters": [
+          {
+            "name": "Hamish Baird",
+            "isHero": true,
+            "background": "74, retired postman who walked the same Leith round for thirty-eight years and knows everyone's business kindly. Widowed eleven years. Proud, dry, terrible at asking for anything. Bakes one cake a week and pretends it is no trouble.",
+            "appearance": "lean elderly Scottish man with a white moustache, flat tweed cap, navy cardigan with leather elbow patches, pressed trousers, reading glasses in his shirt pocket"
+          },
+          {
+            "name": "Yusra Haddad",
+            "background": "16, Syrian-Scottish, doing deliveries for her uncle's corner shop after school while studying for exams she is not sure are worth it. Quick, guarded, funny. Misses her own grandfather in Aleppo more than she lets anyone see.",
+            "appearance": "teenage girl in a dark green hijab, rain-soaked school blazer under a big puffer jacket, headphones round her neck, carrying a damp cardboard parcel"
+          }
+        ],
+        "moments": [
+          "Hamish has set seven cups and only one is used",
+          "Yusra stays for one cup because it is pouring, then another because the cake is good",
+          "They discover the wrong parcel belongs to someone Hamish has not seen in years",
+          "Next Tuesday, there are two cakes"
+        ],
+        "story_values": ["kindness", "connection"],
+        "avoid": "melodrama, death on the page",
+        "writing_style": "quiet, warm, precise; humour in the dialogue, feeling in the details"
+      }
+    },
+    {
+      "slug": "case-of-the-silent-violin",
+      "title": "The Case of the Silent Violin",
+      "logline": "The day before the school concert, the music room's only violin stops making any sound at all - and ten-year-old detective Wanjiru has until the bell to find out why.",
+      "themes": ["friendship", "noticing details", "honesty", "music"],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": ["mystery", "comedy"],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "At a primary school in Nairobi, the day before the big concert, the music room's violin will not make a sound. Wanjiru Kamau, who keeps a detective notebook, and her best friend Otieno, who counts everything, follow the clues - rosin dust, a missing bow, and footprints on the piano bench.",
+        "where_and_when": "A sunny primary school in Nairobi, Kenya, in the present day; a music room with drums and a piano, jacaranda trees in the yard, school uniforms, the day before the end-of-term concert",
+        "characters": [
+          {
+            "name": "Wanjiru Kamau",
+            "isHero": true,
+            "background": "10, detective in training who writes every clue in a green notebook. Bossy, brave, fair. Always sure she is right, and learning that sometimes she is not.",
+            "appearance": "small Kenyan girl with dark brown skin, hair in neat cornrows with yellow beads, blue school uniform, oversized yellow rain boots, green notebook and pencil"
+          },
+          {
+            "name": "Otieno Ochieng",
+            "background": "10, Wanjiru's best friend, who counts steps, stairs and seconds out loud. Shy, careful, notices the numbers nobody else notices, which is how he spots the clue that cracks the case.",
+            "appearance": "tall thin Kenyan boy with short hair, blue school uniform with a jumper tied round his waist, big round glasses, a digital watch he checks constantly"
+          },
+          {
+            "name": "Mr Barasa",
+            "background": "40s, the music teacher, cheerful, forgetful, plays six instruments badly and one beautifully. Worried the concert is ruined and trying not to show it.",
+            "appearance": "round cheerful Kenyan man with a shaved head, colourful patterned shirt, bow tie, a baton sticking out of his pocket"
+          }
+        ],
+        "moments": [
+          "Wanjiru finds white rosin dust on the piano bench",
+          "Otieno counts the footprints and there are one too many",
+          "The silent violin turns out to have a secret stuffed inside it",
+          "The culprit is a younger child who was scared to play in the concert"
+        ],
+        "story_values": ["kindness", "honesty"],
+        "avoid": "anything scary, meanness without repair",
+        "writing_style": "bright, funny and clear for young readers, with a fair mystery kids can solve along with the detective"
+      }
+    }
+  ]
+}

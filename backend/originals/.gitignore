@@ -1,0 +1,9 @@
+covers/
+run.log
+review/
+reviewed.txt
+pending-review.txt
+priority.txt
+beats-pending.txt
+rewritten-chapters.txt
+r.tmp

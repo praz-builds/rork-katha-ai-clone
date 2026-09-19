@@ -1,0 +1,826 @@
+{
+  "stories": [
+    {
+      "slot": "S31",
+      "slug": "orlagh-and-the-dawn-letters",
+      "title": "Orlagh and the Dawn Letters",
+      "logline": "Every morning someone writes a giant message in the sand, and nine-year-old Orlagh has three days to find out who before her big brother gets banned from the sandcastle festival.",
+      "themes": [
+        "kindness",
+        "paying attention",
+        "love that lasts",
+        "seeing from someone else's side"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "adventure"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "Each dawn, huge letters raked into Kilcloon Strand say GOOD MORNING, MAY. The councillor calls it vandalism and blames Orlagh's brother, who will be banned from Saturday's sandcastle festival unless Orlagh finds the real writer first.",
+        "where_and_when": "Kilcloon, an invented harbour village on the Donegal coast of Ireland, one blustery week of the summer holidays; a wide pale beach, a promenade with a chip van, a nursing home on the cliff above the bay",
+        "characters": [
+          {
+            "name": "Orlagh Dunleavy",
+            "isHero": true,
+            "background": "9, the smallest in her class and the most stubborn. Keeps a detective notebook in a biscuit tin. Wants to prove her brother innocent and secretly wants to be taken seriously. Cannot whistle, keeps trying.",
+            "appearance": "small freckled Irish girl, wild red curls under a yellow bobble hat, gap-toothed grin, green wellies, a too-big navy raincoat with bulging pockets, a stubby pencil behind her ear, notebook in hand"
+          },
+          {
+            "name": "Tadhg Fennelly",
+            "background": "10, Orlagh's best friend and self-appointed sketch artist, who draws every clue and is terrified of seagulls. Remembers numbers perfectly, including tide times, which turns out to matter.",
+            "appearance": "skinny boy with dark brown skin and short black hair, round red glasses, striped jumper with holes at the elbows, shorts over wellies, a spiral sketchbook and a fistful of coloured pencils"
+          },
+          {
+            "name": "Packie Gallagher",
+            "background": "81, retired lobsterman who walks the beach at first light with a garden rake 'for his back'. Grumpy with children, soft with dogs. Hides that his wife May no longer knows him most days.",
+            "appearance": "tall bent old man with a white stubbly chin and huge ears, flat tweed cap, thick cream fisherman's jumper, rolled-up trousers and bare feet, leaning on a wooden garden rake"
+          }
+        ],
+        "moments": [
+          "Orlagh and Tadhg find the letters at sunrise and Orlagh notices they read upside-down from the promenade, as if meant for someone looking from the cliff",
+          "Tadhg works out the letters must be written at low tide, just after five, and the friends set an alarm and sneak out with a flask of cocoa",
+          "They spot Packie's rake by his door, its teeth packed with the same pale shell sand, and he chases them off",
+          "From May's window in the nursing home, Orlagh reads GOOD MORNING, MAY the right way up and May smiles and says her husband's name",
+          "At the festival the whole village rakes a message together, and Orlagh's brother builds May a sandcastle lighthouse"
+        ],
+        "story_values": [
+          "kindness",
+          "curiosity"
+        ],
+        "avoid": "anything scary or sad beyond gentle; no villains, no danger at sea, no mocking of old age or memory loss",
+        "writing_style": "bright, funny, warm Irish kids' voice with short punchy sentences, Orlagh's notebook entries between scenes; every clue shown so a young reader can solve it first"
+      }
+    },
+    {
+      "slot": "S32",
+      "slug": "returned-on-thursdays",
+      "title": "Returned on Thursdays",
+      "logline": "Thirty years after a famous museum robbery in Lahore, the stolen pieces start coming back one Thursday night at a time - and the night conservator realises the ones on display were never real.",
+      "themes": [
+        "truth and reputation",
+        "who gets blamed",
+        "inheritance",
+        "quiet justice"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 10,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "Every Thursday night one of eleven Gandhara sculptures stolen from a Lahore museum in 1994 reappears in its old case, wrapped in that day's Urdu newspaper, alarms untouched. Police blame the old Christian night watchman again. Conservator Mehrunnisa Butt has until the board's gala to find the truth.",
+        "where_and_when": "Lahore, Pakistan, the present day, a winter of fog and power cuts; an invented Mughal-Gothic museum on the Mall, its storerooms and old accession registers, Anarkali bazaar, a walled-city haveli, a board gala under marquee lights",
+        "characters": [
+          {
+            "name": "Mehrunnisa Butt",
+            "isHero": true,
+            "background": "34, textile conservator on the night rota, currently restoring the museum's water-damaged old registers. Unmarried, overqualified, dryly funny. Her late father authenticated the 1995 recovery of the stolen pieces, and she has always been proud of it.",
+            "appearance": "tall broad-shouldered Punjabi woman, heavy eyebrows, hair in a loose bun stuck through with a pencil, grey cardigan over a mustard shalwar kameez, cotton gloves, a magnifying loupe on a cord round her neck"
+          },
+          {
+            "name": "Bashir Masih",
+            "background": "70, night watchman since 1988, questioned for weeks in 1994 and never charged, never forgiven. Gentle, devout, does the Urdu crossword every night in pencil and fills it in with a slanting capital hand. Says nothing that could hurt anyone.",
+            "appearance": "small thin elderly man with dark weathered skin, clipped white moustache, a faded khaki watchman's uniform under a hand-knitted brown sleeveless sweater, a heavy torch and a folded newspaper under his arm"
+          },
+          {
+            "name": "Khawaja Tanvir Sethi",
+            "background": "66, retired museum director, hero of the 1995 recovery, now chairing the board and planning a gala to celebrate the returns. Charming, generous, and very keen that the returned pieces be examined only by his chosen expert.",
+            "appearance": "portly man with a smooth pink-brown face, silver hair swept back, gold-rimmed glasses, a camel wool waistcoat over a crisp white kurta, a gold signet ring he turns when thinking"
+          }
+        ],
+        "moments": [
+          "Thu 2 Jan, 3am: Mehru finds a genuine stolen head standing beside its identical display twin in Case 1, wrapped in that day's Urdu paper, the crossword completed in slanting pencil capitals",
+          "In the old register she learns accession numbers were painted red over a brick-dust ground until 1996 - the returned pieces carry red numbers, the display twins carry white numbers painted over bare stone",
+          "Midpoint reversal: the returns are the genuine sculptures, so the 1995 'recovery' her father certified was a set of eleven fakes",
+          "Sethi's expert, Dr Farhan Qureshi, declares the returns forgeries at the gala rehearsal, and Mehru is suspended",
+          "Bashir admits he has been buying the originals back from a dead collector's estate with his pension; the crossword is his signature, and the eleventh piece proves who staged the theft"
+        ],
+        "story_values": [
+          "integrity",
+          "courage"
+        ],
+        "avoid": "gore, torture, sectarian cruelty played for drama, mocking of religious minorities, police brutality on the page; no calendar or age changes; no reveal repeated as if new; no real newspaper or brand names; no alcohol at the gala; Bashir is Catholic, never prays namaz or Fajr; no meta text",
+        "writing_style": "quick, witty, visual comic-book pacing with short scenes that end on a hook; wry Lahori humour, precise craft detail about conservation, fair clues placed in plain sight",
+        "beats": [
+          "Thu 2 Jan, 3am (piece 1 of 11 back; Mehru 34, was 3 at the 3 Nov 1994 theft): Case 1 holds two identical heads, the new one red-numbered, in today's Urdu paper, crossword done in pencil capitals.",
+          "Fri 3 Jan (1 back): police grill Bashir; Mehru knows his crossword hand, hides the paper. Sethi books the gala for Thu 13 Mar. (Truth: Sethi sold all 11 to collector Aftab Lodhi in Nov 1994.)",
+          "Mon 13 Jan (2 back): register: numbers red over brick-dust until 1996; display twins are white over bare stone. Father Anwar's note: 'no red ground - ask KTS'. (Truth: 1995 'recovery' = 11 fakes.)",
+          "Thu 23 Jan, power cut (piece 4 arrives): hiding in the gallery, Mehru sees it come via the sealed storeroom corridor by a torch with a cracked lens. In 1994 only director and watchman had its key.",
+          "Thu 6 Feb, midpoint (6 back): her secret lab tests: returns are old schist with 1994 soil, display twins modern. Her father certified fakes. She fears he was paid. (Truth: he was deceived.)",
+          "Sat 15 Feb (7 back): Anarkali. Carver Ustad Pervaiz (herring, cleared) shows his late father's 1995 ledger: 11 copies from photos stamped 'Director's Office', paid cash, buyer's name scratched out.",
+          "Sat 1 Mar (9 back): walled-city haveli. Faisal Lodhi says his late father bought 11 statues in Nov 1994 from 'a museum man'; since 2023 an old Christian man has bought them back in cash instalments.",
+          "Tue 11 Mar, gala rehearsal (10 back; expert: Dr Farhan Qureshi, a man, Sethi's choice): Qureshi calls the 10 returns forgeries. Mehru is suspended; police arrest Bashir as the forger.",
+          "Wed 12 Mar (10 back; Bashir 70, Catholic): on bail, Bashir confesses: on 3 Nov 1994 he saw Sethi's car at the loading door, kept silent, spent his pension buying the pieces back; crosswords for Mehru.",
+          "Thu 13 Mar, gala, no alcohol (11th piece): Mehru opens the Buddha's hollow base: Sethi's signed 1994 sale letter to Lodhi listing 11 red numbers. Sethi exposed, Bashir cleared; last clue SILENCE (7)."
+        ]
+      }
+    },
+    {
+      "slot": "S33",
+      "slug": "nine-years-of-bark",
+      "title": "Nine Years of Bark",
+      "logline": "The night before the cork harvest on an Alentejo estate, sixty trees are stripped by thieves - and the only woman on the cutting crew spots the one tree no cork cutter would ever have touched.",
+      "themes": [
+        "class and blame",
+        "loyalty",
+        "patience",
+        "what the land remembers"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Cork can be cut from a tree once every nine years. The night before harvest on the Herdade da Azinhaga, thieves strip sixty trees and vanish with the bark. The owner blames the old foreman and will void the crew's season by Friday unless cutter Rosaria Galamba proves who did it.",
+        "where_and_when": "An inland cork estate near Mora in the Alentejo, Portugal, a scorching June harvest week, the present day; cork oaks with trunks painted with a white year digit, stripped trunks glowing red, a whitewashed estate office, a village cafe",
+        "characters": [
+          {
+            "name": "Rosaria Galamba",
+            "isHero": true,
+            "background": "61, the only woman cork cutter in the crew, thirty-five seasons with a hatchet. Blunt, unflappable, reads bark like handwriting. Widowed young, raised three sons on cork money. Argued with the estate office over pay because she noticed their tree ledger was wrong.",
+            "appearance": "short muscular Portuguese woman with deep-tanned lined skin, grey hair cropped short, a sweat-dark checked shirt with rolled sleeves, a black kerchief at her neck, work boots, a short-handled cork hatchet at her belt"
+          },
+          {
+            "name": "Joaquim Cachopo",
+            "background": "70, crew foreman and Rosaria's old teacher, who has cut on this estate since he was twelve. Proud, stubborn, has a night-time habit of walking the groves that now looks damning. Hides that his hands shake and this is his last season.",
+            "appearance": "lean stooped old man with a brown creased face, white stubble, a battered straw hat, faded blue work shirt and braces, a long wooden-handled hatchet, a tin of tobacco"
+          },
+          {
+            "name": "Henrique Leitao",
+            "background": "34, the owner's son, back from Lisbon to modernise the estate with GPS maps and a harvest spreadsheet. Polite, eager, the first to call the police on the crew. Owes money he cannot let his father discover.",
+            "appearance": "slim pale young man with styled dark hair and a trimmed beard, a crisp white linen shirt, beige chinos, expensive loafers dusty from the grove, a tablet in a leather case under his arm"
+          }
+        ],
+        "moments": [
+          "Rosaria walks the grove at dawn past rows of freshly stripped red trunks while the owner accuses Joaquim in front of the crew",
+          "She finds one stripped tree painted with a 1 - cut in 2021, its bark still thin and worthless - which no cutter alive would have touched",
+          "In the estate office she checks the harvest spreadsheet and finds that same tree logged, by a typo, as ready this year",
+          "Rosaria sets the spreadsheet beside the stripped trees before the police and the owner, and Henrique understands she has read his map"
+        ],
+        "story_values": [
+          "justice",
+          "loyalty"
+        ],
+        "avoid": "violence, gore, cruelty to animals, contempt for rural workers",
+        "writing_style": "spare, sunlit, cinematic prose full of the sound of hatchets and cicadas; close on hands and bark; the key clue shown plainly in chapter one before anyone explains it"
+      }
+    },
+    {
+      "slot": "S34",
+      "slug": "what-the-kazan-knew",
+      "title": "What the Kazan Knew",
+      "logline": "At a Tashkent wedding feast for two hundred, a guest bites down on the bride's stolen gold ring - and the plov master has one evening to work out who put it in the pot.",
+      "themes": [
+        "shame and forgiveness",
+        "community",
+        "the dignity of craft",
+        "second chances"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Two days before a wedding, the bride's grandmother's gold ring vanished and the families are close to calling it off. At the Friday plov for 200 guests, a neighbour bites on it. Plov master Ergash Tursunov knows exactly when each layer went in, and so who could have dropped it.",
+        "where_and_when": "A mahalla courtyard in old Tashkent, Uzbekistan, a warm September evening, the present day; a giant iron kazan over a wood fire, long low tables under a vine trellis, apricot trees, the smell of cumin and quince",
+        "characters": [
+          {
+            "name": "Ergash Tursunov",
+            "isHero": true,
+            "background": "63, oshpaz who has cooked wedding plov for the neighbourhood for forty years. Bad knees, perfect memory for who stood near his kazan and when. Proud, patient, softer than he looks. Believes a feast should never end in disgrace.",
+            "appearance": "stout Uzbek man with a round weathered face, grey stubble, a black-and-white embroidered doppi skullcap, white apron over a blue striped shirt, sleeves rolled, a long iron skimmer in his hand"
+          },
+          {
+            "name": "Sardor Yuldashev",
+            "background": "17, the bride's younger brother, who volunteered to cut the yellow carrots into matchsticks by hand. Owes money to older boys for a phone he broke. Took the ring meaning to pawn it, could not do it, and found no honest way to give it back.",
+            "appearance": "gangly teenage boy with light brown skin and a fresh buzzcut, a bandage on one finger, a white shirt too big for him, knock-off trainers, eyes that will not meet anyone's"
+          },
+          {
+            "name": "Mukaddas Rakhimova",
+            "background": "55, the groom's mother, a school headteacher who suspected the bride's family from the first minute and has said so loudly. Sharp, funny, frightened of her son marrying into trouble; hovered by the kazan all evening.",
+            "appearance": "tall thin Uzbek woman, gold front tooth, black hair under a silk ikat headscarf in magenta and green, a long ikat dress, gold earrings, a stack of bread in her arms"
+          }
+        ],
+        "moments": [
+          "A neighbour spits out the gold ring onto his plate and the courtyard erupts in accusations",
+          "Ergash turns the ring over and finds orange carrot pulp packed inside the band, though the rice layer on top was never stirred",
+          "He walks through the cooking hour by hour: only three people came near the kazan before the rice went in, and one of them cut every carrot",
+          "Ergash tells the guests the ring came back as a blessing from the pot, then quietly hands Sardor the skimmer and a debt to work off"
+        ],
+        "story_values": [
+          "forgiveness",
+          "integrity"
+        ],
+        "avoid": "violence, humiliation of the teenager, mocking of the families, alcohol-fuelled brawls",
+        "writing_style": "warm, gently comic, sensory prose rich with the craft of plov; one evening in real time, the clue shown plainly before Ergash explains it"
+      }
+    },
+    {
+      "slot": "S35",
+      "slug": "sultan-comes-home",
+      "title": "Sultan Comes Home",
+      "logline": "When a widow's champion racing pigeon is stolen from her Cairo rooftop four days before the big race, she realises the thief has forgotten the one thing every pigeon knows: the way home.",
+      "themes": [
+        "grief and pride",
+        "women in a man's world",
+        "belonging",
+        "home"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "Hoda Farghaly's late husband's champion pigeon Sultan is stolen from her Shubra rooftop loft four days before the Alexandria-to-Cairo race. The men of the fancy say a widow should sell up. Hoda knows something the thief does not: where Sultan was really hatched.",
+        "where_and_when": "Shubra, Cairo, Egypt, early spring, the present day; rooftop pigeon towers of mud and wood, satellite dishes, a coffee house where fanciers argue, the Alexandria corniche on race-release morning",
+        "characters": [
+          {
+            "name": "Hoda Farghaly",
+            "isHero": true,
+            "background": "52, widow and bookkeeper, who hand-reared Sultan from the egg on her own roof while her husband lay in hospital. Dismissed by the fanciers as a woman who only fed the birds. Stubborn, sly, never forgets a leg-ring number.",
+            "appearance": "solid middle-aged Egyptian woman with warm brown skin and heavy-lidded eyes, a navy hijab pinned tight, a long grey galabeya with a cardigan over it, plastic sandals, a notebook of ring numbers in her pocket"
+          },
+          {
+            "name": "Mahrous Eid",
+            "background": "67, her husband's old rival, loudest man in the coffee house, and the obvious suspect since he offered to buy Sultan twice. Bad-tempered, honest to a fault, secretly respects Hoda's eye for birds.",
+            "appearance": "very big old man with a grey beard, a brown wool galabeya and a white knitted cap, prayer mark on his forehead, a cane he points at people, a pigeon tucked under one arm"
+          },
+          {
+            "name": "Amr Tawfik",
+            "background": "24, her husband's nephew, a delivery rider who helps on the roof and has been so kind since the funeral. Wants to leave Egypt. Has quietly sold Sultan to a buyer's agent and entered him in the race under another loft's ring.",
+            "appearance": "slim young man with a neat fade haircut and a thin moustache, a black puffer vest over a football shirt, a motorbike helmet on his elbow, cracked phone always in hand"
+          }
+        ],
+        "moments": [
+          "Hoda finds the loft trap open, one blue feather on the ledge, and the men already blaming Mahrous",
+          "Mahrous shows her his own loft and a bird that is not Sultan, and they become uneasy allies",
+          "Hoda studies the race entries and spots a new blue cock bird whose ring year is impossible for its age",
+          "On race day she ignores the finish line and waits on her own roof, because a pigeon flies home to where it was hatched",
+          "Sultan drops out of the sky onto her loft wearing another man's race ring, and Hoda knows whose hand put it there"
+        ],
+        "story_values": [
+          "perseverance",
+          "honesty"
+        ],
+        "avoid": "harm to the birds on the page, violence, mocking the widow's grief",
+        "writing_style": "warm, observant prose full of rooftop sounds and neighbourhood banter; fair clues about pigeon homing and leg rings placed so a reader can get there first",
+        "beats": [
+          "Tue, 4 days before the Saturday race: Hoda finds the loft trap open, one blue feather, the men blaming Mahrous. Clue: the trap was opened by its secret latch; Amr's cracked phone is bound in red tape.",
+          "Wed: Mahrous (herring) shows her his loft and a blue bird that is not Sultan; uneasy allies. (Truth: Amr sold Sultan to a Gulf buyer's agent, who entered him under Giza loft Hagg Sabry's ring.)",
+          "Thu, coffee house: Hoda reads the race entries; a new blue cock from Hagg Sabry's Giza loft wears this year's ring on a two-year-old body - impossible. Amr, kind, urges her to sell up and rest.",
+          "Sat, race morning, birds released at Alexandria at 7: Hoda ignores the Cairo finish and waits on her roof, since Sultan was hatched there, not bought in as everyone thinks. Amr comes up, uneasy.",
+          "Sat, 11:40: Sultan drops onto her loft wearing Hagg Sabry's race ring, fastened with Amr's red tape. Hoda confronts Amr alone; he returns the money. Mahrous admits she has the best eye on the hill."
+        ]
+      }
+    },
+    {
+      "slot": "S36",
+      "slug": "one-flat-note",
+      "title": "One Flat Note",
+      "logline": "In 1979 a Trinidad steelband's arranger vanished the night before the Panorama final; forty-seven years later his granddaughter hears his lost music on a cassette - played on pans that should not exist.",
+      "themes": [
+        "legacy",
+        "betrayal and loyalty",
+        "music as memory",
+        "the stories families tell"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "historical"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 12,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "Port of Spain, 2026. Sound engineer Dionne Scipio finds a 1979 cassette of the arrangement her grandfather wrote before he vanished, the night his steelband lost Panorama. One tenor pan on it rings a unique flat note. The rival's winning recording has the same note. The panyard is sold in six weeks.",
+        "where_and_when": "Port of Spain and Laventille, Trinidad, the six weeks before Carnival 2026, with flashbacks to Carnival 1979; a hillside panyard under a galvanise roof, a Queen's Park Savannah night, a recording studio, a quiet Tobago hotel lobby",
+        "characters": [
+          {
+            "name": "Dionne Scipio",
+            "isHero": true,
+            "background": "31, sound engineer who restores old calypso tapes for a living and hears pitch the way other people see colour. Raised on the family story that her grandfather took the band's prize money and ran. Precise, prickly, lonely, stubborn once she starts.",
+            "appearance": "petite Afro-Trinidadian woman, dark skin, short natural hair dyed copper, silver hoop earrings, oversized band T-shirt, cut-off jeans, big studio headphones round her neck, a battered cassette walkman clipped to her belt"
+          },
+          {
+            "name": "Vernon Alleyne",
+            "background": "79, captain of the band for forty-seven years, most loved man on the hill, who kept the panyard alive through every bad year. Tells Dionne warm stories about her grandfather. Sold the arrangement and the pans in 1979 to save the lease and blamed his friend.",
+            "appearance": "tall lean old man with deep brown skin, white close-cropped hair, a gold tooth, a pressed short-sleeved guayabera and dark slacks, a white towel over his shoulder, pan sticks in his breast pocket"
+          },
+          {
+            "name": "Lennox Bartholomew",
+            "background": "84, the arranger, alive in Tobago under his middle name, playing hotel lobby pan for tourists. Fled in 1979 before a theft charge he could not disprove. Has never stopped arranging music no one hears.",
+            "appearance": "frail tall old man with very dark skin, a white beard, a straw trilby, a faded floral shirt buttoned to the neck, long fingers with taped knuckles, a single tenor pan on a stand"
+          }
+        ],
+        "moments": [
+          "Dionne plays the cassette in her studio and catches one tenor note ringing a quarter-tone flat, the tuner's mark of a single pan",
+          "She runs the rival band's 1979 winning recording and hears the same flat note in the same bar",
+          "Midpoint reversal: a 1979 photo shows her grandfather's pans loaded onto a truck at 2am, too many for one man to move, and the family story cracks",
+          "Following old tuners' ledgers to Tobago, she finds a hotel lobby pan player who plays the lost arrangement from memory",
+          "At the last Panorama in the doomed panyard, Dionne plays both tapes for the hill and Vernon must answer in front of everyone"
+        ],
+        "story_values": [
+          "justice",
+          "forgiveness"
+        ],
+        "avoid": "gore, gun violence, murder, drug-crime clichés about Laventille",
+        "writing_style": "rhythmic, musical, warm prose with Trinidadian dialogue kept readable; alternate 2026 chapters with short 1979 flashbacks; audio clues described exactly so readers can hear them",
+        "beats": [
+          "Jan 2026, week 1: Dionne restores a 1979 cassette of her grandfather Lennox's lost arrangement; one tenor note rings a quarter-tone flat - a single pan's tuner's mark. The panyard is sold in 6 weeks.",
+          "Rival band Cordova's 1979 winning tape: the same flat note in the same bar 17. (Truth: captain Vernon sold the arrangement and pans to Cordova in 1979 to save the lease, blamed Lennox.)",
+          "Week 2, panyard: Vernon tells warm stories and the family line: Lennox took the prize fund and ran. He blames Cordova's late arranger (herring). Clue: Vernon hums a phrase no one ever heard played.",
+          "Flashback-led: Carnival 1979, the night before the final, Lennox finds the yard empty and a witness naming him. 2026: Dionne finds old tuner Clive Joseph (herring), who made the flat tenor in 1977.",
+          "Week 3: a Cordova veteran says their arranger bought the music, never stole it (herring cleared): the pans arrived by truck, already rehearsed, two weeks before the 1979 final.",
+          "Midpoint: a neighbour's 1979 photo shows the pans loaded onto a truck at 2am, far too many for one man, a white towel on one loader's shoulder. The family story cracks; Dionne stops trusting it.",
+          "Week 4: Clive's ledgers, kept by his daughter: 'Feb 1979, Hill flat tenor retuned for Cordova, paid V.A.' and a 1998 entry: a tenor sold in Scarborough, Tobago, to 'Ignatius B.'",
+          "Tobago hotel lobby: an old man in a straw trilby plays the lost arrangement from memory, flat note and all. He is Lennox Ignatius Bartholomew, 84, her grandfather, alive.",
+          "Lennox tells 1979 his way: he fled a theft charge he could not disprove, and refuses to go back. Dionne learns he has written music every year since for no one; she leaves him her walkman.",
+          "Week 5, studio: Dionne syncs both tapes. Vernon arrives, having heard she went to Tobago, asks her to let it rest for the hill's sake; he nearly confesses, cannot. She sets the hearing for the yard.",
+          "Week 6: Lennox steps off the ferry and walks up the hill; at the last rehearsal he corrects the tenors by ear, and the young players learn the arrangement was his all along.",
+          "Last Panorama night in the doomed panyard: Dionne plays both tapes for the hill; Vernon confesses before everyone. Lennox forgives him, and the band plays the arrangement as its own at last."
+        ]
+      }
+    },
+    {
+      "slot": "S37",
+      "slug": "a-coffin-shaped-like-a-mackerel",
+      "title": "A Coffin Shaped Like a Mackerel",
+      "logline": "The night before a fishing magnate's lavish Accra funeral, his will goes missing - and the carpenter who built his coffin shaped like a giant mackerel suspects it is inside her work.",
+      "themes": [
+        "family and inheritance",
+        "craft and pride",
+        "grief",
+        "appearances"
+      ],
+      "request": {
+        "primary_genre": "mystery",
+        "genres": [
+          "mystery",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "long",
+        "image_style": "comic",
+        "topic": "The night before the funeral of Teshie's richest fishing-fleet owner, his will vanishes. The only locked place anyone went is Naa Dedei Ankrah's workshop, where his giant painted mackerel coffin is drying. She has until the dawn wake-keeping to find the will without cracking her masterpiece.",
+        "where_and_when": "Teshie, a fishing town on the edge of Accra, Ghana, one Friday night, the present day; a fantasy-coffin workshop full of wooden fish, cocoa pods and aeroplanes, kerosene lamps, the hum of a generator, surf on the beach",
+        "characters": [
+          {
+            "name": "Naa Dedei Ankrah",
+            "isHero": true,
+            "background": "38, master fantasy-coffin carpenter who took over her late father's workshop and is tired of men asking to see 'the real carpenter'. Knows exactly how long her lacquer takes to dry. Funny, exacting, loyal to her clients even when they are dead.",
+            "appearance": "tall strong Ghanaian woman with dark skin, sawdust in her short natural hair, a paint-spattered denim overall over a kente-print T-shirt, safety goggles pushed up on her head, a wide paintbrush tucked behind one ear"
+          },
+          {
+            "name": "Comfort Lartey",
+            "background": "50, the dead man's eldest daughter, a pharmacist who ran his accounts for twenty years. Convinced the will leaves the fleet to her young stepmother. Visited the workshop at lunchtime 'to pray over Daddy's coffin', alone.",
+            "appearance": "stately heavy-set woman with dark brown skin, black-and-red mourning cloth wrapped elegantly, a black headwrap, gold-framed glasses, a leather handbag clutched to her side, a lace handkerchief"
+          },
+          {
+            "name": "Gifty Lartey",
+            "background": "29, the young widow, loudly grieving, widely suspected of gold-digging. Sharper than anyone thinks. Knows what the will actually says, because her husband read it to her.",
+            "appearance": "slim young woman with glowing dark skin, long braids pinned up, a black lace kaba and slit, dark sunglasses at night, bright red nails, a phone she keeps checking"
+          }
+        ],
+        "moments": [
+          "7pm Friday: the lawyer, who had the will in his folder at the noon family lunch, opens it to find the will gone, and every eye in the compound turns to the coffin workshop",
+          "Naa Dedei recalls the day: at 11am she sanded the tail's hinged hatch and it was empty; Comfort prayed alone in the workshop 12:45 to 1:15; at 2pm Naa Dedei varnished the tail, dry by 5pm",
+          "By lamplight, the clue: the dry varnish on the tail is flawless, yet a hairline white edge of paper is sealed under the gloss at the hatch seam - so it went in before 2pm and was never touched after",
+          "Only Comfort was alone with the coffin between 11am and 2pm; Naa Dedei confronts her, and Comfort admits she took the will from the lawyer's folder at lunch, fearing it left the fleet to Gifty",
+          "Naa Dedei slits the varnish along the seam with a warm blade, the will comes out of the mackerel's tail, and read aloud it leaves the fleet to Comfort; the tail is retouched before dawn wake-keeping"
+        ],
+        "story_values": [
+          "honesty",
+          "family"
+        ],
+        "avoid": "gore, violence, mockery of funeral customs, cruelty; no changes to the fixed timeline; no second hatch or side door; the dead man and the lawyer did not hide the will; no real brand names; no meta text",
+        "writing_style": "lively, comic, affectionate Ghanaian voice with vivid workshop detail and snappy dialogue; a single night, the clue shown before it is explained",
+        "beats": [
+          "Fri: will in lawyer's folder at noon; hatch empty 11am; Comfort alone in workshop 12:45-1:15, hid it; tail varnished 2pm, dry 5pm; paper edge sealed in the varnish proves it. Read: fleet to Comfort."
+        ]
+      }
+    },
+    {
+      "slot": "S38",
+      "slug": "mile-marker-212",
+      "title": "Mile Marker 212",
+      "logline": "On a whiteout night on a Saskatchewan highway, a snowplow driver passes the same car in the ditch every hour - and every hour the figure inside has moved closer to the door.",
+      "themes": [
+        "loneliness",
+        "guilt",
+        "the long dark",
+        "what we refuse to stop for"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "standard",
+        "image_style": "cinematic",
+        "topic": "Plow operator Bernice Hrynchuk runs her loop of Highway 16 through a prairie blizzard. At mile marker 212 a car sits in the ditch, hazards blinking. Dispatch says the camera shows nothing. Each pass, the figure at the wheel has shifted toward the passenger door. Her shift has six hours left.",
+        "where_and_when": "Highway 16 across the open prairie east of Saskatoon, Saskatchewan, Canada, a January night, the present day; a snowplow cab with orange strobes, a whiteout, a shuttered roadside diner, a highways depot",
+        "characters": [
+          {
+            "name": "Bernice Hrynchuk",
+            "isHero": true,
+            "background": "57, Ukrainian-Canadian snowplow operator, thirty years on the night shift, divorced, steady as a fencepost. Does not stop for strangers after one winter she will not talk about. Hums hymns from her baba's church when she is scared.",
+            "appearance": "heavy-set woman with a ruddy weathered face, cropped grey hair under a toque, a hi-vis orange parka over a plaid flannel shirt, thick work gloves, a thermos of coffee wedged by the gearstick"
+          },
+          {
+            "name": "Wendell Ironchild",
+            "background": "34, night dispatcher at the highways depot, Cree, a new dad running on no sleep. Talks Bernice through every storm on the radio. Watches the highway cameras and grows quieter every time she mentions mile marker 212.",
+            "appearance": "broad young man with brown skin and a black braid, wire glasses, a hoodie with a hockey team crest, a headset over his ear, his baby's photo taped to the monitor"
+          }
+        ],
+        "moments": [
+          "On her first pass Bernice radios in a car in the ditch at mile marker 212, and Wendell pulls up the camera: empty snow",
+          "Each hourly pass the silhouette at the wheel has moved closer to the passenger door, and Bernice speeds up",
+          "The car's hazards begin blinking in the rhythm of her own turn signal",
+          "Wendell tells her quietly what happened on that stretch one winter night eleven years ago",
+          "At dawn in the depot Bernice finds the frost on her passenger seat melted into the shape of someone who has been sitting beside her"
+        ],
+        "story_values": [
+          "courage",
+          "honesty"
+        ],
+        "avoid": "gore, graphic crash injuries, harm to children or animals, jump-scare cheapness",
+        "writing_style": "slow, tight, cold cinematic dread; close third person in the cab, the rhythm of wipers and radio static, more suggestion than showing"
+      }
+    },
+    {
+      "slot": "S39",
+      "slug": "the-paper-house-on-wenming-road",
+      "title": "The Paper House on Wenming Road",
+      "logline": "A paper-effigy maker takes a widow's order for a paper house to burn for her dead partner - and realises the house she is building is her own flat, down to things she did not know were there.",
+      "themes": [
+        "grief",
+        "the homes we share with the dead",
+        "love that could not be named",
+        "what we let go"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "long",
+        "image_style": "watercolor",
+        "topic": "Apprentice effigy-maker Qiao Minyue builds a paper house to be burned for a widow's dead partner at Ghost Festival. The widow's instructions describe Minyue's own flat, a detail more each day, including a fourth chair she does not own. That night a fourth chair stands at her table.",
+        "where_and_when": "Foshan, Guangdong, China, the weeks before the Hungry Ghost Festival, the present day; an old arcade street of paper-offering shops, bamboo frames and coloured tissue, a narrow walk-up flat on Wenming Road, a riverbank at night",
+        "characters": [
+          {
+            "name": "Qiao Minyue",
+            "isHero": true,
+            "background": "29, apprentice to a paper-effigy master after quitting an office job she hated. Lives alone in a cheap flat that always feels warm. Deft, sceptical, sleeps badly. Has never admitted she likes the company she cannot see.",
+            "appearance": "small slim Chinese woman, blunt fringe and a low ponytail, tired eyes, paper cuts on her fingers, a faded green work smock over a white T-shirt and wide black trousers, a craft knife and a spool of red thread"
+          },
+          {
+            "name": "Wen Peiyu",
+            "background": "67, retired accountant, who lived in that flat on Wenming Road for twenty years with her companion Fang, a woman she could never call her wife. Fang died there in 2009. Pays in cash, visits at dusk, is certain Fang never left.",
+            "appearance": "tall thin elderly woman with a short grey bob, pale lined face, a neat navy qipao-collared jacket, a string of jade beads, an umbrella carried in all weathers, a photograph in her pocket"
+          },
+          {
+            "name": "Hu Zhenbang",
+            "background": "78, Minyue's master, fifty years folding houses, cars and servants for the dead. Gruff and kind. Knows the old rule the young forget: whatever you build and burn, something will move into it, and it need not be who you meant.",
+            "appearance": "wiry old man with a shaved head and a sparse white beard, thick glasses, a grey undershirt and loose cotton trousers, a bamboo fan, glue-stained fingers holding a brush"
+          }
+        ],
+        "moments": [
+          "Minyue sketches the widow's order and realises the floor plan is her own flat, down to the crack across the ceiling",
+          "The widow adds a fourth chair, and that night Minyue comes home to four chairs at her table",
+          "Wen Peiyu tells the story of Fang, and Minyue understands whose home she has been living in",
+          "Master Hu makes the paper figure of Fang from the widow's photograph, and each morning its painted face has become someone else's",
+          "On Ghost Festival night by the river, Minyue must decide what she is sending into the flames, and what stays behind"
+        ],
+        "story_values": [
+          "compassion",
+          "courage"
+        ],
+        "avoid": "gore, suicide, harm to children or animals, exoticising Chinese ritual, cheap jump scares",
+        "writing_style": "quiet, precise, melancholy prose with slow-building dread; paper, glue and incense in every scene; horror through small domestic wrongness, never spectacle",
+        "beats": [
+          "Two weeks to Ghost Festival: Minyue sketches Wen Peiyu's paper house and sees it is her own flat, ceiling crack too. (Truth: Peiyu and Fang lived there; Fang never left; 4th chair is Minyue's)",
+          "Peiyu's next list names a loose floor tile; under it in Minyue's flat lies a tin of letters signed F. Then Peiyu orders a fourth chair, and that night four chairs stand at Minyue's table.",
+          "Nine days left: whatever Minyue glues into the paper house appears in her flat by morning. At dusk Peiyu tells of Fang, dead there in 2009, and Minyue knows whose warm home she has been living in.",
+          "Five days left: Master Hu paints Fang's figure from Peiyu's photograph; each morning its face is someone else's - Peiyu's, then Hu's, then Minyue's own. Hu warns: something moves into what you burn.",
+          "Ghost Festival night, the river: Minyue cuts her face from the figure, paints Fang's back, burns the house without the fourth chair. Fang goes with Peiyu's love; the flat is cold; one chair stays."
+        ]
+      }
+    },
+    {
+      "slot": "S40",
+      "slug": "the-sun-came-back-wrong",
+      "title": "The Sun Came Back Wrong",
+      "logline": "After four months of polar night the sun returns to Svalbard exactly on time - rising a few degrees too far north, and a little further every day.",
+      "themes": [
+        "the limits of knowing",
+        "love under strain",
+        "isolation",
+        "faith in evidence"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "scifi"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "long",
+        "image_style": "cinematic",
+        "topic": "Longyearbyen, Svalbard. On 8 March the town gathers on the old hospital steps to greet the first sun after polar night. It arrives on time. Aurora technician Torunn Vikebø sees it rise four degrees north of where it must. Each day it is further off, and no one else will measure it.",
+        "where_and_when": "Longyearbyen, Svalbard, Norway, late February to the spring equinox, the present day; a small Arctic town of coloured wooden houses, snowmobiles, polar bear warning signs, an aurora observatory on a mountain ridge, glacier light",
+        "characters": [
+          {
+            "name": "Torunn Vikebø",
+            "isHero": true,
+            "background": "44, technician at the aurora observatory, a born measurer who trusts instruments over feelings. Married to Ragnhild, the thing in her life she never measured. Keeps logbooks for everything, including the colour of the sky.",
+            "appearance": "tall rangy Norwegian woman, windburned pale skin, straight ash-blonde hair under a red knitted hat, a battered expedition parka, fleece trousers, a theodolite case slung over one shoulder, a pencil tied to her logbook"
+          },
+          {
+            "name": "Ragnhild Saether",
+            "background": "47, Torunn's wife, a nurse at the town hospital. Warm, practical, loved by the whole town. The first to stop seeing anything wrong with the sun, and the first whose shadow falls the wrong way.",
+            "appearance": "sturdy round-faced woman, short dark curly hair going grey, rosy cheeks, a thick patterned Norwegian jumper over hospital scrubs, a steaming mug in both hands"
+          },
+          {
+            "name": "Birgit Aune",
+            "background": "70, retired schoolteacher who has photographed the first sun on the hospital steps every year for forty years. Her prints are the only proof. Brusque, frightened, the one person who believes Torunn and wishes she did not.",
+            "appearance": "tiny stooped woman with a white braid, pale wrinkled face, a sheepskin coat and fur boots, an old film camera round her neck, a folder of prints under her arm"
+          }
+        ],
+        "moments": [
+          "On sun day the crowd cheers and Torunn's theodolite puts the sun four degrees north of its only possible path",
+          "Birgit lays forty years of photographs across her kitchen table: the sun has never touched the steps from that angle",
+          "Ragnhild looks at the sky and says, gently, that it has always risen there",
+          "The polar bears leave the island across the sea ice, all in the same direction, away from the sun",
+          "At the equinox Torunn watches her wife's shadow stretch toward the light, and chooses to draw the curtains and hold her"
+        ],
+        "story_values": [
+          "love",
+          "truth"
+        ],
+        "avoid": "gore, harm to animals on the page, body horror, a scientific explanation that deflates the dread",
+        "writing_style": "cold, luminous, methodical prose; entries from Torunn's logbook between scenes; dread built through measurement and small wrong angles, cosmic and never explained",
+        "beats": [
+          "8 March, sun day: the town cheers on the hospital steps; Torunn's theodolite puts the sun 4 degrees north of its only possible path. (Rule, never explained: it drifts further north every day.)",
+          "10 March, 7 degrees: Birgit lays forty years of prints across her kitchen table; the sun has never touched the steps from this angle. The only proof, and she wishes it were not.",
+          "13 March, 11 degrees: at breakfast Ragnhild looks at the sky and says, gently, it has always risen there. The observatory's instruments agree with her; only Torunn's logbook does not.",
+          "16 March, 16 degrees: the polar bears leave the island across the sea ice, all in one direction, away from the sun. Torunn follows their tracks by snowmobile to the ice edge and turns back.",
+          "18 March, 20 degrees: Birgit's new prints show the steps empty of the crowd she stood among; she stops believing. Torunn's logbook entries now disagree with each other in her own hand.",
+          "20 March, equinox: the sun rises far in the north; Ragnhild's shadow stretches toward the light. Torunn closes her logbook, draws the curtains, and holds her wife in the dark room."
+        ]
+      }
+    },
+    {
+      "slot": "S41",
+      "slug": "the-night-count",
+      "title": "The Night Count",
+      "logline": "In a city where the Census counts every household through the letterbox at midnight, a woman who lives alone is counted as two - and the ledger closes at dawn.",
+      "themes": [
+        "identity",
+        "loneliness",
+        "being seen",
+        "who we let in"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "fantasy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "long",
+        "image_style": "comic",
+        "topic": "In Vessmark the night-counters knock at every door at midnight and count the breath of those inside. Ottilie Brask has lived alone for nine years. Tonight the counter at her letterbox says two. On the last night of the Census the Ledger gives each count a name, and keeps only one.",
+        "where_and_when": "Vessmark, an invented city of stacked tenement towers linked by iron stairways, lit by lamp-oil and ruled by the great Ledger; one long night of fog and chimes, from midnight to the dawn bell",
+        "characters": [
+          {
+            "name": "Ottilie Brask",
+            "isHero": true,
+            "background": "41, lamp-oil seller who has lived alone since her sister moved to the coast. Neat, frugal, talks to herself so the rooms feel full. Hides how often she has wished for company, and has never quite stopped setting a second cup.",
+            "appearance": "thin angular woman with sallow skin, dark hair scraped into a knot, a long faded plum coat over a grey work dress, oil-stained fingers, a brass lamp in one hand and a ring of keys at her waist"
+          },
+          {
+            "name": "Anders Tallow",
+            "background": "23, a new night-counter who counts by listening at letterboxes through a brass ear-trumpet. Terrified of getting it wrong, because miscounts are corrected, not erased. Kind enough to warn her, too frightened to help much.",
+            "appearance": "gangly young man with brown skin and a mop of black curls, a too-large dark blue census coat with brass buttons, fingerless gloves, a long brass ear-trumpet and a heavy tally book on a strap"
+          }
+        ],
+        "moments": [
+          "At midnight Anders's voice through the letterbox counts two, and Ottilie laughs, then stops",
+          "She searches every room and finds the second cup she left out has been drunk from",
+          "Anders returns at three and warns her: by dawn the Ledger will write one name for this address, and it will be whichever of them answers the door",
+          "In the mirror hallway Ottilie hears her own voice rehearsing her name in the next room",
+          "At the dawn bell there is a knock, and she has to decide whether to open the door or let the other one answer"
+        ],
+        "story_values": [
+          "courage",
+          "self-worth"
+        ],
+        "avoid": "gore, body horror, harm to children or animals, a cheap twist explaining it all away",
+        "writing_style": "tight, eerie, darkly witty comic-book horror; one night in real time, stark panels of sound and shadow, the wrongness growing one small detail at a time"
+      }
+    },
+    {
+      "slot": "S42",
+      "slug": "booth-nine",
+      "title": "Booth Nine",
+      "logline": "A Brussels interpreter hears a second voice in her headset translating the speaker ten seconds before he speaks - and then translating a meeting that has not happened yet.",
+      "themes": [
+        "language and meaning",
+        "obsession",
+        "the price of listening",
+        "the future"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "short",
+        "image_style": "anime",
+        "topic": "Anouk Verhaegen is put in booth nine, the interpreting booth no one uses. Under the delegate's speech a calm voice translates his words ten seconds before he says them. By Thursday it is translating a session in the empty chamber at 2 a.m. tonight, in Anouk's own voice.",
+        "where_and_when": "Brussels, Belgium, a grey November week, the present day; a vast glass parliament building, a curved chamber of empty seats, a row of soundproof interpreting booths high above it, rain on the tram lines",
+        "characters": [
+          {
+            "name": "Anouk Verhaegen",
+            "isHero": true,
+            "background": "33, Dutch-French-English conference interpreter, brilliant, overworked, prides herself on never missing a word. Grew up in a Flemish village where her grandmother talked to the radio. Cannot stand an unfinished sentence.",
+            "appearance": "slim young Belgian woman with pale skin, a sharp dark bob, dark circles under her eyes, an oversized cream turtleneck, a lanyard pass, a headset round her neck, a pen she clicks when nervous"
+          },
+          {
+            "name": "Jules Hennebert",
+            "background": "58, chief interpreter, who worked booth nine for one week in 1998 and then asked never to again. Courtly, precise, protective of his team, keeps booth nine locked for reasons he calls technical.",
+            "appearance": "tall elegant man with a grey goatee and silver swept-back hair, round tortoiseshell glasses, a navy suit with a burgundy scarf, a folded newspaper and a lanyard"
+          },
+          {
+            "name": "Priya Ramdin",
+            "background": "27, Surinamese-Dutch sound technician who treats every glitch as solvable. Traces booth nine's feed and finds it is not connected to the chamber microphones at all.",
+            "appearance": "petite young woman with brown skin, long black hair in a high ponytail, a black hoodie with the sleeves pushed up, cable ties on her wrist, a laptop covered in stickers"
+          }
+        ],
+        "moments": [
+          "In booth nine Anouk hears the second voice finish a delegate's sentence before he has begun it",
+          "She tests it and repeats the voice's words into her microphone, and the delegate says them a beat after her",
+          "Priya traces the cable and finds booth nine is wired to nothing, and Jules finally unlocks his 1998 notes",
+          "The voice begins translating a session in the empty chamber at 2 a.m., and the interpreter speaking is Anouk",
+          "At 2 a.m. she sits in booth nine and hears herself interpreting for something in the delegates' seats"
+        ],
+        "story_values": [
+          "curiosity",
+          "courage"
+        ],
+        "avoid": "gore, violence, real politicians or institutions named, harm to children or animals",
+        "writing_style": "sleek, tense, anime-style horror with clean visual beats; close on sound, silence and glass, dread through language itself"
+      }
+    },
+    {
+      "slot": "S43",
+      "slug": "the-dugout",
+      "title": "The Dugout",
+      "logline": "In an outback opal town where people live underground, a widow wakes each morning to find a new stretch of tunnel dug from her back bedroom - and her husband's pick still warm.",
+      "themes": [
+        "grief",
+        "what the dead leave unfinished",
+        "home",
+        "letting go"
+      ],
+      "request": {
+        "primary_genre": "horror",
+        "genres": [
+          "horror",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "Voula Stamatopoulos refuses to sell the dugout home her husband carved into an opal hill. Since his funeral, each dawn there is fresh spoil in the back bedroom and a new metre of tunnel, and his pick is warm. Her son wants her gone by Friday. The tunnel is heading somewhere.",
+        "where_and_when": "Coober Pedy, South Australia, the height of summer, the present day; homes cut into sandstone hills to escape 45-degree heat, white spoil heaps, blowers and mine shafts, a Greek Orthodox church underground, red dust at sunset",
+        "characters": [
+          {
+            "name": "Voula Stamatopoulos",
+            "isHero": true,
+            "background": "66, widow of an opal miner, came from Rhodes as a bride in 1979. Makes koulourakia for the whole street, crosses herself at every noise, cannot bear to let a job go unfinished. Hides that her husband went quiet in his last year, digging at night.",
+            "appearance": "short round Greek-Australian woman, olive skin, dyed black hair in a bun, black mourning dress with a cardigan despite the heat, gold cross on a chain, red dust on her house slippers, a torch in her hand"
+          },
+          {
+            "name": "Nick Stamatopoulos",
+            "background": "40, her son, an Adelaide insurance assessor who left the opal fields at eighteen and never went underground again. Loving, impatient, afraid of the dark and ashamed of it. Has a buyer lined up and a reason he will not name.",
+            "appearance": "tall heavyset man with olive skin, receding dark hair, sunglasses on his head, a pressed blue work shirt sweat-darkened at the back, chinos, car keys always in his hand"
+          },
+          {
+            "name": "Gary Rundle",
+            "background": "71, neighbour and old opal noodler who worked the same claim with her husband for thirty years. Laconic, kind, rolls his own cigarettes. Knows what they found at the bottom of that claim in 1996 and why they filled it in.",
+            "appearance": "wiry sun-dried old man with leathery red-brown skin, white stubble, a sweat-stained slouch hat, a singlet and stubbies, dusty boots, a miner's head torch round his neck"
+          }
+        ],
+        "moments": [
+          "Voula finds the first neat pile of fresh spoil in the back bedroom and her husband's pick leaning warm against the wall",
+          "Each morning the tunnel is a metre longer, and she starts leaving a flask of coffee at its end",
+          "Gary admits the tunnel is heading straight for the old claim they filled in in 1996",
+          "Voula goes down the tunnel at night with a torch, following the sound of the pick, and decides whether to finish the job or close it for good"
+        ],
+        "story_values": [
+          "love",
+          "letting go"
+        ],
+        "avoid": "gore, collapse deaths shown graphically, harm to children or animals, use of Aboriginal sacred stories or places",
+        "writing_style": "sparse, heat-heavy, claustrophobic prose; the sound of the pick in the dark, Greek kitchen warmth against underground dread; never explain too much"
+      }
+    }
+  ]
+}

@@ -1,0 +1,704 @@
+{
+ "slots": [
+  {
+   "slot": "S01",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "Eastern Europe or the Caucasus"
+  },
+  {
+   "slot": "S02",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 15,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Central Asia"
+  },
+  {
+   "slot": "S03",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "Middle East or North Africa"
+  },
+  {
+   "slot": "S04",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "standard",
+   "image_style": "comic",
+   "setting_region": "Caribbean"
+  },
+  {
+   "slot": "S05",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 10,
+   "chapter_length": "short",
+   "image_style": "watercolor",
+   "setting_region": "West Africa"
+  },
+  {
+   "slot": "S06",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "long",
+   "image_style": "watercolor",
+   "setting_region": "USA or Canada"
+  },
+  {
+   "slot": "S07",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "East Asia"
+  },
+  {
+   "slot": "S08",
+   "agent": "A",
+   "primary_genre": "romance",
+   "audience_mode": "adult",
+   "planned_chapter_count": 2,
+   "chapter_length": "standard",
+   "image_style": "anime",
+   "setting_region": "Nordics or the Baltics"
+  },
+  {
+   "slot": "S09",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "kids",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S10",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "watercolor",
+   "setting_region": "Western Europe"
+  },
+  {
+   "slot": "S11",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "long",
+   "image_style": "watercolor",
+   "setting_region": "Australia, New Zealand or the Pacific"
+  },
+  {
+   "slot": "S12",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "standard",
+   "image_style": "anime",
+   "setting_region": "East or Southern Africa"
+  },
+  {
+   "slot": "S13",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 10,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "Latin America"
+  },
+  {
+   "slot": "S14",
+   "agent": "A",
+   "primary_genre": "comedy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 15,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "Southeast Asia"
+  },
+  {
+   "slot": "S15",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "kids",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S16",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "South Asia"
+  },
+  {
+   "slot": "S17",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S18",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "long",
+   "image_style": "auto",
+   "setting_region": "Central Asia"
+  },
+  {
+   "slot": "S19",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S20",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "standard",
+   "image_style": "cinematic",
+   "setting_region": "Caribbean"
+  },
+  {
+   "slot": "S21",
+   "agent": "B",
+   "primary_genre": "fantasy",
+   "audience_mode": "adult",
+   "planned_chapter_count": 2,
+   "chapter_length": "long",
+   "image_style": "comic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S22",
+   "agent": "B",
+   "primary_genre": "folktale",
+   "audience_mode": "kids",
+   "planned_chapter_count": 4,
+   "chapter_length": "short",
+   "image_style": "watercolor",
+   "setting_region": "USA or Canada"
+  },
+  {
+   "slot": "S23",
+   "agent": "B",
+   "primary_genre": "folktale",
+   "audience_mode": "kids",
+   "planned_chapter_count": 5,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "East Asia"
+  },
+  {
+   "slot": "S24",
+   "agent": "B",
+   "primary_genre": "folktale",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "Nordics or the Baltics"
+  },
+  {
+   "slot": "S25",
+   "agent": "B",
+   "primary_genre": "folktale",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S26",
+   "agent": "B",
+   "primary_genre": "folktale",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "long",
+   "image_style": "cinematic",
+   "setting_region": "Western Europe"
+  },
+  {
+   "slot": "S27",
+   "agent": "B",
+   "primary_genre": "fanfiction",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "long",
+   "image_style": "anime",
+   "setting_region": "the world of a public-domain classic"
+  },
+  {
+   "slot": "S28",
+   "agent": "B",
+   "primary_genre": "fanfiction",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "standard",
+   "image_style": "comic",
+   "setting_region": "the world of a public-domain classic"
+  },
+  {
+   "slot": "S29",
+   "agent": "B",
+   "primary_genre": "fanfiction",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "standard",
+   "image_style": "anime",
+   "setting_region": "the world of a public-domain classic"
+  },
+  {
+   "slot": "S30",
+   "agent": "B",
+   "primary_genre": "fanfiction",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "the world of a public-domain classic"
+  },
+  {
+   "slot": "S31",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "kids",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "UK or Ireland"
+  },
+  {
+   "slot": "S32",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 10,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "South Asia"
+  },
+  {
+   "slot": "S33",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "Eastern Europe or the Caucasus"
+  },
+  {
+   "slot": "S34",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "Central Asia"
+  },
+  {
+   "slot": "S35",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "Middle East or North Africa"
+  },
+  {
+   "slot": "S36",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 12,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "Caribbean"
+  },
+  {
+   "slot": "S37",
+   "agent": "C",
+   "primary_genre": "mystery",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "long",
+   "image_style": "comic",
+   "setting_region": "West Africa"
+  },
+  {
+   "slot": "S38",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 2,
+   "chapter_length": "standard",
+   "image_style": "cinematic",
+   "setting_region": "USA or Canada"
+  },
+  {
+   "slot": "S39",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "long",
+   "image_style": "watercolor",
+   "setting_region": "East Asia"
+  },
+  {
+   "slot": "S40",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "long",
+   "image_style": "cinematic",
+   "setting_region": "Nordics or the Baltics"
+  },
+  {
+   "slot": "S41",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "long",
+   "image_style": "comic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S42",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Western Europe"
+  },
+  {
+   "slot": "S43",
+   "agent": "C",
+   "primary_genre": "horror",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "Australia, New Zealand or the Pacific"
+  },
+  {
+   "slot": "S44",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "kids",
+   "planned_chapter_count": 4,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "East or Southern Africa"
+  },
+  {
+   "slot": "S45",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "Latin America"
+  },
+  {
+   "slot": "S46",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Southeast Asia"
+  },
+  {
+   "slot": "S47",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "standard",
+   "image_style": "comic",
+   "setting_region": "UK or Ireland"
+  },
+  {
+   "slot": "S48",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "South Asia"
+  },
+  {
+   "slot": "S49",
+   "agent": "D",
+   "primary_genre": "scifi",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "Eastern Europe or the Caucasus"
+  },
+  {
+   "slot": "S50",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "kids",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "watercolor",
+   "setting_region": "Central Asia"
+  },
+  {
+   "slot": "S51",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "kids",
+   "planned_chapter_count": 2,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Middle East or North Africa"
+  },
+  {
+   "slot": "S52",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "Caribbean"
+  },
+  {
+   "slot": "S53",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "adult",
+   "planned_chapter_count": 2,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "West Africa"
+  },
+  {
+   "slot": "S54",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "USA or Canada"
+  },
+  {
+   "slot": "S55",
+   "agent": "D",
+   "primary_genre": "adventure",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "standard",
+   "image_style": "watercolor",
+   "setting_region": "East Asia"
+  },
+  {
+   "slot": "S56",
+   "agent": "E",
+   "primary_genre": "historical",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "long",
+   "image_style": "auto",
+   "setting_region": "Nordics or the Baltics"
+  },
+  {
+   "slot": "S57",
+   "agent": "E",
+   "primary_genre": "historical",
+   "audience_mode": "adult",
+   "planned_chapter_count": 3,
+   "chapter_length": "standard",
+   "image_style": "comic",
+   "setting_region": "an invented world"
+  },
+  {
+   "slot": "S58",
+   "agent": "E",
+   "primary_genre": "historical",
+   "audience_mode": "adult",
+   "planned_chapter_count": 10,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "Western Europe"
+  },
+  {
+   "slot": "S59",
+   "agent": "E",
+   "primary_genre": "historical",
+   "audience_mode": "adult",
+   "planned_chapter_count": 5,
+   "chapter_length": "standard",
+   "image_style": "anime",
+   "setting_region": "Australia, New Zealand or the Pacific"
+  },
+  {
+   "slot": "S60",
+   "agent": "E",
+   "primary_genre": "historical",
+   "audience_mode": "adult",
+   "planned_chapter_count": 8,
+   "chapter_length": "long",
+   "image_style": "watercolor",
+   "setting_region": "East or Southern Africa"
+  },
+  {
+   "slot": "S61",
+   "agent": "E",
+   "primary_genre": "sliceOfLife",
+   "audience_mode": "adult",
+   "planned_chapter_count": 6,
+   "chapter_length": "standard",
+   "image_style": "auto",
+   "setting_region": "Latin America"
+  },
+  {
+   "slot": "S62",
+   "agent": "E",
+   "primary_genre": "sliceOfLife",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Southeast Asia"
+  },
+  {
+   "slot": "S63",
+   "agent": "E",
+   "primary_genre": "sliceOfLife",
+   "audience_mode": "adult",
+   "planned_chapter_count": 4,
+   "chapter_length": "long",
+   "image_style": "cinematic",
+   "setting_region": "UK or Ireland"
+  },
+  {
+   "slot": "S64",
+   "agent": "E",
+   "primary_genre": "sliceOfLife",
+   "audience_mode": "adult",
+   "planned_chapter_count": 2,
+   "chapter_length": "short",
+   "image_style": "cinematic",
+   "setting_region": "South Asia"
+  },
+  {
+   "slot": "S65",
+   "agent": "E",
+   "primary_genre": "sliceOfLife",
+   "audience_mode": "adult",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "auto",
+   "setting_region": "Eastern Europe or the Caucasus"
+  },
+  {
+   "slot": "S66",
+   "agent": "E",
+   "primary_genre": "educational",
+   "audience_mode": "kids",
+   "planned_chapter_count": 5,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "Central Asia"
+  },
+  {
+   "slot": "S67",
+   "agent": "E",
+   "primary_genre": "educational",
+   "audience_mode": "kids",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "Middle East or North Africa"
+  },
+  {
+   "slot": "S68",
+   "agent": "E",
+   "primary_genre": "educational",
+   "audience_mode": "kids",
+   "planned_chapter_count": 3,
+   "chapter_length": "short",
+   "image_style": "comic",
+   "setting_region": "Caribbean"
+  },
+  {
+   "slot": "S69",
+   "agent": "E",
+   "primary_genre": "educational",
+   "audience_mode": "kids",
+   "planned_chapter_count": 1,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "West Africa"
+  },
+  {
+   "slot": "S70",
+   "agent": "E",
+   "primary_genre": "educational",
+   "audience_mode": "kids",
+   "planned_chapter_count": 2,
+   "chapter_length": "short",
+   "image_style": "anime",
+   "setting_region": "USA or Canada"
+  }
+ ]
+}

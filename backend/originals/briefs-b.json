@@ -1,0 +1,1034 @@
+{
+  "stories": [
+    {
+      "slot": "S15",
+      "slug": "the-day-my-shadow-quit",
+      "title": "The Day My Shadow Quit",
+      "logline": "In a hill town where every shadow does a chore, eight-year-old Posy's shadow quits sweeping and runs off to join the travelling Shadow Fair - two days before the town's Midsummer portrait.",
+      "themes": [
+        "friendship",
+        "listening",
+        "fairness",
+        "summer"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "comedy"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "In Upper Wimble every shadow has a job: they sweep, carry water, rock cradles. Posy Aldercott's shadow, Longstep, is sick of sweeping and runs off to the travelling Shadow Fair. Posy has two days to find him, and to ask what he actually wants, before the Midsummer Noon portrait of the whole town.",
+        "where_and_when": "Upper Wimble, an invented hill town of crooked slate roofs, windmills and long summer light, where shadows work as helpers and the lamplighter tucks them in at night; the Shadow Fair camps in a meadow of striped tents",
+        "characters": [
+          {
+            "name": "Posy Aldercott",
+            "isHero": true,
+            "background": "8, youngest of five, bossy with her shadow because everyone is bossy with her. Talks fast, collects buttons, has never once asked her shadow anything. Wants to be picked first for something, just once.",
+            "appearance": "small round-faced girl with light brown skin and a gap-toothed grin, two frizzy bunches tied with odd ribbons, green dungarees with one strap undone, scuffed red boots, a jam jar of buttons in her pocket"
+          },
+          {
+            "name": "Longstep",
+            "background": "Posy's shadow, her age but much taller at sunset. Cannot speak; talks only by shape and gesture. Secretly longs to dance instead of sweep and has been practising on bedroom walls at night while Posy sleeps.",
+            "appearance": "a long thin shadow shaped like Posy but lanky and elastic, bunches sticking up like ears, leaping across a sunlit whitewashed wall"
+          },
+          {
+            "name": "Humbert Fenwhistle",
+            "background": "74, the town lamplighter who tucks the shadows in each night and knows them all by name. Deaf in one ear, patient, a terrible singer. His own shadow ran off to the Fair fifty summers ago and he was too proud to ask it home.",
+            "appearance": "tall bony old man with dark brown skin, white mutton-chop whiskers, a long blue coat with brass buttons, a lamplighter's pole with a brass hook, and no shadow at all under his boots"
+          }
+        ],
+        "moments": [
+          "Posy wakes to a broom sweeping itself very badly and a Posy-shaped blank on her bedroom wall",
+          "Mr Fenwhistle leads Posy to the Shadow Fair by lamplight, where shadows juggle, tumble and waltz on the tent walls",
+          "Posy finds Longstep dancing on the big top and, for the first time, asks him what he wants",
+          "At the Midsummer portrait Posy and Longstep strike a dance pose together - and Mr Fenwhistle's old shadow comes home too"
+        ],
+        "story_values": [
+          "kindness",
+          "listening"
+        ],
+        "avoid": "anything scary, shadows being hurt or trapped, villains, children lost or in danger",
+        "writing_style": "bright, bouncy read-aloud sentences with funny sound words and gentle running jokes; warm, silly and never scary"
+      }
+    },
+    {
+      "slot": "S16",
+      "slug": "basant-after-dark",
+      "title": "Basant After Dark",
+      "logline": "In Lahore, where kite-flying has been banned for years, a kite-maker whose family's kites carry the city's grief into the sky has five nights to fly the backlog before it buries her street.",
+      "themes": [
+        "grief",
+        "what a city forbids",
+        "craft",
+        "letting go"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "Lahore, now. For generations the Qureshi women's kites carried the city's grief: write a sorrow on the paper, cut the string at Basant, and it is gone. Kites are banned now, and years of unflown sorrow are settling on the rooftops like grey dust. Farzana has five nights to fly it away, illegally.",
+        "where_and_when": "The Walled City of Lahore, present day, late winter into spring: kite shops near Mochi Gate shuttered by the ban, rooftops strung with washing and pigeon coops, the Badshahi Mosque at dusk, a police station in Anarkali",
+        "characters": [
+          {
+            "name": "Farzana Qureshi",
+            "isHero": true,
+            "background": "41, kite-maker who now sells school stationery from her father's shop because kites are illegal. Divorced, dry, stubborn. Has not written her own sorrow on a kite since the ban and will not say what it is. Tears paper with her teeth, which her mother hated.",
+            "appearance": "sturdy Punjabi woman with a strong jaw, reading glasses on a beaded chain, black hair with a grey streak under a loose maroon dupatta, a brown cardigan over a printed cotton shalwar kameez, tissue paper and bamboo splints in her fists"
+          },
+          {
+            "name": "Tariq Bhatti",
+            "background": "33, the sub-inspector enforcing the kite ban in her quarter. Correct, tired, secretly kind. His younger brother was killed by a glass-coated kite string, and the grief the city cannot fly away includes his own.",
+            "appearance": "lean Pakistani man with a neat moustache and dark circles under his eyes, a grey police uniform with the sleeves rolled, a motorcycle helmet under one arm"
+          },
+          {
+            "name": "Zubaida Rasheed",
+            "background": "79, the retired schoolteacher upstairs, whose roof is waist-deep in other people's sorrow because she has been sweeping it off the lane at night. Sharp, funny, dying slowly, determined to see one last Basant.",
+            "appearance": "tiny stooped woman with hennaed orange hair, thick spectacles, a white cotton shalwar kameez and black shawl, holding a straw broom taller than she is"
+          }
+        ],
+        "moments": [
+          "Farzana finds grey sorrow-dust drifted knee-deep on Zubaida's roof at dawn",
+          "She writes a stranger's grief on the first illegal kite of the season and cuts it loose over the Walled City",
+          "Tariq catches her on the roof with a hundred kites and a spool of plain cotton string",
+          "Tariq writes his brother's name on a kite and cannot bring himself to cut it",
+          "The whole neighbourhood climbs to the rooftops for one forbidden night of kites"
+        ],
+        "story_values": [
+          "compassion",
+          "courage"
+        ],
+        "avoid": "graphic injury, glamorising glass or metal kite string, mocking the police or religion, gore",
+        "writing_style": "warm, sensory and wry; Lahori speech rhythms with Urdu and Punjabi words used lightly; the magic stated plainly as ordinary fact",
+        "beats": [
+          "Night 1, dawn: Farzana, 41, finds grey sorrow-dust knee-deep on Zubaida's roof; by night 5 it buries the lane. (Rule: grief written on a kite and cut loose in flight by its writer leaves them.)",
+          "Night 2: in her shuttered shop by Mochi Gate she writes a stranger's grief on the season's first illegal kite and cuts it loose. (Truth, ch5: her own grief is her father, dead the week of the ban.)",
+          "Night 3: Sub-inspector Tariq Bhatti, 33, catches her on the roof with a hundred kites and plain cotton string; she shows him the dust, and instead of arresting her he holds the spool.",
+          "Night 4: Tariq writes his younger brother's name on a kite (glass string killed him) and cannot cut it; the dust climbs the stairs, and Zubaida, 79 and failing, asks for one last Basant.",
+          "Night 5, Basant: the whole neighbourhood climbs to the rooftops for one forbidden night; Tariq cuts his brother's kite, Farzana flies her father's at last, Zubaida sees her Basant, the lane clears."
+        ]
+      }
+    },
+    {
+      "slot": "S17",
+      "slug": "the-weather-auction",
+      "title": "The Weather Auction",
+      "logline": "In a port city where tomorrow's weather is sold at auction every dawn, a gavel clerk finds someone has been buying drought for her mother's valley - and she has five mornings to stop them.",
+      "themes": [
+        "greed",
+        "home",
+        "honesty",
+        "the price of rain"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "thriller"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "short",
+        "image_style": "cinematic",
+        "topic": "In Saltmere, tomorrow's weather is auctioned lot by lot every dawn. Gavel clerk Odile Brassac notices one anonymous bidder has bought 'no rain' over the Vauze valley forty days running. Her mother's olive farm there will fail in five days. She cannot outbid them, so she starts to rig the gavel.",
+        "where_and_when": "Saltmere, an invented Mediterranean-style port of white terraces, salt pans and a domed Weather Exchange with a copper sky-dial; the parched Vauze valley of olive groves two days inland; late summer, an age of telegraphs and bicycles",
+        "characters": [
+          {
+            "name": "Odile Brassac",
+            "isHero": true,
+            "background": "31, junior gavel clerk at the Exchange, the first from the valley ever to work there. Quick with numbers, bad at lying, reads bidders by their hands. Wants to belong in the city and to save the farm she left, and is ashamed of both. Counts steps under her breath.",
+            "appearance": "short solid woman with olive skin, heavy black eyebrows, a thick black plait pinned up, round steel spectacles, a cream linen blouse and dark green waistcoat with a clerk's brass badge, a small ivory gavel on a cord"
+          },
+          {
+            "name": "Anselme Corbeau",
+            "background": "66, blind wine merchant and the Exchange's richest bidder, who buys sun for vineyards across the sea. Charming, candid about his greed, and the obvious suspect. Knows who the anonymous bidder is, and is working out what the truth is worth.",
+            "appearance": "heavy elegant old man with sun-spotted white skin, a trimmed white beard, round dark glasses, a cream linen suit and panama hat, a silver-topped cane he taps on the bidding floor"
+          },
+          {
+            "name": "Gaspard Lemaire",
+            "background": "49, Saltmere's Water Commissioner, a beloved reformer who built the city's fountains. He is the bidder: he buys the valley's drought so its farmers will sell him their springs, and he truly believes a thirsty city matters more than a few farms.",
+            "appearance": "tall spare man with pale skin, a long clean-shaven face, thinning fair hair combed flat, a dark blue frock coat with a silver water-drop pin, ink on his cuffs, a leather folder of spring deeds"
+          }
+        ],
+        "moments": [
+          "Odile reads the ledger and finds the same thin signature under forty days of 'no rain'",
+          "Anselme pours her the last wine of a vineyard the auction killed, to show her what it does",
+          "Odile slips a false bid into the dawn auction and the whole city wakes to hail",
+          "She rides the mail cart to the valley and finds her mother already selling the spring",
+          "The final auction: Odile takes the gavel and sells the valley its rain for one honest coin"
+        ],
+        "story_values": [
+          "honesty",
+          "loyalty"
+        ],
+        "avoid": "gore, torture, a villain who monologues, modern technology or corporations",
+        "writing_style": "brisk, sunlit, suspenseful prose with the thrill of the auction floor and dry humour; weather described as something you can smell, weigh and buy",
+        "beats": [
+          "Dawn 1: clerk Odile Brassac, 31, finds one thin signature under 40 days of 'no rain' on the Vauze; her mother's farm fails by dawn 5. (Rule: the gavel binds; weather denied one place falls elsewhere.)",
+          "Dawn 2: blind bidder Anselme Corbeau, 66, pours her the last wine of a vineyard the auction killed and hints he knows the buyer. (Truth, ch4: Commissioner Lemaire buys drought to force spring sales.)",
+          "Dawn 3: Odile slips a false rain bid into the dawn auction; the gavel binds both lots, the valley stays dry, and its denied rain falls on Saltmere as hail. The Exchange hunts the rigger.",
+          "Night 3 to dawn 4: she rides the night mail cart inland, finds her mother already selling the spring, and sees the buyer's deed signed by Gaspard Lemaire, 49, the beloved Water Commissioner.",
+          "Dawn 5, final auction: Odile takes the gavel, exposes Lemaire's bids with Anselme's word, and sells the Vauze its rain for one honest coin; Saltmere goes dry one day to pay it, and the valley drinks."
+        ]
+      }
+    },
+    {
+      "slot": "S18",
+      "slug": "the-sea-comes-back-on-thursday",
+      "title": "The Sea Comes Back on Thursday",
+      "logline": "In Moynaq, the Uzbek fishing town the Aral Sea abandoned, the sea returns for three nights - and a granddaughter who cannot swim must stop her grandfather sailing away on it.",
+      "themes": [
+        "loss",
+        "home",
+        "the old and the new",
+        "letting go"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "long",
+        "image_style": "auto",
+        "topic": "Moynaq, Karakalpakstan. The Aral Sea left this port decades ago. Aysulu has come from Tashkent to sell her grandfather's house. Then one Thursday the sea comes back, for three nights only, and whatever is aboard a ship when it leaves goes with it. Her grandfather is mending his boat.",
+        "where_and_when": "Moynaq, a former fishing port in Karakalpakstan, Uzbekistan, present day, early autumn: rusting trawlers in a desert of salt and sand, a shut fish cannery, dust storms, camels, a war memorial on the old cliff above where the shore was",
+        "characters": [
+          {
+            "name": "Aysulu Tleumuratova",
+            "isHero": true,
+            "background": "29, a bank loan officer in Tashkent who left Moynaq at twelve and speaks Karakalpak badly now. Organised, guilty, allergic to the dust. Wants the house sold and her grandfather safe in her flat. Has never told him she cannot swim.",
+            "appearance": "tall slim Karakalpak woman with wide cheekbones, black hair in a low ponytail, city clothes wrong for the desert: white sneakers, a navy trench coat, a work lanyard, a phone in a cracked case, a silk scarf pulled over her mouth"
+          },
+          {
+            "name": "Oralbay Tleumuratov",
+            "background": "84, former trawler captain, the last man in Moynaq who remembers the sea's moods. Gentle, funny, deaf when it suits him. His wife drowned in the old sea, and he has waited fifty years for it to come back and let him follow her.",
+            "appearance": "small wiry old Karakalpak man with a weathered brown face and white stubble, a black lambswool hat, a striped sailor's vest under a padded chapan, rubber boots, a tin of blue paint and a brush"
+          },
+          {
+            "name": "Stanislav Rybak",
+            "background": "52, a hydrologist from Nukus who has measured the dying sea for thirty years and arrives to measure its return. Precise, lonely, thrilled and terrified. Calculates that the sea will leave at dawn on Sunday, and that it will not wait for anyone.",
+            "appearance": "big bearded fair-skinned man with a sunburned bald head, thick glasses, a fishing vest bristling with instruments, a clipboard sealed in a plastic bag"
+          }
+        ],
+        "moments": [
+          "On Thursday night the sea pours silently back over the desert and lifts the rusted trawlers upright",
+          "Aysulu finds the whole town on the new shore at dawn, buying fish from boats crewed by the long-dead",
+          "Her grandfather takes her out in his patched boat to where the cannery girls used to sing",
+          "Rybak's instruments say the sea leaves at dawn on Sunday, and her grandfather has packed a bag",
+          "On the last night Aysulu, who cannot swim, rows out after him"
+        ],
+        "story_values": [
+          "love",
+          "letting go"
+        ],
+        "avoid": "graphic drowning, disaster-tourism tone, mocking the town's poverty, gore",
+        "writing_style": "luminous, patient and grounded; the magic told as plain fact, the grief without melodrama; Karakalpak and Russian words used lightly"
+      }
+    },
+    {
+      "slot": "S19",
+      "slug": "the-salt-notary",
+      "title": "The Salt Notary",
+      "logline": "In a kingdom where a broken promise turns you slowly to salt, the notary who seals oaths is hired to witness a royal marriage treaty she learns one side means to break - and falls for the bride.",
+      "themes": [
+        "promises",
+        "love and duty",
+        "truth",
+        "what the body pays"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "romance",
+          "mystery"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "In Ashkeld a broken promise turns the breaker to salt, finger by finger. Oath-notary Berenguera Faure lost two fingers at nine. Now she must seal the marriage treaty of Azalais Montclar, heiress of an enemy port, and someone has written it to be broken - salting everyone who swears to it.",
+        "where_and_when": "Ashkeld, an invented kingdom on white salt flats, its capital built of salt brick re-glazed after every rain; oath halls, salt caravans, and the enemy harbour city of Montclar across the flats; one winter month before a royal wedding; lamps, quills and wax",
+        "characters": [
+          {
+            "name": "Berenguera Faure",
+            "isHero": true,
+            "background": "38, royal oath-notary who reads each promise aloud and seals it with salt. Dry, exacting, unmarried, feared at parties. Lost two fingers to a childhood oath to her dying father. Makes no promises she can avoid, which is why she has never told anyone she loves them.",
+            "appearance": "tall angular woman with brown skin, close-cropped greying black hair, a long nose, two missing fingers on her left hand with the stumps white as salt, a black notary's robe with a white glazed collar, a brass seal on a chain"
+          },
+          {
+            "name": "Azalais Montclar",
+            "background": "26, heiress of the harbour city of Montclar, sent to marry Ashkeld's crown prince to end a war. Warm, reckless, sharp at chess, funny about her own fate. Promised her dying mother to make the marriage work, and is finding she cannot.",
+            "appearance": "plump sunburnt young woman with olive skin, a mass of curly chestnut hair barely pinned, freckles, a sea-green travelling gown salt-stained at the hem, a carved wooden chess queen she turns in her fingers"
+          },
+          {
+            "name": "Guilhem Rostanh",
+            "background": "61, the king's treasurer and Berenguera's old teacher, the only man alive who can write a promise that looks whole and has a hole in it. Believes the treaty must fail to protect the salt monopoly that feeds the kingdom. Loves Berenguera like a daughter.",
+            "appearance": "small neat old man with pale skin, pink cheeks, a white goatee, spotless grey velvet, ink-blue fingertips, and folding spectacles he never unfolds"
+          }
+        ],
+        "moments": [
+          "A ferryman who broke his word turns to salt on the harbour steps in front of Berenguera and Azalais",
+          "Azalais beats Berenguera at chess and asks her, as a notary, whether a promise to the dead still counts",
+          "Berenguera finds the hollow clause in the treaty, written in her own teacher's hand",
+          "Her little finger begins to whiten on the night she almost tells Azalais she loves her",
+          "At the wedding Berenguera reads the oath aloud and rewrites it as she speaks, at her own cost"
+        ],
+        "story_values": [
+          "honesty",
+          "courage"
+        ],
+        "avoid": "graphic body horror, gore, infidelity on the page, explicit content, a villain who is simply evil",
+        "writing_style": "precise, cool, witty prose that warms as the romance does; slow-burn tension, legal wordplay, salt and lamplight as recurring images",
+        "beats": [
+          "Ch1: an oath-breaking ferryman salts on the harbour steps before notary Berenguera, 38, and heiress Azalais, 26. (Rule: break a sealed oath, even to the dead, and you salt; wavering whitens it first.)",
+          "Ch2: Azalais beats Berenguera at chess and asks, as a notary, if a promise to the dead counts; it does. (Truth, ch4: treasurer Guilhem wrote a clause both sides must break, to save the salt monopoly.)",
+          "Ch3, the oath hall: Berenguera reads the draft treaty aloud to both delegations; it sounds whole, yet a Montclar clerk's fingertip whitens as he initials it, and she knows the text itself is poisoned.",
+          "Ch4, night in the archive: she finds the hollow clause, a promise of an open salt road that Ashkeld's monopoly law already forbids, written in the hand of Guilhem Rostanh, 61, her teacher.",
+          "Ch5, midpoint: over supper Guilhem admits it, calmly: the monopoly feeds the kingdom and the war is cheaper. He begs her silence as a daughter; she refuses to promise it, and he lets her go.",
+          "Ch6: Azalais gives her the exact words sworn to her dying mother: 'make the peace hold', not the marriage. That night Berenguera almost says she loves her; her notary's oath whitens her little finger.",
+          "Ch7, eve of the wedding, lamplight over the chessboard: Berenguera and Azalais draft a whole oath in secret, knowing a notary who alters an oath while reading it aloud pays with her hand.",
+          "Ch8, the wedding: Berenguera reads the oath aloud, rewriting it as peace without marriage; her left hand salts to the wrist, Guilhem stays silent, Azalais is free, and Berenguera promises love."
+        ]
+      }
+    },
+    {
+      "slot": "S20",
+      "slug": "what-the-hyenas-carry",
+      "title": "What the Hyenas Carry",
+      "logline": "In the walled city of Harar, the hyenas fed at the gates each night eat the words people cannot say aloud - and when a health officer arrives to cull them, the feeder's daughter has six nights before everything unsaid comes back.",
+      "themes": [
+        "what goes unsaid",
+        "inheritance",
+        "living with the wild",
+        "forgiveness"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "contemporary"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "standard",
+        "image_style": "cinematic",
+        "topic": "Harar, now. Each night the hyena feeder's scraps carry away what the town whispers into them - grudges, confessions, curses. The feeder has died, the hyenas are hungry, and a health officer has come to cull them. If they go, every unsaid word returns to its speaker. Ikram has six nights.",
+        "where_and_when": "Harar Jugol, the old walled city in eastern Ethiopia, present day, the dry season: whitewashed alleys and coloured doors, the five old gates, the meat market, a khat-chewing afternoon, and the scrubby hills where the hyenas wait at dusk",
+        "characters": [
+          {
+            "name": "Ikram Abdurahman",
+            "isHero": true,
+            "background": "26, pharmacist in the new town who refused to learn her father's trade and now must feed his hyenas. Brisk, funny, squeamish about raw meat. Has an unsaid thing of her own in the hyenas' bellies, the last words she never said to her father.",
+            "appearance": "slim Harari woman with warm brown skin, a bright orange and purple patterned scarf over her hair, a long green dress with a white pharmacist's coat thrown over it, silver bangles, a bucket of meat scraps and a short feeding stick"
+          },
+          {
+            "name": "Mesfin Tadesse",
+            "background": "41, regional public health officer from Addis Ababa, sent after a rabies scare. Methodical, decent, allergic to superstition, and a widower who has never said aloud that he blames himself. Has orders to cull within the week.",
+            "appearance": "tall thin Ethiopian man with a neat greying beard, rimless glasses, a pressed khaki field jacket with a ministry badge, dusty leather shoes, a clipboard and a torch"
+          },
+          {
+            "name": "Sheikh Yonis",
+            "background": "63, the town's oldest hyena feeder, rival to Ikram's father for thirty years and now her reluctant teacher. Gruff, pious, a showman for tourists. Knows which hyena carries which family's secrets, and has been feeding them something he should not.",
+            "appearance": "stocky elderly Harari man with a white hennaed beard, a white skullcap, a checked sarong and an old army jacket, a leather sack over one shoulder, a scar across the back of one hand"
+          }
+        ],
+        "moments": [
+          "At her father's gate at dusk, Ikram holds out the first scrap and the matriarch hyena takes it from her mouth-held stick",
+          "A butcher's unsaid curse spills out of him in the market when one hyena fails to come",
+          "Mesfin follows Ikram to the feeding place and hears his own buried words in a hyena's laugh",
+          "Ikram finds out what Sheikh Yonis has been feeding the pack, and whose secret it is",
+          "On the sixth night the whole town comes to the gates to say its unsaid things aloud"
+        ],
+        "story_values": [
+          "honesty",
+          "compassion"
+        ],
+        "avoid": "gore, animals harmed on the page, mocking Islam or Harari custom, exoticising Ethiopia, rabies horror",
+        "writing_style": "wry, warm and nocturnal; the magic stated as plain local fact; Harari and Amharic words used lightly; tension from the clock and the kindness under it",
+        "beats": [
+          "Night 1, dusk at her late father's gate in Harar: Ikram, 26, feeds the matriarch from a mouth-held stick. (Rule: words whispered into a scrap leave the speaker; an unfed hyena's words return aloud.)",
+          "Night 2, the meat market: one hyena fails to come and a butcher's unsaid curse spills out of him. (Truth, ch4: Sheikh Yonis has fed the matriarch the words her father left with him for Ikram.)",
+          "Night 3: health officer Mesfin Tadesse, 41, follows Ikram, whispers into a scrap to mock her, and hears in a hyena's laugh his buried words: he blames himself for his wife's death. Cull: night 6.",
+          "Night 4: Ikram catches Sheikh Yonis, 63, feeding the matriarch in secret and learns the scraps hold her father's unsaid pride in her, which her father's rival of thirty years could not deliver.",
+          "Night 5: Mesfin signs the cull order, then tears it up; Ikram and Yonis, reconciled, go door to door through the whitewashed alleys asking Harar to come to the gates and speak what it fed the pack.",
+          "Night 6, the gates: the whole town says its unsaid things aloud; Mesfin names his grief, Yonis gives Ikram her father's words, she says her own back, and the hyenas stay, fed and lighter."
+        ]
+      }
+    },
+    {
+      "slot": "S21",
+      "slug": "heavy-is-the-house",
+      "title": "Heavy Is the House",
+      "logline": "In a valley where every lie has weight, a removals woman has one night to shift the mayor's house before it sinks through the town square - and the only way to lighten it is to get him to tell the truth.",
+      "themes": [
+        "honesty",
+        "pride",
+        "small-town politics",
+        "absurdity"
+      ],
+      "request": {
+        "primary_genre": "fantasy",
+        "genres": [
+          "fantasy",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 2,
+        "chapter_length": "long",
+        "image_style": "comic",
+        "topic": "In Middling Hollow lies have weight: a fib is a pebble, a big lie a sack of flour. Mayor Barnaby Glaze has told so many that on election eve his house starts sinking through the square into the old mines. Winnie Crust, the strongest removals woman in the valley, is hired to move it by morning.",
+        "where_and_when": "Middling Hollow, an invented valley town of wonky timber houses, a cobbled square with a brass public weighbridge for checking your pockets, old mine tunnels underneath; the night before a mayoral election; lanterns, handcarts and a brass band",
+        "characters": [
+          {
+            "name": "Winifred 'Winnie' Crust",
+            "isHero": true,
+            "background": "45, owner of Crust and Daughter Removals (no daughter; she liked the sound). Enormously strong, so scrupulously honest she floats a little when she walks. Wants to be paid. Cannot tell even a polite lie, which has ruined every date she has ever been on.",
+            "appearance": "tall broad-shouldered woman with ruddy white skin, huge forearms, a short blonde braid, a nose broken twice, brown leather overalls, a red neckerchief, a long wooden pole with an iron hook"
+          },
+          {
+            "name": "Barnaby Glaze",
+            "background": "58, mayor for twenty years, charming, sweaty and genuinely loved. Every lie he has told was told to be liked. Now his house is sinking and his chain of office is too heavy to lift, and he would rather go down with the cellar than admit why.",
+            "appearance": "short round man with pink cheeks and a comb-over, a velvet waistcoat straining at its buttons, a gold mayoral chain so heavy it bends him forward, a very small nervous dog under one arm"
+          },
+          {
+            "name": "Tuppence Glaze",
+            "background": "14, the mayor's daughter, who has kept a notebook of every lie her father ever told, with its weight. Sarcastic, anxious, loves him anyway. The notebook is the only map of what is holding the house down.",
+            "appearance": "skinny teenage girl with her father's round cheeks, frizzy ginger hair, enormous boots, a mustard cardigan, ink on her chin, a battered notebook stuffed with string-tied weighing slips"
+          }
+        ],
+        "moments": [
+          "The mayor's house sinks to its windowsills in the square while the brass band keeps playing",
+          "Winnie finds a lie from his first campaign wedged in the cellar, the size of a piano",
+          "Tuppence reads her notebook aloud and the whole town learns exactly how heavy their mayor is",
+          "The mayor confesses from his chimney pot and the house pops up like a cork"
+        ],
+        "story_values": [
+          "honesty",
+          "forgiveness"
+        ],
+        "avoid": "cruel humour, jokes about bodies or weight of people, anyone seriously hurt, real-world politics",
+        "writing_style": "comic, fast and warm, with slapstick set pieces, deadpan narration and running jokes that pay off; kind to every character"
+      }
+    },
+    {
+      "slot": "S22",
+      "slug": "lapin-wont-dig",
+      "title": "Lapin Won't Dig",
+      "logline": "In a hot dry summer on the bayou the animals dig a well together - all except Compère Lapin, who says he never gets thirsty. So who is drinking the well dry every night?",
+      "themes": [
+        "sharing",
+        "cleverness",
+        "fairness",
+        "friendship"
+      ],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": [
+          "folktale",
+          "comedy"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "short",
+        "image_style": "watercolor",
+        "topic": "A Louisiana Compère Lapin tale told on the porch. The bayou dries up, so the animals agree to dig a well. Compère Lapin says he never gets thirsty and naps instead. Each morning the bucket is empty and rabbit prints dot the mud. Bouki, who is not clever, is put in charge of catching the thief.",
+        "where_and_when": "A bayou in south Louisiana in the long-ago summer of the old stories: cypress trees hung with Spanish moss, a dried-up pond, a new wooden well, and a porch where Creole and Cajun grandparents tell tales in the evening",
+        "characters": [
+          {
+            "name": "Compère Lapin",
+            "isHero": true,
+            "background": "The rabbit of the bayou: clever, lazy, boastful and very hard to stay angry with. Would rather invent a trick than lift a shovel. Learns, slowly and stickily, that a trick which leaves your friends thirsty is not a good one.",
+            "appearance": "slim brown rabbit with one floppy ear and bright mischievous eyes, a straw boater with a red band, a too-small blue waistcoat, a tin cup hanging on a string around his neck"
+          },
+          {
+            "name": "Bouki",
+            "background": "Lapin's big friend and favourite fool, always hungry, always tricked, never giving up. Slow to think but quick to forgive, and in this tale the one who finally outsmarts Lapin by being kind.",
+            "appearance": "big shaggy grey-spotted hyena with a goofy grin, a battered straw hat, patched overalls with one strap, and a shovel over his shoulder"
+          },
+          {
+            "name": "Tante Tortue",
+            "background": "The oldest turtle on the bayou, who remembers the last dry summer and bosses the well-digging from a rocking chair. Slow, sharp and funny. Her plan to catch the thief is stickier than a trap and much kinder.",
+            "appearance": "small wrinkled green turtle with spectacles on her beak, a lace shawl draped over her shell, a faded sunbonnet, and a long wooden spoon she points with"
+          }
+        ],
+        "moments": [
+          "The animals dig all day while Lapin naps in the shade and sings rude songs about shovels",
+          "Every morning the bucket is empty and there are small round prints in the mud",
+          "Bouki guards the well all night and is tricked into a dance contest until he falls asleep",
+          "Tante Tortue sets a sticky doll of pine gum by the well, and Lapin says hello to it",
+          "Stuck fast and thirsty, Lapin has to ask Bouki for help - and next morning he picks up a shovel"
+        ],
+        "story_values": [
+          "sharing",
+          "fairness"
+        ],
+        "avoid": "anyone hurt or truly frightened, mean-spirited trickery, the phrase 'tar baby', caricatured dialect",
+        "writing_style": "told aloud like a porch tale, with 'Well, my friend' openings, repetition, sound effects and a few Louisiana French words made clear by context; funny and warm"
+      }
+    },
+    {
+      "slot": "S23",
+      "slug": "nobody-eats-my-dumplings",
+      "title": "Nobody Eats My Dumplings",
+      "logline": "Every New Year's Eve a huge grumpy monster called Nian stomps into the village to gobble the dumplings - until seven-year-old Doudou and the deaf old ferryman work out what it cannot stand.",
+      "themes": [
+        "bravery",
+        "teamwork",
+        "New Year",
+        "noticing"
+      ],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": [
+          "folktale",
+          "comedy"
+        ],
+        "audience_mode": "kids",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 5,
+        "chapter_length": "short",
+        "image_style": "comic",
+        "topic": "A Chinese New Year legend. Every New Year's Eve Nian, a monster as big as a haystack, stomps down from the mountain and gobbles the village's dumplings while everyone hides. This year seven-year-old Doudou refuses to leave hers. With deaf old ferryman Gu she has five days to learn what Nian hates.",
+        "where_and_when": "A river village of whitewashed houses and black-tiled roofs in the China of old tales, the snowy days before the Lunar New Year: a mountain, a ferry, bamboo groves, and a kitchen full of dumplings",
+        "characters": [
+          {
+            "name": "Pan Doudou",
+            "isHero": true,
+            "background": "7, the smallest in the village and the most stubborn. Folds dumplings better than her big brothers and will not let anyone eat them without asking. Asks 'but why?' about everything and notices the small things grown-ups miss.",
+            "appearance": "small round-cheeked Chinese girl with a short black bob and fringe, a quilted red-and-blue padded jacket, cloth shoes, flour on her nose, holding a bamboo steamer of dumplings"
+          },
+          {
+            "name": "Gu Baozhu",
+            "background": "80, the deaf old ferryman everyone forgets to warn. Cheerful and stubborn, the only person who has never run from Nian, because he never heard it coming. Burns green bamboo in his stove, which crackles and bangs like thunder.",
+            "appearance": "skinny old Chinese man with a long wispy white beard, a wrinkled sun-browned face, a conical straw hat, a patched blue cotton jacket, a long ferry pole, and a big smile with three teeth"
+          },
+          {
+            "name": "Nian",
+            "background": "A huge monster from the mountain who comes down once a year, hungry and cross. Not wicked, just greedy and very easily startled - especially by loud bangs and the colour red. Secretly rather lonely.",
+            "appearance": "shaggy blue-green lion-like beast as big as a haystack, with one wobbly horn, huge round eyes, a big grumpy mouth of blunt teeth, and dumpling crumbs in its whiskers"
+          }
+        ],
+        "moments": [
+          "The whole village runs up the hill while Nian gobbles the dumplings and burps so loudly the ducks fall over",
+          "Doudou sees Nian leap backwards away from a red jacket drying on a line",
+          "Nian bolts from Gu's hut when the green bamboo in his stove goes bang, and Gu never even notices",
+          "Doudou and Gu teach the village to paste red paper on every door, hang red lanterns and bang pots",
+          "Nian meets red and racket everywhere, stomps home sulking, and Doudou leaves one dumpling at the gate"
+        ],
+        "story_values": [
+          "bravery",
+          "teamwork"
+        ],
+        "avoid": "anything genuinely scary, anyone eaten or hurt, children handling fire or firecrackers, stereotypes",
+        "writing_style": "told aloud like a grandparent's New Year story: funny, rhythmic, full of sound effects and repeated lines, and true to the legend of why homes wear red couplets and lanterns at New Year",
+        "beats": [
+          "Last New Year's Eve: the village runs up the hill while Nian gobbles every dumpling and burps so loudly the ducks fall over. Doudou, 7, vows: nobody eats my dumplings without asking!",
+          "Day 1, five snowy days before New Year: Nian creeps down early, sniffing; Doudou, hiding by the washing, sees it leap backwards away from Mama's red jacket drying on the line. 'But why?'",
+          "Day 2, the ferry: Doudou visits deaf old Gu, 80; Nian sniffs at his hut, the green bamboo in his stove goes BANG, Nian bolts, and Gu, who heard nothing, just smiles his three-tooth smile.",
+          "Days 3 and 4: Doudou and Gu teach the village the secret: red paper on every door, red lanterns, and pots to bang. The grown-ups laugh, then listen, then join in, clang, clang, CLANG.",
+          "New Year's Eve: Nian meets red and racket at every door and stomps home sulking; nobody runs, and Doudou leaves one dumpling at the gate, because this time Nian asked, with a very small grunt."
+        ]
+      }
+    },
+    {
+      "slot": "S24",
+      "slug": "the-aspen-daughter",
+      "title": "The Aspen Daughter",
+      "logline": "Lithuania's oldest tale, Egle the Queen of Serpents, told by her youngest daughter - the one who gave away her father's secret word and became the trembling aspen.",
+      "themes": [
+        "family",
+        "betrayal",
+        "two worlds",
+        "grief"
+      ],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": [
+          "folktale",
+          "fantasy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "standard",
+        "image_style": "watercolor",
+        "topic": "Lithuania's old tale, told by the child who broke it. Eglė married the grass-snake king Žilvinas and lived nine years under the sea. Visiting home, her brothers tried to frighten the secret word out of her children. The sons said nothing. Drebulė, the youngest, told. Now an aspen, she tells us why.",
+        "where_and_when": "The Baltic coast of pagan Lithuania, long ago: a farmstead of log houses by a lake, a sauna, linen bleaching in the sun, the amber-strewn sea, and a palace of amber beneath it; nine summers and a single terrible visit home",
+        "characters": [
+          {
+            "name": "Drebulė",
+            "isHero": true,
+            "background": "The youngest of Eglė's four children, born under the sea, nine when she first visits her mother's people. Stammers. Frightened of her uncles and hungry for them to love her. She is the one who says the word, and she has trembled ever since.",
+            "appearance": "thin pale girl of nine with wild white-blonde hair, huge grey eyes, a linen shift embroidered with green snake patterns, amber beads, bare feet, silver-grey aspen leaves caught in her hair"
+          },
+          {
+            "name": "Eglė",
+            "background": "Youngest of twelve sisters, who found a grass snake in her sleeve after bathing and promised herself to it to get her clothes back. Came to love the snake-king truly. Brave, homesick, clever. Wants her children to belong to both her worlds.",
+            "appearance": "strong young Lithuanian woman with a long flaxen braid crowned with a wreath of rue, weathered fair skin, a white linen dress with a red woven sash, an amber necklace, a sea-green shawl"
+          },
+          {
+            "name": "Žilvinas",
+            "background": "The grass-snake king of the sea, who came up out of the water for a bride and kept every promise he made her. Gentle, patient, trusting to a fault. Comes to the shore only when called with the secret words.",
+            "appearance": "as a snake, a long black grass snake with golden-yellow patches behind its head; as a man, a tall lean young king with dark wet hair, pale skin, a thin gold crown and a cloak like green water"
+          }
+        ],
+        "moments": [
+          "A snake in Eglė's sleeve, a promise made for her clothes, and a wedding at the bottom of the sea",
+          "Nine years of amber rooms, then Drebulė's first sight of her mother's farm and her twelve loud uncles",
+          "The uncles take each child into the forest and ask for the word; the three brothers say nothing",
+          "Drebulė, frightened and flattered, says the word",
+          "Eglė calls her husband from the shore, the foam comes back red, and each of them chooses a tree"
+        ],
+        "story_values": [
+          "loyalty",
+          "forgiveness"
+        ],
+        "avoid": "gore or on-page killing, children beaten on the page, modernising the ending, mocking Baltic pagan belief",
+        "writing_style": "told aloud in the old Lithuanian way: plain, rhythmic, things in threes, sea and trees as living beings; the daughter's own voice, tender and ashamed; tragedy kept, never sensational",
+        "beats": [
+          "Drebulė, now an aspen, tells it: Eglė finds a grass snake in her sleeve and promises herself for her clothes. (Rule: only the secret words call Žilvinas ashore; milk-foam if alive, red if dead.)",
+          "A wedding under the sea; Žilvinas keeps every promise; nine years of amber rooms and four children. (Truth, ch5: Drebulė told for love, not fear; she thought the uncles only wished to meet him.)",
+          "Drebulė's ninth summer: Žilvinas allows nine days ashore, and each child promises never to tell the word. At the lakeside farm she first sees her twelve loud uncles and longs for them to love her.",
+          "Three days, three forests: the uncles take Ąžuolas, then Uosis, then Beržas among the trees to ask for the word; each brother comes back silent. Drebulė watches from the sauna door, envying them.",
+          "Her turn: her youngest uncle gives her an amber bead and says she could belong here always; frightened and flattered, she stammers the word, runs back, and tells no one what she has done.",
+          "The ninth day: Eglė calls from the shore and the foam comes back red. Each chooses a tree: oak, ash, birch, and Drebulė the trembling aspen; Eglė a spruce, who forgives her. Drebulė trembles still."
+        ]
+      }
+    },
+    {
+      "slot": "S25",
+      "slug": "every-echo-in-kanfara",
+      "title": "Every Echo in Kanfara",
+      "logline": "A king who is tired of being answered buys every echo in the land and seals them in his treasury - and a potter's daughter hides the last one in a water jar.",
+      "themes": [
+        "listening",
+        "power",
+        "voice",
+        "courage"
+      ],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": [
+          "folktale",
+          "fantasy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "short",
+        "image_style": "auto",
+        "topic": "Listen. In Kanfara, a kingdom that never was, King Mamadi Sidibé, tired of being answered, bought every echo in the land and sealed them in jars. The cliffs fell silent, the hunters lost their way, the children stopped singing. Only the potter's girl, Nakani, hid one echo away.",
+        "where_and_when": "Kanfara, an invented kingdom of the old tales on a great savanna river: red cliffs that used to talk back, baobabs, a mud-brick palace with a treasury of sealed clay jars, a potters' quarter; the dry season, long ago, when kings could buy anything",
+        "characters": [
+          {
+            "name": "Nakani Sissoko",
+            "isHero": true,
+            "background": "12, a potter's daughter who shapes jars as well as her mother and talks more than anyone in the quarter. Loves shouting at the red cliffs to hear herself come back. Brave when angry, which is often. Keeps the stolen echo under her sleeping mat and talks to it.",
+            "appearance": "tall thin West African girl with very dark skin, hair in small braids tied with clay beads, clay-grey hands and forearms, an indigo wrap dress knotted at one shoulder, a big round terracotta water jar balanced on her head"
+          },
+          {
+            "name": "Mamadi Sidibé",
+            "background": "The king of Kanfara, not cruel so much as tired: every word he has spoken for forty years has come back to him, and he no longer likes the sound. Generous with gold, stingy with listening. Rules by never being contradicted.",
+            "appearance": "heavy grand old king with a white beard, a tall white embroidered cap, a flowing grand boubou of white cotton stitched with gold, many rings, and a horsehair fly-whisk"
+          },
+          {
+            "name": "Koman Diabaté",
+            "background": "70, the king's griot, who has sung his praises all his life and must now sing into a land where nothing sings back. Wise, cunning, ashamed. Helps Nakani because a griot without echoes is a man shouting down a dry well.",
+            "appearance": "thin elderly man with a white goatee, a patched indigo robe, a round cap, and a kora whose gourd has been worn smooth by his hands"
+          }
+        ],
+        "moments": [
+          "The king's men ride through the land with sacks, buying every echo from every cliff, well and valley",
+          "In the silence the hunters are lost in the bush and the children forget their songs",
+          "The griot and Nakani carry the hidden echo to the king's feast in her water jar",
+          "Nakani uncovers the jar and the echo answers the king in his own words",
+          "The treasury jars crack one by one, and the king has to listen"
+        ],
+        "story_values": [
+          "listening",
+          "courage"
+        ],
+        "avoid": "gore, cruelty, portraying Africa as primitive or timelessly poor, mocking kings or griots",
+        "writing_style": "told aloud like a griot's tale: 'Listen' openings, call-and-response refrains, praise-song rhythm, repetitions in threes; spare and musical, with a moral that is earned not stated"
+      }
+    },
+    {
+      "slot": "S26",
+      "slug": "a-bridge-by-cockcrow",
+      "title": "A Bridge by Cockcrow",
+      "logline": "In the Basque hills an old midwife is called at midnight to deliver a lamia's baby - and learns the lamiak are building a bridge for her young neighbour, who has promised them his soul for it by cockcrow.",
+      "themes": [
+        "bargains",
+        "courage",
+        "the old ways",
+        "birth"
+      ],
+      "request": {
+        "primary_genre": "folktale",
+        "genres": [
+          "folktale",
+          "fantasy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 3,
+        "chapter_length": "long",
+        "image_style": "cinematic",
+        "topic": "A Basque tale told at the hearth. Kattalin, the valley midwife, is led at midnight to a river cave to deliver a lamia's baby. The lamiak are building a stone bridge for her neighbour Peio, whose wife is in labour across the flood. He has promised his soul if it stands by cockcrow.",
+        "where_and_when": "A Basque valley in the Pyrenees, long ago: stone farmhouses with carved lintels, beech woods, a flooded river no cart can cross, caves where the lamiak comb their golden hair; one winter night from midnight until cockcrow",
+        "characters": [
+          {
+            "name": "Kattalin Irazabal",
+            "isHero": true,
+            "background": "61, widowed midwife who has delivered half the valley and buried a husband and two sons. Practical, dry, afraid of nothing but the parish priest. Knows the old rule - never eat what a lamia offers - and is tempted, because she is tired and their bread smells like her mother's.",
+            "appearance": "short broad Basque woman with weathered ruddy skin, a hooked nose, white hair under a black headscarf, a black wool dress and apron, heavy wooden clogs, a lantern and a basket of clean linen"
+          },
+          {
+            "name": "Peio Arrieta",
+            "background": "34, a poor farmer across the river whose wife's labour has started while the flood cuts them off from the midwife. Desperate, proud, not very bright. Promised the lamiak his soul for a bridge before dawn. Now he wants it back, and needs the bridge too.",
+            "appearance": "lanky young Basque man with a big nose, black curls under a flat black txapela beret, a coarse linen shirt, a red sash, rope-soled shoes, holding a lantern in a shaking hand"
+          },
+          {
+            "name": "Andere Urgorri",
+            "background": "A lamia of the river caves, beautiful, vain and bound by her own ancient law: she pays every debt and collects every debt. Grateful to the midwife, owed a soul by Peio, unwilling to lose either. The bridge is her pride.",
+            "appearance": "tall pale woman with endless wet golden hair she combs with a golden comb, a gown of green river-weed, a lovely sorrowful face, and webbed duck's feet peeping out from under the hem"
+          }
+        ],
+        "moments": [
+          "A knock at midnight, a lantern in the rain, and Kattalin led into a cave where a lamia labours on a bed of moss",
+          "She delivers the child and is offered bread and gold; she takes the gold and refuses the bread",
+          "From the cave mouth she sees the lamiak hauling stones and singing, building a bridge by moonlight",
+          "Peio's wife cries out across the river, and the bridge still lacks its last stone",
+          "Kattalin crows like a rooster in the dark henhouse until every cock in the valley wakes"
+        ],
+        "story_values": [
+          "courage",
+          "cleverness"
+        ],
+        "avoid": "gore, graphic childbirth, mocking Catholic or Basque belief, turning the lamiak into monsters",
+        "writing_style": "told at a Basque hearth on a winter night: plain, vivid and sly, with repetitions and old sayings; the uncanny treated as neighbourly fact; Basque words used lightly"
+      }
+    },
+    {
+      "slot": "S27",
+      "slug": "mrs-hanabusa-goes-around-the-world",
+      "title": "Mrs Hanabusa Goes Around the World",
+      "logline": "Around the World in Eighty Days, but it is 1889, the traveller is a 67-year-old Osaka widow who has bet her rice fortune on it, and her valet is a runaway granddaughter.",
+      "themes": [
+        "nerve at any age",
+        "family",
+        "the wide world",
+        "wagers"
+      ],
+      "request": {
+        "primary_genre": "fanfiction",
+        "genres": [
+          "fanfiction",
+          "adventure",
+          "comedy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 4,
+        "chapter_length": "long",
+        "image_style": "anime",
+        "topic": "Osaka, 1889. At the merchants' club, widow Tsuruko Hanabusa bets her whole rice brokerage that she can circle the globe in eighty days by steamer and rail, and leaves that night - trailed by a stowaway granddaughter and a club clerk convinced she has fled with the stolen strongbox.",
+        "where_and_when": "Autumn 1889 into winter: Osaka's rice exchange, a Pacific steamer, San Francisco, the transcontinental railroad in snow, New York, the Atlantic, London, Suez, Bombay, Hong Kong and home to Kobe; gaslight, telegrams and timetables",
+        "characters": [
+          {
+            "name": "Tsuruko Hanabusa",
+            "isHero": true,
+            "background": "67, widow who ran her husband's rice brokerage for thirty years while men took the credit. Exact, frugal, terrifyingly calm, records every expense in a tiny ledger. Has never left Osaka. Took the bet because a younger broker called her finished.",
+            "appearance": "small straight-backed elderly Japanese woman, white hair in a neat bun with a tortoiseshell pin, a dark grey silk kimono under a black haori, western lace-up boots for the journey, an abacus and a leather ledger"
+          },
+          {
+            "name": "Fumiko Hanabusa",
+            "background": "17, Tsuruko's granddaughter, who hid in the luggage to escape an arranged marriage. Loud, modern, speaks textbook English learned from missionaries, dreams of being a telegraph operator. Plays the valet, badly and with great enthusiasm.",
+            "appearance": "tall gangly Japanese teenager with hair roughly chopped at the chin, a boy's sailor suit two sizes too big, a flat cap, a carpet bag and a phrasebook bristling with paper markers"
+          },
+          {
+            "name": "Heihachi Mochizuki",
+            "background": "29, junior clerk of the Osaka merchants' club, sent after her because the club's strongbox vanished the night she left. Earnest, seasick, rule-bound. Keeps trying to arrest her and keeps being needed to read a timetable.",
+            "appearance": "thin young Japanese man with round wire spectacles, a stiff western suit and bowler hat that never fit, a hopeful attempt at a moustache, a sheaf of telegrams and a green umbrella"
+          }
+        ],
+        "moments": [
+          "The bet at the merchants' club, and Tsuruko walks out to catch the night steamer with a single trunk",
+          "Fumiko is discovered in that trunk halfway across the Pacific",
+          "Snow stops the train in the Rockies and Tsuruko buys a sail-sledge from a rancher",
+          "In Bombay Mochizuki finally arrests her, and Fumiko gets her out with a single telegram",
+          "Home in Osaka a day late - until Fumiko realises they gained a day crossing the date line"
+        ],
+        "story_values": [
+          "courage",
+          "family"
+        ],
+        "avoid": "copying Verne's characters or scenes, colonial caricatures, mocking accents, gore",
+        "writing_style": "brisk, witty travel adventure with ticking timetables and ledger entries at chapter ends; warm comedy between grandmother and granddaughter; homage to Verne with original characters only"
+      }
+    },
+    {
+      "slot": "S28",
+      "slug": "two-imaginary-fiances",
+      "title": "Two Imaginary Fiancés",
+      "logline": "The Importance of Being Earnest, but it is two women in 1895 London who have each invented a fiancé to keep matchmakers away - and their formidable shared chaperone has just announced a double wedding.",
+      "themes": [
+        "the lies we tell for freedom",
+        "love",
+        "wit",
+        "manners"
+      ],
+      "request": {
+        "primary_genre": "fanfiction",
+        "genres": [
+          "fanfiction",
+          "comedy",
+          "romance"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [
+          "queer"
+        ],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 6,
+        "chapter_length": "standard",
+        "image_style": "comic",
+        "topic": "1895. Philippa Dorrington invented a fiancé in India to stop her aunt's matchmaking; Constance Ashby invented one in Scotland against fortune-hunters. Now Augustine Crewe, aunt to one and godmother to the other, announces a double wedding in six weeks. Two men must appear. Neither woman wants one.",
+        "where_and_when": "London and a Surrey country house, spring and early summer 1895: Kensington drawing rooms, a tea-shop, a publisher's office in Fleet Street, a garden party with a marquee and croquet, hansom cabs, rain",
+        "characters": [
+          {
+            "name": "Philippa Dorrington",
+            "isHero": true,
+            "background": "27, bookish orphan living on her aunt's money and secretly writing penny dreadfuls under a man's name. Witty on paper, tongue-tied in person. Invented Captain Bunting of the Bengal Lancers so she could write in peace, and writes his letters herself.",
+            "appearance": "tall thin pale young woman with ink-stained fingers, untidy dark brown hair escaping its pins, spectacles on a black ribbon, a plain navy walking dress with leg-of-mutton sleeves, a notebook in her pocket"
+          },
+          {
+            "name": "Constance Ashby",
+            "background": "25, a rich brewer's daughter everyone calls frivolous, who secretly keeps her father's books. Invented Mr Duncan Glennie of Perthshire to keep suitors off. A brilliant liar, bad at being alone, and the first to notice Philippa is lying too.",
+            "appearance": "short plump fair young woman with rosy cheeks and a cloud of golden curls, a fashionable pink-striped day dress with enormous sleeves, a straw hat trimmed with cherries, a lorgnette she does not need"
+          },
+          {
+            "name": "Augustine Crewe",
+            "background": "68, Philippa's aunt and Constance's godmother, a widow who has arranged eleven marriages and lost none. Formidable, epigrammatic, far sharper than either young woman suspects. Wants them both settled and happy, not necessarily in that order.",
+            "appearance": "large imposing elderly Englishwoman, silver hair piled high, a hooked nose, black silk with a jet-beaded bodice, an ear trumpet she uses only when convenient, a small pug on a velvet cushion"
+          }
+        ],
+        "moments": [
+          "Augustine announces the double wedding over tea, and both young women drop their cups",
+          "Philippa and Constance discover each other's inventions and form a conspiracy in a Kensington tea-shop",
+          "They hire one out-of-work actor to play both fiancés, and he arrives at the garden party in the wrong moustache",
+          "Captain Bunting is killed off by letter, and Constance comes to comfort Philippa for real",
+          "Augustine, who knew all along, cancels one wedding and arranges a very modern household instead"
+        ],
+        "story_values": [
+          "honesty",
+          "courage"
+        ],
+        "avoid": "explicit content, a tragic queer ending, mocking the women, copying Wilde's lines or characters",
+        "writing_style": "sparkling comedy of manners with epigrams, farce and quick dialogue in Wilde's spirit but with original lines; tender underneath the wit",
+        "beats": [
+          "Kensington, spring 1895: Augustine Crewe, 68, announces a double wedding in six weeks; Philippa, 27, and Constance, 25, both drop their cups. (Truth: Augustine has known both fiancés are fictions.)",
+          "A Kensington tea-shop in the rain: Constance sees Captain Bunting's letters are in Philippa's own inky hand; each confesses her invention, and the two liars form a conspiracy over cold scones.",
+          "Fleet Street: Philippa's publisher lends them an out-of-work actor, Lionel Fipps, to play both Captain Bunting and Mr Glennie; he rehearses two men badly, and Augustine sets the garden party.",
+          "Surrey garden party, June: Fipps arrives as Bunting in Glennie's ginger moustache; the women swap him between croquet and marquee as both fiancés are asked for at once, and almost kiss by the tent.",
+          "Kensington, a week before the wedding: Philippa kills Captain Bunting off by letter and dons black; Constance comes to comfort her for real, and they admit they want no man, only each other.",
+          "Wedding eve, Surrey: Augustine produces Philippa's penny dreadfuls; she knew all along, cancels one wedding, and turns the other into a very modern household for Philippa and Constance, together."
+        ]
+      }
+    },
+    {
+      "slot": "S29",
+      "slug": "taught-to-break-hearts",
+      "title": "Taught to Break Hearts",
+      "logline": "Great Expectations, but told by the girl raised in the house of stopped clocks to break a blacksmith's boy's heart - who begins to suspect she was the one being trained for ruin.",
+      "themes": [
+        "upbringing",
+        "class",
+        "love as a lesson",
+        "who we become"
+      ],
+      "request": {
+        "primary_genre": "fanfiction",
+        "genres": [
+          "fanfiction",
+          "romance",
+          "historical"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "series",
+        "planned_chapter_count": 8,
+        "chapter_length": "standard",
+        "image_style": "anime",
+        "topic": "Kent, 1820s. Clemency Marchbank was raised by jilted recluse Araminta Sallow in a house where every clock stopped at twenty to nine, and taught one skill: make men love you, then walk away. Her first practice: the blacksmith's boy, Joby Leggatt. Years on, a convict's letter asks who her mother was.",
+        "where_and_when": "The Kent marshes and a decaying manor on the edge of a market town, 1820s to 1830s, then London: marsh mist, a wedding room where the table was never cleared, stagecoaches, lawyers' chambers in the Temple, the Thames at low tide",
+        "characters": [
+          {
+            "name": "Clemency Marchbank",
+            "isHero": true,
+            "background": "Ten to twenty-four across the story. Cool, graceful, clever, and bored by her own cruelty. Taught never to want anything. Keeps every letter Joby wrote her in a locked box, unread. Wants to know who her mother was, and fears the answer.",
+            "appearance": "slender pale young woman with sleek black hair, level grey eyes, a high-waisted ice-blue silk dress with a cream spencer, long gloves she never removes, a pearl choker, a small tarnished key on a ribbon"
+          },
+          {
+            "name": "Joby Leggatt",
+            "background": "Twelve to twenty-six, a blacksmith's apprentice who becomes a gentleman on a secret allowance and believes it is Miss Sallow's plan to give him Clemency. Kind, ashamed of his roots, easily hurt. The only person who ever asked Clemency what she wanted.",
+            "appearance": "broad-shouldered young man with a sunburned face, unruly sandy hair and burn-scarred hands, first in a leather apron and later in a too-new dark green tailcoat and a cravat he keeps tugging"
+          },
+          {
+            "name": "Araminta Sallow",
+            "background": "60s, left at the altar thirty years ago; she stopped the clocks and raised Clemency as her revenge on men. Imperious, witty, grieving, slowly seeing what she has made. Keeps one secret: she knows who Clemency's mother is, and has kept her close.",
+            "appearance": "gaunt pale elderly woman with long loose white hair, a faded oyster-silk wedding gown under a man's grey greatcoat, a crooked veil, a walking stick, and a stopped gold watch hanging at her waist"
+          }
+        ],
+        "moments": [
+          "Ten-year-old Clemency is told to play cards with the blacksmith's boy and make him cry",
+          "Grown, she dances all night with a sneering rich suitor to punish Joby, and hates herself for it",
+          "A convict's letter arrives, addressed not to Joby but to her",
+          "She finds her mother: the scar-wristed housekeeper who has brought her tea for twenty years",
+          "Clemency winds and starts every clock in the house, and walks out to find Joby on the marsh road"
+        ],
+        "story_values": [
+          "forgiveness",
+          "self-knowledge"
+        ],
+        "avoid": "graphic violence or burns, copying Dickens's characters, names or lines, a cruel ending",
+        "writing_style": "first person, a cool elegant nineteenth-century voice that slowly thaws; gothic atmosphere, sharp social comedy, a slow romance built on regret",
+        "beats": [
+          "Kent marshes, 1822: Clemency, 10, raised by jilted Araminta Sallow among clocks stopped at twenty to nine, is told to play cards with the blacksmith's boy Joby Leggatt, 12, and make him cry. She does.",
+          "1826: she lets Joby kiss her cheek, then calls him common. (Truth: convict Silas Venn, whom Joby fed on the marsh, is her father and Joby's secret patron; her mother is housekeeper Hester Dunn.)",
+          "1830: a Temple lawyer tells Joby, 20, of a secret allowance to make him a gentleman; he believes it is Araminta's plan to give him Clemency, 18, who is sent to London to practise breaking hearts.",
+          "London, 1832: at a Mayfair ball Clemency dances all night with sneering rich Sir Roderick Harle to punish Joby, accepts his proposal, hates herself, and locks Joby's newest letter unread in her box.",
+          "Midpoint, spring 1835: a convict's letter arrives addressed not to Joby but to her; Silas Venn, back illegally from transportation, says he is Joby's patron and asks who her mother was.",
+          "The Thames at low tide, May: she meets Silas, learns he is her father and her mother was called Hester; she and Joby row him to a Dutch packet ahead of the constables, then she reads Joby's letters.",
+          "Back at the manor: Clemency sees the scar-wristed housekeeper who has brought her tea for twenty years is Hester, her mother; Araminta confesses she kept Hester close and weeps for what she made.",
+          "1836, Clemency 24: she breaks off with Harle, winds and starts every clock in the house with Araminta's blessing, and walks out through the mist to find Joby on the marsh road, and say what she wants."
+        ]
+      }
+    },
+    {
+      "slot": "S30",
+      "slug": "the-six-hundredth-night",
+      "title": "The Six Hundredth Night",
+      "logline": "One Thousand and One Nights, on the night the queen who has survived six hundred nights by storytelling loses her voice - and her fifteen-year-old sister must tell the story instead.",
+      "themes": [
+        "sisterhood",
+        "storytelling",
+        "courage",
+        "mercy"
+      ],
+      "request": {
+        "primary_genre": "fanfiction",
+        "genres": [
+          "fanfiction",
+          "fantasy"
+        ],
+        "audience_mode": "adult",
+        "spice_level": "sweet",
+        "identity_lenses": [],
+        "language": "English",
+        "story_mode": "standalone",
+        "planned_chapter_count": 1,
+        "chapter_length": "standard",
+        "image_style": "auto",
+        "topic": "For six hundred nights Queen Golnar has told King Farrokh a story that stops unfinished at dawn, and he has spared her for the ending. Tonight she has lost her voice. Her sister Mahnaz, fifteen, who has only ever asked for the stories, must tell one herself, and stop it at exactly the right place.",
+        "where_and_when": "A palace in the old Persia of the Nights, one night from dusk to dawn: a bedchamber of tiled niches and oil lamps, a garden of cypresses and fountains, a sleeping city beyond the walls, the dawn watchman's cry",
+        "characters": [
+          {
+            "name": "Mahnaz",
+            "isHero": true,
+            "background": "15, the queen's younger sister, who sits at the foot of the bed every night and says, Sister, tell us a story. Sharp, fidgety, a terrible liar, knows all six hundred stories by heart and has never told one. Loves her sister more than her own safety.",
+            "appearance": "small fierce Persian girl with thick black eyebrows, long black hair in two braids threaded with coins, a saffron silk tunic over red trousers, hennaed bare feet, a silver bracelet she twists when nervous"
+          },
+          {
+            "name": "Golnar",
+            "background": "24, the queen who married a king who killed his brides and has kept herself alive six hundred nights with stories. Brilliant, exhausted, feverish and voiceless tonight. Talks to her sister by tapping on her wrist, a code from their childhood.",
+            "appearance": "tall elegant Persian woman, pale with fever, heavy black hair loose, kohl-rimmed dark eyes, a deep blue silk robe embroidered with gold birds, a wool shawl, one hand pressed to her throat"
+          },
+          {
+            "name": "Farrokh",
+            "background": "35, the king, whose heart was broken and who mistook cruelty for justice. Half-changed by six hundred nights of stories and pretending he is not. Impatient, clever, genuinely curious. Tonight he is tempted to be kind and does not know how.",
+            "appearance": "broad Persian king with a heavy dark beard shot with grey, tired watchful eyes, a crimson robe and jewelled belt, a sheathed curved sword laid across his knees"
+          }
+        ],
+        "moments": [
+          "Golnar opens her mouth to begin and only a whisper comes out",
+          "Mahnaz starts a story of her own, about a girl who trades her name to a jinn for a camel, and the king argues with the plot",
+          "From the bed Golnar taps their childhood code on Mahnaz's wrist, steering the tale",
+          "Dawn comes, and Mahnaz must stop the story at the one place a king cannot bear to leave it"
+        ],
+        "story_values": [
+          "courage",
+          "love"
+        ],
+        "avoid": "on-page violence or executions, sexual content, orientalist caricature, retelling stories from the Nights",
+        "writing_style": "a tale within a tale, lamplit and suspenseful: the frame taut and quiet, Mahnaz's story told in the ornate, playful manner of the Nights"
+      }
+    }
+  ]
+}
