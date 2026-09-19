@@ -523,14 +523,36 @@ async function judge(story: WrittenStory): Promise<Record<string, unknown>> {
   const raw = await complete({
     system: JUDGE_SYSTEM,
     user: `Story: ${story.slug}\n\n${body}`,
-    maxTokens: 3_000,
+    // 12 000 on the wire. Sized the same way the continuity check was, and for
+    // the same reason: this model spends thousands of tokens reasoning before
+    // it emits a character, and an audit that runs out of budget returns an
+    // EMPTY STRING rather than an error. The first judge pass did exactly that
+    // and reported "0 issues over 10 chapters" for a story the human editors
+    // sent back for regeneration.
+    maxTokens: 6_000,
     schema: { name: "katha_continuity_audit", schema: JUDGE_SCHEMA },
   });
-  let parsed: Record<string, unknown> = { issues: [] };
+  /*
+    AN UNREADABLE AUDIT IS A FAILURE, NOT A CLEAN BILL OF HEALTH.
+
+    This used to swallow a parse error into `{ issues: [] }`, which is the
+    worst possible default for a measurement: a broken judge and a perfect
+    story are indistinguishable, and the broken one flatters whichever arm it
+    happens to break on. It throws now, the caller records it, and the story is
+    left unjudged rather than judged zero.
+  */
+  let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw);
-  } catch { /* an unreadable audit counts as no issues found, and says so */ }
-  const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
+  } catch {
+    throw new Error(
+      `audit for ${story.slug} was not JSON (${raw.length} chars) -- most likely the token budget ran out during reasoning`,
+    );
+  }
+  if (!Array.isArray(parsed.issues)) {
+    throw new Error(`audit for ${story.slug} carried no issues array`);
+  }
+  const issues = parsed.issues;
   // Duplicate chapter titles are counted deterministically rather than asked
   // for: it is a string comparison, and a model asked to do string comparisons
   // over fourteen chapters will miss some.
@@ -612,7 +634,15 @@ async function runJudge() {
       await Deno.stat(target);
       continue;
     } catch { /* not judged yet */ }
-    const audit = await judge(story);
+    let audit: Record<string, unknown>;
+    try {
+      audit = await judge(story);
+    } catch (error) {
+      // Loud, and NOT written: an unjudged story must stay unjudged so the
+      // report can say so, rather than contribute a zero to either arm.
+      console.error(`${arm} ${story.slug}: ${error}`);
+      continue;
+    }
     await Deno.writeTextFile(target, JSON.stringify(audit, null, 1));
     const issues = audit.issues as { severity: string }[];
     console.log(
@@ -668,6 +698,13 @@ async function runReport() {
       totals.ac || totals.bc
     } | **${totals.bi}** | **${totals.bm}** | **${totals.ai}** | **${totals.am}** |`,
   );
+  if (audits.before.length !== audits.after.length) {
+    rows.push("");
+    rows.push(
+      `**Warning: ${audits.before.length} stories judged before and ${audits.after.length} after.** ` +
+        "The totals are not comparable until both arms have judged the same stories.",
+    );
+  }
   const perChapter = (n: number, c: number) => c ? (n / c).toFixed(2) : "-";
   rows.push("");
   rows.push(
