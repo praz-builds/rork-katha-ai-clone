@@ -40,6 +40,31 @@ Example for "The Vanilla Problem" (`focalY: 0.22`):
 - **Web**: A native `<img>` element with `object-fit: cover` and `object-position` (React Native Web's `Image` component ignores `objectPosition`, so a raw `<img>` is required).
 - **Native**: Standard RN `Image` with `resizeMode="cover"` (center crop; focal anchoring is web-only for now).
 
+## Two image paths, and which one you are on (2026-09-19)
+
+Read this before picking a provider, because the owner's standing instruction
+and the production code deliberately disagree, and both are correct.
+
+**House content that WE generate on this machine -- Katha Originals covers,
+comparisons, one-offs -- uses the Codex CLI.** Owner's instruction,
+2026-09-19, after both were run over the same 13 prompts: Codex won 10/13 on
+subject fidelity and finish, and Gemini added unasked ornate borders on 3/13.
+It is also free of the OpenRouter balance, which is shared with real users and
+was down to $4.17 the day this was written. The harness is
+`backend/originals/covers/run.sh` plus a per-slug `.task` file: ~65s per image,
+1024x1536, ~2.3MB. **`codex exec` must be given `< /dev/null`** -- without
+stdin closed it hangs forever. Quota is a ChatGPT plan limit, roughly 54
+images on a ~24h rolling window.
+
+**A reader's own story cannot use it.** Its cover is drawn inside an edge
+function *during generation*, not at publish: `generate-story` (and the
+streamed path) hand `media.generateStoryMedia(...)` to the background, and that
+calls `generateCoverImage` — chapter 1's art IS the cover. A CLI on somebody's
+Mac is not reachable from Supabase. Production therefore stays on
+the provider documented below, and "use Codex for images" does not apply there.
+Closing that gap needs a hosted image path, which is a design decision and not
+a config change -- raise it rather than silently switching production.
+
 ## Image Generation
 
 ### Model & Output
