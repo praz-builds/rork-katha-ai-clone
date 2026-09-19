@@ -84,6 +84,18 @@ import {
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
 import {
+  emptyStoryBible,
+  mergeStoryBible,
+  seedStoryBible,
+  withoutStoryBible,
+} from "../_shared/story-bible.ts";
+import { checkChapterContinuity } from "../_shared/continuity.ts";
+import {
+  needsAutoPlan,
+  planSeries,
+  type SeriesPlan,
+} from "../_shared/series-plan.ts";
+import {
   buildStoryProsePrompt,
   buildUserPrompt,
   PROSE_CLOSING_INSTRUCTION,
@@ -226,6 +238,39 @@ serve(async (req) => {
           })
           : CLASSIFICATION_NOT_ATTEMPTED
       ).catch(() => CLASSIFICATION_NOT_ATTEMPTED);
+
+    /*
+      THE CHAPTER PLAN FOR A LONG SERIES, ON THE SAME TRADE AS CLASSIFICATION.
+
+      A series of five or more chapters written with no plan is paced one
+      chapter at a time, with nothing saying where the midpoint is or what the
+      ending owes -- which is how the 2026-09-18 corpus produced a midpoint
+      reveal in chapters 2, 12 and 14 of the same story.
+
+      Started HERE and awaited only when chapter one is persisted 55-100s
+      later, so it costs the reader nothing: chapter one does not need a plan,
+      because beat one is the story's own idea. A plan that misses its 25s
+      deadline resolves to null and the story is written exactly as it is
+      today. A writer who drew their own plan keeps it -- `needsAutoPlan` fills
+      an absence and never overwrites.
+    */
+    const planPromise: Promise<SeriesPlan | null> = needsAutoPlan({
+        storyMode,
+        plannedChapterCount,
+        beats,
+      })
+      ? planSeries({
+        seed,
+        plannedChapterCount,
+        primaryGenre,
+        audienceMode,
+        whereAndWhen: whereAndWhen ?? undefined,
+        moments,
+        characters,
+        avoid: avoid ?? undefined,
+        title: writerTitle,
+      }).catch(() => null)
+      : Promise.resolve(null);
 
     // NO GROUNDING-CARD WINDOW ON THE STREAMED PATH.
     //
@@ -372,7 +417,8 @@ serve(async (req) => {
         throw storyResult.error ?? chapterResult.error;
       }
       return jsonResponse({
-        story: storyResult.data,
+        // The bible is server-only; see `withoutStoryBible`.
+        story: withoutStoryBible(storyResult.data),
         chapter: chapterResult.data,
         replayed: true,
       });
@@ -410,20 +456,20 @@ serve(async (req) => {
             ? serviceClient.from("characters").insert(
               characters.map((c) => ({
                 story_id: story.id,
-              name: c.name,
-              // The retired field, written only so a story created now is still
-              // readable by anything that has not moved to `appearance` yet. Nothing
-              // reads it in preference to `appearance` any more: `characterAppearance`
-              // in `types.ts` is the single resolver and it puts `appearance` first.
-              description: c.appearance || c.description || null,
-              background: c.background,
-              // `||`, NOT `??`. An empty-string appearance is what a client
-              // sends for a character the writer left blank, and `??` only
-              // falls through on null/undefined -- so a legacy character whose
-              // text lives in `description` would have had BOTH columns written
-              // empty and their details lost for good. `characterAppearance`
-              // in `types.ts` resolves the same way for the same reason.
-              appearance: c.appearance || c.description || null,
+                name: c.name,
+                // The retired field, written only so a story created now is still
+                // readable by anything that has not moved to `appearance` yet. Nothing
+                // reads it in preference to `appearance` any more: `characterAppearance`
+                // in `types.ts` is the single resolver and it puts `appearance` first.
+                description: c.appearance || c.description || null,
+                background: c.background,
+                // `||`, NOT `??`. An empty-string appearance is what a client
+                // sends for a character the writer left blank, and `??` only
+                // falls through on null/undefined -- so a legacy character whose
+                // text lives in `description` would have had BOTH columns written
+                // empty and their details lost for good. `characterAppearance`
+                // in `types.ts` resolves the same way for the same reason.
+                appearance: c.appearance || c.description || null,
                 // A portrait the writer generated on the brief screen, and
                 // paid for. Dropping it here silently discards that work and
                 // the cast is re-rendered from scratch by the media task.
@@ -517,30 +563,30 @@ serve(async (req) => {
         //
         // It is never load-bearing. `nameChapterEarly` answers null on any
         // failure and the metadata title is used exactly as it was before.
-          //
-          // A WRITER WHO NAMED THE STORY IS NOT OVERRULED. Their title goes in
-          // as `storyTitle`, which turns this into the continuation form of the
-          // call ("name chapter 1 of a story already titled ..."), and it is
-          // what the `title` event paints -- so the heading the reader sees
-          // first is the one the writer chose, not a model's that is replaced
-          // 50 seconds later.
+        //
+        // A WRITER WHO NAMED THE STORY IS NOT OVERRULED. Their title goes in
+        // as `storyTitle`, which turns this into the continuation form of the
+        // call ("name chapter 1 of a story already titled ..."), and it is
+        // what the `title` event paints -- so the heading the reader sees
+        // first is the one the writer chose, not a model's that is replaced
+        // 50 seconds later.
         const namingPromise = nameChapterEarly({
           seed,
           primaryGenre,
           chapterNumber: 1,
-            storyTitle: writerTitle ?? null,
+          storyTitle: writerTitle ?? null,
           characterNames: characters?.map((c) => c.name).filter(Boolean),
         });
-          // The writer's title does not wait on a model. Painted now, so it is
-          // on screen even when the naming call fails and never answers; the
-          // naming result below then only adds the chapter's name. A client
-          // keeps a name the event omits (`titleEventNames`), so the missing
-          // `chapter_title` here blanks nothing.
-          if (writerTitle) send("title", { title: writerTitle });
+        // The writer's title does not wait on a model. Painted now, so it is
+        // on screen even when the naming call fails and never answers; the
+        // naming result below then only adds the chapter's name. A client
+        // keeps a name the event omits (`titleEventNames`), so the missing
+        // `chapter_title` here blanks nothing.
+        if (writerTitle) send("title", { title: writerTitle });
         namingPromise.then((names) => {
           if (!names) return;
           send("title", {
-              title: writerTitle ?? names.title,
+            title: writerTitle ?? names.title,
             chapter_title: names.chapterTitle,
           });
           // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
@@ -569,23 +615,50 @@ serve(async (req) => {
 
         send("stage", { stage: "shaping" });
 
-          // Cleaned BEFORE the metadata call, not just before persistence, so
-          // the summary, the first line and the series state are all derived
-          // from the chapter that will actually be stored -- a `previously`
-          // written from a model note would carry the note into chapter two.
-          // The reader has already seen the raw stream; `done` carries the
-          // cleaned row, and that is what the reader shows from then on.
-          const integrity = await enforceProseIntegrity(
-            prose.text,
-            proseIntegrityBrief({ moments, beats, characters }),
-            {
-              feature: "generate_story_stream",
-              storyId: story.id,
-              userId: user.id,
-              chapterNumber: 1,
-            },
-          );
-          const chapterBody = integrity.text;
+        /*
+          CHAPTER ONE'S FACTS, EXTRACTED INSIDE THE METADATA CALL'S WINDOW.
+
+          Started in the same tick the last prose token lands and awaited only
+          when the bible is opened below, so the 10-20s it takes is spent
+          inside the 10-20s the metadata call already costs. Placed anywhere
+          later on this path it would be a visible delay between the last word
+          of the story and the `done` event.
+
+          The bible is empty at chapter one by definition -- there is nothing
+          yet to contradict -- so this call has no fixed-facts block to read
+          and is purely an extraction.
+
+          It is NOT awaited before `done`: measured at ~49s on a real chapter
+          (see `CONTINUITY_DEADLINE_MS`), awaiting it would delay the end of
+          every first chapter by half a minute. It is started here so that by
+          the time the background block below reads it, most of it is already
+          spent.
+        */
+        const chapterOneFacts = checkChapterContinuity({
+          chapterNumber: 1,
+          chapterBody: prose.text,
+          bible: emptyStoryBible(),
+          bibleBlock: "",
+        });
+        chapterOneFacts.catch(() => undefined);
+
+        // Cleaned BEFORE the metadata call, not just before persistence, so
+        // the summary, the first line and the series state are all derived
+        // from the chapter that will actually be stored -- a `previously`
+        // written from a model note would carry the note into chapter two.
+        // The reader has already seen the raw stream; `done` carries the
+        // cleaned row, and that is what the reader shows from then on.
+        const integrity = await enforceProseIntegrity(
+          prose.text,
+          proseIntegrityBrief({ moments, beats, characters }),
+          {
+            feature: "generate_story_stream",
+            storyId: story.id,
+            userId: user.id,
+            chapterNumber: 1,
+          },
+        );
+        const chapterBody = integrity.text;
 
         const { error: characterError } = await charactersSettled;
         if (characterError) throw characterError;
@@ -597,7 +670,7 @@ serve(async (req) => {
         const metadata = await generateFastStructuredText(
           CHAPTER_METADATA_SYSTEM_PROMPT,
           buildChapterMetadataPrompt({
-              prose: chapterBody,
+            prose: chapterBody,
             storyMode,
             seed,
           }),
@@ -616,15 +689,15 @@ serve(async (req) => {
         const output = parseStructuredOutput(
           JSON.stringify({
             ...(JSON.parse(metadata.text) as Record<string, unknown>),
-              chapter_body: chapterBody,
+            chapter_body: chapterBody,
             // The metadata call still returns both names, and it is still the
-              // fallback for a naming call that failed. It only loses -- and
-              // both lose to a title the writer chose.
-              ...(writerTitle
-                ? { title: writerTitle }
-                : earlyNames?.title
-                ? { title: earlyNames.title }
-                : {}),
+            // fallback for a naming call that failed. It only loses -- and
+            // both lose to a title the writer chose.
+            ...(writerTitle
+              ? { title: writerTitle }
+              : earlyNames?.title
+              ? { title: earlyNames.title }
+              : {}),
             ...(earlyNames?.chapterTitle
               ? { chapter_title: earlyNames.chapterTitle }
               : {}),
@@ -641,12 +714,12 @@ serve(async (req) => {
         );
         // The reader has already been shown this prose, so the scan can only
         // report - see the module comment in content-scan.ts.
-          await reportCrudeLexicon(chapterBody, {
+        await reportCrudeLexicon(chapterBody, {
           feature: "generate_story_stream",
           storyId: story.id,
           userId: observedUserId,
         });
-          const verdict = chapterLengthVerdict(chapterBody, band);
+        const verdict = chapterLengthVerdict(chapterBody, band);
         if (!verdict.usable) {
           // Not a failure: the reader has already read this chapter, so
           // discarding it would take away something they were shown and
@@ -681,7 +754,7 @@ serve(async (req) => {
             p_story_id: story.id,
             p_author_id: user.id,
             p_title: output.title,
-              p_content: chapterBody,
+            p_content: chapterBody,
             p_word_count: verdict.words,
             p_themes: output.themes,
             p_first_line: output.first_line || null,
@@ -702,6 +775,66 @@ serve(async (req) => {
           throw completionError ?? new Error("Story persistence failed");
         }
 
+        /*
+          THE STORY BIBLE IS OPENED HERE, WITH CHAPTER ONE ON DISK.
+
+          Three things land together, and all three are free by now: the plan
+          that has been running since before the opening RPC, the cast sheet
+          and setting seeded as canon, and chapter one's own facts extracted
+          from the prose the reader has just read.
+
+          Seeding the CAST is the part that is easy to undervalue. "A dead
+          husband given the heroine's own name" is a contradiction of the
+          brief, not of chapter one -- the model never had the sheet in front
+          of it as settled fact, only as character colour. From chapter two
+          onward it does.
+
+          Nothing here can fail the chapter. Every step logs and continues: a
+          story with no bible is the story this product wrote yesterday.
+        */
+        // Dynamically imported for the same reason the cover pipeline is,
+        // a few lines down: `media.ts` pulls in the image stack, and the
+        // streamed path pays for every module it loads before its first token.
+        (await import("../_shared/media.ts")).runInBackground((async () => {
+          try {
+            const plan = await planPromise;
+            const seeded = seedStoryBible({
+              characters,
+              truth: plan?.truth,
+              whereAndWhen: whereAndWhen ?? undefined,
+            });
+            const opened = mergeStoryBible(
+              seeded,
+              (await chapterOneFacts).proposal,
+              1,
+            ).bible;
+            const update: Record<string, unknown> = { story_bible: opened };
+            // The generated plan becomes the story's `beats`, so every
+            // continuation reads it through the plan layer that already exists
+            // rather than through a second mechanism.
+            if (plan) update.beats = plan.beats;
+            const { error: bibleError } = await serviceClient
+              .from("stories")
+              .update(update)
+              .eq("id", story.id);
+            if (bibleError) throw bibleError;
+          } catch (error) {
+            console.error(
+              "story bible could not be opened:",
+              safeErrorMessage(error),
+            );
+            await logError({
+              bucket: "generation.story",
+              severity: "low",
+              source: "runtime",
+              errorCode: "story_bible_unavailable",
+              error,
+              context: { feature: "continuity", story_id: story.id },
+              userId: user.id,
+            });
+          }
+        })());
+
         // The classification, read at the one moment waiting for it is free:
         // the chapter is written and on disk, and this started before the
         // opening RPC. Same trade as the buffered path.
@@ -712,7 +845,7 @@ serve(async (req) => {
         if (classification.status !== "ok") {
           await reportClassificationFailure({
             outcome: classification,
-              feature: "grounding",
+            feature: "grounding",
             storyId: story.id,
             userId: user.id,
           });
@@ -751,10 +884,10 @@ serve(async (req) => {
           }
         }
 
-          // The visibility toggle is the publish button, and it is honoured
-          // (2026-09-18): a signed-in writer who asked for public gets public.
-          // The outcome travels in `done`, so a guest's request that stayed
-          // private is explained without a second call.
+        // The visibility toggle is the publish button, and it is honoured
+        // (2026-09-18): a signed-in writer who asked for public gets public.
+        // The outcome travels in `done`, so a guest's request that stayed
+        // private is explained without a second call.
         const visibilityOutcome = await applyRequestedVisibility(
           serviceClient as unknown as VisibilityClient,
           {

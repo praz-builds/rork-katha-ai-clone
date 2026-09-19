@@ -1,0 +1,43 @@
+{
+ "slug": "a-winter-for-the-eagle",
+ "arm": "before",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 2,
+   "kind": "clock",
+   "severity": "minor",
+   "what": "Blood promised for tomorrow in Chapter 1 happens on Day 3."
+  },
+  {
+   "chapter": 4,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Karakoz weighs just over three kilos then 4.1 kilos while sick."
+  },
+  {
+   "chapter": 7,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Dilnaz's Almaty victim changes from a sparrowhawk to a grey parrot."
+  },
+  {
+   "chapter": 8,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Akkanat's vet changes from Almaty vet saying infection to town vet saying liver sickness."
+  },
+  {
+   "chapter": 9,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Bare-hand meat refusal ending with Fair, I would pick him too repeats Chapter 8 as new."
+  },
+  {
+   "chapter": 10,
+   "kind": "fair",
+   "severity": "major",
+   "what": "Logbook R. Zhaksybekov convicts Ruslan though his surname was never planted."
+  }
+ ]
+}

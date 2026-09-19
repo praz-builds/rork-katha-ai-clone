@@ -1,0 +1,37 @@
+{
+ "slug": "low-orbit-lullaby",
+ "arm": "after",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 9,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Haruka carries the cardigan out of C4 at the end of Chapter 8 but it is back on its hook in Chapter 9."
+  },
+  {
+   "chapter": 9,
+   "kind": "clock",
+   "severity": "minor",
+   "what": "48-hour hold filed at Day 3 02:14 is said to run out at 06, which does not add up."
+  },
+  {
+   "chapter": 10,
+   "kind": "replay",
+   "severity": "major",
+   "what": "The C4 farewell with flat-line demo, death exposition, and birthday goodbye repeats Chapter 9 as if new."
+  },
+  {
+   "chapter": 10,
+   "kind": "replay",
+   "severity": "minor",
+   "what": "Haruka without her white jacket is described as a first time again after Chapter 9 already did."
+  },
+  {
+   "chapter": 10,
+   "kind": "replay",
+   "severity": "minor",
+   "what": "Tomasz boiled-potatoes kitchen memory repeats verbatim from earlier chapters as if new."
+  }
+ ]
+}

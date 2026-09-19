@@ -1,0 +1,19 @@
+{
+ "slug": "a-winter-for-the-eagle",
+ "arm": "after",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 3,
+   "kind": "clock",
+   "severity": "major",
+   "what": "Claims six days of injections but only three days passed from third to sixth morning."
+  },
+  {
+   "chapter": 10,
+   "kind": "fair",
+   "severity": "major",
+   "what": "Crow and marmots used to trace poison were never mentioned before Chapter 10."
+  }
+ ]
+}

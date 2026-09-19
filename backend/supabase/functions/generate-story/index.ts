@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { withoutStoryBible } from "../_shared/story-bible.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
 import {
@@ -303,7 +304,8 @@ serve(async (req) => {
         throw storyResult.error ?? chapterResult.error;
       }
       return respond({
-        story: storyResult.data,
+        // The bible is server-only; see `withoutStoryBible`.
+        story: withoutStoryBible(storyResult.data),
         chapter: chapterResult.data,
         replayed: true,
       });

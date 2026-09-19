@@ -1,0 +1,31 @@
+{
+ "slug": "nine-oclock-zanzibar",
+ "arm": "after",
+ "chapters": 8,
+ "issues": [
+  {
+   "chapter": 3,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Basket packed with eight caps in Chapter 2 holds twelve caps in Chapter 3."
+  },
+  {
+   "chapter": 7,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Three-rupees joke told at the customs shed in Chapter 1 is recalled as told at the well in Chapter 7."
+  },
+  {
+   "chapter": 8,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Warehouse hiding scene from Chapter 7 is written again as if new."
+  },
+  {
+   "chapter": 8,
+   "kind": "clock",
+   "severity": "major",
+   "what": "Narrative reaches half past eight at end of Chapter 7 then restarts at six o'clock in Chapter 8."
+  }
+ ]
+}

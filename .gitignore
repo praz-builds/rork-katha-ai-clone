@@ -34,3 +34,9 @@ docs/design/*
 
 # Harness worktrees for sub-agents
 .claude/worktrees/
+
+# Continuity harness output (backend/originals/continuity-eval.ts).
+# The written stories are megabytes of regenerable prose; the audits are the
+# evidence and are small, so the audits stay tracked and the bodies do not.
+backend/originals/bench/before/
+backend/originals/bench/after/

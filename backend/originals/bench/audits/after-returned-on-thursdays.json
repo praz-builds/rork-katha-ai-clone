@@ -1,0 +1,31 @@
+{
+ "slug": "returned-on-thursdays",
+ "arm": "after",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 8,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Mehru wears cotton gloves throughout but her fingers smell of latex in Chapter 8."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "major",
+   "what": "White paint is said to arrive after 96 though the 1995 fakes already use white numbers."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "major",
+   "what": "The table is said to hold eleven heads but the final piece is a seated Buddha."
+  },
+  {
+   "chapter": 10,
+   "kind": "fair",
+   "severity": "major",
+   "what": "The cracked-torch evidence is dismissed with unplanted claim that every old torch throws the same star."
+  }
+ ]
+}

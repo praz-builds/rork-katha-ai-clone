@@ -1,0 +1,43 @@
+{
+ "slug": "low-orbit-lullaby",
+ "arm": "before",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 4,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Med is two frames spinward in Chapter 2 but two frames aft in Chapter 4."
+  },
+  {
+   "chapter": 5,
+   "kind": "clock",
+   "severity": "major",
+   "what": "Galley board counts down from 8 in Chapter 4 to 6 in Chapter 5, skipping day 7."
+  },
+  {
+   "chapter": 8,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Tomasz's mug is steel until Chapter 8 calls it plastic."
+  },
+  {
+   "chapter": 9,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Haruka says she swapped packs twice but three swap dates are shown."
+  },
+  {
+   "chapter": 9,
+   "kind": "clock",
+   "severity": "major",
+   "what": "Burn countdown drops from four days in Chapter 7 to twenty hours in Chapter 9 after only hours pass."
+  },
+  {
+   "chapter": 10,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Chapter 10 replays Chapter 9's C4 farewell dialogue and actions as if new."
+  }
+ ]
+}

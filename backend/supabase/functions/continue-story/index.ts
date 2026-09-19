@@ -25,6 +25,18 @@ import {
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
+import {
+  formatStoryBibleBlock,
+  mergeStoryBible,
+  parseStoryBible,
+} from "../_shared/story-bible.ts";
+import {
+  checkChapterContinuity,
+  type ContinuityCheckResult,
+  continuityErrorContext,
+  repairChapter,
+} from "../_shared/continuity.ts";
+import { updateChapterContentIfUnchanged } from "../_shared/chapters.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import {
   AllProvidersFailedError,
@@ -137,7 +149,7 @@ serve(async (req) => {
           serviceClient
             .from("stories")
             .select(
-              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
+              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, story_bible, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
             )
             .eq("id", story_id)
             .single(),
@@ -281,11 +293,10 @@ serve(async (req) => {
         safeErrorMessage(titlesError),
       );
     }
-    const previousChapterTitles: string[] = (titleRows?.length
-      ? titleRows
-      : [...chapters].reverse())
-      .map((row) => (typeof row.title === "string" ? row.title.trim() : ""))
-      .filter(Boolean);
+    const previousChapterTitles: string[] =
+      (titleRows?.length ? titleRows : [...chapters].reverse())
+        .map((row) => (typeof row.title === "string" ? row.title.trim() : ""))
+        .filter(Boolean);
 
     // The stored plan is a RANGE now, not one of three values.
     //
@@ -466,12 +477,28 @@ serve(async (req) => {
     const chapterMode = isFinale ? "finale" : "chapter";
     const chapterRole = isFinale ? "finale" : "mid_series";
     const seriesState = parseSeriesState(story.series_state);
+    /*
+      THE SETTLED FACTS, READ BESIDE THE NARRATIVE STATE.
+
+      `story_bible` is null for every story written before migration 00092,
+      which parses to an empty bible and renders as nothing -- so those stories
+      get byte-identically the prompt they got yesterday. See
+      `_shared/story-bible.ts` for why this is a separate, server-owned,
+      append-only record rather than more fields on `series_state`.
+    */
+    const storyBible = parseStoryBible(story.story_bible);
+    // Rendered once. The writer's prompt, the continuity check and the repair
+    // all read the SAME text, so a contradiction is judged against exactly what
+    // the chapter was told, never against a second rendering of it.
+    const bibleBlock = formatStoryBibleBlock(storyBible, {
+      castNames: characters.map((character) =>
+        character.name
+      ),
+    });
 
     let earliestContext = "";
     if (
-      isFinale && !chapters.some((c) =>
-        c.chapter_number === 1
-      )
+      isFinale && !chapters.some((c) => c.chapter_number === 1)
     ) {
       const { data: firstChapter, error: firstChapterError } =
         await serviceClient
@@ -582,6 +609,7 @@ serve(async (req) => {
         continuationInstruction: effectiveInstruction || undefined,
         characters,
         seriesState,
+        storyBible,
         title: story.title,
         previousChapters: `${previousText}${earliestContext}`,
         previousChapterTitles,
@@ -608,6 +636,16 @@ serve(async (req) => {
          * model also wrote before anything is derived.
          */
         fallbackTitles?: readonly (string | null | undefined)[];
+        /**
+         * The continuity check, ALREADY RUNNING.
+         *
+         * The streamed path starts it the moment the last prose token lands,
+         * so it overlaps the metadata call and the persist rather than
+         * following them. It is never awaited on either transport -- see the
+         * note at the `runInBackground` call below -- so this only decides how
+         * much of it is already done by the time the response is sent.
+         */
+        continuity?: Promise<ContinuityCheckResult>;
       } = {},
     ) => {
       // Cleaned before anything reads it: the stored chapter, its word count
@@ -818,6 +856,156 @@ serve(async (req) => {
       // chapter 2. It is written to the stories row by
       // `complete_continuation_generation`; this is the same value, saved a
       // round trip.
+      /*
+        THE CONTINUITY CHECK, AND THE ONE BOUNDED REPAIR.
+
+        Runs after the chapter row exists, on purpose. The chapter is written
+        and paid for by this point, and nothing below may undo either: every
+        path here either improves the stored chapter or leaves it exactly as it
+        is. A continuity system that could fail a paid chapter would be a worse
+        bug than the drift it exists to fix.
+
+        WHY A REPAIR AND NOT A REGENERATION. On a streamed chapter the reader
+        has already read the prose, so rewriting it would change text under
+        their eyes. Instead a hard contradiction buys one bounded pass of
+        find/replace pairs -- the same mechanism the human editors used by hand
+        in `backend/originals/edits-batch*.jsonl` -- each validated to occur
+        exactly once before it is applied. The reader still on the page keeps
+        what they read; every later read, and the next chapter's prompt window,
+        gets the corrected chapter.
+      */
+      const settleContinuity = async () => {
+        try {
+          const check = options.continuity ?? await checkChapterContinuity({
+            chapterNumber: nextChapterNum,
+            chapterBody: content,
+            bible: storyBible,
+            bibleBlock,
+          });
+          const resolved = await check;
+          const merged = mergeStoryBible(
+            storyBible,
+            resolved.proposal,
+            nextChapterNum,
+          );
+          let repaired = 0;
+          let rejected = 0;
+          const hard = merged.contradictions.filter((entry) =>
+            entry.severity === "hard"
+          );
+          if (hard.length && typeof chapter.id === "string") {
+            const repair = await repairChapter({
+              chapterNumber: nextChapterNum,
+              chapterBody: content,
+              contradictions: hard,
+              bibleBlock,
+            });
+            repaired = repair.edits.length;
+            rejected = repair.rejected;
+            if (repair.edits.length) {
+              // Compare-and-swap, because the notepad save and the AI edit
+              // path both write this same row: a repair must never overwrite
+              // a writer's own correction made while the chapter was being
+              // checked.
+              const { updated } = await updateChapterContentIfUnchanged(
+                serviceClient,
+                {
+                  chapterId: chapter.id,
+                  previousContent: content,
+                  nextContent: repair.text,
+                  wordCount: repair.text.split(/\s+/).length,
+                },
+              );
+              if (!updated) repaired = 0;
+            }
+            /*
+              A CORRECTION THAT WAS APPLIED IS NOT STILL OUTSTANDING.
+
+              Unresolved contradictions are rendered into the NEXT chapter's
+              prompt under "CORRECTIONS", so leaving a repaired one there would
+              tell chapter n+1 that this chapter says something it no longer
+              says -- and the model would write around a mistake that is not on
+              the page any more.
+
+              Dropped only when the repair was unambiguously complete: every
+              named contradiction got a pair, nothing was rejected, and the
+              write landed. A partial repair keeps ALL of them, because nothing
+              here knows which pair fixed which contradiction, and a stale
+              correction is a much smaller harm than a silently dropped one.
+            */
+            if (repaired >= hard.length && rejected === 0) {
+              merged.bible.contradictions = merged.bible.contradictions.filter(
+                (entry) =>
+                  !(entry.chapter === nextChapterNum &&
+                    entry.severity === "hard"),
+              );
+            }
+          }
+          const { error: bibleError } = await serviceClient
+            .from("stories")
+            .update({ story_bible: merged.bible })
+            .eq("id", story_id);
+          if (bibleError) throw bibleError;
+
+          if (merged.contradictions.length) {
+            // Logged so the contradiction rate is a number somebody can watch
+            // rather than an anecdote. Counts and enums only -- a
+            // contradiction is made of exactly the free text
+            // `error_events.context` forbids.
+            await logError({
+              bucket: "generation.story",
+              severity: "medium",
+              source: "runtime",
+              errorCode: "continuity_contradiction",
+              error: new Error("chapter contradicted the story bible"),
+              context: {
+                feature: "continue_story",
+                story_id,
+                ...continuityErrorContext({
+                  chapterNumber: nextChapterNum,
+                  contradictions: merged.contradictions,
+                  repaired,
+                  rejected,
+                  elapsedMs: resolved.elapsedMs,
+                }),
+              },
+              userId: observedUserId,
+            });
+          }
+        } catch (error) {
+          // Never fatal. A missing check leaves the bible one chapter thinner,
+          // which is degraded and never wrong.
+          console.error(
+            "continuity check failed:",
+            safeErrorMessage(error),
+          );
+          await logError({
+            bucket: "generation.story",
+            severity: "low",
+            source: "runtime",
+            errorCode: "continuity_check_unavailable",
+            error,
+            context: {
+              feature: "continue_story",
+              story_id,
+              chapter_number: nextChapterNum,
+            },
+            userId: observedUserId,
+          });
+        }
+      };
+
+      /*
+        NEVER AWAITED. The extraction takes ~49s on a real chapter (measured
+        2026-09-19; see `CONTINUITY_DEADLINE_MS`), so awaiting it here would
+        put half a minute between the last word of the chapter and the
+        chapter-end screen. `runInBackground` is `EdgeRuntime.waitUntil`, the
+        same mechanism the cover and the chapter art use to outlive the
+        response. The streamed path has already had it running since the last
+        prose token, so in practice it settles seconds after `done`.
+      */
+      runInBackground(settleContinuity());
+
       return { chapter, seriesState: persistedState };
     };
 
@@ -962,20 +1150,20 @@ serve(async (req) => {
               story.previously_summary,
             instruction: effectiveInstruction || null,
             characterNames: characters.map((c) => c.name).filter(Boolean),
-              previousChapterTitles,
+            previousChapterTitles,
           });
           namingPromise.then((names) => {
             if (!names?.chapterTitle) return;
-              // A duplicate is not painted. Persisting will refuse it anyway,
-              // and a heading that changes under the reader at the end is the
-              // bug early naming exists to remove; better no early heading
-              // than a wrong one.
-              if (
-                isDuplicateChapterTitle(names.chapterTitle, [
-                  ...previousChapterTitles,
-                  ...(typeof story.title === "string" ? [story.title] : []),
-                ])
-              ) return;
+            // A duplicate is not painted. Persisting will refuse it anyway,
+            // and a heading that changes under the reader at the end is the
+            // bug early naming exists to remove; better no early heading
+            // than a wrong one.
+            if (
+              isDuplicateChapterTitle(names.chapterTitle, [
+                ...previousChapterTitles,
+                ...(typeof story.title === "string" ? [story.title] : []),
+              ])
+            ) return;
             send("title", { chapter_title: names.chapterTitle });
             // Detached on purpose, so it has to swallow its own failures: an
             // unhandled rejection on this runtime can take the isolate down,
@@ -1007,6 +1195,28 @@ serve(async (req) => {
           });
 
           send("stage", { stage: "shaping" });
+
+          /*
+            THE CONTINUITY CHECK STARTS HERE, NOT AFTER THE METADATA CALL.
+
+            Started in the same tick the last prose token lands and not awaited
+            until the chapter is being persisted, so it runs INSIDE the 10-20s
+            the metadata call below already costs the reader. That is the whole
+            latency argument for this feature: a check placed anywhere else on
+            this path would be a visible delay between the last word of the
+            chapter and the chapter-end screen.
+
+            Detached failures are swallowed into a rejected promise the
+            persist path handles -- an unhandled rejection on this runtime can
+            take the isolate down, and with it a chapter already paid for.
+          */
+          const continuityPromise = checkChapterContinuity({
+            chapterNumber: nextChapterNum,
+            chapterBody: prose.text,
+            bible: storyBible,
+            bibleBlock,
+          });
+          continuityPromise.catch(() => undefined);
 
           // The structured half, recovered after the prose rather than
           // around it. `series_state` is what lets chapter n+1 exist, so it
@@ -1041,7 +1251,9 @@ serve(async (req) => {
           let metadataFields: Record<string, unknown> = {};
           try {
             const parsed = JSON.parse(metadata.text);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            if (
+              parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ) {
               metadataFields = parsed as Record<string, unknown>;
             }
           } catch {
@@ -1101,6 +1313,9 @@ serve(async (req) => {
                   ? metadataFields.chapter_title
                   : null,
               ],
+              // Started before the metadata call above, so by here it has
+              // almost always already settled.
+              continuity: continuityPromise,
             });
           notifyChapterReady(chapter);
           send("done", {
@@ -1245,7 +1460,6 @@ function jsonResponse(req: Request, body: unknown, status = 200): Response {
     headers: { ...corsHeadersFor(req), "Content-Type": "application/json" },
   });
 }
-
 
 /**
  * Read the offered directions off the request, bounded.

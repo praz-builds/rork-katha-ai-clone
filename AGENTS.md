@@ -334,6 +334,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00087 (One-credit start + auto runs)** | `begin_story_generation` deducts 1; `stories.auto_run_through_chapter`; `generation_operations.auto_run_id` / `.claimed_at`; `reserve_auto_chapter_run` and `refund_auto_chapter_run` |
 | **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
 | **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
+| **00092 (Story bible)** | `stories.story_bible` -- nullable, server-owned, append-only jsonb holding a multi-chapter story's settled facts, its clock, its fixed truth and the scenes already shown. Written only by `mergeStoryBible`; the model proposes and never writes. NULL means the story predates it and reads as an empty bible. **Never sent to a client** |
 | **00091 (Entity gate removed)** | Drops both 00050 constraints, clears `stories.entity_gate_reason` on every row and leaves the column nullable and unused for older clients; re-issues `public_profile`, `profile_comments` and `activity_calendar` without the gate clause. A writer's publish toggle is honoured. |
 
 ### Credit Ledger Pattern
@@ -487,7 +488,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`chapter-titles.ts`, `chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `narration-audio.ts`, `narration-chunks.ts`, `narration-mp3.ts`, `operations.ts`, `prompts.ts`, `prose-integrity.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+`chapter-titles.ts`, `chapters.ts`, `character-substitution.ts`, `continuity.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `narration-audio.ts`, `narration-chunks.ts`, `narration-mp3.ts`, `operations.ts`, `prompts.ts`, `prose-integrity.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `series-plan.ts`, `sse.ts`, `story-bible.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### The "created" story flow (2026-09-09)
 
@@ -555,6 +556,65 @@ At least one of `prompt` and `character_replacements` is required — a rewrite 
 | `register-device` | Store FCM token | G |
 | `send-notification` | Push via FCM | G |
 | `referral-verify` | Referral fraud checks | H |
+
+## Story Continuity: the story bible
+
+Full reference: [`backend/STORY_CONTINUITY.md`](backend/STORY_CONTINUITY.md).
+
+**The problem it exists for.** 83 Originals were written through the real
+pipeline on 2026-09-18 and read end to end. **Not one passed as written**; all
+six regenerate verdicts were 8-10 chapters long, and the majority of the 289
+`major` issues were one bug: a fact that changed between chapters.
+
+**`stories.story_bible` is not more `series_state`, and the difference is the
+whole design.** `series_state` is a field in `STORY_OUTPUT_JSON_SCHEMA`, so the
+model REWRITES IT IN FULL every chapter -- correct for narrative state, and for
+canonical fact it is the drift channel itself. The bible is server-owned and
+**append-only**: the model proposes through `checkChapterContinuity`, and
+`mergeStoryBible` appends what is new, ignores what agrees, and **refuses what
+conflicts**. A refusal is a recorded contradiction, not a write. The clock only
+moves forward, the truth is written once, and a `shown` entry repeating an
+earlier one is a re-reveal.
+
+Rules an agent touching this must not break:
+
+- **Nothing here is ever awaited in front of a response.** The extraction takes
+  **48.7 seconds** on a real chapter -- measured 2026-09-19, because this model
+  spends ~2,500 tokens reasoning before it writes a character. It is started
+  when the last prose token lands and handed to `EdgeRuntime.waitUntil`. Katha
+  is a mobile app; half a minute between a chapter and its chapter-end screen is
+  not a trade worth making for a contradiction that happens on some chapters.
+  The named cost is that an auto-flow chapter may be written against a bible one
+  chapter behind, which is a loss of one chapter's EXTRACTED facts, not of the
+  chapter -- it is still in the prompt verbatim.
+- **Do not lower `CONTINUITY_MAX_TOKENS` to save money.** Below the reasoning
+  burn the call does not get cheaper; it returns an empty string and the
+  chapter's facts are lost silently. The first version of this budgeted 1,400
+  tokens and lost every extraction that way.
+- **The bible never reaches a client.** Every deliberate response selects
+  explicit columns; the two REPLAY paths that answer with `select("*")` strip it
+  through `withoutStoryBible`. A reader on cellular must not download a growing
+  fact table to read chapter nine.
+- **A changed value is not automatically a contradiction.** Hard -- which is
+  what buys a second model call -- means a durable property (identity, age,
+  date, count, kinship, occupation, ownership, what a thing is called) or two
+  values that are both numbers. Everything else is soft.
+- **A hard contradiction buys a repair, not a regeneration**, because the reader
+  already has the prose. Find/replace pairs in the `edits-batch*.jsonl` shape,
+  each validated to occur exactly once, applied through the existing
+  compare-and-swap. A missing or ambiguous `find` is rejected, never applied to
+  the first match.
+- **A 5+ chapter series with no `beats` gets a plan** (`_shared/series-plan.ts`),
+  started before `begin_story_generation` and awaited only when chapter one is
+  persisted -- the entity-classification trade. A writer's own plan is never
+  overwritten.
+- Every contradiction logs to `error_events` (`generation.story`,
+  `continuity_contradiction`), counts and enums only.
+
+`backend/originals/continuity-eval.ts` is the harness: it writes the stories
+that actually failed, twice, differing in one flag, and audits both with one
+judge. It runs the chapter loop in-process against the same prompt builders
+rather than against deployed functions.
 
 ## Story Generation System (v6)
 
