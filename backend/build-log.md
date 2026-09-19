@@ -79,6 +79,14 @@ named-cast public request writes chapters then story.
   story generated private and went public only if the follow-up
   `publish-story` call succeeded. `buildGenerationRequestBody` now always
   sends it; the follow-up call stays as the retry.
+- Every failed flip writes an `error_events` row (bucket `publishing`,
+  severity `high`, code `visibility_flip_failed`, context `story_id` +
+  which of the three writes failed + the Postgres code). Without it the
+  failure existed only as a `console.error` on a paid path, and the client
+  reads `story.is_public`, never `visibility.reason` -- so a writer whose
+  public story came out private had nothing to report.
+- The chapter revert now also filters `is_published = true`, so its bound is
+  a property of the query rather than of today's call sites.
 
 ### Follow-ups, not done
 

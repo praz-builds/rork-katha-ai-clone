@@ -127,11 +127,13 @@ Deno.test("a failed story flip reverts the chapters it published and reports pri
   assertEquals(writes.map((w) => w.table), ["chapters", "stories", "chapters"]);
   const publishedAt = writes[0].values.published_at;
   assertEquals(writes[2].values, { is_published: false, published_at: null });
-  // Only the chapters this call flipped: matched by the timestamp it wrote.
-  assertEquals(writes[2].filters, [["story_id", STORY], [
-    "published_at",
-    publishedAt,
-  ]]);
+  // Only the chapters this call flipped: the flag it set and the exact
+  // timestamp it wrote, so the revert cannot reach a row it did not publish.
+  assertEquals(writes[2].filters, [
+    ["story_id", STORY],
+    ["is_published", true],
+    ["published_at", publishedAt],
+  ]);
 });
 
 Deno.test("a failed chapter flip reports private and never touches the story", async () => {

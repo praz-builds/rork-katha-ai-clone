@@ -27,6 +27,8 @@
  * about what "public" means.
  */
 
+import { logError } from "./errors.ts";
+
 export type VisibilityRequest = "private" | "public";
 
 /**
@@ -101,6 +103,7 @@ export async function applyRequestedVisibility(
     .eq("is_published", false);
   if (chapterError) {
     console.error("publish: chapter flip failed", errorCode(chapterError));
+    await logPublishFailure(input.storyId, "chapters", chapterError);
     return { requested, applied: "private", reason: "publish_failed" };
   }
 
@@ -120,17 +123,53 @@ export async function applyRequestedVisibility(
     .eq("id", input.storyId);
   if (storyError) {
     console.error("publish: story flip failed", errorCode(storyError));
+    await logPublishFailure(input.storyId, "stories", storyError);
     const { error: revertError } = await client
       .from("chapters")
       .update({ is_published: false, published_at: null })
       .eq("story_id", input.storyId)
+      // Both halves of "what this call published": the timestamp it wrote,
+      // and the flag it set. The timestamp alone is unique in practice --
+      // nothing else writes `published_at` while a generation is in flight --
+      // but "in practice" is an argument about today's callers, and this
+      // clause makes the bound a property of the query instead.
+      .eq("is_published", true)
       .eq("published_at", publishedAt);
     if (revertError) {
       console.error("publish: chapter revert failed", errorCode(revertError));
+      await logPublishFailure(input.storyId, "revert", revertError);
     }
     return { requested, applied: "private", reason: "publish_failed" };
   }
   return { requested, applied: "public", reason: null };
+}
+
+/**
+ * A failed visibility flip is recorded, not merely printed.
+ *
+ * The Observability Gate: a failure that exists only in a console line did
+ * not happen as far as the system is concerned, and this one is invisible
+ * everywhere else -- the client reads `story.is_public` and never looks at
+ * `visibility.reason`, so a writer whose public story came out private has
+ * nothing to report and nobody to report it to. `logError` never throws, so
+ * this is safe inside the block above that must not throw.
+ *
+ * `failure` says which of the three writes failed; `code` is the Postgres
+ * code. Neither carries prose, a title or a seed.
+ */
+async function logPublishFailure(
+  storyId: string,
+  failure: "chapters" | "stories" | "revert",
+  error: unknown,
+): Promise<void> {
+  await logError({
+    bucket: "publishing",
+    severity: "high",
+    source: "runtime",
+    errorCode: "visibility_flip_failed",
+    error,
+    context: { story_id: storyId, failure, code: errorCode(error) },
+  });
 }
 
 /** A Postgres/PostgREST code for a log line - never a message, never content. */
