@@ -918,6 +918,28 @@ serve(async (req) => {
               );
               if (!updated) repaired = 0;
             }
+            /*
+              A CORRECTION THAT WAS APPLIED IS NOT STILL OUTSTANDING.
+
+              Unresolved contradictions are rendered into the NEXT chapter's
+              prompt under "CORRECTIONS", so leaving a repaired one there would
+              tell chapter n+1 that this chapter says something it no longer
+              says -- and the model would write around a mistake that is not on
+              the page any more.
+
+              Dropped only when the repair was unambiguously complete: every
+              named contradiction got a pair, nothing was rejected, and the
+              write landed. A partial repair keeps ALL of them, because nothing
+              here knows which pair fixed which contradiction, and a stale
+              correction is a much smaller harm than a silently dropped one.
+            */
+            if (repaired >= hard.length && rejected === 0) {
+              merged.bible.contradictions = merged.bible.contradictions.filter(
+                (entry) =>
+                  !(entry.chapter === nextChapterNum &&
+                    entry.severity === "hard"),
+              );
+            }
           }
           const { error: bibleError } = await serviceClient
             .from("stories")
