@@ -182,6 +182,17 @@ type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
  */
 const REIMAGINE_BUDGET = 1;
 
+/**
+ * The longest the paywall will wait for a notification permission answer
+ * before letting the reader through anyway.
+ *
+ * Long enough that somebody who taps Allow or Deny straight away is recorded
+ * on the first try, short enough that somebody who ignores the prompt does
+ * not experience it as a broken button. The answer is still honoured if it
+ * lands later, so nothing is lost by not waiting.
+ */
+const PERMISSION_WAIT_MS = 4_000;
+
 /*
   THE PILLS ARE NOT NUMBERED HERE. `lib/onboarding-progress.ts` owns the
   count for each purpose (eight for a reader, seven otherwise), and the
@@ -685,16 +696,42 @@ export default function CharacterOnboarding(
    * those per install: this is the moment worth spending it on, because there
    * is now a finished portrait and a first story about to be written, which is
    * a concrete thing to be told about. It is guarded rather than awaited
-   * optimistically -- a permissions module that throws must not strand somebody
-   * on a paywall they have already dismissed.
+   * optimistically -- a permissions module that throws, OR ONE THAT NEVER
+   * ANSWERS, must not strand somebody on a paywall they have already
+   * dismissed. The second case is the one that actually happened; see the
+   * bounded wait below.
    */
   const leavePaywall = useCallback(async () => {
-    let granted = false;
-    try {
-      granted = await enableNotifications();
-    } catch {
-      granted = false;
-    }
+    /*
+      A permission request can HANG, not only throw.
+
+      The guard above was a try/catch, which covers a permissions module that
+      rejects. On web it does neither: `Notification.requestPermission()`
+      stays PENDING for as long as the browser's permission bubble sits
+      unanswered, and a reader who ignores that bubble -- which is most of
+      them -- awaits it forever. Pressing X on the paywall then does nothing
+      at all, with no error and no way off the screen but a reload. A promise
+      that never settles is not a throw, so the catch never saw it.
+
+      So the wait is bounded. Dismissing the paywall is the reader's decision
+      and it is honoured on time whatever the OS is doing; a permission answer
+      that arrives late is still recorded, as long as this flow is still
+      mounted.
+    */
+    let timedOut = false;
+    const permission = enableNotifications()
+      .then((result) => {
+        if (timedOut && alive.current) setNotificationsEnabled(result);
+        return result;
+      })
+      .catch(() => false);
+    const granted = await Promise.race([
+      permission,
+      new Promise<boolean>((resolve) =>
+        setTimeout(() => resolve(false), PERMISSION_WAIT_MS)
+      ),
+    ]);
+    timedOut = true;
     if (!alive.current) return;
     setNotificationsEnabled(granted);
     go("welcome");

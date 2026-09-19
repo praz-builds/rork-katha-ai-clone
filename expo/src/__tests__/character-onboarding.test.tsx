@@ -1,6 +1,6 @@
 import React from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGenerateCharacterImage = jest.fn();
 const mockSendEmailCode = jest.fn();
@@ -799,6 +799,42 @@ describe("character onboarding", () => {
       expect(mockEnableNotifications).toHaveBeenCalledTimes(1);
       expect(view.queryByText("Want to know when it's ready?")).toBeNull();
       expect(view.queryByLabelText("Notify me")).toBeNull();
+    }
+  });
+
+  it("lets the reader off the paywall when the permission prompt is never answered", async () => {
+    // The reported case, from a web run: `Notification.requestPermission()`
+    // stays PENDING for as long as the browser's bubble sits unanswered, so
+    // the await never returned and pressing X did nothing at all -- no error,
+    // no way off the screen but a reload. A try/catch does not see a promise
+    // that simply never settles, which is what the guard used to be.
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    try {
+      mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT });
+      mockSendEmailCode.mockResolvedValue(undefined);
+      mockVerifyEmailCode.mockResolvedValue(undefined);
+      mockSaveCharacterToLibrary.mockResolvedValue({ id: "saved-1" });
+      // Never resolves, never rejects: the bubble nobody clicked.
+      mockEnableNotifications.mockReturnValue(new Promise(() => {}));
+
+      const view = await mount();
+      await fillSheet(view);
+      await submitSave(view);
+      await verify(view);
+      await view.findByText(`Meet ${NAME}.`);
+      await fireEvent.press(view.getByLabelText(`Keep ${NAME}`));
+      await view.findByText(`Paywall write ${NAME}`);
+
+      await fireEvent.press(view.getByLabelText("Dismiss paywall"));
+      expect(mockEnableNotifications).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(4_000);
+      });
+      await view.findByText("Welcome");
+    } finally {
+      jest.useRealTimers();
     }
   });
 
