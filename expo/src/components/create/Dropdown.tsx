@@ -278,7 +278,18 @@ function DropdownMenu({
     ? MENU_MIN_HEIGHT
     : Math.min(options.length * OPTION_MIN_HEIGHT + spacing.xs * 2 + 2, MENU_MIN_HEIGHT);
   const openUpward = roomBelow < neededHeight && roomAbove > roomBelow;
-  const available = Math.max(openUpward ? roomAbove : roomBelow, MENU_MIN_HEIGHT);
+  /*
+    The height is whatever the chosen side actually has, never more.
+
+    `MENU_MIN_HEIGHT` is a floor on the FLIP DECISION above, not on the
+    height: it says "less than three rows below is worth flipping for". Used
+    as a floor here too, it re-created the bug this placement exists to fix --
+    with a keyboard up, or a short window, neither side has 160px, and
+    `Math.max(room, 160)` then drew a menu taller than the room, hanging off
+    the edge into the region a ScrollView cannot scroll to. The list scrolls
+    inside whatever box fits; it never claims space that is not there.
+  */
+  const available = Math.max(openUpward ? roomAbove : roomBelow, 0);
   const maxHeight = Math.min(MENU_MAX_HEIGHT, available);
   /*
     An upward menu is pinned by its BOTTOM edge, just above the trigger.
@@ -496,6 +507,19 @@ export function Dropdown<T extends string = string>({
   const helpId = `${dropdownId}:help`;
   const isHelpOpen = openId === helpId;
 
+  /*
+    Which opening a `measureInWindow` callback belongs to.
+
+    `menuId` is stable for the life of the dropdown (it comes from `useId`),
+    so a callback was only ever matched against the id it was opened with --
+    which every later opening of the SAME dropdown also matches. Open, close,
+    open again quickly and the first measurement, landing late, would write
+    its stale position into the second menu. Bumping a counter on every open
+    and capturing it in the closure makes a late callback identifiable as
+    late, and it is then dropped.
+  */
+  const openSeq = useRef(0);
+
   const localRequestClose = useCallback((closeId?: string) => {
     setLocalOpenId((current) => closeMatching(current, closeId));
     setLocalOpenMenu((current) => (closeId !== undefined && current?.id !== closeId ? current : null));
@@ -519,6 +543,7 @@ export function Dropdown<T extends string = string>({
   const show = useCallback((kind: "options" | "help") => {
     Keyboard.dismiss();
     const menuId = kind === "help" ? helpId : dropdownId;
+    const seq = ++openSeq.current;
     // Opens synchronously with no anchor yet, rather than waiting on
     // `measureInWindow` to open -- that call is asynchronous (a bridge
     // round-trip on a real device, and never resolved at all by the test
@@ -545,6 +570,9 @@ export function Dropdown<T extends string = string>({
     }
     onOpen?.();
     triggerRef.current?.measureInWindow((x, y, width, height) => {
+      // A measurement for an opening that has since been superseded tells us
+      // where the trigger was, not where it is.
+      if (seq !== openSeq.current) return;
       const anchor: Anchor = { x, y, width, height };
       if (context) context.updateAnchor(menuId, anchor);
       else {
