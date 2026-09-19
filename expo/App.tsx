@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSharedValue } from "react-native-reanimated";
-import { initPostHog, initSentry } from "@/lib/analytics";
+import { captureError, initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
@@ -355,7 +355,29 @@ export default function App() {
       // on "InterTight" will not reach 600. See src/theme/typography.ts.
       InterTight: require("./assets/fonts/InterTight-Regular.ttf"),
       InterTightSemiBold: require("./assets/fonts/InterTight-SemiBold.ttf"),
-    }).then(() => setFontsReady(true));
+    })
+      // Boot even if a face does not arrive.
+      //
+      // This used to be a bare `.then`. `Font.loadAsync` rejects -- on web it
+      // gives up after six seconds -- and an unhandled rejection left
+      // `fontsReady` false forever, which renders `LaunchScreen` forever: the
+      // splash is the whole app until this resolves. One slow font request on
+      // a weak network was therefore an app that never opened, with no error
+      // and no way out but a reload. A missing face falls back to the system
+      // font, which is a cosmetic loss; never opening is a total one.
+      .catch((error) => {
+        console.warn("Font loading failed; falling back to system fonts:", error);
+        // A boot that silently lost the brand face is worth knowing about:
+        // it is invisible to the user (the system font substitutes cleanly)
+        // and it is the same failure that used to hang the splash.
+        captureError({
+          bucket: "client.app",
+          severity: "low",
+          errorCode: "font_load_failed",
+          error,
+        });
+      })
+      .then(() => setFontsReady(true));
   }, []);
 
   useEffect(() => {

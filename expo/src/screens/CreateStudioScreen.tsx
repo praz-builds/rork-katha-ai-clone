@@ -164,7 +164,9 @@ const INITIAL_DRAFT: StudioDraft = {
   // value instead of on their own label.
   imageStyle: "auto",
   storyFlow: "interactive",
-  visibility: "private",
+  // Public by default: everyone reaching Create has signed in with email, and
+  // the server still forces a story private when the entity gate says so.
+  visibility: "public",
 };
 
 // ---------------------------------------------------------------------------
@@ -289,6 +291,19 @@ export default function CreateStudioScreen({
     // a generation, because each one reserves and spends credits.
     if (startedRef.current) return;
     const choice = options?.choice;
+    /*
+      What the writer is actually asking for, which for a guest is not what
+      the draft says.
+
+      The brief's toggle defaults to Public now, and a guest's toggle is
+      DISPLAYED as private and disabled (`CreateBriefFlow`) without the draft
+      ever being written back. So the draft of a guest who never touched the
+      control still said "public", and the request said public while the
+      screen said Private. The server applies `account_required` and makes it
+      private either way, so nothing broke -- it was the question that was
+      wrong.
+    */
+    const requestedVisibility = isAnonymous ? "private" : draft.visibility;
     if (!canGenerate) {
       Alert.alert(
         credits >= STORY_START_CREDITS ? "Add a story seed" : "Credits needed",
@@ -307,7 +322,7 @@ export default function CreateStudioScreen({
       identityLenses: draft.identityLenses,
       seed: draft.seed,
       language: draft.language,
-      visibility: draft.visibility,
+      visibility: requestedVisibility,
       // Belt and braces with the clamp in loadDraft: validation.ts enforces the
       // same cap, and a request over it is a 400 rather than a truncation.
       characters: draft.characters.slice(0, MAX_CHARACTERS),
@@ -340,7 +355,7 @@ export default function CreateStudioScreen({
 
     startedRef.current = true;
     onGenerationStarted(startStoryGeneration({ draft: createDraft }));
-  }, [canGenerate, credits, draft, onGenerationStarted]);
+  }, [canGenerate, credits, draft, isAnonymous, onGenerationStarted]);
 
   return (
     <CreateBriefFlow

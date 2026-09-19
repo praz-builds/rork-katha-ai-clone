@@ -562,6 +562,33 @@ Recipe:
 - Two filter chips in the same row close each other; only one menu is open at a
   time.
 
+### 6A.1 The dropdown (`expo/src/components/create/Dropdown.tsx`)
+
+One component backs every picker in Create: the pill variant above (Genre) and
+the field variant (a white box with an uppercase label over the value).
+
+- **The menu is a plain list of labels.** No captions under an option. A
+  sentence under every row turned a two-choice picker into a paragraph.
+- **Rows have no dividers.** The menu gets `spacing.xs` of padding, and each
+  row is its own `radius.sm` shape, 2pt apart. Selected: `colors.accentSoft`
+  with orange text and `Check`. Pressed or hovered: `colors.track`. The menu
+  itself has no border either, just `colors.surface` and the overlay shadow.
+- **Explanations live behind a "?"** at the trigger's top-right (`help` prop).
+  It opens a card anchored to the trigger: the field name, an optional intro
+  line, then each option's name with its `detail`. Add it only where the
+  options need explaining (Story mode, Chapter length, Chapter cover, Image
+  style, Who can read it). Leave it off where the label says it all (Chapters,
+  Language). The "?" stays tappable on a disabled trigger.
+- **Placement.** A menu opens below its trigger, and flips above only when
+  its own list does not fit below (Language's single row always fits). An upward menu is pinned by its bottom edge
+  to the trigger, so a short list sits right against it instead of floating
+  up the screen over a different field.
+- **Closing.** Choosing an option, pressing the same trigger again, or
+  clicking anywhere outside the menu or card closes it. On web a document
+  listener does the outside click, because the scrim sits behind the page so
+  other triggers stay reachable, and text fields in front of it would otherwise
+  swallow the click.
+
 ---
 
 ## 7. Iconography

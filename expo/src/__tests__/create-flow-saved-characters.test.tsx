@@ -120,23 +120,34 @@ it("stops at three, disables the rest, and says why", async () => {
   expect(view.getByText("3 of 3")).toBeTruthy();
 });
 
-/**
- * Visibility is a dropdown at the foot of the brief now, not a switch inside
- * More options. It moved OUT of the collapsed section deliberately: a writer
- * who never opened More options never saw the one control that decides whether
- * anybody else can read what they are about to spend credits on.
- */
+/** Visibility is a dropdown inside More options, with the other five. */
 it("offers Private and Public as named states, with the spec's copy on each", async () => {
   let latest: StudioCreateDraft = initialDraft;
   const view = await render(<Harness library={[]} onDraft={(draft) => { latest = draft; }} />);
 
+  await fireEvent.press(await view.findByRole("button", { name: "More options" }));
   const trigger = await view.findByRole("button", { name: "Who can read it" });
   expect(trigger.props.accessibilityValue).toEqual({ text: "Private" });
 
-  await fireEvent.press(trigger);
+  await fireEvent.press(view.getByRole("button", { name: "About Who can read it" }));
   expect(view.getByText("Only you can see this story.")).toBeTruthy();
   expect(view.getByText("Anyone on Katha can read it once it's written.")).toBeTruthy();
 
+  await fireEvent.press(trigger);
+
   await fireEvent.press(view.getByRole("button", { name: "Public" }));
   await waitFor(() => expect(latest.visibility).toBe("public"));
+});
+
+it("puts a saved character added to the story into Moments as a tag, and drops it when removed", async () => {
+  const view = await render(<Harness library={saved} />);
+  await fireEvent.press(await view.findByLabelText("Add Naina to this story"));
+  await fireEvent.press(view.getByRole("button", { name: "More options" }));
+
+  expect(view.getByLabelText("Add Naina to this moment")).toBeTruthy();
+  // Only the cast is offered, not the whole library.
+  expect(view.queryByLabelText("Add Aarav to this moment")).toBeNull();
+
+  await fireEvent.press(view.getByLabelText("Remove Naina from this story"));
+  await waitFor(() => expect(view.queryByLabelText("Add Naina to this moment")).toBeNull());
 });
