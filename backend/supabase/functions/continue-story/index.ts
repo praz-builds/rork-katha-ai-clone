@@ -26,9 +26,11 @@ import {
 } from "../_shared/prose-integrity.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import {
+  commitStoryBible,
   formatStoryBibleBlock,
   mergeStoryBible,
   parseStoryBible,
+  type StoryBibleWriter,
 } from "../_shared/story-bible.ts";
 import {
   checkChapterContinuity,
@@ -950,83 +952,76 @@ serve(async (req) => {
             THE WRITE IS CONDITIONAL, BECAUSE THIS IS A READ-MODIFY-WRITE WITH
             AN ENTIRE GENERATION IN THE MIDDLE.
 
-            `storyBible` above came off the story row when the REQUEST
-            arrived; this write happens inside `waitUntil`, after the chapter
-            has been delivered -- forty to sixty seconds later. With
-            `story_flow: "auto"` the next chapter starts the moment this one is
-            done, so chapter N+1 can read the bible before chapter N's write
-            lands and then overwrite it. Nothing errors; chapter N's facts
-            simply stop existing, which is the one thing an append-only record
-            may never do.
+            `storyBible` came off the story row when the REQUEST arrived; this
+            runs inside `waitUntil`, after the chapter has been delivered --
+            forty to sixty seconds later. With `story_flow: "auto"` the next
+            chapter starts the moment this one is done, so chapter N+1 can read
+            the bible before chapter N's write lands. `commitStoryBible`
+            re-reads, rebuilds on what is current, and writes only while the
+            revision is unchanged.
 
-            So: re-read the bible and its revision, merge THIS chapter's
-            proposal into whatever is current now, and write only while that
-            revision is still current (00093). A mismatch means another
-            chapter merged while this one was being checked, and the answer is
-            to merge again on top of it rather than to win the race.
-
-            The repair above is deliberately NOT re-run on a retry. It edited
-            the chapter's prose, that edit already landed, and the only thing
-            being recomputed here is which facts the bible ends up holding.
+            The repair is deliberately NOT re-run when the build runs again: it
+            edited the chapter's prose, that edit already landed, and only the
+            bible is recomputed.
           */
-          const MERGE_ATTEMPTS = 3;
-          let committed = false;
-          for (let attempt = 0; attempt < MERGE_ATTEMPTS; attempt++) {
-            const { data: current, error: readError } = await serviceClient
-              .from("stories")
-              .select("story_bible, story_bible_rev")
-              .eq("id", story_id)
-              .single();
-            if (readError) throw readError;
+          const repairedAll = repaired >= hard.length && rejected === 0;
+          /*
+            The contradictions the repair actually addressed, by identity.
 
-            const base = parseStoryBible(current?.story_bible);
-            const rev = typeof current?.story_bible_rev === "number"
-              ? current.story_bible_rev
-              : 0;
-            const fresh = attempt === 0 && rev === storyBibleRev
-              ? merged
-              : mergeStoryBible(base, resolved.proposal, nextChapterNum);
-            // Same rule as above, re-applied because a recomputed merge brings
-            // its own contradiction list with it.
-            if (repaired >= hard.length && rejected === 0) {
-              fresh.bible.contradictions = fresh.bible.contradictions.filter(
-                (entry) =>
-                  !(entry.chapter === nextChapterNum &&
-                    entry.severity === "hard"),
-              );
-            }
-
-            const { data: written, error: bibleError } = await serviceClient
-              .from("stories")
-              .update({ story_bible: fresh.bible, story_bible_rev: rev + 1 })
-              .eq("id", story_id)
-              .eq("story_bible_rev", rev)
-              .select("id");
-            if (bibleError) throw bibleError;
-            if (written && written.length > 0) {
-              merged.bible = fresh.bible;
-              merged.contradictions = fresh.contradictions;
-              committed = true;
-              break;
-            }
-          }
-          if (!committed) {
-            // Three losses in a row is not contention, it is something wrong.
+            A rebuild against a newer bible can surface a DIFFERENT hard
+            contradiction for this same chapter, and dropping that one because
+            an unrelated repair succeeded would hide a fault nobody fixed. So
+            the filter names the entries that were repaired rather than
+            "everything hard belonging to this chapter".
+          */
+          const repairedKeys = new Set(
+            hard.map((entry) =>
+              `${entry.chapter}|${entry.kind}|${entry.what}|${entry.canonical}`
+            ),
+          );
+          const commit = await commitStoryBible(
+            serviceClient as unknown as StoryBibleWriter,
+            {
+              storyId: story_id,
+              build: (current) => {
+                const next = mergeStoryBible(
+                  current,
+                  resolved.proposal,
+                  nextChapterNum,
+                );
+                if (repairedAll) {
+                  next.bible.contradictions = next.bible.contradictions.filter(
+                    (entry) =>
+                      !(entry.chapter === nextChapterNum &&
+                        entry.severity === "hard" &&
+                        repairedKeys.has(
+                          `${entry.chapter}|${entry.kind}|${entry.what}|${entry.canonical}`,
+                        )),
+                  );
+                }
+                merged.contradictions = next.contradictions;
+                return next.bible;
+              },
+            },
+          );
+          if (commit.bible) merged.bible = commit.bible;
+          if (!commit.committed) {
+            // Every attempt lost the swap, which is no longer contention.
             // The chapter is written, paid for and delivered, so this is
             // recorded rather than thrown: the bible is one chapter thinner
-            // and the next merge will still see everything before it.
+            // and every earlier chapter is still in it.
             await logError({
               bucket: "generation.story",
               severity: "medium",
               source: "runtime",
               errorCode: "story_bible_merge_lost",
               error: new Error(
-                `Story bible merge lost ${MERGE_ATTEMPTS} compare-and-swaps`,
+                `Story bible merge lost ${commit.attempts} compare-and-swaps`,
               ),
               context: {
                 story_id,
                 chapter_number: nextChapterNum,
-                attempts: MERGE_ATTEMPTS,
+                attempts: commit.attempts,
               },
               userId: user.id,
             });

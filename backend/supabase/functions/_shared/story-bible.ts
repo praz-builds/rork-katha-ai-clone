@@ -1006,3 +1006,99 @@ reference notes.
 ${body}
 </story_bible>`;
 }
+
+/**
+ * The only way `stories.story_bible` may be written.
+ *
+ * WHY A HELPER AND NOT AN UPDATE AT EACH CALL SITE.
+ *
+ * The bible is append-only, and every write to it is a read-modify-write with
+ * something slow in the middle: `continue-story` reads the story row when the
+ * request arrives and writes from inside `waitUntil` after the chapter has
+ * been delivered, and `generate-story-stream` seeds chapter one from a
+ * background task that waits on the plan. Both windows are tens of seconds
+ * wide, and with `story_flow: "auto"` the next chapter is already running
+ * inside them. An unconditional `update` therefore loses whichever merge
+ * finished first, silently -- the facts do not conflict, they just stop
+ * existing, which is the one thing this structure may never do.
+ *
+ * So every writer goes through here: read the bible and its revision, build
+ * the next one from what is CURRENT rather than from what was read minutes
+ * ago, and write only while that revision is unchanged (migration 00093). A
+ * mismatch is not an error, it is another chapter having merged first, and the
+ * answer is to build again on top of it.
+ *
+ * `build` must be pure and must tolerate being called more than once: it is
+ * handed the current bible and returns the next one.
+ */
+export interface StoryBibleWriter {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: unknown) => {
+        single: () => PromiseLike<{ data: unknown; error: unknown }>;
+      };
+    };
+    update: (values: Record<string, unknown>) => {
+      eq: (column: string, value: unknown) => {
+        eq: (column: string, value: unknown) => {
+          select: (
+            columns: string,
+          ) => PromiseLike<{ data: unknown[] | null; error: unknown }>;
+        };
+      };
+    };
+  };
+}
+
+export async function commitStoryBible(
+  client: StoryBibleWriter,
+  input: {
+    storyId: string;
+    /** Built from the CURRENT bible, once per attempt. */
+    build: (current: StoryBible) => StoryBible;
+    /** Other columns to write in the same statement, e.g. `beats`. */
+    also?: Record<string, unknown>;
+    attempts?: number;
+  },
+): Promise<{ committed: boolean; bible: StoryBible | null; attempts: number }> {
+  const limit = input.attempts ?? 5;
+  let lastBuilt: StoryBible | null = null;
+  for (let attempt = 1; attempt <= limit; attempt++) {
+    const read = await client
+      .from("stories")
+      .select("story_bible, story_bible_rev")
+      .eq("id", input.storyId)
+      .single();
+    if (read.error) throw read.error;
+    const row = read.data as
+      | { story_bible?: unknown; story_bible_rev?: unknown }
+      | null;
+
+    const current = parseStoryBible(row?.story_bible);
+    // A legacy row predates 00093 and reads as 0, which is also what the
+    // column defaults to -- the swap filters on equality, and `= null` would
+    // match no row at all.
+    const rev = typeof row?.story_bible_rev === "number"
+      ? row.story_bible_rev
+      : 0;
+
+    const next = input.build(current);
+    lastBuilt = next;
+
+    const written = await client
+      .from("stories")
+      .update({
+        ...(input.also ?? {}),
+        story_bible: next,
+        story_bible_rev: rev + 1,
+      })
+      .eq("id", input.storyId)
+      .eq("story_bible_rev", rev)
+      .select("id");
+    if (written.error) throw written.error;
+    if (Array.isArray(written.data) && written.data.length > 0) {
+      return { committed: true, bible: next, attempts: attempt };
+    }
+  }
+  return { committed: false, bible: lastBuilt, attempts: limit };
+}

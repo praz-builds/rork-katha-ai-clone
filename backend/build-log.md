@@ -51,13 +51,47 @@ next merge still sees everything before it.
 The chapter repair is deliberately not re-run on a retry — it edited prose,
 that edit already landed, and only the bible is recomputed.
 
+### Three more holes, found by CodeAnt on the fix itself
+
+The first version of this fix put the compare-and-swap inline in
+`continue-story`. Review found three faults in it, all real, and the answer to
+all three was to stop hand-rolling it:
+
+1. **A stale contradiction filter.** On a rebuild the merge runs against a
+   NEWER bible, which can surface a different hard contradiction for the same
+   chapter -- and the drop rule was "everything hard belonging to this
+   chapter", so an unrelated successful repair would have deleted a fault
+   nobody fixed. The filter now names the contradictions the repair actually
+   addressed, by identity.
+2. **Chapter one was not guarded at all.** `generate-story-stream` seeds the
+   bible from a background task that waits on the plan, and wrote it
+   unconditionally with no revision bump. That is the same loss arriving from
+   the other direction: seeding could land after chapter two's merge and erase
+   it. It now goes through the same helper and builds on whatever the bible
+   currently holds rather than on the seed alone.
+3. **Three attempts, then silence.** Raised to five, and the give-up path is
+   still a logged `story_bible_merge_lost` rather than a throw -- but it is
+   now the only place that can lose anything, instead of one of several.
+
+`commitStoryBible` in `_shared/story-bible.ts` is now the ONLY way the column
+may be written: read the bible and its revision, build the next one from what
+is current, write while that revision holds, repeat. Callers hand it a pure
+`build(current)`, which is what makes a retry correct rather than a gamble.
+
 ### Tests
 
 `00093_story_bible_rev_test.ts` runs against real SQL (PGlite) and reproduces
 the race: two writers both read revision 0, the first wins, **the second
 changes no row at all**, the winner's facts survive, and the retry against
-revision 1 lands both. 1,037 function tests still pass; `deno check` and
-`deno fmt` clean.
+revision 1 lands both.
+
+Three unit tests pin the helper: it writes and moves the revision; it
+**rebuilds on the newer bible** when something lands mid-flight (asserting the
+second build sees the winner's fact, not the stale empty one); and it gives up
+rather than clobbering, reporting how many times it tried.
+
+1,040 function tests pass; `deno check` and `deno fmt` clean on every file
+touched.
 
 ### Not deployed
 
