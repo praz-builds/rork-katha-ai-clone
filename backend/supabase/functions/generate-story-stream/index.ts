@@ -50,6 +50,7 @@ import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
+import { sseStream } from "../_shared/sse.ts";
 import {
   applyRequestedVisibility,
   type VisibilityClient,
@@ -380,528 +381,502 @@ serve(async (req) => {
 
     // --- Past this line the credit is reserved and the response is a stream. ---
 
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        let closed = false;
-        const send = (event: string, data: unknown) => {
-          if (closed) return;
-          try {
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-              ),
-            );
-          } catch {
-            // The READER hung up. `closed` only tracks our own `close()`, so a
-            // client that navigates away or loses signal leaves this flag false
-            // and every subsequent enqueue throws `Invalid state`. Latching it
-            // here turns one throw into a silent no-op for the rest of the
-            // generation instead of a throw per event -- and the generation
-            // itself must not be abandoned, because the chapter is already paid
-            // for and still has to be persisted for the reader to come back to.
-            closed = true;
-          }
+    // `sseStream` owns the framing, the ~15s keep-alive comment and the close
+    // on every exit path (`_shared/sse.ts`). The keep-alive is what lets the
+    // client tell a dead connection from a slow metadata call, and a reader
+    // who hangs up does not stop this run: the replay of its request id is
+    // how they get the finished chapter back.
+    const stream = sseStream(async ({ send }) => {
+      try {
+        send("meta", {
+          story_id: story.id,
+          operation_id: operation.id,
+          balance: operation.balance,
+        });
+        send("stage", { stage: "context" });
+
+        // The cast insert is off the critical path for the same reason it is
+        // in `generate-story`: the prompt is built from the request body, not
+        // from these rows, and only the background media task needs them. Its
+        // rejection is folded into a value so it cannot surface as an
+        // unhandled rejection and take the isolate down mid-stream.
+        const charactersSettled: PromiseLike<{ error: unknown }> =
+          characters?.length
+            ? serviceClient.from("characters").insert(
+              characters.map((c) => ({
+                story_id: story.id,
+              name: c.name,
+              // The retired field, written only so a story created now is still
+              // readable by anything that has not moved to `appearance` yet. Nothing
+              // reads it in preference to `appearance` any more: `characterAppearance`
+              // in `types.ts` is the single resolver and it puts `appearance` first.
+              description: c.appearance || c.description || null,
+              background: c.background,
+              // `||`, NOT `??`. An empty-string appearance is what a client
+              // sends for a character the writer left blank, and `??` only
+              // falls through on null/undefined -- so a legacy character whose
+              // text lives in `description` would have had BOTH columns written
+              // empty and their details lost for good. `characterAppearance`
+              // in `types.ts` resolves the same way for the same reason.
+              appearance: c.appearance || c.description || null,
+                // A portrait the writer generated on the brief screen, and
+                // paid for. Dropping it here silently discards that work and
+                // the cast is re-rendered from scratch by the media task.
+                // `generate-story` carries it; this path is newer and did not,
+                // which is the kind of gap two parallel write paths produce.
+                portrait_url: c.portraitUrl,
+                is_hero: c.isHero ?? false,
+                saved_character_id: c.savedCharacterId ?? null,
+              })),
+            ).then(
+              (r) => ({ error: r.error as unknown }),
+              (error: unknown) => ({ error }),
+            )
+            : Promise.resolve({ error: null });
+
+        const promptParams = {
+          primaryGenre,
+          audienceMode,
+          identityLenses,
+          spiceLevel,
+          storyMode,
+          chapterRole,
+          language,
+          chapterLength,
+          plannedChapterCount,
         };
-        const close = () => {
-          if (closed) return;
-          closed = true;
-          controller.close();
-        };
+        // Whatever the brief itself carried, and nothing fetched here.
+        const resolvedGrounding = grounding;
 
-        try {
-          send("meta", {
-            story_id: story.id,
-            operation_id: operation.id,
-            balance: operation.balance,
-          });
-          send("stage", { stage: "context" });
+        // The reader's saved phrases seed their next story. Best-effort: an
+        // empty list renders the prompt byte-identically, so a lookup failure
+        // costs the language layer and never the paid generation.
+        const savedPhrases = await fetchPhraseSeeds(
+          serviceClient,
+          user.id,
+          language,
+        );
 
-          // The cast insert is off the critical path for the same reason it is
-          // in `generate-story`: the prompt is built from the request body, not
-          // from these rows, and only the background media task needs them. Its
-          // rejection is folded into a value so it cannot surface as an
-          // unhandled rejection and take the isolate down mid-stream.
-          const charactersSettled: PromiseLike<{ error: unknown }> =
-            characters?.length
-              ? serviceClient.from("characters").insert(
-                characters.map((c) => ({
-                  story_id: story.id,
-                name: c.name,
-                // The retired field, written only so a story created now is still
-                // readable by anything that has not moved to `appearance` yet. Nothing
-                // reads it in preference to `appearance` any more: `characterAppearance`
-                // in `types.ts` is the single resolver and it puts `appearance` first.
-                description: c.appearance || c.description || null,
-                background: c.background,
-                // `||`, NOT `??`. An empty-string appearance is what a client
-                // sends for a character the writer left blank, and `??` only
-                // falls through on null/undefined -- so a legacy character whose
-                // text lives in `description` would have had BOTH columns written
-                // empty and their details lost for good. `characterAppearance`
-                // in `types.ts` resolves the same way for the same reason.
-                appearance: c.appearance || c.description || null,
-                  // A portrait the writer generated on the brief screen, and
-                  // paid for. Dropping it here silently discards that work and
-                  // the cast is re-rendered from scratch by the media task.
-                  // `generate-story` carries it; this path is newer and did not,
-                  // which is the kind of gap two parallel write paths produce.
-                  portrait_url: c.portraitUrl,
-                  is_hero: c.isHero ?? false,
-                  saved_character_id: c.savedCharacterId ?? null,
-                })),
-              ).then(
-                (r) => ({ error: r.error as unknown }),
-                (error: unknown) => ({ error }),
-              )
-              : Promise.resolve({ error: null });
-
-          const promptParams = {
-            primaryGenre,
-            audienceMode,
-            identityLenses,
-            spiceLevel,
-            storyMode,
-            chapterRole,
-            language,
-            chapterLength,
-            plannedChapterCount,
-          };
-          // Whatever the brief itself carried, and nothing fetched here.
-          const resolvedGrounding = grounding;
-
-          // The reader's saved phrases seed their next story. Best-effort: an
-          // empty list renders the prompt byte-identically, so a lookup failure
-          // costs the language layer and never the paid generation.
-          const savedPhrases = await fetchPhraseSeeds(
-            serviceClient,
-            user.id,
-            language,
-          );
-
-          const systemPrompt = buildStoryProsePrompt(promptParams);
-          // ASK FOR ONE THING.
-          //
-          // `buildStoryProsePrompt` ends with "Do not return JSON... Begin
-          // with the first sentence of the story itself", and this call used
-          // to let `buildUserPrompt` append its default closing line:
-          // "Respond with a JSON object only." The model was handed two
-          // contradictory output contracts in the same request and had to
-          // spend reasoning deciding which one won.
-          //
-          // The tail risk was worse than the delay: had it ever obeyed the
-          // JSON line, the first token would have been `{`, and
-          // `revealableChapterProse` would have sat waiting for a paragraph
-          // break that never arrived while the reader watched a loader.
-          //
-          // `continue-story` already builds its prompt this way; the first
-          // chapter was the one that did not.
-          const userPrompt = `${
-            buildUserPrompt({
-              ...promptParams,
-              genres,
-              seed,
-              characters,
-              whereAndWhen,
-              moments,
-              beats,
-              chapterNumber: 1,
-              storyValues,
-              writingStyle,
-              avoid,
-              savedPhrases,
-              grounding: resolvedGrounding,
-              omitClosingInstruction: true,
-            })
-          }\n\n${PROSE_CLOSING_INSTRUCTION}`;
-
-          const band = wordBandFor(storyMode, audienceMode, chapterLength);
-          let firstTokenAt = 0;
-          const startedAt = Date.now();
-
-          // THE STORY IS NAMED BEFORE IT IS WRITTEN.
-          //
-          // The title used to come out of the metadata call, which reads the
-          // FINISHED chapter -- so it could not exist until the last word did,
-          // 40-50s after the reader was already reading. Page one painted with
-          // a blank heading over prose, and the story got its name last.
-          //
-          // This call derives the name from the same brief the prose is derived
-          // from and is fired in the same tick as the stream, so it costs the
-          // chapter nothing: the prose never awaits it, and the `title` event
-          // goes out the moment it lands (measured against the model on
-          // 2026-09-11, first prose token at 4.0s, so the title paints first).
-          //
-          // It is never load-bearing. `nameChapterEarly` answers null on any
-          // failure and the metadata title is used exactly as it was before.
-          const namingPromise = nameChapterEarly({
+        const systemPrompt = buildStoryProsePrompt(promptParams);
+        // ASK FOR ONE THING.
+        //
+        // `buildStoryProsePrompt` ends with "Do not return JSON... Begin
+        // with the first sentence of the story itself", and this call used
+        // to let `buildUserPrompt` append its default closing line:
+        // "Respond with a JSON object only." The model was handed two
+        // contradictory output contracts in the same request and had to
+        // spend reasoning deciding which one won.
+        //
+        // The tail risk was worse than the delay: had it ever obeyed the
+        // JSON line, the first token would have been `{`, and
+        // `revealableChapterProse` would have sat waiting for a paragraph
+        // break that never arrived while the reader watched a loader.
+        //
+        // `continue-story` already builds its prompt this way; the first
+        // chapter was the one that did not.
+        const userPrompt = `${
+          buildUserPrompt({
+            ...promptParams,
+            genres,
             seed,
-            primaryGenre,
-            chapterNumber: 1,
-            characterNames: characters?.map((c) => c.name).filter(Boolean),
-          });
-          namingPromise.then((names) => {
-            if (!names) return;
-            send("title", {
-              title: names.title,
-              chapter_title: names.chapterTitle,
-            });
-            // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
-            // this promise -- that is the point of it -- so a rejection here
-            // has no handler and becomes an unhandled rejection, which on this
-            // runtime can take the isolate down and with it a chapter the
-            // writer has already been charged for. A title that cannot be
-            // delivered is worth a log line and nothing more.
-          }).catch((error) => {
-            console.error(
-              "early chapter title could not be sent:",
-              safeErrorMessage(error),
-            );
-          });
-
-          const prose = await streamChapterProse({
-            systemPrompt,
-            userPrompt,
-            wordBand: band,
-            onCommit: () => {
-              firstTokenAt = Date.now() - startedAt;
-              send("stage", { stage: "writing" });
-            },
-            onDelta: (text) => send("delta", { text }),
-          });
-
-          send("stage", { stage: "shaping" });
-
-          const { error: characterError } = await charactersSettled;
-          if (characterError) throw characterError;
-
-          // The metadata call. Structured, not streamed, and deliberately after
-          // the prose rather than around it: `series_state` is what makes a
-          // series continuable, and recovering it from a partially-arrived JSON
-          // object is exactly the fragility this split exists to avoid.
-          const metadata = await generateFastStructuredText(
-            CHAPTER_METADATA_SYSTEM_PROMPT,
-            buildChapterMetadataPrompt({
-              prose: prose.text,
-              storyMode,
-              seed,
-            }),
-            CHAPTER_METADATA_OUTPUT,
-            METADATA_MAX_TOKENS,
-            METADATA_DEADLINE_MS,
-          );
-          // Settled long ago -- its deadline is 12s and the prose above took
-          // 40-50s -- so this await never actually waits. It is awaited rather
-          // than read from a mutable binding so the name that is PERSISTED is
-          // always the same one the `title` event announced: a story whose
-          // heading changes at the end is the bug this whole change removes.
-          const earlyNames = await namingPromise;
-          // Reuse the same parser the non-streamed path uses, so a field that
-          // is missing or malformed degrades identically on both.
-          const output = parseStructuredOutput(
-            JSON.stringify({
-              ...(JSON.parse(metadata.text) as Record<string, unknown>),
-              chapter_body: prose.text,
-              // The metadata call still returns both names, and it is still the
-              // fallback for a naming call that failed. It only loses.
-              ...(earlyNames?.title ? { title: earlyNames.title } : {}),
-              ...(earlyNames?.chapterTitle
-                ? { chapter_title: earlyNames.chapterTitle }
-                : {}),
-            }),
-            "Untitled Story",
-          );
-
-          // Chapter 1 opens the delivered set, so this is where an invented
-          // entry would enter it. Only moments the brief actually asked for
-          // survive into stored state.
-          output.series_state = verifyDeliveredMoments(
-            output.series_state,
+            characters,
+            whereAndWhen,
             moments,
-          );
-          // The reader has already been shown this prose, so the scan can only
-          // report - see the module comment in content-scan.ts.
-          await reportCrudeLexicon(prose.text, {
-            feature: "generate_story_stream",
-            storyId: story.id,
-            userId: observedUserId,
+            beats,
+            chapterNumber: 1,
+            storyValues,
+            writingStyle,
+            avoid,
+            savedPhrases,
+            grounding: resolvedGrounding,
+            omitClosingInstruction: true,
+          })
+        }\n\n${PROSE_CLOSING_INSTRUCTION}`;
+
+        const band = wordBandFor(storyMode, audienceMode, chapterLength);
+        let firstTokenAt = 0;
+        const startedAt = Date.now();
+
+        // THE STORY IS NAMED BEFORE IT IS WRITTEN.
+        //
+        // The title used to come out of the metadata call, which reads the
+        // FINISHED chapter -- so it could not exist until the last word did,
+        // 40-50s after the reader was already reading. Page one painted with
+        // a blank heading over prose, and the story got its name last.
+        //
+        // This call derives the name from the same brief the prose is derived
+        // from and is fired in the same tick as the stream, so it costs the
+        // chapter nothing: the prose never awaits it, and the `title` event
+        // goes out the moment it lands (measured against the model on
+        // 2026-09-11, first prose token at 4.0s, so the title paints first).
+        //
+        // It is never load-bearing. `nameChapterEarly` answers null on any
+        // failure and the metadata title is used exactly as it was before.
+        const namingPromise = nameChapterEarly({
+          seed,
+          primaryGenre,
+          chapterNumber: 1,
+          characterNames: characters?.map((c) => c.name).filter(Boolean),
+        });
+        namingPromise.then((names) => {
+          if (!names) return;
+          send("title", {
+            title: names.title,
+            chapter_title: names.chapterTitle,
           });
-          const verdict = chapterLengthVerdict(prose.text, band);
-          if (!verdict.usable) {
-            // Not a failure: the reader has already read this chapter, so
-            // discarding it would take away something they were shown and
-            // charged for. It is recorded instead, because a model that
-            // consistently misses its band changes reading-time estimates and
-            // narration cost, and that has to be visible to be fixed.
+          // DETACHED, SO IT MUST SWALLOW ITS OWN FAILURES. Nothing awaits
+          // this promise -- that is the point of it -- so a rejection here
+          // has no handler and becomes an unhandled rejection, which on this
+          // runtime can take the isolate down and with it a chapter the
+          // writer has already been charged for. A title that cannot be
+          // delivered is worth a log line and nothing more.
+        }).catch((error) => {
+          console.error(
+            "early chapter title could not be sent:",
+            safeErrorMessage(error),
+          );
+        });
+
+        const prose = await streamChapterProse({
+          systemPrompt,
+          userPrompt,
+          wordBand: band,
+          onCommit: () => {
+            firstTokenAt = Date.now() - startedAt;
+            send("stage", { stage: "writing" });
+          },
+          onDelta: (text) => send("delta", { text }),
+        });
+
+        send("stage", { stage: "shaping" });
+
+        const { error: characterError } = await charactersSettled;
+        if (characterError) throw characterError;
+
+        // The metadata call. Structured, not streamed, and deliberately after
+        // the prose rather than around it: `series_state` is what makes a
+        // series continuable, and recovering it from a partially-arrived JSON
+        // object is exactly the fragility this split exists to avoid.
+        const metadata = await generateFastStructuredText(
+          CHAPTER_METADATA_SYSTEM_PROMPT,
+          buildChapterMetadataPrompt({
+            prose: prose.text,
+            storyMode,
+            seed,
+          }),
+          CHAPTER_METADATA_OUTPUT,
+          METADATA_MAX_TOKENS,
+          METADATA_DEADLINE_MS,
+        );
+        // Settled long ago -- its deadline is 12s and the prose above took
+        // 40-50s -- so this await never actually waits. It is awaited rather
+        // than read from a mutable binding so the name that is PERSISTED is
+        // always the same one the `title` event announced: a story whose
+        // heading changes at the end is the bug this whole change removes.
+        const earlyNames = await namingPromise;
+        // Reuse the same parser the non-streamed path uses, so a field that
+        // is missing or malformed degrades identically on both.
+        const output = parseStructuredOutput(
+          JSON.stringify({
+            ...(JSON.parse(metadata.text) as Record<string, unknown>),
+            chapter_body: prose.text,
+            // The metadata call still returns both names, and it is still the
+            // fallback for a naming call that failed. It only loses.
+            ...(earlyNames?.title ? { title: earlyNames.title } : {}),
+            ...(earlyNames?.chapterTitle
+              ? { chapter_title: earlyNames.chapterTitle }
+              : {}),
+          }),
+          "Untitled Story",
+        );
+
+        // Chapter 1 opens the delivered set, so this is where an invented
+        // entry would enter it. Only moments the brief actually asked for
+        // survive into stored state.
+        output.series_state = verifyDeliveredMoments(
+          output.series_state,
+          moments,
+        );
+        // The reader has already been shown this prose, so the scan can only
+        // report - see the module comment in content-scan.ts.
+        await reportCrudeLexicon(prose.text, {
+          feature: "generate_story_stream",
+          storyId: story.id,
+          userId: observedUserId,
+        });
+        const verdict = chapterLengthVerdict(prose.text, band);
+        if (!verdict.usable) {
+          // Not a failure: the reader has already read this chapter, so
+          // discarding it would take away something they were shown and
+          // charged for. It is recorded instead, because a model that
+          // consistently misses its band changes reading-time estimates and
+          // narration cost, and that has to be visible to be fixed.
+          await logError({
+            bucket: "generation.story",
+            severity: "medium",
+            source: "runtime",
+            errorCode: "streamed_chapter_outside_band",
+            error: new Error(
+              `Streamed chapter ran ${verdict.words} words against a ${band.min}-${band.max} band`,
+            ),
+            context: {
+              story_id: story.id,
+              operation_id: operation.id,
+              words: verdict.words,
+              band_min: band.min,
+              band_max: band.max,
+              truncated: prose.truncated,
+              model: prose.model,
+            },
+            userId: user.id,
+          });
+        }
+
+        const contentRating = deriveContentRating(audienceMode, spiceLevel);
+        const { data: chapter, error: completionError } = await serviceClient
+          .rpc("complete_story_generation", {
+            p_operation_id: operation.id,
+            p_story_id: story.id,
+            p_author_id: user.id,
+            p_title: output.title,
+            p_content: prose.text,
+            p_word_count: verdict.words,
+            p_themes: output.themes,
+            p_first_line: output.first_line || null,
+            p_previously_summary: output.previously_summary || null,
+            p_content_rating: contentRating,
+            p_chapter_title: output.chapter_title || "Chapter 1",
+            p_story_mode: storyMode,
+            p_chapter_role: chapterRole,
+            p_series_state: storyMode === "series"
+              ? output.series_state ?? EMPTY_SERIES_STATE
+              : EMPTY_SERIES_STATE,
+            p_hook_type: storyMode === "series" ? output.hook_type : "none",
+            p_hook_text: storyMode === "series"
+              ? output.hook_text || null
+              : null,
+          });
+        if (completionError || !chapter) {
+          throw completionError ?? new Error("Story persistence failed");
+        }
+
+        // The classification, read at the one moment waiting for it is free:
+        // the chapter is written and on disk, and this started before the
+        // opening RPC. Same trade as the buffered path.
+        const classification = await classificationPromise;
+        const resolvedEntities = classification.status === "ok"
+          ? classification.entities
+          : groundingEntities;
+        if (classification.status !== "ok") {
+          await reportClassificationFailure({
+            outcome: classification,
+              feature: "grounding",
+            storyId: story.id,
+            userId: user.id,
+          });
+        }
+
+        // Same rationale as the buffered path: outside the credit
+        // transaction, because a card that fails to store must not roll back
+        // a chapter the reader is already looking at. Unconditional, because
+        // `entity_classification_status` is a fact about every story and an
+        // unwritten row is not one of its values.
+        {
+          const { error: groundingError } = await serviceClient
+            .from("stories")
+            .update({
+              grounding: resolvedGrounding,
+              grounding_entities: resolvedEntities,
+              entity_classification_status: classification.status === "ok"
+                ? "ok"
+                : "unavailable",
+            })
+            .eq("id", story.id);
+          if (groundingError) {
+            console.error(
+              "generate-story-stream grounding persist failed:",
+              safeErrorMessage(groundingError),
+            );
             await logError({
               bucket: "generation.story",
-              severity: "medium",
+              severity: "low",
               source: "runtime",
-              errorCode: "streamed_chapter_outside_band",
-              error: new Error(
-                `Streamed chapter ran ${verdict.words} words against a ${band.min}-${band.max} band`,
-              ),
-              context: {
-                story_id: story.id,
-                operation_id: operation.id,
-                words: verdict.words,
-                band_min: band.min,
-                band_max: band.max,
-                truncated: prose.truncated,
-                model: prose.model,
-              },
+              errorCode: "grounding_persist_failed",
+              error: groundingError,
+              context: { feature: "grounding", story_id: story.id },
               userId: user.id,
             });
           }
-
-          const contentRating = deriveContentRating(audienceMode, spiceLevel);
-          const { data: chapter, error: completionError } = await serviceClient
-            .rpc("complete_story_generation", {
-              p_operation_id: operation.id,
-              p_story_id: story.id,
-              p_author_id: user.id,
-              p_title: output.title,
-              p_content: prose.text,
-              p_word_count: verdict.words,
-              p_themes: output.themes,
-              p_first_line: output.first_line || null,
-              p_previously_summary: output.previously_summary || null,
-              p_content_rating: contentRating,
-              p_chapter_title: output.chapter_title || "Chapter 1",
-              p_story_mode: storyMode,
-              p_chapter_role: chapterRole,
-              p_series_state: storyMode === "series"
-                ? output.series_state ?? EMPTY_SERIES_STATE
-                : EMPTY_SERIES_STATE,
-              p_hook_type: storyMode === "series" ? output.hook_type : "none",
-              p_hook_text: storyMode === "series"
-                ? output.hook_text || null
-                : null,
-            });
-          if (completionError || !chapter) {
-            throw completionError ?? new Error("Story persistence failed");
-          }
-
-          // The classification, read at the one moment waiting for it is free:
-          // the chapter is written and on disk, and this started before the
-          // opening RPC. Same trade as the buffered path.
-          const classification = await classificationPromise;
-          const resolvedEntities = classification.status === "ok"
-            ? classification.entities
-            : groundingEntities;
-          if (classification.status !== "ok") {
-            await reportClassificationFailure({
-              outcome: classification,
-              feature: "grounding",
-              storyId: story.id,
-              userId: user.id,
-            });
-          }
-
-          // Same rationale as the buffered path: outside the credit
-          // transaction, because a card that fails to store must not roll back
-          // a chapter the reader is already looking at. Unconditional, because
-          // `entity_classification_status` is a fact about every story and an
-          // unwritten row is not one of its values.
-          {
-            const { error: groundingError } = await serviceClient
-              .from("stories")
-              .update({
-                grounding: resolvedGrounding,
-                grounding_entities: resolvedEntities,
-                entity_classification_status: classification.status === "ok"
-                  ? "ok"
-                  : "unavailable",
-              })
-              .eq("id", story.id);
-            if (groundingError) {
-              console.error(
-                "generate-story-stream grounding persist failed:",
-                safeErrorMessage(groundingError),
-              );
-              await logError({
-                bucket: "generation.story",
-                severity: "low",
-                source: "runtime",
-                errorCode: "grounding_persist_failed",
-                error: groundingError,
-                context: { feature: "grounding", story_id: story.id },
-                userId: user.id,
-              });
-            }
-          }
+        }
 
           // The visibility toggle is the publish button, and it is honoured
           // (2026-09-18): a signed-in writer who asked for public gets public.
           // The outcome travels in `done`, so a guest's request that stayed
           // private is explained without a second call.
-          const visibilityOutcome = await applyRequestedVisibility(
-            serviceClient as unknown as VisibilityClient,
-            {
-              storyId: story.id,
-              requested: visibility,
-              isAnonymous: user.is_anonymous === true,
-            },
-          );
+        const visibilityOutcome = await applyRequestedVisibility(
+          serviceClient as unknown as VisibilityClient,
+          {
+            storyId: story.id,
+            requested: visibility,
+            isAnonymous: user.is_anonymous === true,
+          },
+        );
 
-          // The cast joins the writer's saved characters. Best-effort, after
-          // the chapter is persisted and paid for.
-          await rememberStoryCharacters(characterClient, user.id, story.id);
+        // The cast joins the writer's saved characters. Best-effort, after
+        // the chapter is persisted and paid for.
+        await rememberStoryCharacters(characterClient, user.id, story.id);
 
-          /*
-            AN AUTO STORY BUYS THE REST OF ITS PLAN HERE, IN ONE TRANSACTION.
+        /*
+          AN AUTO STORY BUYS THE REST OF ITS PLAN HERE, IN ONE TRANSACTION.
 
-            After the chapter is written and persisted, never before: a run
-            reserved ahead of the prose would have to be unwound by hand every
-            time the provider failed, and a story whose first chapter never
-            arrived must not have bought its fifth.
+          After the chapter is written and persisted, never before: a run
+          reserved ahead of the prose would have to be unwound by hand every
+          time the provider failed, and a story whose first chapter never
+          arrived must not have bought its fifth.
 
-            `reserve_auto_chapter_run` decides everything -- whether this is an
-            auto series at all, how many of the remaining planned chapters the
-            balance affords, and what each one costs. It refuses to stack a
-            second run over a live one, so a retried invocation of this handler
-            reports the run that exists instead of buying it twice.
+          `reserve_auto_chapter_run` decides everything -- whether this is an
+          auto series at all, how many of the remaining planned chapters the
+          balance affords, and what each one costs. It refuses to stack a
+          second run over a live one, so a retried invocation of this handler
+          reports the run that exists instead of buying it twice.
 
-            The BALANCE IN THE PAYLOAD MOVES WITH IT. `operation.balance` is
-            the balance after the start credit and before the run, and sending
-            that to a client that has just been charged for five more chapters
-            would show a number the writer's own ledger disagrees with.
-          */
-          const autoRun = story.story_flow === "auto"
-            ? await reserveAutoChapterRun(serviceClient, {
-              userId: user.id,
-              storyId: story.id,
-              runId: crypto.randomUUID(),
-              fromChapter: 2,
-            })
-            : null;
+          The BALANCE IN THE PAYLOAD MOVES WITH IT. `operation.balance` is
+          the balance after the start credit and before the run, and sending
+          that to a client that has just been charged for five more chapters
+          would show a number the writer's own ledger disagrees with.
+        */
+        const autoRun = story.story_flow === "auto"
+          ? await reserveAutoChapterRun(serviceClient, {
+            userId: user.id,
+            storyId: story.id,
+            runId: crypto.randomUUID(),
+            fromChapter: 2,
+          })
+          : null;
 
-          send("stage", { stage: "art" });
+        send("stage", { stage: "art" });
 
-          let coverStatus: "generating" | "failed" = "generating";
-          try {
-            const media = await import("../_shared/media.ts");
-            media.runInBackground(media.generateStoryMedia({
-              storyId: story.id,
-              operationId: operation.id,
-              userId: user.id,
-              genre: primaryGenre,
-              title: output.title,
-              themes: output.themes,
-              whereAndWhen,
-              avoid,
-              imageStyle,
-              notifyOnReady,
-            }));
-          } catch (mediaError) {
-            console.error(
-              "generate-story-stream media scheduling failed:",
-              safeErrorMessage(mediaError),
-            );
-            coverStatus = "failed";
-            await serviceClient.from("stories").update({
-              cover_status: "failed",
-            }).eq("id", story.id);
-          }
-
-          // One builder for both transports - see `generation-done.ts` for
-          // the schema tie that keeps `beats`, `themes` and `series_state`
-          // from silently dropping out of this payload again.
-          send(
-            "done",
-            buildStoryDonePayload({
-              story,
-              chapter,
-              output,
-              storyMode,
-              primaryGenre,
-              contentRating,
-              coverStatus,
-              words: verdict.words,
-              beats,
-              balance: autoRun?.balance ?? operation.balance,
-              autoRunThroughChapter: autoRun?.through_chapter ?? null,
-              model: prose.model,
-              timings: {
-                first_token: firstTokenAt,
-                total: Date.now() - startedAt,
-              },
-              visibility: visibilityOutcome,
-            }),
-          );
-        } catch (error) {
-          // Every failure past the reservation refunds, exactly as the
-          // non-streamed path does. The difference is what the user is left
-          // holding: if prose already reached them it stays on screen, because
-          // erasing text someone has read is worse than leaving it there
-          // unfinished.
-          const committed = error instanceof StreamCommittedError;
+        let coverStatus: "generating" | "failed" = "generating";
+        try {
+          const media = await import("../_shared/media.ts");
+          media.runInBackground(media.generateStoryMedia({
+            storyId: story.id,
+            operationId: operation.id,
+            userId: user.id,
+            genre: primaryGenre,
+            title: output.title,
+            themes: output.themes,
+            whereAndWhen,
+            avoid,
+            imageStyle,
+            notifyOnReady,
+          }));
+        } catch (mediaError) {
           console.error(
-            "generate-story-stream failed:",
-            safeErrorMessage(error),
+            "generate-story-stream media scheduling failed:",
+            safeErrorMessage(mediaError),
           );
+          coverStatus = "failed";
+          await serviceClient.from("stories").update({
+            cover_status: "failed",
+          }).eq("id", story.id);
+        }
 
-          const { data: refund, error: refundError } = await serviceClient.rpc(
-            "refund_generation_operation",
-            {
-              p_operation_id: operation.id,
-              p_user_id: user.id,
-              p_error: errorMessage(error),
+        // One builder for both transports - see `generation-done.ts` for
+        // the schema tie that keeps `beats`, `themes` and `series_state`
+        // from silently dropping out of this payload again.
+        send(
+          "done",
+          buildStoryDonePayload({
+            story,
+            chapter,
+            output,
+            storyMode,
+            primaryGenre,
+            contentRating,
+            coverStatus,
+            words: verdict.words,
+            beats,
+            balance: autoRun?.balance ?? operation.balance,
+            autoRunThroughChapter: autoRun?.through_chapter ?? null,
+            model: prose.model,
+            timings: {
+              first_token: firstTokenAt,
+              total: Date.now() - startedAt,
             },
-          );
+            visibility: visibilityOutcome,
+          }),
+        );
+      } catch (error) {
+        // Every failure past the reservation refunds, exactly as the
+        // non-streamed path does. The difference is what the user is left
+        // holding: if prose already reached them it stays on screen, because
+        // erasing text someone has read is worse than leaving it there
+        // unfinished.
+        const committed = error instanceof StreamCommittedError;
+        console.error(
+          "generate-story-stream failed:",
+          safeErrorMessage(error),
+        );
 
-          await Promise.allSettled([
-            ...(error instanceof AllProvidersFailedError
-              ? [logError({
-                bucket: "llm.provider",
-                severity: "critical",
-                source: "runtime",
-                errorCode: "all_providers_failed",
-                error,
-                context: {
-                  ...error.toContext(),
-                  operation_id: operation.id,
-                  story_id: story.id,
-                  streamed: true,
-                },
-                userId: user.id,
-              })]
-              : []),
-            logError({
-              bucket: "generation.story",
-              severity: "high",
+        const { data: refund, error: refundError } = await serviceClient.rpc(
+          "refund_generation_operation",
+          {
+            p_operation_id: operation.id,
+            p_user_id: user.id,
+            p_error: errorMessage(error),
+          },
+        );
+
+        await Promise.allSettled([
+          ...(error instanceof AllProvidersFailedError
+            ? [logError({
+              bucket: "llm.provider",
+              severity: "critical",
               source: "runtime",
-              errorCode: committed
-                ? "stream_failed_after_commit"
-                : "stream_failed_before_commit",
+              errorCode: "all_providers_failed",
               error,
               context: {
+                ...error.toContext(),
                 operation_id: operation.id,
                 story_id: story.id,
-                story_mode: storyMode,
-                primary_genre: primaryGenre,
+                streamed: true,
               },
               userId: user.id,
-            }),
-          ]);
+            })]
+            : []),
+          logError({
+            bucket: "generation.story",
+            severity: "high",
+            source: "runtime",
+            errorCode: committed
+              ? "stream_failed_after_commit"
+              : "stream_failed_before_commit",
+            error,
+            context: {
+              operation_id: operation.id,
+              story_id: story.id,
+              story_mode: storyMode,
+              primary_genre: primaryGenre,
+            },
+            userId: user.id,
+          }),
+        ]);
 
-          send("error", {
-            error: refundError
-              ? "Story generation failed. Refund is pending retry."
-              : refund?.refunded
-              ? "Story generation failed. Credit refunded."
-              : "Story generation failed.",
-            operation_id: operation.id,
-            story_id: story.id,
-            // The client needs this to decide whether to clear the prose it has
-            // already rendered. It must not: partial is better than blank.
-            partial_prose_shown: committed,
-            refunded: Boolean(refund?.refunded),
-          });
-        } finally {
-          close();
-        }
-      },
+        send("error", {
+          error: refundError
+            ? "Story generation failed. Refund is pending retry."
+            : refund?.refunded
+            ? "Story generation failed. Credit refunded."
+            : "Story generation failed.",
+          operation_id: operation.id,
+          story_id: story.id,
+          // The client needs this to decide whether to clear the prose it has
+          // already rendered. It must not: partial is better than blank.
+          partial_prose_shown: committed,
+          refunded: Boolean(refund?.refunded),
+        });
+      }
     });
 
     return new Response(stream, {
