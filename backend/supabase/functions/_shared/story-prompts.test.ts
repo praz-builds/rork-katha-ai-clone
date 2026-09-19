@@ -2287,7 +2287,11 @@ Deno.test("a story with no bible produces exactly the prompt it produced before 
   // The whole back-compatibility promise of migration 00092. Every story
   // written before it has `story_bible = null`, which parses to an empty bible,
   // and an empty bible must be invisible.
-  const base = {
+  //
+  // Both calls are written out rather than spread from a shared object: the
+  // overloads want literal `StoryMode` and `ChapterRole` and a mutable
+  // `CharacterInput[]`, and a `const` object widens all three to `string`.
+  const withEmptyBible = buildUserPrompt({
     primaryGenre: "mystery",
     storyMode: "series",
     chapterRole: "mid_series",
@@ -2295,11 +2299,18 @@ Deno.test("a story with no bible produces exactly the prompt it produced before 
     plannedChapterCount: 8,
     seed: "A door.",
     characters: [{ name: "Klazina", isHero: true }],
-  } as const;
-  assertEquals(
-    buildUserPrompt({ ...base, storyBible: parseStoryBible(null) }),
-    buildUserPrompt(base),
-  );
+    storyBible: parseStoryBible(null),
+  });
+  const withNone = buildUserPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "mid_series",
+    chapterNumber: 4,
+    plannedChapterCount: 8,
+    seed: "A door.",
+    characters: [{ name: "Klazina", isHero: true }],
+  });
+  assertEquals(withEmptyBible, withNone);
 });
 
 Deno.test("the fixed facts are rendered above the series state, and both are fenced as data", () => {
