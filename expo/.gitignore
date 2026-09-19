@@ -18,3 +18,12 @@ pnpm-debug.*
 *.p12
 *.key
 *.mobileprovision
+
+# Generated native projects (Continuous Native Generation).
+#
+# `npx expo prebuild` writes these, and `expo/android/app/build` alone is ~1.5GB
+# of Gradle output. Neither has ever been tracked; without these lines one
+# `git add -A` tries to commit the lot. Nothing in them is unrecoverable -- the
+# only keystore is the standard Expo debug key, which prebuild regenerates.
+android/
+ios/
