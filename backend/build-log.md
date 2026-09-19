@@ -7,6 +7,65 @@
 
 ---
 
+## 2026-09-19 UTC — The story bible's merge cannot lose a chapter to the next one
+
+**Session:** the coordinating session, from a CodeAnt finding on the docs PR
+#114 — about code that had already been deployed an hour earlier.
+
+### The race
+
+`continue-story` read `story_bible` off the story row when the REQUEST arrived
+(index.ts:152) and wrote the merged bible from inside `EdgeRuntime.waitUntil`
+after the chapter had been delivered — an entire generation later, forty to
+sixty seconds. The write was unconditional.
+
+With `story_flow: "auto"` the next chapter starts as soon as the previous one
+is done, so chapter N+1 could read the bible before chapter N's deferred write
+landed and then overwrite it. Nothing errored. Chapter N's facts simply stopped
+existing — the one thing an append-only record may never do, and invisible
+except as "the bible sometimes forgets chapter 7" months later.
+
+**Narrower than the reviewer stated, and worth writing down why:** two
+continuations of the SAME chapter cannot both get that far. `chapters` carries
+`unique(story_id, chapter_number)` (00001) and `reserve_generation_operation`
+holds a unique index on active operations per (story_id, chapter_number, kind)
+(00005/00027), so the second is refused before it persists anything. The
+reachable window is strictly N against N+1 — which under auto-flow is the
+common case, not an edge one.
+
+### The fix
+
+**Migration 00093** adds `stories.story_bible_rev integer not null default 0`.
+`NOT NULL DEFAULT 0` rather than nullable, because the swap filters on equality
+and `= null` matches no row — a nullable column would have made every legacy
+story's first merge silently lose.
+
+The write now re-reads the bible and its revision inside `waitUntil`, merges
+this chapter's proposal into whatever is current *then*, and updates only while
+that revision is unchanged. A mismatch means another chapter merged first, and
+the answer is to merge again on top of it rather than to win the race. Three
+attempts, then `story_bible_merge_lost` at `medium`: the chapter is written,
+paid for and delivered, so a lost merge is recorded rather than thrown, and the
+next merge still sees everything before it.
+
+The chapter repair is deliberately not re-run on a retry — it edited prose,
+that edit already landed, and only the bible is recomputed.
+
+### Tests
+
+`00093_story_bible_rev_test.ts` runs against real SQL (PGlite) and reproduces
+the race: two writers both read revision 0, the first wins, **the second
+changes no row at all**, the winner's facts survive, and the retry against
+revision 1 lands both. 1,037 function tests still pass; `deno check` and
+`deno fmt` clean.
+
+### Not deployed
+
+00093 and the new `continue-story` are NOT applied or deployed yet — see the
+deploy entry above for the order (migration first, then the function).
+
+---
+
 ## 2026-09-19 UTC — A full-length chapter can be narrated: the provider's 10,000-character limit is met by chunking and stitching
 
 **Session:** Lane C, worktree `codex/narration-length`. **Nothing deployed.**
