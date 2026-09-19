@@ -6393,6 +6393,66 @@ deliberately NOT deployed.
 for the plan), the 00092 migration test passes against real SQL, `deno check`
 clean on every touched function, `deno fmt` clean.
 
+**Measured result.**
+
+Six briefs, written twice through the same builders, differing in one flag, and
+audited by the same judge. 53 chapters per arm.
+
+| story | chapters | issues before | major before | issues after | major after |
+|---|---|---|---|---|---|
+| a-winter-for-the-eagle | 10 | 6 | 5 | **2** | **2** |
+| cartographers-heir | 10 | 6 | 4 | **4** | **3** |
+| last-train-from-shimla | 5 | 1 | 1 | 4 | 3 |
+| low-orbit-lullaby | 10 | 6 | 3 | **5** | **1** |
+| nine-oclock-zanzibar | 8 | 6 | 2 | **4** | 3 |
+| returned-on-thursdays | 10 | 8 | 6 | **4** | **3** |
+| **total** | **53** | **33** | **21** | **23** | **15** |
+
+**Major issues per chapter: 0.40 before, 0.28 after — a 29% drop.** Five of the
+six stories improved; the sixth is discussed below.
+
+By class, which is the part that says whether the mechanism did what it was
+built to do:
+
+| class | before (all / major) | after (all / major) |
+|---|---|---|
+| **fact drift** | 20 / 11 | **11 / 6** |
+| **replayed scene or reveal** | 6 / 6 | **5 / 3** |
+| clock | 5 / 2 | 4 / 3 |
+| unfair mystery | 2 / 2 | 3 / 3 |
+
+**Fact drift — the largest class, and the one the bible exists for — fell 45%,
+majors included.** Replayed reveals, the second thing the `shown` ledger is for,
+halved in majors. Clock and fairness moved within noise on counts of 2-5, which
+is what those numbers can support and no more.
+
+**What these numbers are not.**
+
+Stated plainly, because the brief asked for regenerate-class failures at "near
+zero" and this is not that:
+
+- **One generation per arm.** Temperature is 0.8, so each arm is a different
+  story from the same brief, and story-to-story variance is large.
+  `last-train-from-shimla` is the visible cost of that: it is the shortest story
+  (5 chapters), its before-arm run drew a near-clean sample (1 issue), and its
+  after-arm run drew a worse one. With n=1 per story that is sampling, not
+  evidence of harm — and it is equally true of the five stories that improved.
+  Separating the change from the noise needs three runs per arm, which is a
+  bigger spend than this PR should make on shared production credit.
+- **The auto-plan never fired.** All six briefs already carry `beats`, added by
+  the post-mortem BEATS_GUIDE pass after these stories first failed, and
+  `needsAutoPlan` correctly declines to overwrite a writer's plan. So these
+  numbers measure the **bible alone**, with the plan layer untested against the
+  corpus. That is the right default for the measurement (it isolates one
+  change) and it leaves the plan's contribution unmeasured.
+- **The judge is the same model that wrote the stories.** Identical prompt and
+  budget in both arms, so the comparison is fair, but an absolute count from it
+  is not a human reviewer's count.
+- **The harness does not enforce the word band.** Production refuses an
+  out-of-band chapter and falls through to the next provider; the harness keeps
+  it. Two chapters in this run would have been refused in production (one of 23
+  words, one of 16,110), and both stayed in their arm's story.
+
 **Not deployed. The migration has not been run.** The house library is being
 published against the current production functions by another lane; deploying
 mid-run would mean the library was written by two different pipelines. Deploy

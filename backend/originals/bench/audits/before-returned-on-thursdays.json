@@ -1,0 +1,55 @@
+{
+ "slug": "returned-on-thursdays",
+ "arm": "before",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 3,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Police seize Bashir's torch in Chapter 2 but he still has it across his lap in Chapter 3 while saying they kept it."
+  },
+  {
+   "chapter": 4,
+   "kind": "clock",
+   "severity": "minor",
+   "what": "The Thursday-night bundle is wrapped in yesterday's paper though returns are always wrapped in that day's paper."
+  },
+  {
+   "chapter": 5,
+   "kind": "fact",
+   "severity": "major",
+   "what": "The display Buddha is grey schist on bare stone in Chapter 3 but plaster and marble dust in Chapter 5."
+  },
+  {
+   "chapter": 7,
+   "kind": "replay",
+   "severity": "major",
+   "what": "The Saturday-morning jalebi meeting with Sethi from Chapter 6 is written again as if new."
+  },
+  {
+   "chapter": 8,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "The investigating inspector is Chaudhry in Chapter 2 but Ilyas in Chapter 8 with no change explained."
+  },
+  {
+   "chapter": 9,
+   "kind": "fair",
+   "severity": "major",
+   "what": "The second corridor key taped inside Register Volume Four was never planted before it explains the entries."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Red numbers are 94-G-01 and 94/201 to 94/211 earlier but 411 to 421 on the 1994 receipt."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Ten returns plus the eleventh guest are unveiled as ten real figures instead of eleven."
+  }
+ ]
+}

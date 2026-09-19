@@ -1,0 +1,43 @@
+{
+ "slug": "nine-oclock-zanzibar",
+ "arm": "before",
+ "chapters": 8,
+ "issues": [
+  {
+   "chapter": 1,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Khamis nine and Zuhura nineteen implies ten-year gap but fourteen and twenty implies six-year gap."
+  },
+  {
+   "chapter": 2,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Harbour holds two grey hulls at noon but three small gunboats at dusk with no arrival."
+  },
+  {
+   "chapter": 2,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Yusuf is a merchant in Chapter 1 but a customs clerk in Chapter 2."
+  },
+  {
+   "chapter": 5,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Tomas is twenty in Chapter 4 but nineteen in Chapter 5."
+  },
+  {
+   "chapter": 5,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Rooftop supper-call exchange, guns clearing for action, and fever-medicine joke from Chapter 4 repeats as new."
+  },
+  {
+   "chapter": 8,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Juma owes two caps in Chapter 2 but two pairs in Chapter 8."
+  }
+ ]
+}

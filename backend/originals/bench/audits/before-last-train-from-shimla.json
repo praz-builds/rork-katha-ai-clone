@@ -1,0 +1,13 @@
+{
+ "slug": "last-train-from-shimla",
+ "arm": "before",
+ "chapters": 5,
+ "issues": [
+  {
+   "chapter": 2,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Major's Veronal supply is six tablets in Chapter 1 but nine in Chapter 2."
+  }
+ ]
+}

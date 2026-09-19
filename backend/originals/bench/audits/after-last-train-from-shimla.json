@@ -1,0 +1,31 @@
+{
+ "slug": "last-train-from-shimla",
+ "arm": "after",
+ "chapters": 5,
+ "issues": [
+  {
+   "chapter": 2,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Bhalla's flask is found with the cap off but later described as empty and stoppered."
+  },
+  {
+   "chapter": 5,
+   "kind": "fact",
+   "severity": "major",
+   "what": "The Major's steel bottle is described as holding hot tea in chapter 4 but hot coffee in chapter 5."
+  },
+  {
+   "chapter": 5,
+   "kind": "fair",
+   "severity": "major",
+   "what": "Coupe A is found bolted from inside but the solution has Kohli entering with a bearer's key without explaining the bolt."
+  },
+  {
+   "chapter": 5,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Vivienne's nails are red-painted and chipped but later described as bitten short."
+  }
+ ]
+}

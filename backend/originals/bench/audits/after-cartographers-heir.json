@@ -1,0 +1,31 @@
+{
+ "slug": "cartographers-heir",
+ "arm": "after",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 6,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Quell says Ilse left the stone bottle in his rooms though she took it to the Mercy."
+  },
+  {
+   "chapter": 7,
+   "kind": "replay",
+   "severity": "major",
+   "what": "The lantern jar with silt anchor and bottle handover repeats Chapter 6 ending as if new."
+  },
+  {
+   "chapter": 7,
+   "kind": "clock",
+   "severity": "major",
+   "what": "Quell says Ilse already missed her first-bell desk yet first bell is still future."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Quell's chain of office is called a rope of office."
+  }
+ ]
+}
