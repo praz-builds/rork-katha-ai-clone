@@ -57,8 +57,10 @@ stdin closed it hangs forever. Quota is a ChatGPT plan limit, roughly 54
 images on a ~24h rolling window.
 
 **A reader's own story cannot use it.** Its cover is drawn inside an edge
-function at publish time (`publish-story` -> `generateCoverImage()`), and a CLI
-on somebody's Mac is not reachable from Supabase. Production therefore stays on
+function *during generation*, not at publish: `generate-story` (and the
+streamed path) hand `media.generateStoryMedia(...)` to the background, and that
+calls `generateCoverImage` — chapter 1's art IS the cover. A CLI on somebody's
+Mac is not reachable from Supabase. Production therefore stays on
 the provider documented below, and "use Codex for images" does not apply there.
 Closing that gap needs a hosted image path, which is a design decision and not
 a config change -- raise it rather than silently switching production.
