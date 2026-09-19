@@ -80,11 +80,11 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
-### Cover Image Generation (code and storage done; `publish-story` not deployed)
+### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 
 Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full reference: `COVER_IMAGES.md`.
 
-- [x] `generateCoverImage()` in `_shared/image.ts` (gpt-image-1, 1024x1024 square PNG)
+- [x] `generateCoverImage()` in `_shared/image.ts` — **`google/gemini-2.5-flash-image` via OpenRouter, 1024x1536 portrait**. The `gpt-image-1` / 1024x1024 written here was true in August and was superseded twice: the OpenAI credential was revoked 2026-09-08, and the square output was replaced by the 2:3 book-cover format. `COVER_IMAGES.md` is canonical, including the 2026-09-19 rule that HOUSE covers are drawn with the Codex CLI while a reader's own story keeps this provider
 - [x] 18 genre-specific prompt configs in `_shared/cover-prompts.ts`
 - [x] Dynamic prompt assembly: genre + title + themes + characters (scene/silhouette/portrait)
 - [x] Retry logic: 3 attempts with progressive prompt simplification on moderation rejection
@@ -92,7 +92,7 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 - [x] Centered composition required so center-crop works for all display sizes
 - [x] Supabase Storage bucket `covers` created (public read, 5 MB limit, png/jpeg/webp) — verified against the storage API on 2026-08-30
 
-### Audio Narration (English done, Spanish pending)
+### Audio Narration (English done and deployed; Spanish pending)
 
 - [x] MiniMax Speech 02 HD on RunPod public endpoint (`minimax-speech-02-hd`)
 - [x] `generate-audio` edge function with language-aware routing (EN to RunPod)
@@ -102,7 +102,9 @@ Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full
 - [x] Input validation and ownership check on `generate-audio`
 - [x] `_shared/edge-tts.ts` with voice mappings
 - [ ] Wire edge-tts synthesis for Spanish (currently returns PENDING_IMPLEMENTATION)
-- [ ] Compute and store `chapters.audio_duration`
+- [x] Compute and store the narration's duration — `chapter_audio.duration_seconds`, derived from the MP3's own frames because the provider returns none. First populated 2026-09-19 (PR #113)
+- [x] **A full-length chapter can be narrated at all.** MiniMax refuses >10,000 characters and the median live chapter is 9,112 with a p90 of 13,382, so 133 of 354 published chapters could never be narrated. `_shared/narration-chunks.ts` splits at paragraph then sentence boundaries and `_shared/narration-mp3.ts` stitches the parts under one correct `Info` header, so the file reports its true length and stays seekable
+- [ ] Drop the bitrate from 128 kbps. ~1,124 bytes per character is a music bitrate for speech and ~10 MB of a reader's cellular data per chapter. If the RunPod endpoint forwards `audio_setting.bitrate`, this is a `voices` row change with no deploy
 
 ### Wire into Publish Flow
 

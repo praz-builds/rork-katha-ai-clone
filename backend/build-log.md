@@ -97,6 +97,78 @@ touched.
 
 00093 and the new `continue-story` are NOT applied or deployed yet — see the
 deploy entry above for the order (migration first, then the function).
+## 2026-09-19 UTC — Deployed: two migrations and six functions, and what production actually does now
+
+**Session:** the coordinating session, after #105-#113 merged. **This is the deploy entry.**
+
+### Why there was anything to deploy
+
+Nine PRs merged during the day and none was deployed, deliberately: the Katha
+Originals publishing run was writing 80 stories against the live functions, and
+a deploy mid-run would have split the library across two versions of the
+pipeline. That reason expired when the run finished and was not revisited for
+several hours — the standing "not deployed" note outlived the constraint that
+created it. Worth recording as a process failure, not just a timeline: **merged
+is not deployed**, Supabase functions ship by `supabase functions deploy` and
+by nothing else, and "it does not work in production" deserves "is it in
+production?" first.
+
+### What was applied, in this order
+
+1. `supabase db push` — **00091** (drops both entity-gate CHECK constraints,
+   clears `entity_gate_reason`) and **00092** (`stories.story_bible jsonb`,
+   nullable). The migration goes first on purpose: #112's code reads
+   `story_bible`, so a function deployed against a missing column fails every
+   generation, while the column alone is inert until the functions follow.
+2. `supabase functions deploy` — `generate-story`, `generate-story-stream`,
+   `continue-story`, `reimagine-chapter`, `generate-audio`, `audio-status`.
+
+### Verified on production, not asserted
+
+**Narration, the thing #113 exists for.** A published chapter of 11,286
+characters — one of the 133 of 354 live chapters (independently re-counted
+here) that the old 10,000-char wall made impossible:
+
+- `generate-audio` -> HTTP 202, `chunks: 2`, so the chunking path engaged.
+- Ready in **101.6s**, 11.69 MB, `audio/mpeg`, `error_code: null`.
+- `chapter_audio.duration_seconds = 766.224` — **populated for the first time
+  ever** for a RunPod narration; the provider does not return one.
+- The downloaded file under `afinfo`: **766.224s, 21,285 packets**, matching
+  the stored duration exactly. This is the seek fix proving itself in
+  production: a phone reading this header sees 12m46s and scrubs correctly,
+  where plain concatenation would have declared part one's length.
+
+**The story bible, the thing #112 exists for.** A real 2-chapter series written
+through `generate-story-stream` + `continue-story` (`stream: true`), 63.7s and
+41.7s:
+
+- `story_bible` was **null immediately after chapter 1** and populated after
+  chapter 2, every entry tagged `chapter: 1`. That is the documented
+  `waitUntil` behaviour, not a fault: extraction runs after `done` fires, so a
+  read taken seconds later is too early. It is also exactly the "one chapter
+  behind" cost named in PR #112.
+- Facts captured include the seeded ones — a 31-year tenure, ages, three named
+  cats, place names — as `{subject, key, value, chapter}` rows.
+
+Test story `639b7770-01a1-406c-9406-ce1ee622d737` is private on the house
+account and is verification residue; delete it whenever.
+
+### Cost
+
+OpenRouter: $3.60 left before, ~$0.35 for the 2-chapter run. The narration
+check spends RunPod, not OpenRouter. A full 8-chapter verification was
+deliberately not run — at ~$1.30 it is a third of the remaining balance, and
+two chapters prove the merge path as well as eight do.
+
+### Still open
+
+- **Bitrate.** RunPod returns 128 kbps CBR mono, ~1,124 bytes per character.
+  MiniMax's API takes `audio_setting.bitrate` and `startRunpodNarration`
+  spreads `provider_voice_params` last, so if the endpoint forwards it, 64 kbps
+  is a voice-row change with no deploy — halving what a reader downloads on
+  cellular. Untested; needs a RunPod key to hand.
+- Two Originals (`small-explosions`, `whoever-cooks-it-right`, 25 chapters)
+  remain ungenerated; the balance does not justify them.
 
 ---
 
