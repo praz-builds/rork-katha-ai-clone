@@ -2,6 +2,103 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-19: Create's dropdowns move under More options, and two bugs that stopped the app being usable at all
+
+Three PRs: #109 (the Create flow), #111 (the paywall), and the client half of
+#107 (visibility).
+
+### The app could not boot, and nobody had noticed
+
+`Font.loadAsync(...).then(setFontsReady)` in `App.tsx` had **no `.catch`**. The
+promise rejects -- on web `expo-font` gives up after six seconds -- and the
+rejection left `fontsReady` false forever. `LaunchScreen` IS the app until that
+flag flips, so the splash screen was permanent: no error, no timeout, no way
+out but a reload. It reproduced on every local web boot on 2026-09-19, which is
+how it was found -- while trying to look at something else entirely.
+
+A missing face now falls back to the system font and the app opens. The failure
+goes to `captureError` (`client.app`, `font_load_failed`), because a boot that
+silently lost the brand face is invisible to the reader and worth counting.
+
+**This would have shipped in the first AAB.** A store build on a weak network
+is an app that opens to an orange screen and stays there.
+
+### The paywall's X did nothing
+
+`leavePaywall` awaited `enableNotifications()` before `go("welcome")`, guarded
+by a try/catch whose own comment said "a permissions module that throws must
+not strand somebody on a paywall they have already dismissed". The guard named
+the right danger and guarded the wrong shape: on web,
+`Notification.requestPermission()` does not reject when the browser's
+permission bubble goes unanswered -- it stays **pending**. A promise that never
+settles is not a throw, so the catch never saw it.
+
+The wait is bounded at 4s now (`PERMISSION_WAIT_MS`). A late answer is still
+recorded if the flow is still mounted, so nothing is lost by not waiting. The
+regression test hands it a promise that never settles and asserts the welcome
+screen is reached anyway; it fails against the old code.
+
+Worst on web, where the bubble is non-modal. On native the dialog is modal and
+normally settles -- but "normally" was doing the same work the try/catch was.
+
+### Every dropdown under More options, and the menu opens where you tapped
+
+Story mode, Chapters, Chapter length, Chapter cover, Image style and Who can
+read it moved inside More options; menus list plain labels and their
+explanations moved to a "?" card. **Who can read it defaults to Public.**
+
+The reported bug -- "I click Language and it opens somewhere else" -- had three
+causes, and all three are fixed:
+
+1. **The flip threshold was also the height floor.** `MENU_MIN_HEIGHT` says
+   "less than three rows below is worth flipping for". Used as a floor on the
+   height too, a short window or a raised keyboard meant `Math.max(room, 160)`
+   drew a menu taller than the room, hanging off the edge into a region a
+   ScrollView cannot scroll through -- re-creating the exact bug the placement
+   logic was written to fix. The height is now whatever the chosen side has.
+2. **An upward menu was pinned by its top**, at `trigger - maxHeight`, which is
+   only correct when the menu is exactly that tall. Language has one option, so
+   it floated 320px above its own trigger and read as a different dropdown
+   opening. Pinned by its bottom edge now.
+3. **The menu painted at its fallback position** for the frame before
+   `measureInWindow` landed, and `Keyboard.dismiss()` moves the trigger *after*
+   that measurement is taken. It is held invisible until placed, and when a
+   keyboard is up the measurement waits for `keyboardDidHide`.
+
+A stale `measureInWindow` callback from a previous opening could also overwrite
+a later one's position -- `menuId` comes from `useId` and is stable for the
+life of the component, so every opening matched it. Each opening carries a
+sequence number now.
+
+Deliberately NOT done: `pointerEvents: "none"` on an unplaced menu. An
+invisible view is still hit-testable, but the window is one measurement, and
+making it untouchable means any platform where that measurement is slow
+swallows real taps. The reasoning is recorded next to the style.
+
+### A guest asked for public while the screen said private
+
+With Public as the new default, the guest branch only *displayed* private and
+disabled the control -- it never wrote the draft back. So a guest's request
+said `public`, and a guest whose idea named a real person was shown the "this
+cannot be public" modal about a story the UI had just called private. The
+server applied `account_required` either way, so nothing broke; the question
+was simply wrong. `handleGenerate` derives what is actually being asked for,
+and a test asserts the guest's payload rather than only the disabled trigger.
+
+### Verified in a browser
+
+The Create flow was walked end to end at localhost:8090 using the dev auth
+bypass (`authBypassed()` -- `__DEV__ && APP_ENV === "local"` -- which accepts
+any address and any code without creating an account). All six dropdowns anchor
+to their own trigger; Image style scrolls internally so every option is
+reachable; the "?" cards explain while the menus stay plain; console clean.
+Language was screenshotted on the first frame and a second later: pixel
+identical, no jump.
+
+**Verified at desktop width only** -- the browser would not resize. The
+placement maths is exactly the kind of thing that behaves differently at 390px
+with a keyboard up, so a phone pass is still owed.
+
 ## 2026-09-16: Profile, Credits, the streak ladder, and an account the store reviewer can use
 
 ### Changed

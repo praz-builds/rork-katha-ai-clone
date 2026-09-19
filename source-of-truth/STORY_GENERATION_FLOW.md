@@ -1241,6 +1241,49 @@ Three items for the pricing owner, plus two added 2026-09-05:
    composite image, or the character count is capped below four. **This must be
    resolved before §4 ships.**
 
+## 10.7 A long story's facts are held by the server, not the model (2026-09-19)
+
+Added by PR #112, and it belongs here because it is a property of what the
+reader receives, not an implementation detail.
+
+Everything in this document describes how a story is *started*. What it did not
+describe is how chapter nine knows what chapter one settled. Until 2026-09-19
+the answer was: it did not. 83 stories were written through this flow on
+2026-09-18 and read end to end, and **not one passed as written**. Readers met
+a woman whose three cows became eight, a man who was 79 and then "thirty", a
+midpoint reveal staged a second time as if it were news, and a rescue that
+arrived after the deadline it was racing.
+
+`stories.story_bible` (migration 00092) now holds a story's settled facts, its
+clock, its fixed truth, and the scenes the reader has already been shown. The
+distinction that makes it work:
+
+| | `series_state` | `story_bible` |
+|---|---|---|
+| Owner | the model | the server |
+| Lifetime | rewritten every chapter | append-only for the story's life |
+| Holds | what is open, wanted, pressing | names, ages, counts, dates, the clock, the truth, what was shown |
+| A conflict means | the story moved on | a contradiction was written, and is reported |
+
+`series_state` is a field the model re-emits in full every chapter, which is
+right for narrative momentum and is exactly the drift channel for fact: a model
+asked to restate `world_facts` twelve times paraphrases them twelve times, and
+a paraphrase of a number is a different number. So the bible is **never written
+by the model** -- it proposes, `mergeStoryBible` decides, and a proposal that
+conflicts is refused rather than applied. The bible is never retroactively
+wrong; the chapter is.
+
+**Nothing about this is reader-visible in the UI, and that is deliberate.** The
+check runs under `waitUntil` after `done` has already fired, so it adds **0
+seconds** to the wait for a chapter, and the bible is server-only, adding
+**0 KB** to what a phone downloads.
+
+**What it does not do.** Measured on the six stories that previously had to be
+regenerated: major issues per chapter fell 0.40 -> 0.28, and fact drift -- the
+class it exists for -- fell 45%. Replayed reveals halved in majors. Clock and
+fairness moved within noise. This reduces drift; it does not end it, and a
+15-chapter story can still contradict itself.
+
 ## 11. Drafts
 
 ### States

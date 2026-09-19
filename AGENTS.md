@@ -37,6 +37,34 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
+## Production state (2026-09-19)
+
+**Production is current with main.** Migrations 00091 and 00092 are applied and
+the six functions carrying #105, #107, #108, #112 and #113 are deployed:
+`generate-story`, `generate-story-stream`, `continue-story`,
+`reimagine-chapter`, `generate-audio`, `audio-status`.
+
+Two things are worth keeping, because they are the shape of the next incident:
+
+- **The migration goes before the functions.** #112's code reads
+  `stories.story_bible`; a function deployed against a missing column fails
+  every generation. The column tolerates a legacy NULL, so 00092 on its own was
+  inert until the functions followed.
+- **Merged is not deployed.** Supabase functions do not ship from a GitHub
+  merge; somebody runs `supabase functions deploy`. Nine PRs sat merged and
+  undeployed for most of 2026-09-19 because a publishing run needed the old
+  functions frozen, and the reason outlived its usefulness without anybody
+  noticing. If a fix "does not work in production", check it is there.
+
+Verified after deploying, on production:
+
+| Check | Result |
+|---|---|
+| Narration of an 11,286-char chapter (impossible before #113) | 202 `chunks: 2` -> ready in 101.6s, 11.69 MB |
+| The stitched file's header | `afinfo` 766.224s / 21,285 packets, matching `chapter_audio.duration_seconds` exactly -- a player sees 12m46s, not part one's length |
+| `duration_seconds` populated | first time ever for a RunPod narration |
+| A real 2-chapter generation writing a bible | facts merged under `chapter: 1` -- tenure, ages, named cats, place names |
+
 ## Quality Gates
 
 After onboarding or paywall changes:
