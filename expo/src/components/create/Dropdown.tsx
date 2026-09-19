@@ -299,6 +299,24 @@ function DropdownMenu({
         ? { top: anchorTop - originY - MENU_GAP - maxHeight }
         : { top: anchorBottom - originY + MENU_GAP };
 
+  /*
+    Nothing is painted at the fallback position.
+
+    Opening does not wait on `measureInWindow` (see `open` below), so for the
+    frame or two before the anchor lands the menu has no idea where its
+    trigger is and sits at the top of the group. For a trigger near the top
+    that is invisible; for Language, the LAST field on the page, the menu
+    appeared a screen away from the finger and then jumped back down -- which
+    reads as a different dropdown opening, which is exactly what was
+    reported. Holding it invisible until it knows where to be turns a jump
+    into a delay of one measurement.
+
+    It is `opacity`, not an early `return null`: the rows stay mounted and
+    reachable, so a screen reader and the test renderer -- where
+    `measureInWindow` may never resolve at all -- still see a complete menu.
+  */
+  const placed = Boolean(anchor);
+
   if (descriptor.kind === "help") {
     const explained = options.filter((option) => option.detail);
     return (
@@ -310,6 +328,7 @@ function DropdownMenu({
           styles.helpCard,
           placement,
           { left, minWidth: menuWidth, maxWidth: Math.min(screenWidth - SCREEN_MARGIN * 2, 360), maxHeight },
+          placed ? null : styles.menuUnplaced,
         ]}
       >
         <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
@@ -341,6 +360,7 @@ function DropdownMenu({
         styles.menu,
         placement,
         { left, minWidth: menuWidth, maxWidth: screenWidth - SCREEN_MARGIN * 2, maxHeight },
+        placed ? null : styles.menuUnplaced,
       ]}
     >
       <ScrollView
@@ -732,6 +752,14 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
+  },
+  /**
+   * The one frame before the trigger has been measured. Invisible rather
+   * than unmounted, so the rows are still there for a screen reader and for
+   * the test renderer; see the comment on `placed`.
+   */
+  menuUnplaced: {
+    opacity: 0,
   },
   menuScroll: { flexGrow: 0 },
   menuList: { padding: spacing.xs, gap: 2 },

@@ -357,7 +357,20 @@ export default function App() {
       // on "InterTight" will not reach 600. See src/theme/typography.ts.
       InterTight: require("./assets/fonts/InterTight-Regular.ttf"),
       InterTightSemiBold: require("./assets/fonts/InterTight-SemiBold.ttf"),
-    }).then(() => setFontsReady(true));
+    })
+      // Boot even if a face does not arrive.
+      //
+      // This used to be a bare `.then`. `Font.loadAsync` rejects -- on web it
+      // gives up after six seconds -- and an unhandled rejection left
+      // `fontsReady` false forever, which renders `LaunchScreen` forever: the
+      // splash is the whole app until this resolves. One slow font request on
+      // a weak network was therefore an app that never opened, with no error
+      // and no way out but a reload. A missing face falls back to the system
+      // font, which is a cosmetic loss; never opening is a total one.
+      .catch((error) => {
+        console.warn("Font loading failed; falling back to system fonts:", error);
+      })
+      .then(() => setFontsReady(true));
   }, []);
 
   useEffect(() => {
