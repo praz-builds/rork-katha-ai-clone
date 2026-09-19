@@ -921,6 +921,8 @@ serve(async (req) => {
             metadataText: metadata.text,
             prose: prose.text,
             fallbackTitle: `Chapter ${nextChapterNum}`,
+            // Always: this handler refuses a non-series story up front.
+            requireContinuity: true,
             overrides: earlyNames?.chapterTitle
               ? { chapter_title: earlyNames.chapterTitle }
               : undefined,

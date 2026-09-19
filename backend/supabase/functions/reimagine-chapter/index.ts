@@ -934,15 +934,19 @@ serve(async (req) => {
             2_000,
             45_000,
           );
-          // Refuses metadata with no series state or hook, as the buffered
-          // path below refuses `structured === false`: a rewrite persisted
-          // without them wipes continuity for every later chapter. The throw
-          // lands in the catch below, which refunds, and the OLD chapter is
-          // untouched because nothing has been written yet.
+          // For a series, refuses metadata with no series state or hook, as
+          // the buffered path below refuses `structured === false`: a rewrite
+          // persisted without them wipes continuity for every later chapter.
+          // The throw lands in the catch below, which refunds, and the OLD
+          // chapter is untouched because nothing has been written yet. A
+          // standalone story has no later chapter to hand state to, so its
+          // rewrite keeps the lenient merge rather than being refunded over
+          // fields nothing reads.
           const output = chapterOutputFromStreamedMetadata({
             metadataText: metadata.text,
             prose: prose.text,
             fallbackTitle: `Chapter ${chapterNumber}`,
+            requireContinuity: storyMode === "series",
           });
 
           const verdict = chapterLengthVerdict(prose.text, band);

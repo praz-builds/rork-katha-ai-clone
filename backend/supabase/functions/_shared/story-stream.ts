@@ -273,9 +273,21 @@ export class StreamedMetadataError extends Error {
  * `response_format` loosely, and "rare" is not the bar for corrupting every
  * chapter after this one.
  *
- * So the two fields that carry continuity must be present with the right
- * shape. Anything else - unparseable text included, which used to surface as a
- * bare `SyntaxError` - is a `StreamedMetadataError`.
+ * So, for a SERIES chapter, the two fields that carry continuity must be
+ * present with the right shape (`requireContinuity: true`). Unparseable text
+ * is refused either way - it used to surface as a bare `SyntaxError` - and is
+ * a `StreamedMetadataError`, as is missing continuity on a series chapter.
+ *
+ * # Why continuity is opt-in
+ *
+ * A standalone story has no next chapter to hand state to. Its rewrite reads
+ * `series_state` and the hook from nowhere and writes them to nowhere, so
+ * valid metadata for it may leave them out, and refunding that rewrite would
+ * charge the reader a failed attempt over fields nothing reads. Standalone
+ * callers keep the old lenient merge: a JSON object is merged, anything else
+ * contributes nothing, and the parser's defaults fill the gaps.
+ * `continue-story` only runs on series stories, so it always requires;
+ * `reimagine-chapter` requires exactly when the story is a series.
  *
  * `overrides` are applied after the metadata and before parsing: the early
  * chapter/story names that were already put on screen.
@@ -284,6 +296,8 @@ export function chapterOutputFromStreamedMetadata(input: {
   metadataText: string;
   prose: string;
   fallbackTitle: string;
+  /** True when a later chapter will be written from this one's state. */
+  requireContinuity: boolean;
   overrides?: Record<string, unknown>;
 }): StoryGenerationOutput {
   let metadata: unknown;
@@ -294,24 +308,30 @@ export function chapterOutputFromStreamedMetadata(input: {
       "Chapter metadata was not valid JSON; refusing to persist a chapter without hook or series state",
     );
   }
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    throw new StreamedMetadataError(
-      "Chapter metadata was not a JSON object; refusing to persist a chapter without hook or series state",
-    );
-  }
-  const record = metadata as Record<string, unknown>;
-  const seriesState = record.series_state;
-  if (
-    !seriesState || typeof seriesState !== "object" || Array.isArray(seriesState)
-  ) {
-    throw new StreamedMetadataError(
-      "Chapter metadata had no series_state; refusing to persist a chapter that would erase continuity",
-    );
-  }
-  if (typeof record.hook_type !== "string") {
-    throw new StreamedMetadataError(
-      "Chapter metadata had no hook_type; refusing to persist a chapter without a hook",
-    );
+  const isObject = Boolean(metadata) && typeof metadata === "object" &&
+    !Array.isArray(metadata);
+  const record = isObject ? metadata as Record<string, unknown> : {};
+
+  if (input.requireContinuity) {
+    if (!isObject) {
+      throw new StreamedMetadataError(
+        "Chapter metadata was not a JSON object; refusing to persist a series chapter without hook or series state",
+      );
+    }
+    const seriesState = record.series_state;
+    if (
+      !seriesState || typeof seriesState !== "object" ||
+      Array.isArray(seriesState)
+    ) {
+      throw new StreamedMetadataError(
+        "Chapter metadata had no series_state; refusing to persist a series chapter that would erase continuity",
+      );
+    }
+    if (typeof record.hook_type !== "string") {
+      throw new StreamedMetadataError(
+        "Chapter metadata had no hook_type; refusing to persist a series chapter without a hook",
+      );
+    }
   }
 
   const output = parseStructuredOutput(

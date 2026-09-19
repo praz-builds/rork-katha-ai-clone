@@ -731,6 +731,7 @@ Deno.test("streamed metadata: a complete answer keeps its series state, hook and
     metadataText: JSON.stringify(GOOD_METADATA),
     prose: "The ferry was late.\n\nNobody minded.",
     fallbackTitle: "Chapter 3",
+    requireContinuity: true,
     overrides: { chapter_title: "Named Early" },
   });
   assertEquals(output.structured, true);
@@ -760,13 +761,14 @@ for (
     ],
   ] as const
 ) {
-  Deno.test(`streamed metadata: refuses ${name} rather than persisting a chapter without continuity`, () => {
+  Deno.test(`streamed metadata (series): refuses ${name} rather than persisting a chapter without continuity`, () => {
     let caught: unknown;
     try {
       chapterOutputFromStreamedMetadata({
         metadataText,
         prose: "The ferry was late.",
         fallbackTitle: "Chapter 3",
+        requireContinuity: true,
       });
     } catch (error) {
       caught = error;
@@ -777,3 +779,58 @@ for (
     );
   });
 }
+
+// A standalone story has no next chapter, so its rewrite must not be refunded
+// over continuity fields nothing will read. CodeAnt caught the first version
+// of the guard refusing these unconditionally.
+for (
+  const [name, metadataText] of [
+    [
+      "no series_state",
+      JSON.stringify({ ...GOOD_METADATA, series_state: undefined }),
+    ],
+    [
+      "no hook_type",
+      JSON.stringify({ ...GOOD_METADATA, hook_type: undefined }),
+    ],
+    ["an empty object", "{}"],
+    ["a JSON array", "[]"],
+  ] as const
+) {
+  Deno.test(`streamed metadata (standalone): accepts ${name} with the parser's defaults`, () => {
+    const output = chapterOutputFromStreamedMetadata({
+      metadataText,
+      prose: "The ferry was late.\n\nNobody minded.",
+      fallbackTitle: "Chapter 1",
+      requireContinuity: false,
+    });
+    assertEquals(output.structured, true);
+    assertEquals(output.chapter_body, "The ferry was late.\n\nNobody minded.");
+  });
+}
+
+Deno.test("streamed metadata (standalone): keeps the fields it was given", () => {
+  const output = chapterOutputFromStreamedMetadata({
+    metadataText: JSON.stringify({ ...GOOD_METADATA, series_state: undefined }),
+    prose: "The ferry was late.",
+    fallbackTitle: "Chapter 1",
+    requireContinuity: false,
+  });
+  assertEquals(output.chapter_title, "Low Water");
+  assertEquals(output.hook_type, "unanswered_question");
+});
+
+Deno.test("streamed metadata (standalone): unparseable text is still refused", () => {
+  let caught: unknown;
+  try {
+    chapterOutputFromStreamedMetadata({
+      metadataText: "not json {",
+      prose: "The ferry was late.",
+      fallbackTitle: "Chapter 1",
+      requireContinuity: false,
+    });
+  } catch (error) {
+    caught = error;
+  }
+  assert(caught instanceof StreamedMetadataError);
+});
