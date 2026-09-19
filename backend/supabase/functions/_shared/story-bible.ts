@@ -384,7 +384,35 @@ export function sameValue(a: string, b: string): boolean {
  * between two descriptions is not.
  */
 export function isQuantity(value: string): boolean {
-  return /(^|\s)\d/u.test(normalizeValue(value));
+  return quantitiesIn(value).size > 0;
+}
+
+/**
+ * Every number a value mentions, folded to digits.
+ *
+ * Compared as a SET rather than as a string, because two statements of the
+ * same fact in different word order are not a disagreement. "Mira's husband
+ * drowned in the 1983 flood" and "the 1983 flood drowned Mira's husband" hold
+ * the same number and are the same claim; swap 1983 for 1991 and they are not.
+ * A first attempt at this asked only "do both mention a number", and made
+ * every reordering a hard conflict.
+ */
+export function quantitiesIn(value: string): Set<string> {
+  const found = new Set<string>();
+  for (const token of normalizeValue(value).split(" ")) {
+    if (/^\d+$/u.test(token)) found.add(token);
+  }
+  return found;
+}
+
+/** Do two values disagree about a number either of them states? */
+export function quantitiesDiffer(a: string, b: string): boolean {
+  const left = quantitiesIn(a);
+  const right = quantitiesIn(b);
+  if (left.size === 0 || right.size === 0) return false;
+  if (left.size !== right.size) return true;
+  for (const number of left) if (!right.has(number)) return true;
+  return false;
 }
 
 /**
@@ -656,8 +684,7 @@ export function mergeStoryBible(
         `${known.subject}'s ${known.key} is "${known.value}" (chapter ${known.chapter})`,
       // See `DURABLE_KEYS`. A changed value is only a defect when the property
       // is one a story may not quietly change.
-      severity: isDurableKey(key) ||
-          (isQuantity(known.value) && isQuantity(value))
+      severity: isDurableKey(key) || quantitiesDiffer(known.value, value)
         ? "hard"
         : "soft",
       kind: "fact",
@@ -710,12 +737,31 @@ export function mergeStoryBible(
       // nothing to do) or a re-invention. Only flag it when the wording says
       // something genuinely different, which `sameValue` decides.
       if (!bible.truth.some((known) => sameValue(known, line))) {
+        const against = bible.truth.find((known) => scenesOverlap(known, line));
+        /*
+          A RETELLING IS NOT A RE-INVENTION, UNLESS A NUMBER MOVED.
+
+          The extraction restates the story's truth from every chapter that
+          touches it, in that chapter's words, so an overlapping-but-not-equal
+          line is the NORMAL case and almost always harmless. Treating each one
+          as hard produced ten hard truth conflicts on a single ten-chapter
+          story in the first measured run -- ten repair calls bought for
+          paraphrase.
+
+          What actually matters is the failure the corpus recorded: "a
+          backstory told three incompatible ways", and what made those
+          incompatible was a changed year, a changed age, a changed count. So a
+          restatement is hard only when the two lines disagree about a
+          quantity, and soft otherwise -- still logged, still carried into the
+          next chapter as a correction, but not worth a second model call.
+        */
+        const numbersMoved = against !== undefined &&
+          quantitiesDiffer(against, line);
         found.push({
           chapter,
           what: `the story's truth is restated as "${line}"`,
-          canonical: bible.truth.find((known) => scenesOverlap(known, line)) ??
-            bible.truth[0],
-          severity: "hard",
+          canonical: against ?? bible.truth[0],
+          severity: numbersMoved ? "hard" : "soft",
           kind: "truth",
         });
       }

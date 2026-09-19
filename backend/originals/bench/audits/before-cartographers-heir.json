@@ -1,0 +1,43 @@
+{
+ "slug": "cartographers-heir",
+ "arm": "before",
+ "chapters": 10,
+ "issues": [
+  {
+   "chapter": 3,
+   "kind": "fact",
+   "severity": "minor",
+   "what": "Master Pelm in Chapters 1-2 becomes Senior Draughtsman Pell in Chapter 3."
+  },
+  {
+   "chapter": 7,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Father's river would water thirty thousand in Chapter 3 but twelve thousand in Chapter 7."
+  },
+  {
+   "chapter": 8,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Inspection skiff tea, sealed sheet reveal, and silt bar discovery from Chapter 7 are written again as if new."
+  },
+  {
+   "chapter": 9,
+   "kind": "replay",
+   "severity": "major",
+   "what": "Morning footbridge discovery and palace copy of Ilse's bridge from Chapter 8 are written again as if new."
+  },
+  {
+   "chapter": 10,
+   "kind": "fact",
+   "severity": "major",
+   "what": "Ilse was sixteen when her father died eight years ago but was fourteen eight years ago."
+  },
+  {
+   "chapter": 10,
+   "kind": "clock",
+   "severity": "minor",
+   "what": "Thirteen bells rang the night before delivery in Chapter 1 but on delivery night in Chapter 10."
+  }
+ ]
+}

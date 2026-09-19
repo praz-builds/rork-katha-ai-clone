@@ -23,6 +23,7 @@ import {
   MAX_RENDERED_CHARS,
   mergeStoryBible,
   parseStoryBible,
+  quantitiesDiffer,
   sameValue,
   scenesOverlap,
   seedStoryBible,
@@ -431,4 +432,65 @@ Deno.test("a story row that answers a client never carries the bible", () => {
   // Unchanged when there is nothing to strip, and safe on null.
   assertEquals(withoutStoryBible({ id: "s2" })!.id, "s2");
   assertEquals(withoutStoryBible(null), null);
+});
+
+Deno.test("the truth retold in different words is soft; a truth whose numbers moved is hard", () => {
+  // The extraction restates the truth from every chapter that touches it, so
+  // an overlapping-but-not-identical line is the NORMAL case. Ten hard truth
+  // conflicts on one ten-chapter story in the first measured run were ten
+  // repair calls bought for paraphrase.
+  const fixed = mergeStoryBible(
+    emptyStoryBible(),
+    proposal({ truth: ["Mira's husband drowned in the 1983 flood"] }),
+    1,
+  ).bible;
+
+  // Word for word, in the same order, is the only thing that reads as
+  // identical: `sameValue` compares the normalised string, not a bag of words.
+  const verbatim = mergeStoryBible(
+    fixed,
+    proposal({ truth: ["Mira's husband drowned in the 1983 flood."] }),
+    5,
+  );
+  assertEquals(
+    verbatim.contradictions.length,
+    0,
+    "a verbatim retelling is a no-op",
+  );
+
+  // A reordering is not identical, and it is also not a defect. Soft.
+  const reordered = mergeStoryBible(
+    fixed,
+    proposal({ truth: ["the 1983 flood drowned Mira's husband"] }),
+    5,
+  );
+  assertEquals(reordered.contradictions[0]?.severity, "soft");
+
+  const reworded = mergeStoryBible(
+    fixed,
+    proposal({ truth: ["Mira's husband was lost to the 1983 flood waters"] }),
+    6,
+  );
+  assertEquals(reworded.contradictions[0]?.severity, "soft");
+
+  const renumbered = mergeStoryBible(
+    fixed,
+    proposal({ truth: ["Mira's husband drowned in the 1991 flood"] }),
+    7,
+  );
+  assertEquals(renumbered.contradictions[0]?.severity, "hard");
+  assertEquals(renumbered.contradictions[0]?.kind, "truth");
+});
+
+Deno.test("two statements of the same number are not a disagreement", () => {
+  // The rule this replaced asked only "do both mention a number", which made
+  // every reordering of one sentence a hard conflict.
+  assert(!quantitiesDiffer("the 1983 flood", "the flood of 1983"));
+  assert(quantitiesDiffer("the 1983 flood", "the 1991 flood"));
+  // A value with no number cannot disagree about one.
+  assert(!quantitiesDiffer("a torch", "a lantern"));
+  assert(!quantitiesDiffer("three cows", "some cows"));
+  // Word and digit are the same number.
+  assert(!quantitiesDiffer("three cows", "3 cows"));
+  assert(quantitiesDiffer("three cows", "eight cows"));
 });
