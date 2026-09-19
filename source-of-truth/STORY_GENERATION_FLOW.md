@@ -682,12 +682,18 @@ so a saved character added to the story, or a new one, shows up as a tag as
 soon as it has a name. **Language** stays last.
 
 **Who can read it defaults to Public** (2026-09-18). Everyone who reaches Create
-has signed in with email during onboarding. The entity gate still forces a
-story private when it names a real person.
+has signed in with email during onboarding. **The entity gate is gone**
+(2026-09-19, PR #107): naming a real person no longer forces a story private.
+Migration 00091 drops both of the 00050 constraints, `entity-visibility-gate.ts`
+and the two warning modals are deleted, and `applyRequestedVisibility` refuses
+exactly one thing -- a guest.
 
-Guests see Public as locked and stay Private. Public publishing unlocks only
-after a real account is linked; the backend enforces the same rule independently
-of the client.
+Guests see Public as locked and stay Private, and a guest's request now SAYS
+private rather than saying public and being overruled (PR #109). Public
+publishing unlocks only after a real account is linked; the backend enforces
+the same rule independently of the client, and a visibility write that fails
+leaves the story private with `reason: "publish_failed"` rather than costing
+the writer their chapter.
 
 **The cover image toggle is removed.** Chapter 1's art is compulsory and becomes
 the cover — see §10.4. The toggle here governs chapters 2–N only.
