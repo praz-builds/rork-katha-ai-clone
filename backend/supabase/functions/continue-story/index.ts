@@ -26,9 +26,11 @@ import {
 } from "../_shared/prose-integrity.ts";
 import { validateGroundingCards } from "../_shared/grounding-card.ts";
 import {
+  commitStoryBible,
   formatStoryBibleBlock,
   mergeStoryBible,
   parseStoryBible,
+  type StoryBibleWriter,
 } from "../_shared/story-bible.ts";
 import {
   checkChapterContinuity,
@@ -149,7 +151,7 @@ serve(async (req) => {
           serviceClient
             .from("stories")
             .select(
-              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, story_bible, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
+              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, story_bible, story_bible_rev, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
             )
             .eq("id", story_id)
             .single(),
@@ -487,6 +489,11 @@ serve(async (req) => {
       append-only record rather than more fields on `series_state`.
     */
     const storyBible = parseStoryBible(story.story_bible);
+    // Read alongside the bible so the deferred merge below can tell "nobody
+    // has touched this since I read it" from "somebody has".
+    const storyBibleRev = typeof story.story_bible_rev === "number"
+      ? story.story_bible_rev
+      : 0;
     // Rendered once. The writer's prompt, the continuity check and the repair
     // all read the SAME text, so a contradiction is judged against exactly what
     // the chapter was told, never against a second rendering of it.
@@ -941,11 +948,84 @@ serve(async (req) => {
               );
             }
           }
-          const { error: bibleError } = await serviceClient
-            .from("stories")
-            .update({ story_bible: merged.bible })
-            .eq("id", story_id);
-          if (bibleError) throw bibleError;
+          /*
+            THE WRITE IS CONDITIONAL, BECAUSE THIS IS A READ-MODIFY-WRITE WITH
+            AN ENTIRE GENERATION IN THE MIDDLE.
+
+            `storyBible` came off the story row when the REQUEST arrived; this
+            runs inside `waitUntil`, after the chapter has been delivered --
+            forty to sixty seconds later. With `story_flow: "auto"` the next
+            chapter starts the moment this one is done, so chapter N+1 can read
+            the bible before chapter N's write lands. `commitStoryBible`
+            re-reads, rebuilds on what is current, and writes only while the
+            revision is unchanged.
+
+            The repair is deliberately NOT re-run when the build runs again: it
+            edited the chapter's prose, that edit already landed, and only the
+            bible is recomputed.
+          */
+          const repairedAll = repaired >= hard.length && rejected === 0;
+          /*
+            The contradictions the repair actually addressed, by identity.
+
+            A rebuild against a newer bible can surface a DIFFERENT hard
+            contradiction for this same chapter, and dropping that one because
+            an unrelated repair succeeded would hide a fault nobody fixed. So
+            the filter names the entries that were repaired rather than
+            "everything hard belonging to this chapter".
+          */
+          const repairedKeys = new Set(
+            hard.map((entry) =>
+              `${entry.chapter}|${entry.kind}|${entry.what}|${entry.canonical}`
+            ),
+          );
+          const commit = await commitStoryBible(
+            serviceClient as unknown as StoryBibleWriter,
+            {
+              storyId: story_id,
+              build: (current) => {
+                const next = mergeStoryBible(
+                  current,
+                  resolved.proposal,
+                  nextChapterNum,
+                );
+                if (repairedAll) {
+                  next.bible.contradictions = next.bible.contradictions.filter(
+                    (entry) =>
+                      !(entry.chapter === nextChapterNum &&
+                        entry.severity === "hard" &&
+                        repairedKeys.has(
+                          `${entry.chapter}|${entry.kind}|${entry.what}|${entry.canonical}`,
+                        )),
+                  );
+                }
+                merged.contradictions = next.contradictions;
+                return next.bible;
+              },
+            },
+          );
+          if (commit.bible) merged.bible = commit.bible;
+          if (!commit.committed) {
+            // Every attempt lost the swap, which is no longer contention.
+            // The chapter is written, paid for and delivered, so this is
+            // recorded rather than thrown: the bible is one chapter thinner
+            // and every earlier chapter is still in it.
+            await logError({
+              bucket: "generation.story",
+              severity: "medium",
+              source: "runtime",
+              errorCode: "story_bible_merge_lost",
+              error: new Error(
+                `Story bible merge lost ${commit.attempts} compare-and-swaps`,
+              ),
+              context: {
+                story_id,
+                chapter_number: nextChapterNum,
+                attempts: commit.attempts,
+              },
+              userId: user.id,
+            });
+          }
 
           if (merged.contradictions.length) {
             // Logged so the contradiction rate is a number somebody can watch

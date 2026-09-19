@@ -7,6 +7,96 @@
 
 ---
 
+## 2026-09-19 UTC — The story bible's merge cannot lose a chapter to the next one
+
+**Session:** the coordinating session, from a CodeAnt finding on the docs PR
+#114 — about code that had already been deployed an hour earlier.
+
+### The race
+
+`continue-story` read `story_bible` off the story row when the REQUEST arrived
+(index.ts:152) and wrote the merged bible from inside `EdgeRuntime.waitUntil`
+after the chapter had been delivered — an entire generation later, forty to
+sixty seconds. The write was unconditional.
+
+With `story_flow: "auto"` the next chapter starts as soon as the previous one
+is done, so chapter N+1 could read the bible before chapter N's deferred write
+landed and then overwrite it. Nothing errored. Chapter N's facts simply stopped
+existing — the one thing an append-only record may never do, and invisible
+except as "the bible sometimes forgets chapter 7" months later.
+
+**Narrower than the reviewer stated, and worth writing down why:** two
+continuations of the SAME chapter cannot both get that far. `chapters` carries
+`unique(story_id, chapter_number)` (00001) and `reserve_generation_operation`
+holds a unique index on active operations per (story_id, chapter_number, kind)
+(00005/00027), so the second is refused before it persists anything. The
+reachable window is strictly N against N+1 — which under auto-flow is the
+common case, not an edge one.
+
+### The fix
+
+**Migration 00093** adds `stories.story_bible_rev integer not null default 0`.
+`NOT NULL DEFAULT 0` rather than nullable, because the swap filters on equality
+and `= null` matches no row — a nullable column would have made every legacy
+story's first merge silently lose.
+
+The write now re-reads the bible and its revision inside `waitUntil`, merges
+this chapter's proposal into whatever is current *then*, and updates only while
+that revision is unchanged. A mismatch means another chapter merged first, and
+the answer is to merge again on top of it rather than to win the race. Three
+attempts, then `story_bible_merge_lost` at `medium`: the chapter is written,
+paid for and delivered, so a lost merge is recorded rather than thrown, and the
+next merge still sees everything before it.
+
+The chapter repair is deliberately not re-run on a retry — it edited prose,
+that edit already landed, and only the bible is recomputed.
+
+### Three more holes, found by CodeAnt on the fix itself
+
+The first version of this fix put the compare-and-swap inline in
+`continue-story`. Review found three faults in it, all real, and the answer to
+all three was to stop hand-rolling it:
+
+1. **A stale contradiction filter.** On a rebuild the merge runs against a
+   NEWER bible, which can surface a different hard contradiction for the same
+   chapter -- and the drop rule was "everything hard belonging to this
+   chapter", so an unrelated successful repair would have deleted a fault
+   nobody fixed. The filter now names the contradictions the repair actually
+   addressed, by identity.
+2. **Chapter one was not guarded at all.** `generate-story-stream` seeds the
+   bible from a background task that waits on the plan, and wrote it
+   unconditionally with no revision bump. That is the same loss arriving from
+   the other direction: seeding could land after chapter two's merge and erase
+   it. It now goes through the same helper and builds on whatever the bible
+   currently holds rather than on the seed alone.
+3. **Three attempts, then silence.** Raised to five, and the give-up path is
+   still a logged `story_bible_merge_lost` rather than a throw -- but it is
+   now the only place that can lose anything, instead of one of several.
+
+`commitStoryBible` in `_shared/story-bible.ts` is now the ONLY way the column
+may be written: read the bible and its revision, build the next one from what
+is current, write while that revision holds, repeat. Callers hand it a pure
+`build(current)`, which is what makes a retry correct rather than a gamble.
+
+### Tests
+
+`00093_story_bible_rev_test.ts` runs against real SQL (PGlite) and reproduces
+the race: two writers both read revision 0, the first wins, **the second
+changes no row at all**, the winner's facts survive, and the retry against
+revision 1 lands both.
+
+Three unit tests pin the helper: it writes and moves the revision; it
+**rebuilds on the newer bible** when something lands mid-flight (asserting the
+second build sees the winner's fact, not the stale empty one); and it gives up
+rather than clobbering, reporting how many times it tried.
+
+1,040 function tests pass; `deno check` and `deno fmt` clean on every file
+touched.
+
+### Not deployed
+
+00093 and the new `continue-story` are NOT applied or deployed yet — see the
+deploy entry above for the order (migration first, then the function).
 ## 2026-09-19 UTC — Deployed: two migrations and six functions, and what production actually does now
 
 **Session:** the coordinating session, after #105-#113 merged. **This is the deploy entry.**

@@ -13,6 +13,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   type BibleProposal,
+  commitStoryBible,
   emptyStoryBible,
   factId,
   formatStoryBibleBlock,
@@ -494,3 +495,134 @@ Deno.test("two statements of the same number are not a disagreement", () => {
   assert(!quantitiesDiffer("three cows", "3 cows"));
   assert(quantitiesDiffer("three cows", "eight cows"));
 });
+
+/*
+  `commitStoryBible` is the only way the bible may be written, so these pin the
+  three things the compare-and-swap exists for. The fake client models exactly
+  what PostgREST does on a guarded update: a row whose revision has moved
+  matches nothing, and the update reports zero rows rather than failing.
+*/
+function casClient(initial: { bible: unknown; rev: number }) {
+  const state = { ...initial };
+  const reads: number[] = [];
+  return {
+    state,
+    reads,
+    client: {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: () => {
+              reads.push(state.rev);
+              return Promise.resolve({
+                data: { story_bible: state.bible, story_bible_rev: state.rev },
+                error: null,
+              });
+            },
+          }),
+        }),
+        update: (values: Record<string, unknown>) => ({
+          eq: (_c: string, _v: unknown) => ({
+            eq: (_col: string, expected: unknown) => ({
+              select: () => {
+                if (expected !== state.rev) {
+                  return Promise.resolve({ data: [], error: null });
+                }
+                state.bible = values.story_bible;
+                state.rev = values.story_bible_rev as number;
+                return Promise.resolve({ data: [{ id: "s" }], error: null });
+              },
+            }),
+          }),
+        }),
+      }),
+    },
+  };
+}
+
+Deno.test("commitStoryBible writes when nobody else has, and moves the revision", async () => {
+  const { client, state } = casClient({ bible: null, rev: 0 });
+  const result = await commitStoryBible(client as never, {
+    storyId: "s",
+    build: (current) => ({ ...current, facts: [...current.facts, FACT] }),
+  });
+  assertEquals(result.committed, true);
+  assertEquals(result.attempts, 1);
+  assertEquals(state.rev, 1);
+});
+
+Deno.test("commitStoryBible rebuilds on the newer bible instead of overwriting it", async () => {
+  // The race: something else merges between this caller's read and its write.
+  // The rebuild must see the winner's facts, not the stale ones.
+  const { client, state } = casClient({ bible: null, rev: 0 });
+  let builds = 0;
+  const seen: number[] = [];
+  const result = await commitStoryBible(client as never, {
+    storyId: "s",
+    build: (current) => {
+      builds++;
+      seen.push(current.facts.length);
+      if (builds === 1) {
+        // Simulate the other chapter landing first, after we read.
+        state.bible = {
+          version: 1,
+          facts: [FACT],
+          shown: [],
+          truth: [],
+          contradictions: [],
+        };
+        state.rev = 1;
+      }
+      return {
+        ...current,
+        facts: [...current.facts, { ...FACT, id: "other|key" }],
+      };
+    },
+  });
+  assertEquals(result.committed, true);
+  assertEquals(builds, 2);
+  // First build saw an empty bible; the second saw the winner's one fact.
+  assertEquals(seen, [0, 1]);
+  assertEquals(state.rev, 2);
+});
+
+Deno.test("commitStoryBible gives up rather than clobbering, and says how many times it tried", async () => {
+  const { client } = casClient({ bible: null, rev: 0 });
+  const moving = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: () =>
+            Promise.resolve({
+              data: { story_bible: null, story_bible_rev: 0 },
+              error: null,
+            }),
+        }),
+      }),
+      // Always loses: the stored revision is never what the caller read.
+      update: () => ({
+        eq: () => ({
+          eq: () => ({
+            select: () => Promise.resolve({ data: [], error: null }),
+          }),
+        }),
+      }),
+    }),
+  };
+  void client;
+  const result = await commitStoryBible(moving as never, {
+    storyId: "s",
+    attempts: 3,
+    build: (current) => current,
+  });
+  assertEquals(result.committed, false);
+  assertEquals(result.attempts, 3);
+});
+
+const FACT = {
+  id: "ilse|cats",
+  subject: "Ilse",
+  key: "cats",
+  value: "three",
+  chapter: 1,
+};

@@ -84,9 +84,12 @@ import {
   proseIntegrityBrief,
 } from "../_shared/prose-integrity.ts";
 import {
+  commitStoryBible,
   emptyStoryBible,
+  isEmptyStoryBible,
   mergeStoryBible,
   seedStoryBible,
+  type StoryBibleWriter,
   withoutStoryBible,
 } from "../_shared/story-bible.ts";
 import { checkChapterContinuity } from "../_shared/continuity.ts";
@@ -803,21 +806,41 @@ serve(async (req) => {
               truth: plan?.truth,
               whereAndWhen: whereAndWhen ?? undefined,
             });
-            const opened = mergeStoryBible(
-              seeded,
-              (await chapterOneFacts).proposal,
-              1,
-            ).bible;
-            const update: Record<string, unknown> = { story_bible: opened };
+            const proposal = (await chapterOneFacts).proposal;
+            /*
+              SEEDING IS A CONDITIONAL WRITE TOO, FOR THE SAME REASON.
+
+              This runs in the background and waits on the plan, so it can
+              still be in flight when chapter two is generated and merges its
+              own facts. An unconditional write here would then throw chapter
+              two's facts away -- the same loss `commitStoryBible` exists to
+              prevent, arriving from the other direction. Built on whatever the
+              bible currently holds rather than on `seeded` alone, so a
+              chapter-two merge that landed first survives.
+            */
             // The generated plan becomes the story's `beats`, so every
             // continuation reads it through the plan layer that already exists
             // rather than through a second mechanism.
-            if (plan) update.beats = plan.beats;
-            const { error: bibleError } = await serviceClient
-              .from("stories")
-              .update(update)
-              .eq("id", story.id);
-            if (bibleError) throw bibleError;
+            const also: Record<string, unknown> = {};
+            if (plan) also.beats = plan.beats;
+            const commit = await commitStoryBible(
+              serviceClient as unknown as StoryBibleWriter,
+              {
+                storyId: story.id,
+                also,
+                build: (current) =>
+                  mergeStoryBible(
+                    isEmptyStoryBible(current) ? seeded : current,
+                    proposal,
+                    1,
+                  ).bible,
+              },
+            );
+            if (!commit.committed) {
+              throw new Error(
+                `Story bible could not be opened: lost ${commit.attempts} compare-and-swaps`,
+              );
+            }
           } catch (error) {
             console.error(
               "story bible could not be opened:",
