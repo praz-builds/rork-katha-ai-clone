@@ -1,6 +1,5 @@
 import {
   assertEquals,
-  assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   applyRequestedVisibility,
@@ -109,31 +108,44 @@ Deno.test("an allowed public request writes the same columns publish-story write
   assertEquals(writes[1].filters, [["id", STORY]]);
 });
 
-Deno.test("a database error on the story flip is thrown, never reported as a private outcome", async () => {
-  // There used to be a `gate_constraint` outcome for the 00050 CHECK refusing
-  // this write. The constraint is gone (00091), so nothing may quietly turn a
-  // public request private any more: a refusal is an error.
-  const { client } = recordingClient({ stories: { code: "23514" } });
-  await assertRejects(() =>
-    applyRequestedVisibility(client, {
-      storyId: STORY,
-      requested: "public",
-      isAnonymous: false,
-    })
-  );
+Deno.test("a failed story flip reverts the chapters it published and reports private, never throws", async () => {
+  // Both callers run this after the chapter is persisted and paid for, inside
+  // the block that refunds and fails the request on a throw. A visibility
+  // write must not cost the writer their chapter, and it must not leave a
+  // private story with chapters marked published.
+  const { client, writes } = recordingClient({ stories: { code: "42501" } });
+  const outcome = await applyRequestedVisibility(client, {
+    storyId: STORY,
+    requested: "public",
+    isAnonymous: false,
+  });
+  assertEquals(outcome, {
+    requested: "public",
+    applied: "private",
+    reason: "publish_failed",
+  });
+  assertEquals(writes.map((w) => w.table), ["chapters", "stories", "chapters"]);
+  const publishedAt = writes[0].values.published_at;
+  assertEquals(writes[2].values, { is_published: false, published_at: null });
+  // Only the chapters this call flipped: matched by the timestamp it wrote.
+  assertEquals(writes[2].filters, [["story_id", STORY], [
+    "published_at",
+    publishedAt,
+  ]]);
 });
 
-Deno.test("a database error on the chapters is thrown, never swallowed into a private outcome", async () => {
-  const { client } = recordingClient({
+Deno.test("a failed chapter flip reports private and never touches the story", async () => {
+  const { client, writes } = recordingClient({
     chapters: { code: "42501", message: "denied" },
   });
-  await assertRejects(() =>
-    applyRequestedVisibility(client, {
-      storyId: STORY,
-      requested: "public",
-      isAnonymous: false,
-    })
-  );
+  const outcome = await applyRequestedVisibility(client, {
+    storyId: STORY,
+    requested: "public",
+    isAnonymous: false,
+  });
+  assertEquals(outcome.applied, "private");
+  assertEquals(outcome.reason, "publish_failed");
+  assertEquals(writes.map((w) => w.table), ["chapters"]);
 });
 
 Deno.test("a named-cast story requested public IS public", async () => {

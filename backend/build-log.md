@@ -67,6 +67,19 @@ classification publish too, that the handler no longer selects the old
 columns, and that a guest is still refused. `_shared/publish.test.ts` asserts a
 named-cast public request writes chapters then story.
 
+### Review follow-ups (PR #107, CodeAnt)
+
+- `applyRequestedVisibility` no longer throws. Both callers run it after the
+  chapter is persisted and paid for, inside the block that refunds and fails
+  the request on a throw, so a failed `is_public` write used to cost the writer
+  their chapter. A failed flip now returns `applied: "private"`,
+  `reason: "publish_failed"`, and reverts the chapters that call had marked
+  published (matched by the exact `published_at` it wrote).
+- The client never sent `visibility` with the generation request, so every
+  story generated private and went public only if the follow-up
+  `publish-story` call succeeded. `buildGenerationRequestBody` now always
+  sends it; the follow-up call stays as the retry.
+
 ### Follow-ups, not done
 
 - Classification still runs on every generation (a breadth chosen for the

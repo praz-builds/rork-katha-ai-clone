@@ -476,7 +476,12 @@ export type CreateDraft = {
   identityLenses: IdentityLens[];
   seed: string;
   language: CreationLanguage;
-  /** Applied when the reviewed draft is saved or published, never during generation. */
+  /**
+   * The brief's "Make it public" toggle. Sent with the generation request and
+   * applied by the server the moment chapter one is persisted; absent means
+   * private. (The old doc here said "never during generation", from when a
+   * separate review step published; that step is gone.)
+   */
   visibility?: "private" | "public";
   characters: {
     name: string;

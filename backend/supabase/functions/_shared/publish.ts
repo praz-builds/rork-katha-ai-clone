@@ -30,11 +30,14 @@
 export type VisibilityRequest = "private" | "public";
 
 /**
- * Why a public request stayed private. One value today; a union rather than a
- * literal so the response shape (`visibility.reason`) does not have to change
- * again if a second reason is ever added.
+ * Why a public request stayed private.
+ *
+ * `account_required` is the guest rule. `publish_failed` means one of the two
+ * visibility writes errored: the story is written, paid for and delivered,
+ * it is simply still private, and the client's own follow-up `publish-story`
+ * call (`applyVisibility` in `generation-session.ts`) is the retry.
  */
-export type VisibilityBlockedReason = "account_required";
+export type VisibilityBlockedReason = "account_required" | "publish_failed";
 
 export interface VisibilityOutcome {
   /** What the request asked for. */
@@ -84,21 +87,56 @@ export async function applyRequestedVisibility(
     return { requested, applied: "private", reason: "account_required" };
   }
 
+  // NEVER THROWS PAST THIS POINT. Both callers run this after the chapter is
+  // persisted and the credit deducted, inside the block whose `catch` refunds
+  // the operation and fails the request. A visibility write that errored used
+  // to land there, so a hiccup on `stories.is_public` threw away a chapter
+  // the writer had already been shown. Visibility is not worth a chapter: a
+  // failed flip leaves the story private and says so.
+  const publishedAt = new Date().toISOString();
   const { error: chapterError } = await client
     .from("chapters")
-    .update({ is_published: true, published_at: new Date().toISOString() })
+    .update({ is_published: true, published_at: publishedAt })
     .eq("story_id", input.storyId)
     .eq("is_published", false);
-  if (chapterError) throw chapterError;
+  if (chapterError) {
+    console.error("publish: chapter flip failed", errorCode(chapterError));
+    return { requested, applied: "private", reason: "publish_failed" };
+  }
 
-  // Any error on the story flip is thrown, not folded into a private outcome.
-  // There used to be a `gate_constraint` branch here for the 00050 CHECK
-  // refusing the write; that constraint is gone (00091), so a refusal now is
-  // a real failure and the caller's error handling is the right place for it.
+  // Chapters first, then the story, the same order `publish-story` uses: a
+  // story that went public before its chapters would be listed with a zero
+  // chapter count. The cost of that order is this branch - the chapters are
+  // already marked published when the story write fails - so the chapters
+  // this call flipped (matched by the exact `published_at` it wrote) are put
+  // back, leaving the rows as they were before it ran rather than half
+  // published. Best effort: nothing reads `chapters.is_published` without the
+  // story's own visibility in front of it (RLS and every feed query check the
+  // story), so a revert that also fails leaks nothing, and a later publish
+  // simply finishes the job.
   const { error: storyError } = await client
     .from("stories")
     .update({ is_public: true })
     .eq("id", input.storyId);
-  if (storyError) throw storyError;
+  if (storyError) {
+    console.error("publish: story flip failed", errorCode(storyError));
+    const { error: revertError } = await client
+      .from("chapters")
+      .update({ is_published: false, published_at: null })
+      .eq("story_id", input.storyId)
+      .eq("published_at", publishedAt);
+    if (revertError) {
+      console.error("publish: chapter revert failed", errorCode(revertError));
+    }
+    return { requested, applied: "private", reason: "publish_failed" };
+  }
   return { requested, applied: "public", reason: null };
+}
+
+/** A Postgres/PostgREST code for a log line - never a message, never content. */
+function errorCode(error: unknown): string {
+  const code = error && typeof error === "object"
+    ? (error as { code?: unknown }).code
+    : undefined;
+  return typeof code === "string" ? code : "unknown";
 }

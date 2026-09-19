@@ -1240,6 +1240,18 @@ function buildGenerationRequestBody(
       // the legacy is_series boolean, but story_mode takes precedence there and
       // is what new callers are expected to send.
       story_mode: draft.isSeries ? "series" : "standalone",
+      /**
+       * The brief's "Make it public" toggle, applied by the server the moment
+       * chapter one is persisted (`_shared/publish.ts`).
+       *
+       * Always sent, and always one of the two words: absent means private on
+       * the server, and this field was never sent at all, so every story was
+       * generated private and only went public if the follow-up
+       * `publish-story` call in `generation-session.ts` (`applyVisibility`)
+       * happened to succeed. That call is kept as the retry; this is the
+       * decision.
+       */
+      visibility: draft.visibility === "public" ? "public" : "private",
       // Resolved during shaping and echoed back untouched. Omitted entirely
       // when absent so an ungrounded request is byte-identical to what it was
       // before grounding existed.
