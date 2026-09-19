@@ -11,6 +11,7 @@ import {
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { refundAutoChapterRun } from "../_shared/auto-run.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { sseStream } from "../_shared/sse.ts";
 import { notifyInBackground } from "../_shared/notify.ts";
 import { generateChapterArt, runInBackground } from "../_shared/media.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
@@ -26,6 +27,7 @@ import {
   CHAPTER_METADATA_OUTPUT,
   CHAPTER_METADATA_SYSTEM_PROMPT,
   chapterLengthVerdict,
+  chapterOutputFromStreamedMetadata,
   nameChapterEarly,
   streamChapterProse,
   StreamCommittedError,
@@ -823,191 +825,180 @@ serve(async (req) => {
     // buffered response byte for byte.
     if (body.stream === true) {
       const band = wordBandFor("series", audienceMode, chapterLength);
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          let closed = false;
-          const send = (event: string, data: unknown) => {
-            if (closed) return;
-            try {
-              controller.enqueue(
-                encoder.encode(
-                  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-                ),
-              );
-            } catch {
-              // The reader hung up. `closed` only tracks our own `close()`, so
-              // a client that navigates away leaves it false and every later
-              // enqueue throws. Latching it turns one throw into a no-op for
-              // the rest of the run rather than a throw per event, and the
-              // chapter still finishes and persists -- it is already paid for.
-              closed = true;
-            }
-          };
-          const startedAt = Date.now();
-          try {
-            send("meta", {
-              story_id,
-              operation_id: operation.id,
-              chapter_number: nextChapterNum,
-            });
-            send("stage", { stage: "context" });
+      // `sseStream` owns the framing, the ~15s keep-alive comment and the close
+      // on every exit path (`_shared/sse.ts`). The keep-alive is what lets the
+      // client tell a dead connection from a slow metadata call, and a reader
+      // who hangs up does not stop this run: the replay of its request id is
+      // how they get the finished chapter back.
+      const stream = sseStream(async ({ send }) => {
+        const startedAt = Date.now();
+        try {
+          send("meta", {
+            story_id,
+            operation_id: operation.id,
+            chapter_number: nextChapterNum,
+          });
+          send("stage", { stage: "context" });
 
-            // The chapter is named before it is written, for the same reason a
-            // first chapter is (see `generate-story-stream`): the metadata call
-            // reads the finished prose, so its chapter title cannot arrive
-            // until ~50s in and the reader watches page one fill under a blank
-            // heading. Fired in the same tick as the stream, never awaited by
-            // it, and null on any failure -- in which case the metadata title
-            // is used exactly as before.
-            //
-            // The story already has a name, so it is passed in and echoed back
-            // rather than re-invented; only `chapter_title` is used here.
-            const namingPromise = nameChapterEarly({
-              seed: story.topic ?? "",
-              primaryGenre,
-              chapterNumber: nextChapterNum,
-              storyTitle: typeof story.title === "string" ? story.title : null,
-              previously: chapters[0].previously_summary ??
-                story.previously_summary,
-              instruction: effectiveInstruction || null,
-              characterNames: characters.map((c) => c.name).filter(Boolean),
-            });
-            namingPromise.then((names) => {
-              if (!names?.chapterTitle) return;
-              send("title", { chapter_title: names.chapterTitle });
-              // Detached on purpose, so it has to swallow its own failures: an
-              // unhandled rejection on this runtime can take the isolate down,
-              // and with it a chapter the reader has already paid for.
-            }).catch((error) => {
-              console.error(
-                "early chapter title could not be sent:",
-                safeErrorMessage(error),
-              );
-            });
-
-            const prose = await streamChapterProse({
-              systemPrompt: buildContinuationSystemPrompt({
-                primaryGenre,
-                audienceMode,
-                identityLenses,
-                spiceLevel,
-                language: storyLanguage,
-                mode: chapterMode,
-                seriesState,
-                chapterLength,
-                plannedChapterCount: effectivePlannedCount,
-                output: "prose",
-              }),
-              userPrompt: proseUserPrompt,
-              wordBand: band,
-              onCommit: () => send("stage", { stage: "writing" }),
-              onDelta: (text) => send("delta", { text }),
-            });
-
-            send("stage", { stage: "shaping" });
-
-            // The structured half, recovered after the prose rather than
-            // around it. `series_state` is what lets chapter n+1 exist, so it
-            // stays behind a strict schema instead of a partial-JSON parser.
-            const metadata = await generateFastStructuredText(
-              CHAPTER_METADATA_SYSTEM_PROMPT,
-              buildChapterMetadataPrompt({
-                prose: prose.text,
-                storyMode: "series",
-                seed: story.topic ?? "",
-              }),
-              CHAPTER_METADATA_OUTPUT,
-              2_000,
-              45_000,
-            );
-            // Settled tens of seconds ago (12s deadline against a ~50s
-            // chapter), so this never waits. Awaited rather than read from a
-            // mutable binding so the title that is PERSISTED is the one the
-            // `title` event already put on screen.
-            const earlyNames = await namingPromise;
-            const output = parseStructuredOutput(
-              JSON.stringify({
-                ...(JSON.parse(metadata.text) as Record<string, unknown>),
-                chapter_body: prose.text,
-                ...(earlyNames?.chapterTitle
-                  ? { chapter_title: earlyNames.chapterTitle }
-                  : {}),
-              }),
-              `Chapter ${nextChapterNum}`,
-            );
-
-            const verdict = chapterLengthVerdict(prose.text, band);
-            if (!verdict.usable) {
-              // Recorded, not refused. The reader has already read it, and
-              // taking it back is worse than a chapter that ran long. See the
-              // open item in STORY_GENERATION_FLOW section 10.6.
-              await logError({
-                bucket: "generation.story",
-                severity: "medium",
-                source: "runtime",
-                errorCode: "streamed_chapter_outside_band",
-                error: new Error(
-                  `Streamed continuation ran ${verdict.words} words against a ${band.min}-${band.max} band`,
-                ),
-                context: {
-                  story_id,
-                  operation_id: operation.id,
-                  chapter_number: nextChapterNum,
-                  words: verdict.words,
-                  band_min: band.min,
-                  band_max: band.max,
-                  model: prose.model,
-                },
-                userId: user.id,
-              });
-            }
-
-            const { chapter, seriesState: nextSeriesState } =
-              await persistContinuation(output);
-            notifyChapterReady(chapter);
-            send("done", {
-              chapter,
-              story_id,
-              // Nested under `story` so this payload has the same shape as a
-              // first chapter's (`_shared/generation-done.ts`), rather than a
-              // second flat spelling of the same fields.
-              story: {
-                id: story_id,
-                series_state: nextSeriesState,
-                beats,
-                previously_summary: output.previously_summary ??
-                  story.previously_summary,
-              },
-              model: prose.model,
-              timings: { total: Date.now() - startedAt },
-            });
-          } catch (error) {
-            const committed = error instanceof StreamCommittedError;
+          // The chapter is named before it is written, for the same reason a
+          // first chapter is (see `generate-story-stream`): the metadata call
+          // reads the finished prose, so its chapter title cannot arrive
+          // until ~50s in and the reader watches page one fill under a blank
+          // heading. Fired in the same tick as the stream, never awaited by
+          // it, and null on any failure -- in which case the metadata title
+          // is used exactly as before.
+          //
+          // The story already has a name, so it is passed in and echoed back
+          // rather than re-invented; only `chapter_title` is used here.
+          const namingPromise = nameChapterEarly({
+            seed: story.topic ?? "",
+            primaryGenre,
+            chapterNumber: nextChapterNum,
+            storyTitle: typeof story.title === "string" ? story.title : null,
+            previously: chapters[0].previously_summary ??
+              story.previously_summary,
+            instruction: effectiveInstruction || null,
+            characterNames: characters.map((c) => c.name).filter(Boolean),
+          });
+          namingPromise.then((names) => {
+            if (!names?.chapterTitle) return;
+            send("title", { chapter_title: names.chapterTitle });
+            // Detached on purpose, so it has to swallow its own failures: an
+            // unhandled rejection on this runtime can take the isolate down,
+            // and with it a chapter the reader has already paid for.
+          }).catch((error) => {
             console.error(
-              "continue-story stream failed:",
+              "early chapter title could not be sent:",
               safeErrorMessage(error),
             );
-            const { refund, refundError } = await refundContinuation(error);
-            send("error", {
-              error: refundError
-                ? "Generation failed. Refund is pending retry."
-                : refund?.refunded
-                ? "Generation failed. Credit refunded."
-                : "Generation failed.",
-              operation_id: operation.id,
-              // Whatever reached the reader stays on screen. Blanking prose
-              // somebody has read is the worse of the two bad outcomes.
-              partial_prose_shown: committed,
-              refunded: Boolean(refund?.refunded),
+          });
+
+          const prose = await streamChapterProse({
+            systemPrompt: buildContinuationSystemPrompt({
+              primaryGenre,
+              audienceMode,
+              identityLenses,
+              spiceLevel,
+              language: storyLanguage,
+              mode: chapterMode,
+              seriesState,
+              chapterLength,
+              plannedChapterCount: effectivePlannedCount,
+              output: "prose",
+            }),
+            userPrompt: proseUserPrompt,
+            wordBand: band,
+            onCommit: () => send("stage", { stage: "writing" }),
+            onDelta: (text) => send("delta", { text }),
+          });
+
+          send("stage", { stage: "shaping" });
+
+          // The structured half, recovered after the prose rather than
+          // around it. `series_state` is what lets chapter n+1 exist, so it
+          // stays behind a strict schema instead of a partial-JSON parser.
+          const metadata = await generateFastStructuredText(
+            CHAPTER_METADATA_SYSTEM_PROMPT,
+            buildChapterMetadataPrompt({
+              prose: prose.text,
+              storyMode: "series",
+              seed: story.topic ?? "",
+            }),
+            CHAPTER_METADATA_OUTPUT,
+            2_000,
+            45_000,
+          );
+          // Settled tens of seconds ago (12s deadline against a ~50s
+          // chapter), so this never waits. Awaited rather than read from a
+          // mutable binding so the title that is PERSISTED is the one the
+          // `title` event already put on screen.
+          const earlyNames = await namingPromise;
+          // Refuses metadata with no series state or hook, as the buffered
+          // path refuses `structured === false`: chapter n+1 is written from
+          // this chapter's `series_state`, so persisting it empty freezes the
+          // series. The throw lands in the catch below, which refunds.
+          const output = chapterOutputFromStreamedMetadata({
+            metadataText: metadata.text,
+            prose: prose.text,
+            fallbackTitle: `Chapter ${nextChapterNum}`,
+            // Always true, and not because the handler checks `story_mode`
+            // -- it does not, outside the extension branch. A continuation
+            // IS a series chapter by construction: the band is asked for as
+            // series (`wordBandFor("series", ...)` above) and the metadata
+            // prompt is built with `storyMode: "series"`, so whatever the
+            // story row says, the chapter being written here hands its state
+            // to a chapter after it and must carry that state.
+            requireContinuity: true,
+            overrides: earlyNames?.chapterTitle
+              ? { chapter_title: earlyNames.chapterTitle }
+              : undefined,
+          });
+
+          const verdict = chapterLengthVerdict(prose.text, band);
+          if (!verdict.usable) {
+            // Recorded, not refused. The reader has already read it, and
+            // taking it back is worse than a chapter that ran long. See the
+            // open item in STORY_GENERATION_FLOW section 10.6.
+            await logError({
+              bucket: "generation.story",
+              severity: "medium",
+              source: "runtime",
+              errorCode: "streamed_chapter_outside_band",
+              error: new Error(
+                `Streamed continuation ran ${verdict.words} words against a ${band.min}-${band.max} band`,
+              ),
+              context: {
+                story_id,
+                operation_id: operation.id,
+                chapter_number: nextChapterNum,
+                words: verdict.words,
+                band_min: band.min,
+                band_max: band.max,
+                model: prose.model,
+              },
+              userId: user.id,
             });
-          } finally {
-            if (!closed) {
-              closed = true;
-              controller.close();
-            }
           }
-        },
+
+          const { chapter, seriesState: nextSeriesState } =
+            await persistContinuation(output);
+          notifyChapterReady(chapter);
+          send("done", {
+            chapter,
+            story_id,
+            // Nested under `story` so this payload has the same shape as a
+            // first chapter's (`_shared/generation-done.ts`), rather than a
+            // second flat spelling of the same fields.
+            story: {
+              id: story_id,
+              series_state: nextSeriesState,
+              beats,
+              previously_summary: output.previously_summary ??
+                story.previously_summary,
+            },
+            model: prose.model,
+            timings: { total: Date.now() - startedAt },
+          });
+        } catch (error) {
+          const committed = error instanceof StreamCommittedError;
+          console.error(
+            "continue-story stream failed:",
+            safeErrorMessage(error),
+          );
+          const { refund, refundError } = await refundContinuation(error);
+          send("error", {
+            error: refundError
+              ? "Generation failed. Refund is pending retry."
+              : refund?.refunded
+              ? "Generation failed. Credit refunded."
+              : "Generation failed.",
+            operation_id: operation.id,
+            // Whatever reached the reader stays on screen. Blanking prose
+            // somebody has read is the worse of the two bad outcomes.
+            partial_prose_shown: committed,
+            refunded: Boolean(refund?.refunded),
+          });
+        }
       });
 
       return new Response(stream, {

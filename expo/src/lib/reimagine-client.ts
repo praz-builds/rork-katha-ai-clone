@@ -1,7 +1,6 @@
-import { GenerationRequestError } from "@/lib/api";
+import { GenerationRequestError, runStreamedCall } from "@/lib/api";
 import { bootstrapUser } from "@/lib/session";
-import { postEventStream, StreamTransportError } from "@/lib/stream";
-import { isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import type { Chapter, SavedCharacter, Story, StoryCharacter } from "@/types/domain";
 
 /**
@@ -237,54 +236,28 @@ export async function reimagineChapterStreaming(
     );
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token;
-  if (!accessToken) {
-    throw new GenerationRequestError("Please sign in to continue.", false);
-  }
-
-  let done: Record<string, unknown> | null = null;
-  let failure: string | null = null;
-
-  try {
-    await postEventStream({
-      url: `${SUPABASE_URL}/functions/v1/reimagine-chapter`,
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
-      body: {
-        story_id: request.storyId,
-        chapter_number: request.chapterNumber,
-        prompt: request.prompt.trim(),
-        request_id: requestId,
-        character_replacements: request.replacements.map(serializeReplacement),
-        stream: true,
-      },
-      onEvent: ({ event, data }) => {
-        const payload = asRecord(data);
-        if (event === "delta") {
-          if (typeof payload.text === "string") handlers.onDelta(payload.text);
-        } else if (event === "stage") {
-          handlers.onStage?.(String(payload.stage ?? ""));
-        } else if (event === "done") {
-          done = payload;
-        } else if (event === "error") {
-          failure = typeof payload.error === "string" ? payload.error : "The rewrite failed.";
-        }
-      },
-    });
-  } catch (error) {
-    if (error instanceof StreamTransportError) {
-      throw new GenerationRequestError(error.message, false);
-    }
-    throw error;
-  }
-
-  if (failure) throw new GenerationRequestError(failure, false);
-  if (!done) {
-    throw new GenerationRequestError(
-      "The response stopped partway through. Please try again.",
-      false,
-    );
-  }
+  // The shared streamed-call path, not a copy of it: the stall watchdog and
+  // the replay-by-request-id recovery live there, and a rewrite is the call a
+  // reader watches most closely. This file used to carry its own copy of the
+  // loop, which is how it came to have neither.
+  const done = await runStreamedCall({
+    fn: "reimagine-chapter",
+    body: {
+      story_id: request.storyId,
+      chapter_number: request.chapterNumber,
+      prompt: request.prompt.trim(),
+      request_id: requestId,
+      character_replacements: request.replacements.map(serializeReplacement),
+      stream: true,
+    },
+    onEvent: (event, payload) => {
+      if (event === "delta") {
+        if (typeof payload.text === "string") handlers.onDelta(payload.text);
+      } else if (event === "stage") {
+        handlers.onStage?.(String(payload.stage ?? ""));
+      }
+    },
+  });
   return mapDoneChapter(done, request);
 }
 

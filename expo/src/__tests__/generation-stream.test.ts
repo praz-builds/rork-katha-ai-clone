@@ -236,16 +236,35 @@ describe("generateStoryStreaming delivers prose progressively", () => {
     ).rejects.toThrow("Credit refunded");
   });
 
-  it("treats a stream that ends with no terminal event as a failure", async () => {
-    mockExpoFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: pacedStream(['event: delta\ndata: {"text":"truncated"}\n\n']),
-      json: async () => ({}),
-    });
+  it("never treats a stream that ends with no terminal event as a success", async () => {
+    // A truncated stream says nothing about how the generation ended, so the
+    // client asks by replaying the request id (see `stream-recovery.test.ts`).
+    // Here the server says it failed: the call fails, and asks for a new id.
+    mockExpoFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: pacedStream(['event: delta\ndata: {"text":"truncated"}\n\n']),
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        headers: { get: () => "application/json" },
+        json: async () => ({
+          error: "The previous generation failed. Start a new request.",
+          status: "refunded",
+        }),
+      });
 
-    await expect(
-      generateStoryStreaming(draft, "req-4", { onDelta: () => {} }),
-    ).rejects.toThrow("stopped partway");
+    const error = await generateStoryStreaming(draft, "req-4", {
+      onDelta: () => {},
+    }).then(() => null, (e: unknown) => e);
+    expect((error as Error).message).toMatch("previous generation failed");
+    expect((error as { resetRequestId?: boolean }).resetRequestId).toBe(true);
+    const replay = JSON.parse(
+      (mockExpoFetch.mock.calls[1][1] as { body: string }).body,
+    );
+    expect(replay.request_id).toBe("req-4");
   });
 });

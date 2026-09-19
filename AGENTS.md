@@ -469,7 +469,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 
 ### Shared Utilities (`_shared/`)
 
-`chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
+`chapters.ts`, `character-substitution.ts`, `cors.ts`, `cover-prompts.ts`, `credits.ts`, `edge-tts.ts`, `errors.ts`, `generation-done.ts`, `guest-bootstrap.ts`, `image.ts`, `llm.ts`, `media.ts`, `operations.ts`, `prompts.ts`, `publish.ts`, `push.ts`, `reimagine.ts`, `revenuecat.ts`, `runpod.ts`, `saved-characters.ts`, `sse.ts`, `story-prompts.ts`, `story-shape.ts`, `story-stream.ts`, `story_schema.ts`, `story_text.ts`, `types.ts`, `uuid.ts`, `validation.ts`, `voices.ts` (plus test files).
 
 ### The "created" story flow (2026-09-09)
 
@@ -598,6 +598,7 @@ Rules an agent touching this must not break:
 - **Two timeouts, not one:** time-to-first-token (`STREAM_TTFT_MS`, 20s) and time-between-chunks (`STREAM_STALL_MS`, 25s). A single total-response timeout cannot separate "never started" from "stalled", and any value is wrong for one of them.
 - **Do not size `max_tokens` to the word band.** It caps reasoning and content together, so headroom for one is headroom for the other, and it can only ever stop the model mid-word. This was tried and produced a chapter with no ending. The cap is a runaway guard; the band is stated in the prompt and reported by `chapterLengthVerdict`.
 - **Client transport must be `expo/fetch`.** `supabase.functions.invoke()` buffers, and React Native's global `fetch` returns a null `response.body` -- code written against the web streaming API compiles, runs, and silently never streams.
+- **Silence is abnormal; a stalled stream is replayed, not failed.** Every streamed endpoint goes through `_shared/sse.ts` (`sseStream`), which writes a `: keep-alive` comment every 15s and must not stop the run when the reader hangs up. The client (`runStreamedCall` in `expo/src/lib/api.ts`, `lib/stream-recovery.ts`) aborts after 45s with no bytes, or on a body that ends without `done`/`error`, and replays the same `request_id`: finished JSON is used as `done`, "in progress" is polled for ~3 minutes, "the previous generation failed" rotates the id. Added 2026-09-18 after a finished chapter left a reader on a 25-minute spinner. Do not add a streamed endpoint that bypasses `sseStream`.
 
 **Known open item:** this model overshoots the word band, writing 2,056-2,331 words against a 1,200-1,600 band with the band stated twice in the prompt. The streamed path cannot retry what has been read. Either the bands move or the model does, and `source-of-truth/CREDITS_AND_PRICING.md` moves with it because narration is priced per word.
 
@@ -732,8 +733,9 @@ Chapter 1's art **is** the story's cover, and it is generated with chapter 1 rat
 
 1. **Genre config** (static per genre from `GENRE_PROMPTS`): style, palette, composition, mood, characterApproach (`"scene"` | `"silhouette"` | `"portrait"`).
 2. **Story-specific context** (dynamic): title, themes (up to 4).
-3. **Character integration** (dynamic): scene (no explicit characters), silhouette (distant figure), portrait (three-quarter view).
-4. **Invariant suffix**: no text/titles/words/letters/watermarks, portrait orientation, centered composition, professional book cover art quality.
+3. **Character integration** (dynamic): scene (the lead character placed within the scene, not posed), silhouette (a mid-distance full figure read by shape, clothing and props -- the word "silhouette" is deliberately not sent, since the appearance it came with lists facial detail), portrait (three-quarter view). No describable cast means no cast clause, in every approach.
+4. **Invariant suffix**: the cover-only safe zone (top 15% free of faces; main face between 20% and 50% of the height, centred left-to-right, so the story-page hero, the 3:4 Home card and the square library card all keep it), no text/titles/words/letters/watermarks, no border/frame/decorative edge/vignette (on covers, chapter art and portraits -- no genre config may ask for a border), portrait orientation, professional book cover art quality.
+5. **A picked art style opens and closes the prompt** (`Art style: ...` first, a one-line reminder last) and replaces the genre's `Visual style:` line; `auto` keeps the genre's style in its usual place.
 
 ### Retry Strategy
 

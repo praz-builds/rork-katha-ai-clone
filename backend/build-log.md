@@ -37,7 +37,135 @@ backend change was needed.
 - Tests: `curated-stories.test.ts`, `story-catalogue.test.ts`. Full suite
   128/128 suites, 1266 tests.
 
+## 2026-09-18 UTC — Cover prompts: the cast in scene genres, a safe zone for today's hero, no frames
+
+**Session:** `codex/cover-prompt-fixes` (backend, prompt text only). Not
+deployed; no image API called.
+
+13 production cover prompts were drawn by two image models (Codex's and
+Gemini 2.5 Flash Image via OpenRouter). Five failures appeared on BOTH, so
+they were the prompt's. Fixed in `_shared/cover-prompts.ts` and `_shared/image.ts`:
+
+1. **Scene genres sent no cast** (comedy, educational, sliceOfLife,
+   contemporary, cozyFantasy, poetry, bedtime), so the model invented the
+   person -- a retired postman became an old woman. They now name the lead
+   "within the scene, as one part of it rather than posed for a portrait".
+   Zero describable cast still means no clause.
+2. **Stale crop line.** "Keep the upper third quiet -- cropped in the landscape
+   hero" described a hero that no longer exists and pushed faces UP, under the
+   story page's buttons. Replaced by `SAFE_ZONE_CLAUSE` (top 15% clear, face at
+   20-50% of height, centred left-to-right) on covers only; chapter plates are
+   shown whole at 2:3 and do not get it.
+3. **"Silhouette" contradicted the appearance it carried** (eye colour, a
+   chipped tooth). The word is dropped rather than filtering face words out of
+   free text in three languages: a mid-distance full figure read by shape,
+   clothing and props. Fantasy and scifi compositions lost the word too.
+4. **Picked art style too weak; frames unasked.** A picked style now opens
+   (`Art style: ...`) and closes the prompt and replaces the middle
+   `Visual style:` line. `NO_FRAME_CLAUSE` is on every cover, chapter plate and
+   portrait, and the three genre configs that asked for borders (fantasy,
+   historical, folktale) no longer do. Both new closing clauses sit after the
+   no-text line so `describePreviousCover` does not quote them back.
+5. **Grammar.** "a adventure" -> "an adventure", genre keys read as English
+   ("a slice of life", "a science fiction"), and where-and-when's leading
+   "A/An/The" is lower-cased after "set in" -- nothing else, so proper nouns
+   are untouched.
+
+**Gates.** `deno check` clean on every edge function; `deno test` over
+`backend/supabase/functions/` 884 passed, 0 failed. `AGENTS.md` (Cover Image
+System > Prompt Construction) and `backend/COVER_IMAGES.md` updated to match.
+
+**Review follow-up (PR #104, CodeAnt).** Where-and-when was interpolated raw
+and could end our sentence with an instruction of its own. It is now bounded
+by `settingForSentence` -- first line only, quote/bracket characters removed,
+whitespace collapsed, capped at 160 at a word boundary, and emitted as quoted
+data (`set in "..."`) -- in the cover and chapter builders, so every safety
+level gets it. Punctuation is kept ("St. Ives"), unlike `sanitizeExclusion`.
+The picked-style reminder is now genuinely the last clause of cover, chapter
+and portrait prompts (after the orientation line and, on portraits, after the
+reference clause, whose rule is only that the text precedes the image).
+889 function tests pass.
+
 ---
+
+## 2026-09-18 UTC — A stream that goes quiet is asked how it ended, not left spinning
+
+**Session:** `codex/stream-resilience`. Code only: nothing deployed, no
+database touched.
+
+### What happened
+
+Twice on production a `continue-story` stream went silent and the reader's
+spinner ran for ~25 minutes. The chapter had been persisted both times --
+replaying the same `request_id` returned it as plain JSON -- but nothing
+reached the client to say so. The server sent nothing between the last `delta`
+and `done` (the metadata call and the persist run with the stream open and
+quiet), and the client had no idle timeout, so a dead connection and a busy
+server looked identical.
+
+### Server: a heartbeat on every streamed endpoint
+
+New `_shared/sse.ts` (`sseStream`) owns SSE framing, a `: keep-alive` comment
+every 15s from the moment the stream opens, and the close. The heartbeat is
+cleared when the run settles, however it settles, and when the reader cancels.
+`generate-story-stream`, `continue-story`, `reimagine-chapter` and `edit-story`
+all use it instead of four hand-rolled `send`/`close` pairs.
+
+Those copies had drifted: `reimagine-chapter` and `edit-story` never latched
+`closed` when the reader hung up, so the next `enqueue` threw inside the
+generation's own `try` and a rewrite whose reader backgrounded the app was
+abandoned and refunded instead of finishing. With the client now hanging up on
+purpose and replaying, finishing after a disconnect is the recovery path, so
+that fix is load-bearing. `_shared/sse.test.ts` runs under Deno's timer
+sanitizer, which fails any test that leaks the interval.
+
+### Client: a stall watchdog, then recovery by replay
+
+`postEventStream` takes `stallTimeoutMs`; `runStreamedCall` sets it to 45s
+(three missed heartbeats). Every chunk resets it, keep-alives included, and it
+races each await so a half-open socket cannot hold the call. A stall, a read
+that fails after the stream opened, or a body that closes without `done` or
+`error` now replays the same request id (`lib/stream-recovery.ts`): finished
+JSON is returned exactly as `done` would have been; "in progress" is polled at
+2/4/8/15/30s... for about three minutes (the server's stream deadline); "the
+previous generation failed" throws with `resetRequestId: true` so the retry
+uses a fresh id. Prose already shown is never retracted. A retry that lands
+while the first attempt still runs (a 409 before the stream opens) is waited
+on the same way. `edit-story` has no request id, so its stall fails fast
+instead of replaying. `reimagine-client.ts` had its own copy of the loop and
+now goes through `runStreamedCall`, so the reader's Reimagine sheet is covered
+too.
+
+### Buffered helpers kept, and labelled
+
+`generateStory` / `continueStory` (buffered) are documented as not for
+interactive use: the whole provider chain must fit the gateway's 150s idle
+timeout and does not about 30% of the time. They are kept because
+`api-generation-contract.test.ts` pins the request body through them; no
+screen calls them.
+
+### Review follow-up (PR #105): streamed metadata that erased continuity
+
+CodeAnt flagged `reimagine-chapter`'s streamed path. The defect predates this
+branch (identical on `origin/main` under `git diff -w`) and `continue-story`'s
+streamed path had it too: both spread the metadata into an object that always
+carried `chapter_body`, so `parseStructuredOutput` reported `structured: true`
+whatever the metadata said, and `{}` or an object missing `series_state` was
+persisted with an empty series state and a default hook. The buffered paths
+already refuse `structured === false`. New
+`chapterOutputFromStreamedMetadata` in `_shared/story-stream.ts` requires an
+object `series_state` and a string `hook_type`, and throws
+`StreamedMetadataError` before anything is persisted, so the existing catch
+refunds and the old chapter stays. Both streamed paths use it.
+`generate-story-stream` is unchanged: a first chapter has no prior continuity
+to erase, and its comment records the lenient behaviour as deliberate. Eight
+Deno cases in `story-stream.test.ts`; backend suite 882 passed.
+
+### Verification
+
+`deno check` on every function; `deno test backend/supabase/functions/` 874
+passed. Expo on Node 22: `tsc --noEmit` clean, `pnpm lint` 0 errors, `jest`
+127 suites / 1257 tests passed.
 
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
 

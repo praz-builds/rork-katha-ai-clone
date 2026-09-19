@@ -43,9 +43,11 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  artStyleReminder,
   buildChapterArtPrompt,
   buildCoverPrompt,
   coverArtStyleClause,
+  NO_FRAME_CLAUSE,
   type PromptCharacter,
 } from "./cover-prompts.ts";
 import { characterAppearance } from "./types.ts";
@@ -458,7 +460,8 @@ function buildCoverPromptForLevel(
  * `buildCoverPrompt` interpolates the hero's look directly, so a character
  * saved with a name and nothing else - which the Craft character sheet permits,
  * since only Name is required - produced the literal string
- * "a distant silhouetted figure suggesting undefined" in the prompt. Filtering
+ * "a distant silhouetted figure suggesting undefined" in the prompt (the
+ * silhouette wording has since gone; the failure mode has not). Filtering
  * here is what makes the zero-usable-characters case degrade to the genre cover
  * rather than to a corrupted one.
  *
@@ -665,6 +668,18 @@ function buildPortraitPrompt(
   // fed by a required row on onboarding's W4 sheet; both are gone, because an
   // appearance line says it in the person's own words whenever it matters.
   const subject = portraitSubjectForLevel(appearance, safetyLevel);
+  // The frame clause and the style reminder are the cover's, for the cover's
+  // reasons (see `NO_FRAME_CLAUSE` and `artStyleReminder` in
+  // `cover-prompts.ts`). A portrait is shown in the 4:5 Meet card and reused
+  // at smaller sizes elsewhere, and a drawn border or vignette is cut unevenly
+  // by any crop of it; and a picked watercolour that came back as smooth digital paint is most
+  // obvious here, where the whole frame is one figure. Neither can be what a
+  // content filter objected to, so both hold on every rung of the ladder.
+  //
+  // The subject still leads: "Character portrait illustration of <appearance>"
+  // is the first thing the model reads, which is why the style is restated at
+  // the end rather than moved to the front.
+  const reminder = artStyleReminder(artStyle);
 
   return [
     `Character portrait illustration of ${subject}.`,
@@ -674,8 +689,18 @@ function buildPortraitPrompt(
     }, soft even lighting, no background scenery.`,
     PORTRAIT_WARDROBE_CLAUSE,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.`,
+    NO_FRAME_CLAUSE,
     `Full-body portrait orientation, subject centered in frame, high quality.`,
+    // The reference clause does NOT need to follow the orientation line, and
+    // the style reminder does need to be last, so the reminder goes after it.
+    // What the reference clause's ordering rationale actually requires (see
+    // `generateWithOpenRouter`) is that the TEXT part of the message, which
+    // carries the clause, is sent BEFORE the image part, so the model is told
+    // what the photo is for before it sees it. Where the clause sits inside
+    // that text does not change that, and the reminder names only a drawing
+    // style -- it cannot be read as licence to copy the reference's likeness.
     ...(hasReference ? [STYLE_REFERENCE_CLAUSE] : []),
+    ...(reminder ? [reminder] : []),
   ].join(" ");
 }
 
