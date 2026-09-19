@@ -6309,3 +6309,91 @@ the reference (a stray "read" no longer shields "from Chapter 1");
 a writer's title is painted in the stream's `title` event immediately rather
 than only when early naming succeeds; the offline `localGeneratedStory` keeps
 `draft.title`.
+
+## 2026-09-19 — The story bible: a multi-chapter story stops changing its own facts
+
+**Why.** On 2026-09-18, 83 Originals were written through the real pipeline and
+read end to end by editor agents. **Not one passed as written.** 669 issues,
+289 of them `major`, and all six regenerate verdicts were 8-10 chapters long.
+The great majority of the major issues were one bug in four costumes: a fact
+that changed (three cows, then eight; 79, then "thirty"), a scene replayed as
+new (the Cartographer's Heir midpoint reveal in chapters 2, 12 AND 14), a clock
+that broke (Zanzibar's rescue after its own deadline), or a mystery that stopped
+being fair.
+
+**The diagnosis, and why `SeriesState` could not be the fix.** `SeriesState` is
+a field inside `STORY_OUTPUT_JSON_SCHEMA`, which means the model rewrites it in
+full at the end of every chapter. For narrative state that is correct. For
+canonical fact it is the drift channel itself: a model asked to re-emit a number
+twelve times paraphrases it twelve times.
+
+**What was built.** `stories.story_bible jsonb` (migration 00092), nullable,
+server-owned and **append-only**. The model only ever PROPOSES, through a narrow
+extraction call; `mergeStoryBible` appends what is new, ignores what agrees and
+**refuses what conflicts** — a refusal being a recorded contradiction rather
+than a write. The clock may only move forward, the story's truth is written
+once, and a `shown` entry that repeats an earlier one is a re-reveal. All of it
+is rendered into the next chapter's prompt as a fenced, untrusted FIXED FACTS
+block above the series state.
+
+Also: `_shared/series-plan.ts` gives a 5+ chapter series with no `beats` a
+chapter plan in the shape `BEATS_GUIDE.md` proved works (each beat carries its
+date and the facts it depends on; the truth is fixed before chapter one), and
+the moments layer stops quoting the writer's own sentences back for moments that
+have already landed — they are now named positionally, which was the channel
+feeding brief text into prose.
+
+**Two things measurement changed.**
+
+1. **The continuity check costs 48.7s, not 20s.** The first budget (1,400
+   tokens, 20s) returned an EMPTY string on every call: this model spends ~2,500
+   tokens reasoning before it emits a character, so `finish_reason` was `length`
+   with 2,797 reasoning tokens and no content. At 12,000 output tokens it
+   answers in 48.7s for $0.0012. The budget is now 6,000 (doubled on the wire)
+   and the check is **never awaited in front of a response on either transport**
+   — it is started when the last prose token lands and handed to
+   `EdgeRuntime.waitUntil`. Added reader-visible latency: **zero**. The named
+   cost is that an auto-flow chapter may be written against a bible one chapter
+   behind; that chapter is still in the prompt verbatim through the
+   previous-chapter window.
+2. **Not every changed value is a defect.** The first harness run produced
+   twenty "hard" contradictions over two chapters, nearly all of them a
+   character putting down one object and picking up another. A conflict is hard
+   — which is what buys a second model call — only on a durable property
+   (identity, age, date, count, kinship, occupation, ownership, what a thing is
+   called) or when both values are numbers. Everything else is soft: logged,
+   carried into the next prompt, never repaired.
+
+**The repair, not a regeneration.** Because the check runs after the response,
+a hard contradiction buys one bounded pass of find/replace pairs — the same
+artefact the human editors produced by hand in `edits-batch*.jsonl` — each
+validated to occur **exactly once** in the chapter as it stands, applied through
+the existing compare-and-swap. A `find` that is missing or ambiguous is
+rejected, never applied to the first match.
+
+**Mobile.** The bible never reaches a client: 0 KB per chapter. Every deliberate
+response selects explicit columns, and the two REPLAY paths that answer with
+`select("*")` now strip it (`withoutStoryBible`, pinned by a test) — left alone
+they would have shipped 5-10 KB of fact table to a phone per replayed chapter.
+No Expo file is touched by this change.
+
+**Telemetry.** Every contradiction writes `error_events`, bucket
+`generation.story`, `continuity_contradiction`, severity medium, context of
+chapter number, kind counts, repaired/rejected counts and elapsed ms —
+identifiers and enums only. A check that fails writes
+`continuity_check_unavailable` (low) and the chapter is untouched.
+
+**Harness.** `backend/originals/continuity-eval.ts` writes the six stories that
+actually failed, twice, differing in one flag, and audits both with the same
+judge. It runs the chapter loop in-process against the same prompt builders
+rather than the deployed functions, because the changed pipeline is
+deliberately NOT deployed.
+
+**Gates.** 847 `_shared` tests pass (23 new for the bible, 12 for continuity, 7
+for the plan), the 00092 migration test passes against real SQL, `deno check`
+clean on every touched function, `deno fmt` clean.
+
+**Not deployed. The migration has not been run.** The house library is being
+published against the current production functions by another lane; deploying
+mid-run would mean the library was written by two different pipelines. Deploy
+and migration are the owner's call, after that run finishes.

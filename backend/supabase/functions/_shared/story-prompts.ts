@@ -18,6 +18,7 @@ import { BANNED_NAMES, BANNED_PHRASES, BANNED_WORDS } from "./ban-lists.ts";
 import { buildGroundingBlock } from "./grounding-card.ts";
 import type { GroundingCard } from "./grounding-types.ts";
 import { buildPhraseLayer, type PhraseSeed } from "./phrases.ts";
+import { formatStoryBibleBlock, type StoryBible } from "./story-bible.ts";
 import type {
   AudienceMode,
   ChapterRole,
@@ -992,7 +993,8 @@ export const BANNED_TITLE_PHRASES =
   "Beginnings, The Beginning, A New Dawn, The Awakening, Revelations, Shadows, Whispers, Echoes, Reflections, Secrets, Turning Point, The Reckoning, Unravelling, Aftermath, Convergence, The Journey Begins, Into the Unknown, Crossroads, Legacy, Destiny, Fragments, Threads, Embers, Ashes, The Storm, Silence Falls";
 
 /** Everything true of a chapter title regardless of what it is sourced from. */
-export const CHAPTER_TITLE_SHAPE = `- One to four words. No numbering: never "Chapter 3", never "Part Two".
+export const CHAPTER_TITLE_SHAPE =
+  `- One to four words. No numbering: never "Chapter 3", never "Part Two".
 - No colon and no subtitle.
 - Concrete over abstract. "The Blue Kettle" over "Domesticity". "She Kept the
   Receipt" over "Consequences".
@@ -1469,6 +1471,8 @@ export function buildUserPrompt(params: {
   storyMode?: StoryMode;
   chapterRole?: ChapterRole;
   seriesState?: SeriesState;
+  /** The settled-facts record; see the implementation signature below. */
+  storyBible?: StoryBible;
   audienceMode?: AudienceMode;
   spiceLevel?: SpiceLevel;
   storyValues?: string[];
@@ -1525,6 +1529,13 @@ export function buildUserPrompt(params: {
   storyMode?: string;
   chapterRole?: string;
   seriesState?: SeriesState;
+  /**
+   * The settled-facts record. Rendered directly above `seriesState`, because
+   * the two answer different questions and the order says which wins: the
+   * bible is what is TRUE and is not the model's to revise, the series state is
+   * what is currently HAPPENING and is rewritten every chapter.
+   */
+  storyBible?: StoryBible;
   spiceLevel?: string;
   storyValues?: string[];
   writingStyle?: string;
@@ -1668,6 +1679,22 @@ export function buildUserPrompt(params: {
     hasContinuationInstruction: Boolean(params.continuationInstruction?.trim()),
   }));
 
+  // --- Fixed-facts layer ---
+  //
+  // Above series state on purpose. A continuation that reads "the conflict is
+  // X" before it reads "Klazina has three cows, and it is now day four" will
+  // happily invent a fourth cow to serve X; read the other way round, the
+  // narrative has to be told within the facts. `formatStoryBibleBlock` returns
+  // "" for an empty or absent bible, so every story written before migration
+  // 00092 produces a byte-identical prompt to the one it produced yesterday.
+  if (params.storyBible) {
+    const bibleBlock = formatStoryBibleBlock(params.storyBible, {
+      castNames: (params.characters ?? []).map((c) => c.name),
+      isFinale: params.chapterRole === "finale",
+    });
+    if (bibleBlock) parts.push(bibleBlock);
+  }
+
   if (params.seriesState) {
     parts.push(formatSeriesStateBlock(params.seriesState));
   }
@@ -1758,18 +1785,37 @@ export function buildUserPrompt(params: {
     const landed = moments.filter((moment) => delivered.has(moment.trim()));
     const owed = moments.filter((moment) => !delivered.has(moment.trim()));
 
+    /*
+      A DELIVERED MOMENT IS NAMED, NOT QUOTED.
+
+      This block used to echo the writer's own sentence back for every moment
+      that had already landed, and the 2026-09-18 review found brief text pasted
+      straight into the prose -- a `moments` entry appearing verbatim in a
+      chapter, in the writer's voice rather than the story's. The model does not
+      need the writer's phrasing for a scene it has already written; it needs to
+      know the slot is spent. So a landed moment is referred to positionally and
+      its wording stays out of the prompt entirely.
+
+      An OWED moment still travels verbatim below, because the model cannot
+      deliver what it cannot read. That block carries its own instruction not to
+      reuse the wording.
+    */
     if (landed.length) {
+      const positions = landed
+        .map((moment) => moments.indexOf(moment) + 1)
+        .filter((position) => position > 0);
       parts.push(
-        "Moments already delivered in earlier chapters. They have happened; do not write them again:",
+        `Moments already delivered in earlier chapters: ${
+          positions.length === 1
+            ? `moment ${positions[0]}`
+            : `moments ${positions.join(", ")}`
+        } of ${moments.length}. They have happened and are on the page. Do not write them again.`,
       );
-      for (const moment of landed) {
-        parts.push(`- ${userField("moment", moment)}`);
-      }
     }
 
     if (owed.length) {
       parts.push(
-        "Moments the reader was promised and that have not happened yet. Each must happen somewhere in the story, in whatever order serves the pacing. Do not announce them; let them arrive:",
+        "Moments the reader was promised and that have not happened yet. Each must happen somewhere in the story, in whatever order serves the pacing. Do not announce them; let them arrive. These are planning notes written for you, not lines of the story: their wording must never appear in the prose:",
       );
       for (const moment of owed) {
         parts.push(`- ${userField("moment", moment)}`);
@@ -1936,6 +1982,14 @@ export interface ContinuationPromptInput {
    * argument.
    */
   seriesState: SeriesState;
+  /**
+   * The settled-facts record for this story, read from `stories.story_bible`.
+   *
+   * Optional, and an absent one is `parseStoryBible(null)` -- an empty bible
+   * that renders nothing. Every story written before migration 00092 has one,
+   * and its prompt must be unchanged.
+   */
+  storyBible?: StoryBible;
   title: string;
   /** The rendered previous-chapters window, already summarized and fenced. */
   previousChapters: string;
@@ -1977,6 +2031,7 @@ export function buildContinuationUserPrompt(
     storyMode: "series",
     chapterRole: input.chapterRole,
     seriesState: input.seriesState,
+    storyBible: input.storyBible,
     seed: input.seed,
     whereAndWhen: input.whereAndWhen,
     moments: input.moments,

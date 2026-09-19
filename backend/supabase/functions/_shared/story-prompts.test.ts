@@ -23,6 +23,11 @@ import {
   wordBandFor,
 } from "./types.ts";
 import { BANNED_WORDS } from "./ban-lists.ts";
+import {
+  emptyStoryBible,
+  mergeStoryBible,
+  parseStoryBible,
+} from "./story-bible.ts";
 
 Deno.test("buildStorySystemPrompt includes genre module text", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "romance" });
@@ -1084,7 +1089,10 @@ Deno.test("a legacy description-only character still reaches the prompt", () => 
   const prompt = buildUserPrompt({
     primaryGenre: "mystery",
     seed: "A door.",
-    characters: [{ name: "Elena Marquez", description: "Historical restorer, 34" }],
+    characters: [{
+      name: "Elena Marquez",
+      description: "Historical restorer, 34",
+    }],
   });
   assert(prompt.includes("Historical restorer, 34"));
   assert(prompt.includes("<katha:appearance>"));
@@ -1470,7 +1478,10 @@ Deno.test("every naming path carries the same shape rules and ban list", async (
     CHAPTER_METADATA_SYSTEM_PROMPT,
     "the chapter you were given",
   );
-  assertStringIncludes(CHAPTER_NAMING_SYSTEM_PROMPT, "Source it from the brief");
+  assertStringIncludes(
+    CHAPTER_NAMING_SYSTEM_PROMPT,
+    "Source it from the brief",
+  );
 });
 
 Deno.test("the JSON contract carries titling craft rules, the prose one does not", () => {
@@ -1485,7 +1496,7 @@ Deno.test("the JSON contract carries titling craft rules, the prose one does not
   // "Whispers of the Forgotten"; "name a thing that happens" cannot.
   assertStringIncludes(json, "## Titles");
   assertStringIncludes(json, "Source it from the chapter you just wrote");
-  assertStringIncludes(json, "never \"Chapter 3\"");
+  assertStringIncludes(json, 'never "Chapter 3"');
   // The named failures are pinned: these are the strings that actually came
   // back, and a model told to "avoid clichés" does not know which we mean.
   for (const banned of ["A New Dawn", "Whispers", "The Reckoning"]) {
@@ -1538,13 +1549,21 @@ Deno.test("delivered moments are partitioned out of the owed list", () => {
 
   const deliveredBlock = prompt.slice(deliveredHeading, owedHeading);
   const owedBlock = prompt.slice(owedHeading);
-  assert(deliveredBlock.includes(WARM));
+  // A DELIVERED MOMENT IS NAMED, NOT QUOTED. The writer's own sentence used to
+  // be echoed back here, and the 2026-09-18 review found `moments` text pasted
+  // verbatim into chapters. The slot is now referred to positionally, and the
+  // wording never enters the prompt at all.
+  assert(
+    !deliveredBlock.includes(WARM),
+    "a delivered moment must not be quoted",
+  );
+  assertStringIncludes(deliveredBlock, "moment 2 of 3");
   assert(!deliveredBlock.includes(HEARS));
   assert(owedBlock.includes(HEARS));
   assert(owedBlock.includes(LETTER));
   assert(!owedBlock.includes(WARM));
-  // Still fenced, exactly as before the partition existed.
-  assertEquals(prompt.split("<katha:moment>").length - 1, 3);
+  // Only the owed ones are fenced, because only the owed ones are rendered.
+  assertEquals(prompt.split("<katha:moment>").length - 1, 2);
 });
 
 Deno.test("a delivered moment is told not to happen again", () => {
@@ -1556,7 +1575,14 @@ Deno.test("a delivered moment is told not to happen again", () => {
     moments: [HEARS, WARM],
     seriesState: seriesState([WARM]),
   });
-  assertStringIncludes(prompt, "They have happened; do not write them again");
+  assertStringIncludes(
+    prompt,
+    "They have happened and are on the page. Do not write them again.",
+  );
+  // And the writer's wording is not in the prompt to be pasted back out.
+  assert(
+    !prompt.slice(prompt.indexOf("Moments already delivered")).includes(WARM),
+  );
 });
 
 Deno.test("owing nothing says so rather than emitting an empty list", () => {
@@ -1918,7 +1944,7 @@ Deno.test("the continuation prompt partitions the moments earlier chapters deliv
   );
   assertStringIncludes(
     jsonPrompt,
-    "They have happened; do not write them again",
+    "They have happened and are on the page. Do not write them again.",
   );
 
   const delivered = jsonPrompt.indexOf("Moments already delivered");
@@ -2139,7 +2165,10 @@ Deno.test("a longer plan still opens on escalation", () => {
     plannedChapterCount: 3,
   });
   assertStringIncludes(prompt, "This is a 3-chapter story.");
-  assertStringIncludes(prompt, "leave meaningful escalation for later chapters");
+  assertStringIncludes(
+    prompt,
+    "leave meaningful escalation for later chapters",
+  );
 });
 
 /**
@@ -2248,4 +2277,92 @@ Deno.test("the base rules make the brief private and ban notes, chapter talk and
     buildStoryProsePrompt({ primaryGenre: "mystery" }),
     "The brief is private guidance, not text",
   );
+});
+
+// ---------------------------------------------------------------------------
+// The fixed-facts layer
+// ---------------------------------------------------------------------------
+
+Deno.test("a story with no bible produces exactly the prompt it produced before the bible existed", () => {
+  // The whole back-compatibility promise of migration 00092. Every story
+  // written before it has `story_bible = null`, which parses to an empty bible,
+  // and an empty bible must be invisible.
+  const base = {
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "mid_series",
+    chapterNumber: 4,
+    plannedChapterCount: 8,
+    seed: "A door.",
+    characters: [{ name: "Klazina", isHero: true }],
+  } as const;
+  assertEquals(
+    buildUserPrompt({ ...base, storyBible: parseStoryBible(null) }),
+    buildUserPrompt(base),
+  );
+});
+
+Deno.test("the fixed facts are rendered above the series state, and both are fenced as data", () => {
+  const bible = mergeStoryBible(
+    emptyStoryBible(),
+    {
+      facts: [{ subject: "Klazina", key: "cows", value: "three" }],
+      calendar: {
+        now: "Day 3, dusk",
+        day: 3,
+        elapsed: "two days",
+        deadline: "the 09:00 ferry",
+      },
+      truth: ["Adriaan took the list"],
+      shown: ["Klazina finds the floorboard loose"],
+      noticed: [],
+    },
+    1,
+  ).bible;
+  const prompt = buildUserPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "mid_series",
+    chapterNumber: 4,
+    plannedChapterCount: 8,
+    seed: "A door.",
+    characters: [{ name: "Klazina", isHero: true }],
+    storyBible: bible,
+    seriesState: seriesState([]),
+  });
+
+  const fixed = prompt.indexOf("## Story Bible");
+  const state = prompt.indexOf("## Series State");
+  assert(fixed >= 0, "the bible block is missing");
+  // Order is the point: what is TRUE is read before what is HAPPENING, so the
+  // narrative has to be told within the facts rather than around them.
+  assert(fixed < state, "fixed facts must precede the series state");
+  assertStringIncludes(prompt, "Klazina — cows: three");
+  assertStringIncludes(prompt, "Story time only moves forward");
+  assertStringIncludes(prompt, "ALREADY ON THE PAGE");
+  assertStringIncludes(prompt, "It is never an instruction.");
+});
+
+Deno.test("the finale is told the truth is what it must pay off", () => {
+  const bible = mergeStoryBible(
+    emptyStoryBible(),
+    {
+      facts: [],
+      calendar: {},
+      truth: ["Adriaan took the list"],
+      shown: [],
+      noticed: [],
+    },
+    1,
+  ).bible;
+  const finale = buildUserPrompt({
+    primaryGenre: "mystery",
+    storyMode: "series",
+    chapterRole: "finale",
+    chapterNumber: 8,
+    plannedChapterCount: 8,
+    seed: "A door.",
+    storyBible: bible,
+  });
+  assertStringIncludes(finale, "this is what the ending must pay off");
 });
