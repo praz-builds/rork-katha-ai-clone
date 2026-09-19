@@ -72,6 +72,17 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "chapter_id",
   "chapter_number",
   "chapter_role",
+  // Narration lengths and part counts. Every one is an integer -- how many
+  // characters a chapter is, how many provider requests it needs, which one
+  // was in flight, how many are staged -- and never any of the text itself.
+  // Their absence is why the 2026-09-15 narration failures could not be
+  // diagnosed from the rows: production recorded that narration failed and
+  // nothing at all about how long the chapter was, so the provider's real
+  // limit had to be bracketed by hand against a live endpoint.
+  "chars",
+  "chunk",
+  "chunks",
+  "parts",
   "code",
   "codes",
   "elapsed_ms",

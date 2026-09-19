@@ -14,8 +14,10 @@ import {
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   canReadChapter,
+  classifyProviderAudioError,
   isNarrationJobStale,
   NARRATION_JOB_STALE_MS,
+  narrationPartPath,
   normalizeAudioStatus,
   pollRunpodNarration,
   stableChapterAudioPath,
@@ -705,4 +707,69 @@ Deno.test("pollRunpodNarration still decodes a base64 payload within the size ca
         );
       },
     ));
+});
+
+// --- The provider's length refusal ------------------------------------------
+
+Deno.test("a provider length refusal is named, and everything else is still scrubbed", () => {
+  // `safeErrorCode` is right to refuse to publish provider prose: the value it
+  // produces is written to `chapter_audio.error_code`, and RLS lets every
+  // reader of a public story select that row. The cost of that correctness was
+  // that MiniMax's length refusal -- an English sentence -- was flattened into
+  // `unclassified_error` along with tracebacks and echoed input, so the single
+  // most common narration failure in production was indistinguishable from an
+  // unknown one. Five occurrences shared one fingerprint from 2026-09-15.
+  for (
+    const refusal of [
+      "Input text exceeds the maximum length of 10000 characters.",
+      "text too long: 12850 characters (max 10000)",
+      "ValueError: prompt length limit exceeded",
+    ]
+  ) {
+    assertEquals(
+      classifyProviderAudioError(refusal),
+      "narration_provider_char_limit",
+      refusal,
+    );
+  }
+
+  // Anything else keeps exactly the old behaviour: an identifier passes
+  // through, prose becomes `unclassified_error`, and no provider words reach a
+  // reader-visible column.
+  assertEquals(classifyProviderAudioError("gpu_oom"), "gpu_oom");
+  assertEquals(
+    classifyProviderAudioError(
+      "Traceback (most recent call last):\n  File /opt/worker/handler.py",
+    ),
+    "unclassified_error",
+  );
+  assertEquals(classifyProviderAudioError(undefined), undefined);
+  assertEquals(classifyProviderAudioError(""), undefined);
+});
+
+Deno.test("staged part paths sort into playback order and round-trip their index", () => {
+  // Lexicographic order has to equal playback order, because a chapter whose
+  // scenes play out of sequence is worse than one that does not play at all:
+  // nothing would report it as an error.
+  const paths = [0, 1, 2].map((index) =>
+    narrationPartPath("story", "chapter", "aria", index)
+  );
+  assertEquals(paths, [
+    "story/chapter/parts/aria.00.mp3",
+    "story/chapter/parts/aria.01.mp3",
+    "story/chapter/parts/aria.02.mp3",
+  ]);
+  assertEquals([...paths].sort(), paths);
+
+  // Parts are namespaced per voice, so narrating the same chapter in two
+  // voices at once cannot have one pipeline read the other's audio.
+  assertEquals(
+    narrationPartPath("story", "chapter", "kai", 1),
+    "story/chapter/parts/kai.01.mp3",
+  );
+  // ...and they never collide with the finished file.
+  assertEquals(
+    stableChapterAudioPath("story", "chapter", "aria"),
+    "story/chapter/aria.mp3",
+  );
 });
