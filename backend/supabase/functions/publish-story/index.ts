@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import {
-  parseGatingReason,
-  STORY_GATED_PRIVATE_ERROR_CODE,
-} from "../_shared/entity-visibility-gate.ts";
 import { touchStreak } from "../_shared/engagement.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
@@ -91,7 +87,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
       .select(
-        "id, author_id, status, is_public, entity_gate_reason, entity_classification_status",
+        "id, author_id, status, is_public",
       )
       .eq("id", storyId)
       .single();
@@ -227,14 +223,14 @@ export async function handleRequest(req: Request): Promise<Response> {
     // the person a writing app should be counting.
     //
     // CALLED AT EACH SUCCESSFUL EXIT, NOT ONCE HERE. An earlier version ran it
-    // at this point and its comment claimed "a gated publish returns before
-    // it" -- which was simply false: both gate refusals are ~50 lines BELOW,
-    // so a publish the gate turned down still recorded a writing day. A day
-    // credited for work the server refused to do is the counter lying, and a
-    // streak is only worth anything if it is true.
+    // at this point, above two refusals that then sat below it, so a publish
+    // the server turned down still recorded a writing day. A day credited for
+    // work the server refused to do is the counter lying, and a streak is only
+    // worth anything if it is true. Those refusals are gone (migration 00091),
+    // but a call per exit keeps the counter honest if one is ever added back.
     //
     // The private branch below is a success and does count: the edits are
-    // committed, which is the work. Only the 403s skip it.
+    // committed, which is the work.
     //
     // Best effort by construction (`touchStreak` never throws) -- a counter
     // must not be able to fail a publish that succeeded.
@@ -256,57 +252,21 @@ export async function handleRequest(req: Request): Promise<Response> {
       return respond({ saved: true, published: false, story_id: storyId });
     }
 
-    // The entity visibility gate (see `_shared/entity-visibility-gate.ts`).
-    // A story whose idea named a living public figure or a private individual
-    // was recorded as such at generation, and no request to publish it - not
-    // this one, and not a future endpoint - is allowed to make it public.
+    // There is no content gate between a public request and a public story.
     //
-    // Guarded by `!alreadyPublic` for the same reason the demotion guard above
-    // is: this rule is forward-only. It must never retroactively act on a
-    // story that is already public, because `entity_gate_reason` can only ever
-    // be set at generation and every story published before this gate existed
-    // carries a null value anyway - this check is unreachable for them either
-    // way, but the guard states the intent rather than relying on that as an
-    // accident of data.
+    // Until 2026-09-18 two refusals sat here: a story whose idea named a
+    // living public figure or a private individual (migration 00050) was
+    // refused with a 403, and so was one whose entity classification never
+    // answered (migration 00058). The owner removed both for the MVP
+    // (migration 00091), because in practice they refused almost everything:
+    // every name on a writer's character sheet is classified
+    // `private_individual` - the sheet is the sole authority on who a
+    // character is - so every story with a named cast, which is nearly every
+    // story, could never be published. A toggle that says "public" and a
+    // story that stays private is the product lying to its writer.
     //
-    // A database CHECK constraint (migration 00050) backstops this
-    // independently of this function ever running at all - `is_public` is
-    // directly reachable through the `authenticated` role's own UPDATE grant
-    // (migration 00015), so this refusal is a courtesy that explains the
-    // decision, not the only thing enforcing it.
-    // A story whose classification never answered cannot be published either,
-    // and it is checked before the gate reason for the same reason
-    // `_shared/publish.ts` checks it first: a null gate reason on a story
-    // nobody classified is an absence, not a clearance.
-    //
-    // The trigger is the explicit value `'unavailable'` (migration 00058), not
-    // a missing one. Every story generated before that column existed carries
-    // null, and those are not stories whose check failed - they are stories
-    // from before there was a column to record it in. Treating null as
-    // "unchecked" would retroactively lock the entire existing corpus out of
-    // publishing to close a hole that only new stories can be in.
-    if (
-      story.entity_classification_status === "unavailable" && !alreadyPublic
-    ) {
-      return respond({
-        error:
-          "Katha could not check this story in time, so it stays private for now. It's saved in your library, and you can publish it later.",
-        error_code: STORY_GATED_PRIVATE_ERROR_CODE,
-        gating_reason: "classification_unavailable",
-        story_id: storyId,
-      }, 403);
-    }
-
-    const gatingReason = parseGatingReason(story.entity_gate_reason);
-    if (gatingReason && !alreadyPublic) {
-      return respond({
-        error:
-          "This story names a real person and stays private. It's still in your library - it just can't be shared.",
-        error_code: STORY_GATED_PRIVATE_ERROR_CODE,
-        gating_reason: gatingReason,
-        story_id: storyId,
-      }, 403);
-    }
+    // The writer's toggle is now honoured. The only refusal left on this path
+    // is the guest rule above, which is abuse control, not privacy.
 
     // Publish the chapters first. If the story row went public while its
     // chapters were still unpublished, the feed would list a story whose

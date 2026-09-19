@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import CreateBriefFlow from "@/components/create/CreateBriefFlow";
-import PublicEntityWarningModal from "@/components/create/PublicEntityWarningModal";
-import { pendingGatingReason } from "@/lib/entity-gate";
-import type { StoryGatingReason } from "@/lib/api";
 import {
   type GenerationSession,
   startStoryGeneration,
@@ -111,13 +108,6 @@ type StudioDraft = {
    */
   grounding?: unknown[];
   groundingEntities?: unknown[];
-  /**
-   * The server's own verdict from shaping, when it returned one: the reason a
-   * public request would be refused, or nothing. Preferred over re-deriving it
-   * from `groundingEntities`, because it is the same function the generation
-   * path runs. Untyped here because it arrives on an untyped shape response.
-   */
-  gatingReason?: unknown;
 };
 
 type CreateStudioProps = {
@@ -174,7 +164,9 @@ const INITIAL_DRAFT: StudioDraft = {
   // value instead of on their own label.
   imageStyle: "auto",
   storyFlow: "interactive",
-  visibility: "private",
+  // Public by default: everyone reaching Create has signed in with email, and
+  // the server still forces a story private when the entity gate says so.
+  visibility: "public",
 };
 
 // ---------------------------------------------------------------------------
@@ -287,50 +279,31 @@ export default function CreateStudioScreen({
   const canGenerate = draft.seed.trim().length >= 1
     && credits >= STORY_START_CREDITS;
 
-  /**
-   * The pre-generation entity warning (spec §6).
-   *
-   * Set when the writer asked for a public story and shaping has already
-   * classified the idea as naming a living public figure or a private
-   * individual. The server forces such a story private regardless, and
-   * migration 00050 makes a public row with a gate reason invalid outright --
-   * this simply says so before a credit is spent, while the idea can still be
-   * changed. When shaping has not run there is nothing to check, so generation
-   * proceeds and the server's own refusal is the backstop.
-   */
-  const [publicEntityWarning, setPublicEntityWarning] = useState<StoryGatingReason | null>(null);
-
   const startedRef = useRef(false);
-  /**
-   * The opening the writer chose, held across the entity warning.
-   *
-   * The direction step hands its choice to `handleGenerate` directly rather
-   * than writing it into the draft, because `setDraft` lands on the next
-   * render and the generation would read the state as it was before the tap.
-   * When the warning interrupts, "Keep it private" calls back in with no
-   * choice of its own -- so it is kept here, or the story would be written
-   * without the opening the writer had just picked.
-   */
-  const pendingChoiceRef = useRef<{ direction?: string; beats?: string[] } | null>(null);
+  // No entity warning in front of this any more. It used to stop a public
+  // request whose idea named a real person and offer "Keep it private"; the
+  // server-side gate it previewed was removed on 2026-09-18 (migration
+  // 00091), so the toggle means what it says and generation simply starts.
   const handleGenerate = useCallback((options?: {
-    forcePrivate?: boolean;
     choice?: { direction?: string; beats?: string[] };
   }) => {
     // Synchronous, and first: two presses in the same tick must not each start
     // a generation, because each one reserves and spends credits.
     if (startedRef.current) return;
-    const choice = options?.choice ?? pendingChoiceRef.current ?? undefined;
-    if (!options?.forcePrivate && draft.visibility === "public") {
-      const reason = pendingGatingReason({
-        gatingReason: draft.gatingReason,
-        groundingEntities: draft.groundingEntities,
-      });
-      if (reason) {
-        pendingChoiceRef.current = choice ?? null;
-        setPublicEntityWarning(reason);
-        return;
-      }
-    }
+    const choice = options?.choice;
+    /*
+      What the writer is actually asking for, which for a guest is not what
+      the draft says.
+
+      The brief's toggle defaults to Public now, and a guest's toggle is
+      DISPLAYED as private and disabled (`CreateBriefFlow`) without the draft
+      ever being written back. So the draft of a guest who never touched the
+      control still said "public", and the request said public while the
+      screen said Private. The server applies `account_required` and makes it
+      private either way, so nothing broke -- it was the question that was
+      wrong.
+    */
+    const requestedVisibility = isAnonymous ? "private" : draft.visibility;
     if (!canGenerate) {
       Alert.alert(
         credits >= STORY_START_CREDITS ? "Add a story seed" : "Credits needed",
@@ -349,10 +322,7 @@ export default function CreateStudioScreen({
       identityLenses: draft.identityLenses,
       seed: draft.seed,
       language: draft.language,
-      // "Keep it private" from the warning wins over the toggle: the writer
-      // has just been told this story cannot be public and chose to write it
-      // anyway.
-      visibility: options?.forcePrivate ? "private" : draft.visibility,
+      visibility: requestedVisibility,
       // Belt and braces with the clamp in loadDraft: validation.ts enforces the
       // same cap, and a request over it is a 400 rather than a truncation.
       characters: draft.characters.slice(0, MAX_CHARACTERS),
@@ -384,29 +354,17 @@ export default function CreateStudioScreen({
     };
 
     startedRef.current = true;
-    pendingChoiceRef.current = null;
     onGenerationStarted(startStoryGeneration({ draft: createDraft }));
-  }, [canGenerate, credits, draft, onGenerationStarted]);
+  }, [canGenerate, credits, draft, isAnonymous, onGenerationStarted]);
 
   return (
-    <>
-      <CreateBriefFlow
-        credits={credits}
-        isAnonymous={isAnonymous}
-        draft={draft}
-        setDraft={setDraft}
-        onGenerate={(choice) => handleGenerate({ choice })}
-        onBack={onBack}
-      />
-      <PublicEntityWarningModal
-        reason={publicEntityWarning}
-        onKeepPrivate={() => {
-          setPublicEntityWarning(null);
-          setDraft((current) => ({ ...current, visibility: "private" }));
-          handleGenerate({ forcePrivate: true });
-        }}
-        onChangeIdea={() => setPublicEntityWarning(null)}
-      />
-    </>
+    <CreateBriefFlow
+      credits={credits}
+      isAnonymous={isAnonymous}
+      draft={draft}
+      setDraft={setDraft}
+      onGenerate={(choice) => handleGenerate({ choice })}
+      onBack={onBack}
+    />
   );
 }

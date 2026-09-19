@@ -57,8 +57,8 @@ export async function handleRequest(req: Request): Promise<Response> {
      *
      * Without this a writer's own work was unreachable. Stories persist
      * correctly, but the default query is `is_public OR is_curated`, and a
-     * fresh story is private (that is the column default, and the entity gate
-     * forces it), so no endpoint anywhere returned it. The client kept its
+     * fresh story is private unless its writer asked otherwise (that is the
+     * column default), so no endpoint anywhere returned it. The client kept its
      * stories in a `useState` array, which meant a browser reload erased every
      * story a writer had ever made -- from the interface, while the rows sat
      * safe in the database. They had paid credits for those.
@@ -111,10 +111,10 @@ export async function handleRequest(req: Request): Promise<Response> {
         // round trip per story: whether to show the cover or the concept
         // card, the one-line summary under the title, and "3 chapters".
         //
-        // `beats`, `series_state`, `planned_chapter_count` and
-        // `entity_gate_reason` are here because a story opened from this rail
-        // is a story the reader can continue, and the chapter-end screen
-        // derives its "what happens next" chips from the first three. Omitting
+        // `beats`, `series_state` and `planned_chapter_count` are here because
+        // a story opened from this rail is a story the reader can continue,
+        // and the chapter-end screen derives its "what happens next" chips
+        // from them. Omitting
         // them was why the chips appeared once, after generating, and never
         // again after a reload: the columns were never fetched, so the client
         // hydrated every story with `beats: []` and no series state.
@@ -126,7 +126,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         // The chapter end reads `story_flow` to decide whether to ask before
         // writing, and it is gated on ownership there -- a reader who does not
         // own the story never auto-continues it, whichever read supplied it.
-        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, story_mode, story_flow, image_style, illustrate_chapters, beats, series_state, planned_chapter_count, entity_gate_reason, chapters(count)",
+        "id, title, genre, primary_genre, topic, cover_image_url, cover_status, previously_summary, length_type, word_count, created_at, content_rating, author_id, is_public, story_mode, story_flow, image_style, illustrate_chapters, beats, series_state, planned_chapter_count, chapters(count)",
         { count: "planned" },
       )
       .eq("status", "complete")

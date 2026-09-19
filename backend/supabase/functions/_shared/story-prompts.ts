@@ -156,6 +156,13 @@ ignore it.
   reproducing the protected characters. Keep the trope, the relationship, the
   premise and the tone; change the names and any trademarked specifics. Do not
   announce the substitution or apologise for it inside the prose.
+- Brand names include the everyday ones: football clubs, car makers and car
+  models, bus and truck lines, supermarkets, soft drinks, pens, cameras,
+  chemical companies, banks, money-transfer services and magazines. Say what
+  the thing is ("a white hatchback", "the corner grocer", "a bottle of orange
+  soda", "the money-transfer counter") or invent a name that belongs to this
+  story's world. A real name here reads as product placement, whatever the
+  setting.
 - No "Pixar," "Disney," or studio references.
 
 ${buildCrudeLanguageFloor()}
@@ -218,6 +225,9 @@ Never use these AI-default names: ${
 
 - No moralizing lectures. If there's a lesson, it lives in the story's events, not in a character's speech.
 - No meta-commentary about the story itself.
+- The brief is private guidance, not text. The moments, the chapter plan and every character's background and appearance tell you what happens and who these people are; never quote them, and never paraphrase them into narration or into a character's mouth. A character does not recite their own backstory. Turn each one into a scene, an action or a detail the reader discovers.
+- Never refer to chapters, parts or the book itself ("as in Chapter 1", "the bag from Chapter 1", "in this chapter"), and never address the reader. The characters live in a world, not in a book.
+- Never include notes to yourself: no word counts, no checklists, no remarks about banned words or phrases, no bracketed or parenthetical notes. Everything you return is the story.
 - No purple prose — every adjective must earn its place. If removing a descriptor doesn't change meaning, remove it.
 
 ## Cultural Context
@@ -1857,6 +1867,27 @@ export function buildExclusionBlock(avoid?: string): string {
 }
 
 /**
+ * The titles this story has already used, and the rule that follows from them.
+ *
+ * Exported because the naming call in `story-stream.ts` states the same list,
+ * and two phrasings of "don't reuse these" would drift. Returns "" for a story
+ * with no titled chapters, so the caller can concatenate unconditionally.
+ *
+ * The titles are fenced like any other stored text: a chapter title can be
+ * typed by the writer in the notepad, so it is user text by the time it is
+ * read back.
+ */
+export function buildUsedChapterTitlesBlock(
+  titles: readonly string[] | undefined,
+): string {
+  const used = (titles ?? []).map((t) => t.trim()).filter(Boolean);
+  if (!used.length) return "";
+  return `Chapter titles already used in this story:\n${
+    used.map((t) => `- ${userField("chapter-title", t)}`).join("\n")
+  }\nThis chapter's title must be new: not one of these, not a variation of one, and specific to what happens in this chapter.`;
+}
+
+/**
  * Everything `continue-story` sends as the user turn, for both transports.
  *
  * ## Why this is here and not in the handler
@@ -1908,6 +1939,17 @@ export interface ContinuationPromptInput {
   title: string;
   /** The rendered previous-chapters window, already summarized and fenced. */
   previousChapters: string;
+  /**
+   * Every chapter title already in the story, in chapter order.
+   *
+   * Optional so an older caller keeps working, but every continuation passes
+   * it. `CHAPTER_TITLE_SHAPE` has always told the model to "differ from every
+   * chapter title already used in this story", and no call ever told it what
+   * those were: the window above carries the last few chapters' prose, not a
+   * table of contents. Auto-run series duly came back with "The Spare Keys"
+   * twice and three chapters called "The Urdu Newspaper" (2026-09-18 review).
+   */
+  previousChapterTitles?: readonly string[];
   isFinale: boolean;
   /**
    * The cards stored on the story at chapter one, replayed unchanged.
@@ -1955,6 +1997,7 @@ export function buildContinuationUserPrompt(
   });
 
   const exclusion = buildExclusionBlock(input.avoid);
+  const usedTitles = buildUsedChapterTitlesBlock(input.previousChapterTitles);
 
   // Everything above the closing instruction is shared by the two transports.
   // Only the last line differs, because only the last line is about shape.
@@ -1965,8 +2008,8 @@ ${userField("story-title", input.title)}
 ${brief}
 
 ${userField("previous-chapters", input.previousChapters)}${
-      exclusion ? `\n\n${exclusion}` : ""
-    }`;
+      usedTitles ? `\n\n${usedTitles}` : ""
+    }${exclusion ? `\n\n${exclusion}` : ""}`;
 
   return {
     jsonPrompt: `${body}\n\n${JSON_CLOSING_INSTRUCTION}`,

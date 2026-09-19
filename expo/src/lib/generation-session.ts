@@ -41,9 +41,7 @@ import {
   generateStoryStreaming,
   GenerationRequestError,
   publishStory,
-  StoryGatedPrivateError,
   type CoverState,
-  type StoryPrivateReason,
 } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { clearDraft } from "@/lib/draft-storage";
@@ -198,14 +196,6 @@ export type GenerationSession = {
   readonly story: Story | null;
   /** The completed chapter: chapter one of a story session, or the continuation. */
   readonly chapter: Chapter | null;
-  /**
-   * Set when the server kept the story private: the idea names a living
-   * public figure or a private individual, or - since 2026-09-09 - the entity
-   * check itself could not finish, in which case the story is private for now
-   * rather than for good. Populated once the streaming `done` payload carries
-   * it; the reader shows the explanation once.
-   */
-  readonly gatedReason: StoryPrivateReason | null;
   readonly startedAt: number;
   readonly finishedAt: number | null;
 };
@@ -542,25 +532,17 @@ function settle(record: SessionRecord, patch: Partial<GenerationSession>): void 
  * would charge them for a call they did not ask for. A private story skips it
  * entirely - private is what the row already is.
  *
- * The one thing this can surface is the entity gate. A story naming a living
- * public figure, or somebody from the writer's own life, is refused publication
- * by `publish-story`, which answers `story_gated_private`. That is not an error
- * to retry, it is a fact about the story, so it lands on the session as
- * `gatedReason` and the writer is told once.
+ * There is no content refusal to surface here any more. Until 2026-09-18 a
+ * story naming a real person came back "kept private" and the writer was
+ * shown why; that entity gate was removed (migration 00091), so the writer's
+ * toggle is honoured and a failure below is only ever transport.
  */
 function applyVisibility(record: SessionRecord, storyId: string): void {
   if (record.session.visibility !== "public") return;
   publishStory(storyId, { visibility: "public" })
     .then(() => update(record.session.id, { visibility: "public" }))
     .catch((error: unknown) => {
-      if (error instanceof StoryGatedPrivateError) {
-        update(record.session.id, {
-          gatedReason: error.gatingReason,
-          visibility: "private",
-        });
-        return;
-      }
-      // Anything else is a transport failure on a call the writer did not
+      // A failure is a transport failure on a call the writer did not
       // initiate. The story exists and is theirs; it is simply still private.
       console.warn("Could not make the story public:", error);
     });
@@ -629,7 +611,6 @@ export function startStoryGeneration(input: StartStoryInput): GenerationSession 
       creditsCharged: 0,
       story: null,
       chapter: null,
-      gatedReason: null,
       startedAt: now,
       finishedAt: null,
     },
@@ -802,7 +783,6 @@ export function startChapterGeneration(input: StartChapterInput): GenerationSess
       creditsCharged: 0,
       story: null,
       chapter: null,
-      gatedReason: null,
       startedAt: now,
       finishedAt: null,
     },
@@ -930,7 +910,6 @@ export function adoptReimagineGeneration(input: {
       creditsCharged: 0,
       story: null,
       chapter: null,
-      gatedReason: null,
       startedAt: now,
       finishedAt: null,
     },
@@ -1009,11 +988,6 @@ export function dismissGeneration(id: string): void {
   stopCoverPoll(record);
   records.delete(id);
   publish();
-}
-
-/** Acknowledge the entity gate, so its explanation is shown once and not again. */
-export function acknowledgeGate(id: string): void {
-  update(id, { gatedReason: null });
 }
 
 export function getGeneration(id: string): GenerationSession | null {

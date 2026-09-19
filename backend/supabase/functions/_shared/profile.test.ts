@@ -170,10 +170,6 @@ function stubClient(
       filters.push([column, value]);
       return chain;
     },
-    is(column: string, value: unknown) {
-      filters.push([column, value]);
-      return chain;
-    },
     neq(column: string, value: unknown) {
       filters.push([`neq:${column}`, value]);
       return chain;
@@ -436,15 +432,13 @@ Deno.test("the public story list filters on exactly the private-story gate", asy
   assertEquals(stories.length, 1);
   assertEquals(stories[0].title, "A Public Story");
 
-  // Every clause, asserted individually. A story kept private because it names
-  // a real living person is the one that must never appear here, and the
-  // `entity_gate_reason is null` filter is the only thing in this list that
-  // exists solely for that.
+  // Every clause, asserted individually, and the same clauses as
+  // `public_profile`'s counts (migration 00091). There is no entity-gate
+  // clause: the writer's `is_public` is the visibility rule.
   assertEquals(filters, [
     ["author_id", "author-1"],
     ["is_public", true],
     ["status", "complete"],
-    ["entity_gate_reason", null],
     ["neq:content_rating", "explicit"],
   ]);
 });

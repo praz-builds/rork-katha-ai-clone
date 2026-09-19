@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { sseStream } from "../_shared/sse.ts";
 import {
   type ChapterUpdateClient,
   updateChapterContentIfUnchanged,
@@ -12,6 +13,7 @@ import {
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
+import { enforceProseIntegrity } from "../_shared/prose-integrity.ts";
 
 const EDIT_SYSTEM_PROMPT =
   `You are a story editor. You will receive a paragraph from a story and an editing instruction.
@@ -258,8 +260,20 @@ serve(async (req) => {
     // optimistic-concurrency predicate in particular must not be duplicated:
     // it is the only thing standing between two overlapping edits and a
     // silently discarded one.
+    //
+    // The rewrite is model prose, so it passes the same integrity check as a
+    // generated chapter before it is spliced in: an editor model asked for
+    // "only the edited paragraph" still returns a note or a trailing brace
+    // often enough. No brief is passed -- this path never sends the model one,
+    // so there is nothing for it to have pasted. The notepad save below is the
+    // writer's own typing and is deliberately NOT checked: what a person wrote
+    // is theirs, whatever it looks like.
     const persistRewrite = async (rewritten: string) => {
-      paragraphs[paragraphIndex] = rewritten.trim();
+      const checked = await enforceProseIntegrity(rewritten, {}, {
+        feature: "edit_story",
+        storyId,
+      });
+      paragraphs[paragraphIndex] = checked.text.trim();
       const updatedContent = paragraphs.join("\n\n");
       const wordCount = updatedContent.split(/\s+/).filter(Boolean).length;
       const { updated } = await updateChapterContentIfUnchanged(
@@ -299,62 +313,50 @@ serve(async (req) => {
     // there is no credit to refund, so a failure after the first token costs
     // the user nothing but the retry.
     if (body.stream === true) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          let closed = false;
-          const send = (event: string, data: unknown) => {
-            if (closed) return;
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-              ),
-            );
-          };
-          try {
-            send("meta", { paragraph_index: paragraphIndex });
-            const rewrite = await streamChapterProse({
-              systemPrompt: EDIT_SYSTEM_PROMPT,
-              userPrompt,
-              // A paragraph has no word band, and the bandless default is a
-              // whole chapter's budget. This is the edit path's own ceiling.
-              maxTokens: 2_000,
-              onCommit: () => send("stage", { stage: "writing" }),
-              onDelta: (text) => send("delta", { text }),
-            });
+      // `sseStream` owns the framing, the ~15s keep-alive comment and the close
+      // on every exit path (`_shared/sse.ts`). The keep-alive is what lets the
+      // client tell a dead connection from a slow model. An edit has no request
+      // id to replay, so a stalled edit fails on the client instead of hanging;
+      // the rewrite still persists here if it finishes.
+      const stream = sseStream(async ({ send }) => {
+        try {
+          send("meta", { paragraph_index: paragraphIndex });
+          const rewrite = await streamChapterProse({
+            systemPrompt: EDIT_SYSTEM_PROMPT,
+            userPrompt,
+            // A paragraph has no word band, and the bandless default is a
+            // whole chapter's budget. This is the edit path's own ceiling.
+            maxTokens: 2_000,
+            onCommit: () => send("stage", { stage: "writing" }),
+            onDelta: (text) => send("delta", { text }),
+          });
 
-            const { updated } = await persistRewrite(rewrite.text);
-            if (!updated) {
-              // The chapter moved under the edit. The rewrite is good, it just
-              // cannot be saved onto a version that no longer exists. The text
-              // stays on screen so the writer can keep it by hand rather than
-              // watching good work disappear.
-              send("error", {
-                error:
-                  "This chapter changed while the edit was being generated. Reload the chapter and try again.",
-                code: "chapter_changed",
-                partial_prose_shown: true,
-              });
-              return;
-            }
-            send("done", {
-              updated_paragraph: paragraphs[paragraphIndex],
-              paragraph_index: paragraphIndex,
-              model: rewrite.model,
-            });
-          } catch (error) {
-            console.error("edit-story stream failed:", error);
+          const { updated } = await persistRewrite(rewrite.text);
+          if (!updated) {
+            // The chapter moved under the edit. The rewrite is good, it just
+            // cannot be saved onto a version that no longer exists. The text
+            // stays on screen so the writer can keep it by hand rather than
+            // watching good work disappear.
             send("error", {
-              error: "The rewrite could not be finished. Please try again.",
-              partial_prose_shown: error instanceof StreamCommittedError,
+              error:
+                "This chapter changed while the edit was being generated. Reload the chapter and try again.",
+              code: "chapter_changed",
+              partial_prose_shown: true,
             });
-          } finally {
-            if (!closed) {
-              closed = true;
-              controller.close();
-            }
+            return;
           }
-        },
+          send("done", {
+            updated_paragraph: paragraphs[paragraphIndex],
+            paragraph_index: paragraphIndex,
+            model: rewrite.model,
+          });
+        } catch (error) {
+          console.error("edit-story stream failed:", error);
+          send("error", {
+            error: "The rewrite could not be finished. Please try again.",
+            partial_prose_shown: error instanceof StreamCommittedError,
+          });
+        }
       });
       return new Response(stream, {
         status: 200,

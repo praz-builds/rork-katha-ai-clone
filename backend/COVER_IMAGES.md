@@ -82,8 +82,8 @@ The `buildCoverPrompt()` function in `_shared/cover-prompts.ts` assembles the pr
    - Themes (up to 4) woven into scene description
 
 3. **Character integration** (dynamic, when characters provided)
-   - `scene`: No explicit character rendering
-   - `silhouette`: Distant silhouetted figure suggesting protagonist
+   - `scene`: Lead character placed within the scene, not posed for a portrait
+   - `silhouette`: Mid-distance full figure, read by shape, clothing and props (no longer called a silhouette -- see `buildCharacterNote`)
    - `portrait`: Three-quarter or shoulder-up view of protagonist
 
 4. **Invariant suffix** (always appended)
@@ -92,6 +92,8 @@ The `buildCoverPrompt()` function in `_shared/cover-prompts.ts` assembles the pr
    - Professional book cover art quality
 
 ### Prompt Template
+
+> Superseded in detail by `buildCoverPrompt` in `_shared/cover-prompts.ts`, which is the source of truth. Since 2026-09-18 it also carries a cover safe zone (top 15% clear, face between 20% and 50% of the height), a no-border/no-frame clause, "a"/"an" by genre, a lower-cased leading article on where-and-when, and a picked art style stated first and last. The template below is the original shape, kept for orientation.
 
 ```
 Book cover illustration for a {genre} story.
@@ -146,14 +148,14 @@ Two-column layout:
 | Genre | Style | Palette | Composition | Mood | Characters |
 |-------|-------|---------|-------------|------|------------|
 | romance | warm illustrated, soft painterly, intimate lighting | warm corals, sunset oranges, blush pinks, soft gold | close framing, meaningful object, two figures, bokeh | intimate, tender, yearning | portrait |
-| fantasy | epic illustration, rich painterly, ornate elements | deep emerald, royal purple, antique gold, moonlit silver | sweeping landscape, silhouetted figure, magical sky | mystical, grand, wonder | silhouette |
+| fantasy | epic illustration, rich painterly, ornate elements | deep emerald, royal purple, antique gold, moonlit silver | sweeping landscape, lone figure, magical sky | mystical, grand, wonder | silhouette |
 | romantasy | lush fantasy with romantic warmth, jewel-tone | deep amethyst, rose gold, midnight blue, candlelight amber | figure amid magical elements, enchanted setting | enchanted, passionate, mythic | portrait |
 | mystery | noir, high contrast, chiaroscuro, cinematic tension | dark slate, deep navy, single red accent, warm lamplight | ominous object, shadowed doorway, deep perspective, fog | tension, intrigue, foreboding | silhouette |
 | thriller | stark cinematic, bold angular shadows, photorealistic | pure black, bright crimson, cold steel grey, harsh white | isolated figure/object, diagonal urgency, claustrophobic | danger, adrenaline, high stakes | silhouette |
 | horror | dark atmospheric, desaturated, unsettling undertones | near-monochromatic greys, sickly green or blood red | shadows, negative space, partially hidden forms, fog | dread, unease, visceral | silhouette |
 | scifi | retro-futuristic, clean geometric, neon glow, metallic | deep space black, electric cyan, neon magenta, chrome | cosmic vista, character against tech backdrop, geometric | wonder, vast, alien | silhouette |
 | adventure | bold cinematic, dynamic energy, saturated color | warm amber, sunset orange, ocean teal, jungle green | sweeping landscape, tiny figure against vast environment | excitement, exploration, discovery | silhouette |
-| historical | rich period illustration, ornamental, aged paper | warm sepia, aged gold, burgundy wine, ivory, earth tones | layered historical scene, period architecture, borders | atmospheric, dignified, evocative | portrait |
+| historical | rich period illustration, ornamental, aged paper | warm sepia, aged gold, burgundy wine, ivory, earth tones | layered historical scene, period architecture, ornament within the scene | atmospheric, dignified, evocative | portrait |
 | darkAcademia | moody gothic, candlelit interiors, oil painting | deep mahogany, aged ivory, forest green, antique gold | shadowed hallway, candlelit study, leather books, ivy | intellectual, brooding, secretive | silhouette |
 | drama | emotional painterly, expressive brushwork, literary | muted earth tones, overcast greys, warm accent | contemplative scene, negative space, meaningful object | reflective, bittersweet, human | scene |
 | sliceOfLife | warm cozy, gentle watercolor, soft afternoon light | warm caramel, soft sage, dusty rose, cream, golden hour | intimate everyday scene, kitchen table, warm interior | warm, nostalgic, comforting | scene |

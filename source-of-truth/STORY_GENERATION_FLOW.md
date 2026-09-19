@@ -146,9 +146,9 @@ Create  ──▶  1. Idea      ──▶  2. Where does it begin?
 ```
 
 The main Create surface is one scrollable screen. Genre and Kids Mode sit in one
-parent row at the top, then **six dropdowns** (below), the user's idea, starter
-prompts, optional Premise, Values for kids, and Characters. Remaining
-lower-priority craft controls sit inside **More options**. The only second
+parent row at the top, then the user's idea, starter prompts, optional Premise,
+Values for kids, and Characters. **More options** sits last, above the Create
+button, and holds everything else, including all **six dropdowns** (below). The only second
 surface in main Create is the full-screen Craft character modal opened by **Add
 a character**.
 
@@ -180,9 +180,12 @@ sits on the direction step's own submit label.
 
 ### The six dropdowns
 
-Four sit above the text fields and two at the foot of the surface, outside
-**More options**, because each is a decision about the story rather than a
-refinement of it:
+All six live inside **More options** (2026-09-18, product-owner call). Inside
+the panel the order is: Moments to include, then Writing style and Avoid, then
+the four story dropdowns (Story mode, Chapters, Chapter length, Chapter cover),
+then Image style and Who can read it, then Language. The menus list plain
+labels; what each option means is in the "?" card on Story mode, Chapter
+length, Chapter cover, Image style and Who can read it (DESIGN_SYSTEM.md §6A.1).
 
 | Dropdown | Values | Default |
 |---|---|---|
@@ -191,7 +194,7 @@ refinement of it:
 | Chapter length | Short · Standard · Long | Standard |
 | Chapter cover | Cover art only · Auto-generated per chapter | Cover art only |
 | Image style | Auto · Anime · Cinematic · Comic · Watercolor | Auto |
-| Who can read it | Private · Public | Private |
+| Who can read it | Private · Public | Public |
 
 **Story mode** is `stories.story_flow` (migration 00076). `interactive` is the
 existing behaviour: direction chips at every chapter end, nothing written until
@@ -671,13 +674,16 @@ Collapsed by default. Identical in both modes except where §3 says otherwise.
 | Language | English | English |
 | Avoid | Free text — *exclude a topic* | empty |
 
-**Four of these controls left More options** (2026-09-11) and are now dropdowns
-on the main surface: Chapters, Chapter length, Chapter cover and Visibility.
-They are listed above as removed rather than deleted from the table, because a
-row that silently disappears reads as a control that was cut rather than moved.
-The live list of the six dropdowns, with their values and defaults, is in §2 and
-is the one to read. **Moments** and **Language** are the last two entries here
-by design: Moments sits directly above Language at the foot of the panel.
+**The six dropdowns are back inside More options** (2026-09-18). They left it on
+2026-09-11 and returned on the product owner's call; the live list, with values,
+defaults and the order inside the panel, is in §2 and is the one to read.
+**Moments** now opens the panel. Its cast tags come from the story's characters,
+so a saved character added to the story, or a new one, shows up as a tag as
+soon as it has a name. **Language** stays last.
+
+**Who can read it defaults to Public** (2026-09-18). Everyone who reaches Create
+has signed in with email during onboarding. The entity gate still forces a
+story private when it names a real person.
 
 Guests see Public as locked and stay Private. Public publishing unlocks only
 after a real account is linked; the backend enforces the same rule independently
@@ -1333,7 +1339,7 @@ derived value.
 | `cover-regeneration.ts` | The claim / price / generate / settle transaction behind Regenerate, kept out of the handler so the paths that cost a credit can be tested. **Migration 00044 is required.** `stories.cover_regen_count` is what makes "1 free retry, then 1 ✦" expressible at all; `stories.cover_attempt_count` is what bounds provider spend when the free retry keeps failing; `stories.cover_last_request_id` is what makes the *free* path idempotent, which `reserve_generation_operation` only does for the paid one — written **only** by `finish_cover_regeneration`, so it records the request that delivered the cover on the row rather than the last one to claim it, and a retry after a failed regeneration re-attempts instead of being handed the old cover as a success; and `stories.cover_prompt` — which §10.4 assumed existed and did not — is what lets a regeneration vary from the cover it replaces instead of re-sending the request that produced it. It is written by the original cover too (`media.ts`), not only by a regeneration: the *first* regeneration is the free one and therefore the common case, and it is the one that reads a column no regeneration has yet written. All four are server-derived and deliberately outside the owner-update grant of 00015, like `cover_status`. The price, the ceiling, the replay check and the claim all happen inside `claim_cover_regeneration`, under one advisory lock and one `for update`: reading any of them in one round trip and acting in the next is what makes two fast taps two free covers. |
 | `regenerate-cover` | Client-callable cover endpoint. **POST** re-rolls the cover — reserving `kind = 'cover'` on chapter 1 when a credit is due, refunding it when the image does not arrive. **GET** reports the current cover state, which is how the client learns chapter 1's art landed: it is generated on a background task after the response is flushed, so without a read there is no second moment at which the client could find out. Same shape as `audio-status`. |
 | `cover-prompts.ts` / `image.ts` | A regeneration steer, carried beside the *Avoid* exclusion — but **dropped at the last safety rung**, which the exclusion is not. Level 2 exists to be the prompt that cannot be refused; the steer is the only per-request caller-supplied text in a cover prompt, so leaving it there lets a note written to trip a content filter trip every rung of every provider, and one request becomes nine image calls. The two free-text fields a cover prompt carries — the *Avoid* exclusion and the steer — are each collapsed to a single clause, every `.` `!` `?` `;` `:` becoming a comma, because the value is emitted inside `Do not depict: X.` and a terminator inside X ends our sentence and starts the caller's. That is a promise about those two fields and not about the whole prompt: `title` and `where_and_when` are interpolated as written, because collapsing punctuation in them would turn "Dr. Smith's Door" into "Dr, Smiths Door". The steer's two halves — the writer's note and a description of the cover being replaced — are budgeted separately rather than sharing one cap, or a maximum-length note truncates the "make it clearly different" half away and the regeneration is free to reproduce the cover it was asked to replace. Plus a per-attempt storage key. The cover URL carries no version, so overwriting the object would leave every CDN edge serving the picture the writer just paid to replace. |
-| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the range 1–15 (the picker offers 1 · 3 · 7 · 15; every other value in range is reached by extension); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; reject any creation language but English (`validation.ts`), while a continuation reads `stories.language` off the row and never passes it through the validator -- so an existing Portuguese or Spanish story keeps being written in its own language; normalize `image_style` and `story_flow`, falling back to `auto` and `interactive` respectively |
+| `validation.ts` | Clamp `moments`; enforce kids-mode spice removal; clamp chapters to the range 1–15 (the picker offers 1 · 3 · 7 · 15; every other value in range is reached by extension); cap the cast at 3; normalize a non-empty cast to exactly one `isHero` character; reject any creation language but English (`validation.ts`), while a continuation reads `stories.language` off the row and never passes it through the validator -- so an existing Portuguese or Spanish story keeps being written in its own language; normalize `image_style` and `story_flow`, falling back to `auto` and `interactive` respectively; accept an optional writer `title` (trimmed, ≤ 120 characters) that the server keeps over any model-generated name. The Create flow has no title input; the field is plumbed through `CreateDraft.title` for callers that title a story before it is written |
 
 ### `expo/src/i18n/`
 

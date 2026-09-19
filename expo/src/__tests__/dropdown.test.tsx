@@ -253,6 +253,30 @@ it("keeps the menu inside the viewport instead of running off the bottom", async
   }
 });
 
+it("never asks for more height than the room it has, even when no side is roomy", async () => {
+  // Review finding: the flip threshold was also used as a floor on the
+  // height, so when neither side had 160px -- a short window, or a keyboard
+  // up -- the menu was drawn taller than the space and hung off the edge,
+  // into the region a ScrollView cannot be scrolled through. That is the
+  // original bug, re-created by its own fix. 120px of window leaves about
+  // 102 once the gap and the screen margin are taken.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Dimensions } = require("react-native");
+  const real = Dimensions.get;
+  Dimensions.get = (dim: string) =>
+    dim === "window" ? { width: 390, height: 120, scale: 2, fontScale: 1 } : real(dim);
+  try {
+    const view = await render(<GenreDropdown />);
+    await fireEvent.press(view.getByTestId("genre-dropdown"));
+
+    const frame = menuFrame(view.toJSON());
+    expect(frame).not.toBeNull();
+    expect(frame!.top + frame!.maxHeight).toBeLessThanOrEqual(120);
+  } finally {
+    Dimensions.get = real;
+  }
+});
+
 it("re-selects a genre that was previously scrolled past", async () => {
   // The second half of the report: after switching away from Fantasy it could
   // not be found again. Fantasy is 8th of twelve.

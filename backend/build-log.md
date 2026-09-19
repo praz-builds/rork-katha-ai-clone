@@ -7,6 +7,96 @@
 
 ---
 
+## 2026-09-18 UTC — The entity privacy gate is removed: a public toggle means public
+
+**Session:** `codex/pipeline-fixes`. Migration 00091 written and tested
+locally against PGlite; **not pushed to any database and nothing deployed.**
+
+### Why
+
+Owner decision, 2026-09-18: remove the privacy gating completely for the MVP
+and honour the writer's publish toggle. The gate (00050) forced a story private
+when its idea named a `living_public_figure` or a `private_individual`. Every
+name on a character sheet is classified `private_individual` — the sheet is the
+sole authority on who a character is — so every story with a named cast, which
+is nearly every story, could never be published, whatever the toggle said.
+
+### What changed
+
+- **Migration 00091** drops `stories_entity_gate_forces_private` and
+  `stories_entity_gate_reason_is_valid`, clears `entity_gate_reason` on every
+  row, and leaves the column nullable and unused so older clients that select
+  it get `null`. It re-issues `public_profile`, `profile_comments` and
+  `activity_calendar` without the `entity_gate_reason is null` clause (same
+  bodies and grants otherwise), and rewrites the two column comments. It
+  publishes nothing on anybody's behalf: a story the gate kept private stays
+  private until its writer publishes it. The 00050 migration test is deleted
+  (it asserted constraints that no longer exist after the full chain); the
+  00057 and 00060 tests no longer seed or assert a gate reason.
+- **Server:** `_shared/entity-visibility-gate.ts` and its test are deleted.
+  `_shared/publish.ts`'s `applyRequestedVisibility` takes only
+  `{ storyId, requested, isAnonymous }`; the only refusal left is
+  `account_required` for a guest (abuse control, not privacy), and a database
+  error on the flip is thrown instead of being folded into `gate_constraint`.
+  `publish-story` no longer selects or refuses on `entity_gate_reason` /
+  `entity_classification_status`. `generate-story` and `generate-story-stream`
+  stop writing `entity_gate_reason`; `shape-story` stops returning
+  `gating_reason`; `library` stops selecting the column; `readPublicStories`
+  drops its `.is("entity_gate_reason", null)` filter in step with 00091.
+- **Classification stays.** It still fills `grounding_entities`,
+  `entity_classification_status` and fallback cards, and still forces a cast
+  name to `private_individual` so it is never a search query. A failed
+  classification is now logged at `severity: 'medium'` with
+  `feature: 'grounding'` — `high` was justified only by a story going public
+  unchecked.
+- **Client:** `src/lib/entity-gate.ts`, `PublicEntityWarningModal`,
+  `StoryGatedPrivateModal`, `StoryGatedPrivateError`, the session's
+  `gatedReason`/`acknowledgeGate`, and their three test files are deleted.
+  Create no longer interrupts a public request with "this will stay private";
+  a failed background publish is only ever transport.
+
+### Tests
+
+New: `00091_remove_entity_visibility_gate_test.ts` (a gated row is cleared by
+the migration, stays private, and can then be published; both constraints are
+gone and the column remains; a public named-cast story counts on
+`public_profile` and `profile_comments`; no profile function reads the column).
+`publish-story/index.test.ts` now asserts a named-cast story requested public
+IS published, that a `living_public_figure` row and an `'unavailable'`
+classification publish too, that the handler no longer selects the old
+columns, and that a guest is still refused. `_shared/publish.test.ts` asserts a
+named-cast public request writes chapters then story.
+
+### Review follow-ups (PR #107, CodeAnt)
+
+- `applyRequestedVisibility` no longer throws. Both callers run it after the
+  chapter is persisted and paid for, inside the block that refunds and fails
+  the request on a throw, so a failed `is_public` write used to cost the writer
+  their chapter. A failed flip now returns `applied: "private"`,
+  `reason: "publish_failed"`, and reverts the chapters that call had marked
+  published (matched by the exact `published_at` it wrote).
+- The client never sent `visibility` with the generation request, so every
+  story generated private and went public only if the follow-up
+  `publish-story` call succeeded. `buildGenerationRequestBody` now always
+  sends it; the follow-up call stays as the retry.
+- Every failed flip writes an `error_events` row (bucket `publishing`,
+  severity `high`, code `visibility_flip_failed`, context `story_id` +
+  which of the three writes failed + the Postgres code). Without it the
+  failure existed only as a `console.error` on a paid path, and the client
+  reads `story.is_public`, never `visibility.reason` -- so a writer whose
+  public story came out private had nothing to report.
+- The chapter revert now also filters `is_published = true`, so its bound is
+  a property of the query rather than of today's call sites.
+
+### Follow-ups, not done
+
+- Classification still runs on every generation (a breadth chosen for the
+  gate). Narrowing it back to the unshaped path would save an LLM call per
+  shaped story; that is a cost decision for the owner.
+- `stories.entity_gate_reason` can be dropped once no shipped client selects it.
+
+---
+
 ## 2026-09-18 UTC — Katha Originals on Home: the client reads curated stories from the database
 
 **Session:** `codex/originals-on-home` (client only; no schema, no deploy).
@@ -37,7 +127,135 @@ backend change was needed.
 - Tests: `curated-stories.test.ts`, `story-catalogue.test.ts`. Full suite
   128/128 suites, 1266 tests.
 
+## 2026-09-18 UTC — Cover prompts: the cast in scene genres, a safe zone for today's hero, no frames
+
+**Session:** `codex/cover-prompt-fixes` (backend, prompt text only). Not
+deployed; no image API called.
+
+13 production cover prompts were drawn by two image models (Codex's and
+Gemini 2.5 Flash Image via OpenRouter). Five failures appeared on BOTH, so
+they were the prompt's. Fixed in `_shared/cover-prompts.ts` and `_shared/image.ts`:
+
+1. **Scene genres sent no cast** (comedy, educational, sliceOfLife,
+   contemporary, cozyFantasy, poetry, bedtime), so the model invented the
+   person -- a retired postman became an old woman. They now name the lead
+   "within the scene, as one part of it rather than posed for a portrait".
+   Zero describable cast still means no clause.
+2. **Stale crop line.** "Keep the upper third quiet -- cropped in the landscape
+   hero" described a hero that no longer exists and pushed faces UP, under the
+   story page's buttons. Replaced by `SAFE_ZONE_CLAUSE` (top 15% clear, face at
+   20-50% of height, centred left-to-right) on covers only; chapter plates are
+   shown whole at 2:3 and do not get it.
+3. **"Silhouette" contradicted the appearance it carried** (eye colour, a
+   chipped tooth). The word is dropped rather than filtering face words out of
+   free text in three languages: a mid-distance full figure read by shape,
+   clothing and props. Fantasy and scifi compositions lost the word too.
+4. **Picked art style too weak; frames unasked.** A picked style now opens
+   (`Art style: ...`) and closes the prompt and replaces the middle
+   `Visual style:` line. `NO_FRAME_CLAUSE` is on every cover, chapter plate and
+   portrait, and the three genre configs that asked for borders (fantasy,
+   historical, folktale) no longer do. Both new closing clauses sit after the
+   no-text line so `describePreviousCover` does not quote them back.
+5. **Grammar.** "a adventure" -> "an adventure", genre keys read as English
+   ("a slice of life", "a science fiction"), and where-and-when's leading
+   "A/An/The" is lower-cased after "set in" -- nothing else, so proper nouns
+   are untouched.
+
+**Gates.** `deno check` clean on every edge function; `deno test` over
+`backend/supabase/functions/` 884 passed, 0 failed. `AGENTS.md` (Cover Image
+System > Prompt Construction) and `backend/COVER_IMAGES.md` updated to match.
+
+**Review follow-up (PR #104, CodeAnt).** Where-and-when was interpolated raw
+and could end our sentence with an instruction of its own. It is now bounded
+by `settingForSentence` -- first line only, quote/bracket characters removed,
+whitespace collapsed, capped at 160 at a word boundary, and emitted as quoted
+data (`set in "..."`) -- in the cover and chapter builders, so every safety
+level gets it. Punctuation is kept ("St. Ives"), unlike `sanitizeExclusion`.
+The picked-style reminder is now genuinely the last clause of cover, chapter
+and portrait prompts (after the orientation line and, on portraits, after the
+reference clause, whose rule is only that the text precedes the image).
+889 function tests pass.
+
 ---
+
+## 2026-09-18 UTC — A stream that goes quiet is asked how it ended, not left spinning
+
+**Session:** `codex/stream-resilience`. Code only: nothing deployed, no
+database touched.
+
+### What happened
+
+Twice on production a `continue-story` stream went silent and the reader's
+spinner ran for ~25 minutes. The chapter had been persisted both times --
+replaying the same `request_id` returned it as plain JSON -- but nothing
+reached the client to say so. The server sent nothing between the last `delta`
+and `done` (the metadata call and the persist run with the stream open and
+quiet), and the client had no idle timeout, so a dead connection and a busy
+server looked identical.
+
+### Server: a heartbeat on every streamed endpoint
+
+New `_shared/sse.ts` (`sseStream`) owns SSE framing, a `: keep-alive` comment
+every 15s from the moment the stream opens, and the close. The heartbeat is
+cleared when the run settles, however it settles, and when the reader cancels.
+`generate-story-stream`, `continue-story`, `reimagine-chapter` and `edit-story`
+all use it instead of four hand-rolled `send`/`close` pairs.
+
+Those copies had drifted: `reimagine-chapter` and `edit-story` never latched
+`closed` when the reader hung up, so the next `enqueue` threw inside the
+generation's own `try` and a rewrite whose reader backgrounded the app was
+abandoned and refunded instead of finishing. With the client now hanging up on
+purpose and replaying, finishing after a disconnect is the recovery path, so
+that fix is load-bearing. `_shared/sse.test.ts` runs under Deno's timer
+sanitizer, which fails any test that leaks the interval.
+
+### Client: a stall watchdog, then recovery by replay
+
+`postEventStream` takes `stallTimeoutMs`; `runStreamedCall` sets it to 45s
+(three missed heartbeats). Every chunk resets it, keep-alives included, and it
+races each await so a half-open socket cannot hold the call. A stall, a read
+that fails after the stream opened, or a body that closes without `done` or
+`error` now replays the same request id (`lib/stream-recovery.ts`): finished
+JSON is returned exactly as `done` would have been; "in progress" is polled at
+2/4/8/15/30s... for about three minutes (the server's stream deadline); "the
+previous generation failed" throws with `resetRequestId: true` so the retry
+uses a fresh id. Prose already shown is never retracted. A retry that lands
+while the first attempt still runs (a 409 before the stream opens) is waited
+on the same way. `edit-story` has no request id, so its stall fails fast
+instead of replaying. `reimagine-client.ts` had its own copy of the loop and
+now goes through `runStreamedCall`, so the reader's Reimagine sheet is covered
+too.
+
+### Buffered helpers kept, and labelled
+
+`generateStory` / `continueStory` (buffered) are documented as not for
+interactive use: the whole provider chain must fit the gateway's 150s idle
+timeout and does not about 30% of the time. They are kept because
+`api-generation-contract.test.ts` pins the request body through them; no
+screen calls them.
+
+### Review follow-up (PR #105): streamed metadata that erased continuity
+
+CodeAnt flagged `reimagine-chapter`'s streamed path. The defect predates this
+branch (identical on `origin/main` under `git diff -w`) and `continue-story`'s
+streamed path had it too: both spread the metadata into an object that always
+carried `chapter_body`, so `parseStructuredOutput` reported `structured: true`
+whatever the metadata said, and `{}` or an object missing `series_state` was
+persisted with an empty series state and a default hook. The buffered paths
+already refuse `structured === false`. New
+`chapterOutputFromStreamedMetadata` in `_shared/story-stream.ts` requires an
+object `series_state` and a string `hook_type`, and throws
+`StreamedMetadataError` before anything is persisted, so the existing catch
+refunds and the old chapter stays. Both streamed paths use it.
+`generate-story-stream` is unchanged: a first chapter has no prior continuity
+to erase, and its comment records the lenient behaviour as deliberate. Eight
+Deno cases in `story-stream.test.ts`; backend suite 882 passed.
+
+### Verification
+
+`deno check` on every function; `deno test backend/supabase/functions/` 874
+passed. Expo on Node 22: `tsc --noEmit` clean, `pnpm lint` 0 errors, `jest`
+127 suites / 1257 tests passed.
 
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
 
@@ -6024,3 +6242,70 @@ fails before the first completes, the release refunds and marks the row
 refunded; the first then delivers and `complete_` is a no-op on a refunded row —
 image delivered, charge returned. Only reachable through infrastructure
 re-delivery, never from a client tap.
+
+### 2026-09-18 — Prose integrity pass, the writer's title, distinct chapter titles
+
+Editors reviewed 83 production chapters and every one needed a fix. This
+change takes the server-side ones.
+
+**The writer's title is kept.** The generation request had no `title` field,
+so the model named every story, including ones somebody had already titled.
+`validateGenerationRequest` now accepts an optional `title` (trimmed,
+whitespace-collapsed, ≤ 120 characters, refused rather than clipped when
+longer, blank means absent). Both generation handlers assign it over
+`output.title` before anything reads it, so the completion RPC, the cover
+prompt and the `done` payload all carry it; the streamed path also passes it to
+the early naming call as `storyTitle` and paints it in the `title` event.
+Client: `CreateDraft.title` and `buildGenerationRequestBody` send it only when
+non-blank. The Create flow has no title input and none was added.
+
+**`_shared/prose-integrity.ts` cleans every chapter before it is persisted**,
+on all five paths that write model prose (generate-story, generate-story-stream,
+continue-story on both transports via `persistContinuation`, reimagine-chapter,
+edit-story's AI paragraph rewrite; not the notepad save). It strips trailing
+JSON/markup residue (`arrived."}",`), a duplicated final paragraph, model-note
+lines ("...is banned, avoid. Use:", "Word count check: approx 1330 words",
+"(Note:", "[Author's note"), sentences sharing a nine-word normalised run with
+a moment, beat or cast background/appearance sentence (pronouns collapsed, so
+a sheet line in a character's mouth is caught), and "from Chapter 1"-style
+cross-references and reader address. Conservative by construction: in-world
+books are exempt, the echo rule stands down above 15% of a chapter's
+sentences, a pass removing over 40% of the words reverts to residue-only, and a
+chapter nothing matched is returned byte for byte. Each removal logs
+`prose_integrity_removed` (bucket `generation.story`, severity `low`, kinds and
+counts only). Brands from the editors' list log `brand_name_leaked` and are not
+rewritten. `errors.ts` now allows `terms` and `removed_count` -- `terms` had
+been silently dropped from every `crude_lexicon_leaked` row since that scan was
+written.
+
+**Prompt.** Layer 1 gains a brand reinforcement beside "No real brand names",
+and three rules under What NOT to Do: the brief is private guidance and is
+never quoted or paraphrased; never refer to chapters or the reader; never
+include notes to yourself.
+
+**Distinct chapter titles.** `continue-story` now reads every chapter title
+(a fifth read in the existing `Promise.all`) and passes them to the
+continuation prompt and the naming call (`buildUsedChapterTitlesBlock`).
+`_shared/chapter-titles.ts` guards persistence: a title normalising to an
+existing one or to the story title is refused, then the metadata name, then a
+title derived from the hook / first line / opening sentence, then `Chapter N`
+(itself checked; suffixed `Chapter Na`, `Nb`, ... if taken).
+A duplicate early name is not painted. Replacements log
+`duplicate_chapter_title_replaced` (low). `reimagine-chapter` is not guarded
+yet: its window stops at the chapters before the target.
+
+**Gates.** Backend: `deno check` clean on every function, 916 function tests
+pass. Expo (Node 22): `tsc --noEmit` clean, lint 0 errors / 29 warnings,
+1246 tests across 126 suites (with `--maxWorkers=2`; the reader UI suites time
+out under the default worker count while this machine's load average is ~200).
+
+**Not deployed, not run against the remote, no database touched.**
+
+**Review follow-ups (PR #108, CodeAnt).** Integrity telemetry now runs via
+`EdgeRuntime.waitUntil` instead of being awaited on the chapter path; the
+in-world-book exemption is nouns only, with reading verbs checked just before
+the reference (a stray "read" no longer shields "from Chapter 1");
+`first_line` is realigned to the stored body when cleaning changed its opening;
+a writer's title is painted in the stream's `title` event immediately rather
+than only when early naming succeeds; the offline `localGeneratedStory` keeps
+`draft.title`.

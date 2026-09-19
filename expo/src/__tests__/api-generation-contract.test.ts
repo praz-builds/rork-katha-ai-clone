@@ -116,6 +116,23 @@ describe("generateStory request contract", () => {
     expect(bodyOf(mockInvoke.mock.calls[0]).story_mode).toBe("standalone");
   });
 
+  it("sends the writer's title, trimmed, when the draft has one", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, title: "  The Moving Valley " }, "req-title");
+
+    expect(bodyOf(mockInvoke.mock.calls[0]).title).toBe("The Moving Valley");
+  });
+
+  it("omits title entirely when the draft has none or a blank one", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory(draft, "req-untitled");
+    await generateStory({ ...draft, title: "   " }, "req-blank-title");
+
+    // Absent, not blank: the server then names the story as it always has.
+    expect(bodyOf(mockInvoke.mock.calls[0])).not.toHaveProperty("title");
+    expect(bodyOf(mockInvoke.mock.calls[1])).not.toHaveProperty("title");
+  });
+
   it('defaults to "standalone" when isSeries is omitted', async () => {
     mockInvoke.mockResolvedValue(storyResponse("standalone"));
     await generateStory(draft, "req-3");
@@ -159,6 +176,21 @@ describe("generateStory request contract", () => {
     // dropdown shows.
     expect(body.image_style).toBe("watercolor");
     expect(body.story_flow).toBe("auto");
+  });
+
+  /**
+   * The publish toggle travels with the generation request. It used to be
+   * left out entirely, so the server always generated private and a public
+   * story depended on a second, unattended call succeeding.
+   */
+  it("sends the visibility the writer chose, and private when they chose nothing", async () => {
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, visibility: "public" }, "req-vis-public");
+    expect(bodyOf(mockInvoke.mock.calls[0]).visibility).toBe("public");
+
+    mockInvoke.mockResolvedValue(storyResponse("standalone"));
+    await generateStory({ ...draft, visibility: undefined }, "req-vis-absent");
+    expect(bodyOf(mockInvoke.mock.calls[1]).visibility).toBe("private");
   });
 
   it("passes through the request id for idempotent retries", async () => {

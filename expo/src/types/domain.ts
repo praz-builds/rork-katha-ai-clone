@@ -468,6 +468,17 @@ export type ImageStyle = typeof IMAGE_STYLES[number];
 export type StoryFlow = "interactive" | "auto";
 
 export type CreateDraft = {
+  /**
+   * The story's title, when somebody chose one. Absent means "name it for me",
+   * which is what the Create flow always asks for today -- it has no title
+   * input. The field exists for callers that do title a story before it is
+   * written (the house library does), because without it the server named
+   * every story itself and a chosen title was silently replaced.
+   *
+   * When sent, the server keeps it over any name the model produces
+   * (`validation.ts` bounds it at 120 characters).
+   */
+  title?: string;
   primaryGenre: Genre;
   /** Primary first. Extra values are editable secondary shelf tags. */
   genres?: Genre[];
@@ -476,7 +487,12 @@ export type CreateDraft = {
   identityLenses: IdentityLens[];
   seed: string;
   language: CreationLanguage;
-  /** Applied when the reviewed draft is saved or published, never during generation. */
+  /**
+   * The brief's "Make it public" toggle. Sent with the generation request and
+   * applied by the server the moment chapter one is persisted; absent means
+   * private. (The old doc here said "never during generation", from when a
+   * separate review step published; that step is gone.)
+   */
   visibility?: "private" | "public";
   characters: {
     name: string;
@@ -504,10 +520,10 @@ export type CreateDraft = {
      *
      * It is a STYLE reference, not a likeness target. The backend states that
      * to the model explicitly (`STYLE_REFERENCE_CLAUSE` in `_shared/image.ts`),
-     * the base Safety Rules forbid real people, and a real person's name typed
-     * into a cast is reclassified `private_individual` and locks the story
-     * private (migration 00050). Three layers, because prompt text alone is
-     * the weakest of them.
+     * and the base Safety Rules forbid real people. More than one layer,
+     * because prompt text alone is the weakest of them. (A real name in the
+     * cast used to lock the story private too; that gate was removed on
+     * 2026-09-18, migration 00091.)
      */
     referenceImage?: string;
     /**

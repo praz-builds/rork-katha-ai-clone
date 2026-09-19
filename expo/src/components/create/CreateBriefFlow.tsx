@@ -978,51 +978,6 @@ function StorySetupScreen({
           style={styles.genreControl}
         />
       </View>
-      {/*
-        The four shaping dropdowns, above every text field on the screen.
-
-        A two-column wrap rather than fixed widths: each item is given half the
-        row and allowed to grow, so the pair reflows to one column on a narrow
-        device and at a large `fontScale` without any control being clipped.
-      */}
-      <View style={styles.optionGrid}>
-        <Dropdown
-          id="storyFlow"
-          label="Story mode"
-          value={draft.storyFlow ?? "interactive"}
-          options={STORY_FLOW_OPTIONS}
-          onChange={(storyFlow) => { update({ storyFlow }); onSelect(); }}
-          style={styles.optionGridItem}
-        />
-        <Dropdown
-          id="chapters"
-          label="Chapters"
-          value={String(draft.plannedChapterCount ?? 3)}
-          options={CHAPTER_COUNT_OPTIONS}
-          onChange={(value) => {
-            const count = Number(value) as PlannedChapterCountOffer;
-            update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
-            onSelect();
-          }}
-          style={styles.optionGridItem}
-        />
-        <Dropdown
-          id="chapterLength"
-          label="Chapter length"
-          value={storyApi.effectiveChapterLength(draft)}
-          options={CHAPTER_LENGTH_OPTIONS}
-          onChange={(value) => { update({ chapterLength: value as "short" | "standard" | "long" }); onSelect(); }}
-          style={styles.optionGridItem}
-        />
-        <Dropdown
-          id="chapterCover"
-          label="Chapter cover"
-          value={draft.illustrateChapters ? "perChapter" : "cover"}
-          options={CHAPTER_COVER_OPTIONS}
-          onChange={(value) => { update({ illustrateChapters: value === "perChapter" }); onSelect(); }}
-          style={styles.optionGridItem}
-        />
-      </View>
       <View style={styles.ideaHero}>
         <Text style={styles.eyebrow}>Create</Text>
         <Text style={styles.title}>What is your story about?</Text>
@@ -1162,48 +1117,7 @@ function StorySetupScreen({
 
       <View style={styles.optionsFamily}>
         <Pressable onPress={onToggleOptions} accessibilityRole="button" accessibilityLabel="More options" accessibilityState={{ expanded: moreOptionsOpen }} style={styles.optionsToggle}><Text style={styles.sectionTitle}>More options</Text><ChevronDown size={16} color={colors.ink} style={{ transform: [{ rotate: moreOptionsOpen ? "180deg" : "0deg" }] }} /></Pressable>
-        {moreOptionsOpen ? <MoreOptions draft={draft} maxMoments={maxMoments} momentInput={momentInput} onMomentInput={onMomentInput} onAddMoment={onAddMoment} update={update} onSelect={onSelect} /> : null}
-      </View>
-      {/*
-        The last two decisions, beside the button that spends the credits:
-        what the art looks like, and who can read the result. Deliberately
-        NOT inside More options -- a writer who never opens that section would
-        never see either, and publishing is not an advanced setting.
-      */}
-      <View style={styles.optionGrid}>
-        <Dropdown
-          id="imageStyle"
-          label="Image style"
-          value={draft.imageStyle ?? "auto"}
-          options={IMAGE_STYLE_OPTIONS}
-          onChange={(imageStyle) => { update({ imageStyle }); onSelect(); }}
-          style={styles.optionGridItem}
-        />
-        {/*
-          Publishing is a dropdown now, not a switch. The switch said "Make it
-          public" and read as a preference; the two named states say what the
-          story will actually be. A guest can see the choice and cannot make
-          it -- the option's own words carry the reason, so a disabled control
-          is never a dead end with no explanation.
-        */}
-        <Dropdown
-          id="visibility"
-          label="Who can read it"
-          value={isAnonymous ? "private" : draft.visibility}
-          options={[
-            { value: "private", label: "Private", detail: "Only you can see this story." },
-            {
-              value: "public",
-              label: "Public",
-              detail: isAnonymous
-                ? "Public unlocks when sign-in is available."
-                : "Anyone on Katha can read it once it's written.",
-            },
-          ]}
-          disabled={isAnonymous}
-          onChange={(visibility) => { update({ visibility }); onSelect(); }}
-          style={styles.optionGridItem}
-        />
+        {moreOptionsOpen ? <MoreOptions draft={draft} isAnonymous={isAnonymous} maxMoments={maxMoments} momentInput={momentInput} onMomentInput={onMomentInput} onAddMoment={onAddMoment} update={update} onSelect={onSelect} /> : null}
       </View>
       {/* The cost card is gone. It restated a number that is on the button
           directly above it, and the number itself moves with what the brief
@@ -1220,6 +1134,7 @@ function StorySetupScreen({
 
 function MoreOptions({
   draft,
+  isAnonymous,
   maxMoments,
   momentInput,
   onMomentInput,
@@ -1228,6 +1143,7 @@ function MoreOptions({
   onSelect,
 }: {
   draft: StudioCreateDraft;
+  isAnonymous: boolean;
   maxMoments: number;
   momentInput: string;
   onMomentInput: (value: string) => void;
@@ -1254,26 +1170,10 @@ function MoreOptions({
   };
 
   return <View style={styles.optionsPanel}>
-    {/* Writing style and Avoid are both craft constraints on the prose, so
-        they read as one group rather than two unrelated fields. */}
-    <View style={styles.groupedFieldCard}>
-      <OptionLabel label="Writing style" />
-      <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-      <View style={styles.groupedFieldDivider} />
-      <OptionLabel label="Avoid" />
-      <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
-    </View>
-
     {/*
-      No "Chapter plan" here. The beats are still in the draft and still go to
-      generation, and the direction step is where the opening is chosen -- but
-      surfacing chapter summaries inside More options, before the user has
-      pressed Create at all, showed them the story's plan as a settings field
-      and read as a leak rather than a control.
-    */}
-
-    {/*
-      MOMENTS SIT AT THE FOOT OF THIS PANEL, DIRECTLY ABOVE LANGUAGE.
+      MOMENTS OPEN THIS PANEL, above the craft fields and the dropdowns.
+      The cast tags come from `draft.characters`, so a saved character added to
+      the story and a newly made one both show up here as soon as they're named.
 
       Both halves of the control -- the help toggle with its caption and the
       composer with its cast tags -- moved together, because they are one
@@ -1302,6 +1202,104 @@ function MoreOptions({
     {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>@{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
     <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
     {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Moments to include in general or between characters" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
+
+    {/* Writing style and Avoid are both craft constraints on the prose, so
+        they read as one group rather than two unrelated fields. */}
+    <View style={styles.groupedFieldCard}>
+      <OptionLabel label="Writing style" />
+      <TextInput accessibilityLabel="Writing style" value={draft.writingStyle ?? ""} onChangeText={(writingStyle) => update({ writingStyle })} placeholder="e.g. Warm, witty, first person" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+      <View style={styles.groupedFieldDivider} />
+      <OptionLabel label="Avoid" />
+      <TextInput accessibilityLabel="Avoid" value={draft.avoid ?? ""} onChangeText={(avoid) => update({ avoid })} placeholder="e.g. No cheating or graphic violence" placeholderTextColor={colors.tertiary} style={styles.optionInput} />
+    </View>
+
+    {/*
+      No "Chapter plan" here. The beats are still in the draft and still go to
+      generation, and the direction step is where the opening is chosen -- but
+      surfacing chapter summaries inside More options, before the user has
+      pressed Create at all, showed them the story's plan as a settings field
+      and read as a leak rather than a control.
+    */}
+
+    {/*
+      Every dropdown lives here now, below the writing fields: the four that
+      shape the story, then the art and who can read it. The two-column wrap
+      reflows to one column on a narrow device or a large `fontScale`.
+    */}
+    <View style={styles.optionGrid}>
+      <Dropdown
+        id="storyFlow"
+        help
+        label="Story mode"
+        value={draft.storyFlow ?? "interactive"}
+        options={STORY_FLOW_OPTIONS}
+        onChange={(storyFlow) => { update({ storyFlow }); onSelect(); }}
+        style={styles.optionGridItem}
+      />
+      <Dropdown
+        id="chapters"
+        label="Chapters"
+        value={String(draft.plannedChapterCount ?? 3)}
+        options={CHAPTER_COUNT_OPTIONS}
+        onChange={(value) => {
+          const count = Number(value) as PlannedChapterCountOffer;
+          update({ plannedChapterCount: count, isSeries: true, beats: draft.beats?.slice(0, count) });
+          onSelect();
+        }}
+        style={styles.optionGridItem}
+      />
+      <Dropdown
+        id="chapterLength"
+        help
+        label="Chapter length"
+        value={storyApi.effectiveChapterLength(draft)}
+        options={CHAPTER_LENGTH_OPTIONS}
+        onChange={(value) => { update({ chapterLength: value as "short" | "standard" | "long" }); onSelect(); }}
+        style={styles.optionGridItem}
+      />
+      <Dropdown
+        id="chapterCover"
+        help
+        label="Chapter cover"
+        value={draft.illustrateChapters ? "perChapter" : "cover"}
+        options={CHAPTER_COVER_OPTIONS}
+        onChange={(value) => { update({ illustrateChapters: value === "perChapter" }); onSelect(); }}
+        style={styles.optionGridItem}
+      />
+      <Dropdown
+        id="imageStyle"
+        help
+        label="Image style"
+        value={draft.imageStyle ?? "auto"}
+        options={IMAGE_STYLE_OPTIONS}
+        onChange={(imageStyle) => { update({ imageStyle }); onSelect(); }}
+        style={styles.optionGridItem}
+      />
+      {/*
+        A guest can see the choice and cannot make it -- the option's own words
+        carry the reason. Onboarding requires email sign-in, so only a dev
+        session that skipped it ever lands here as a guest.
+      */}
+      <Dropdown
+        id="visibility"
+        help
+        label="Who can read it"
+        value={isAnonymous ? "private" : draft.visibility}
+        options={[
+          { value: "private", label: "Private", detail: "Only you can see this story." },
+          {
+            value: "public",
+            label: "Public",
+            detail: isAnonymous
+              ? "Public unlocks when sign-in is available."
+              : "Anyone on Katha can read it once it's written.",
+          },
+        ]}
+        disabled={isAnonymous}
+        onChange={(visibility) => { update({ visibility }); onSelect(); }}
+        style={styles.optionGridItem}
+      />
+    </View>
 
     {/*
       English only, at the bottom, for now. The spice control was removed
@@ -1486,8 +1484,7 @@ export function CharacterCraftScreen({
                 A photo steers the LOOK. It is not a likeness target, and the
                 copy says so where the writer is deciding whether to attach one
                 -- not buried in a policy page. The backend states the same rule
-                to the model, and naming a real person locks the story private
-                regardless of what was attached.
+                to the model.
               */}
               <Pressable
                 onPress={character.referenceImage ? onClearReference : onPickReference}

@@ -139,7 +139,8 @@ describe("More options -- chapter length word counts", () => {
     const view = await renderCreate();
     await fillIdea(view);
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
-    await fireEvent.press(view.getByRole("button", { name: "Chapter length" }));
+    // The bands are explained in the "?" card, not in the menu rows.
+    await fireEvent.press(view.getByRole("button", { name: "About Chapter length" }));
 
     // short 600-900, standard 1200-1600, long 2000-2600 -- read directly from
     // wordBandFor() while building this feature; a change to that function's
@@ -217,7 +218,8 @@ describe("chapter cover -- the dropdown that replaced the chapter-art switch", (
   it("prices auto-generated chapter covers from the credit constants, not a literal", async () => {
     const view = await renderCreate();
     await fillIdea(view);
-    await fireEvent.press(view.getByRole("button", { name: "Chapter cover" }));
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    await fireEvent.press(view.getByRole("button", { name: "About Chapter cover" }));
 
     // CREDITS_AND_PRICING.md prices a 3-chapter illustrated story at 5 credits
     // = 1 (start, which bundles chapter one's art as the cover) + 2 + 2. So
@@ -240,6 +242,7 @@ describe("chapter cover -- the dropdown that replaced the chapter-art switch", (
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate();
     await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
     await fireEvent.press(view.getByRole("button", { name: "Chapter cover" }));
     await fireEvent.press(
@@ -259,31 +262,54 @@ describe("chapter cover -- the dropdown that replaced the chapter-art switch", (
 
 describe("the six dropdowns", () => {
   /**
-   * Four above the text fields (Story mode, Chapters, Chapter length, Chapter
-   * cover) and two at the foot of the brief beside the Create button (Image
-   * style, Who can read it). Asserted WITHOUT opening More options, because
-   * the whole point of the layout is that none of the six is hidden behind a
-   * disclosure the writer may never open.
+   * All six live inside More options, after Moments and Writing style / Avoid:
+   * the four that shape the story (Story mode, Chapters, Chapter length,
+   * Chapter cover), then Image style and Who can read it.
    */
-  it("are all reachable without opening More options", async () => {
+  it("are hidden until More options opens, then sit after Moments and Writing style", async () => {
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view);
 
-    for (const label of [
+    const labels = [
       "Story mode",
       "Chapters",
       "Chapter length",
       "Chapter cover",
       "Image style",
       "Who can read it",
-    ]) {
+    ];
+    for (const label of labels) {
+      expect(view.queryByRole("button", { name: label })).toBeNull();
+    }
+
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+    for (const label of labels) {
       expect(view.getByRole("button", { name: label })).toBeTruthy();
     }
+
+    const source = readFileSync(
+      resolve(__dirname, "../components/create/CreateBriefFlow.tsx"),
+      "utf8",
+    );
+    const panel = source.slice(source.indexOf("function MoreOptions("));
+    const order = [
+      'label="Moments to include"',
+      'label="Writing style"',
+      'label="Avoid"',
+      'label="Story mode"',
+      'label="Chapter cover"',
+      'label="Image style"',
+      'label="Who can read it"',
+      'label="Language"',
+    ].map((marker) => panel.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   it("opens on a real value rather than on its own label", async () => {
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
     expect(
       view.getByRole("button", { name: "Story mode" }).props.accessibilityValue,
@@ -300,6 +326,7 @@ describe("the six dropdowns", () => {
     mockGenerateStory.mockResolvedValueOnce(generatedStory);
     const view = await renderCreate({ isAnonymous: false });
     await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
     await fireEvent.press(view.getByRole("button", { name: "Story mode" }));
     await fireEvent.press(view.getByRole("button", { name: "Auto-continue" }));
@@ -321,12 +348,62 @@ describe("the six dropdowns", () => {
   it("shows a guest the visibility choice and refuses to let them make it", async () => {
     const view = await renderCreate({ isAnonymous: true });
     await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
     const trigger = view.getByRole("button", { name: "Who can read it" });
     // Visible, so the guest can see what they are missing, and disabled, so
     // they cannot request a public story the server would refuse anyway.
     expect(trigger.props.accessibilityState.disabled).toBe(true);
     expect(trigger.props.accessibilityValue).toEqual({ text: "Private" });
+  });
+
+  it("sends private for a guest, whatever the draft's default says", async () => {
+    // The toggle defaults to Public, and a guest's trigger only DISPLAYS
+    // private -- it never writes the draft back. So the request used to say
+    // public while the screen said Private. The server refuses it either way
+    // (`account_required`), but the client should not be asking.
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: true });
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      visibility: "private",
+    });
+  });
+});
+
+describe("dropdown menus and their help", () => {
+  it("lists plain labels in the menu, and explains them only behind the ?", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+
+    await fireEvent.press(view.getByRole("button", { name: "Story mode" }));
+    expect(view.getByRole("button", { name: "Auto-continue" })).toBeTruthy();
+    expect(view.queryByText(/pick what happens next/i)).toBeNull();
+    await fireEvent.press(view.getByRole("button", { name: "Interactive" }));
+
+    await fireEvent.press(view.getByRole("button", { name: "About Story mode" }));
+    expect(view.getByText(/pick what happens next/i)).toBeTruthy();
+    expect(view.getByText(/keeps writing/i)).toBeTruthy();
+  });
+
+  it("puts a ? on the dropdowns that need one, and none on Chapters or Language", async () => {
+    const view = await renderCreate({ isAnonymous: false });
+    await fillIdea(view);
+    await fireEvent.press(view.getByRole("button", { name: "More options" }));
+
+    for (const label of ["Story mode", "Chapter length", "Chapter cover", "Image style", "Who can read it"]) {
+      expect(view.getByRole("button", { name: `About ${label}` })).toBeTruthy();
+    }
+    expect(view.queryByRole("button", { name: "About Chapters" })).toBeNull();
+    expect(view.queryByRole("button", { name: "About Language" })).toBeNull();
   });
 });
 
