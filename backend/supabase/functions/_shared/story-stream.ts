@@ -298,6 +298,12 @@ export function chapterOutputFromStreamedMetadata(input: {
   fallbackTitle: string;
   /** True when a later chapter will be written from this one's state. */
   requireContinuity: boolean;
+  /**
+   * The chapter title to keep when the metadata names none. Defaults to
+   * `fallbackTitle`; a rewrite passes the chapter's CURRENT title, so
+   * metadata that came back empty leaves the title it already had.
+   */
+  fallbackChapterTitle?: string;
   overrides?: Record<string, unknown>;
 }): StoryGenerationOutput {
   let metadata: unknown;
@@ -334,9 +340,25 @@ export function chapterOutputFromStreamedMetadata(input: {
     }
   }
 
+  /*
+    The parser defaults an absent `chapter_title` to the literal string
+    "Chapter 1" -- not to `fallbackTitle`, which it uses only for the STORY
+    title. Harmless where every chapter carries its own title, and not
+    harmless on the lenient path this function now admits: metadata that came
+    back as `{}` used to retitle chapter nine of a story "Chapter 1" and throw
+    away the title it had. So the caller's fallback is put in explicitly
+    whenever the model named none.
+  */
+  const namedChapter = typeof record.chapter_title === "string" &&
+    record.chapter_title.trim().length > 0;
   const output = parseStructuredOutput(
     JSON.stringify({
       ...record,
+      ...(namedChapter
+        ? {}
+        : {
+          chapter_title: input.fallbackChapterTitle ?? input.fallbackTitle,
+        }),
       chapter_body: input.prose,
       ...(input.overrides ?? {}),
     }),

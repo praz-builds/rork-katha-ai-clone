@@ -946,6 +946,10 @@ serve(async (req) => {
             metadataText: metadata.text,
             prose: prose.text,
             fallbackTitle: `Chapter ${chapterNumber}`,
+            // A rewrite that comes back without a chapter title keeps the
+            // title the chapter already had, rather than being renamed.
+            fallbackChapterTitle: targetChapter.title ||
+              `Chapter ${chapterNumber}`,
             requireContinuity: storyMode === "series",
           });
 

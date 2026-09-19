@@ -820,6 +820,41 @@ Deno.test("streamed metadata (standalone): keeps the fields it was given", () =>
   assertEquals(output.hook_type, "unanswered_question");
 });
 
+Deno.test("streamed metadata: a chapter with no title in its metadata keeps the one it had", () => {
+  // The parser defaults an absent chapter_title to the literal "Chapter 1".
+  // On the lenient path that would rename chapter nine of a story, and throw
+  // away its real title, whenever the metadata came back empty.
+  const output = chapterOutputFromStreamedMetadata({
+    metadataText: "{}",
+    prose: "The ferry came in late.",
+    fallbackTitle: "Chapter 9",
+    fallbackChapterTitle: "The Salt Notary",
+    requireContinuity: false,
+  });
+  assertEquals(output.chapter_title, "The Salt Notary");
+});
+
+Deno.test("streamed metadata: a chapter title in the metadata wins over the fallback", () => {
+  const output = chapterOutputFromStreamedMetadata({
+    metadataText: JSON.stringify({ chapter_title: "What the Tide Left" }),
+    prose: "The ferry came in late.",
+    fallbackTitle: "Chapter 9",
+    fallbackChapterTitle: "The Salt Notary",
+    requireContinuity: false,
+  });
+  assertEquals(output.chapter_title, "What the Tide Left");
+});
+
+Deno.test("streamed metadata: with no fallback chapter title, the chapter number is used, not \"Chapter 1\"", () => {
+  const output = chapterOutputFromStreamedMetadata({
+    metadataText: "{}",
+    prose: "The ferry came in late.",
+    fallbackTitle: "Chapter 9",
+    requireContinuity: false,
+  });
+  assertEquals(output.chapter_title, "Chapter 9");
+});
+
 Deno.test("streamed metadata (standalone): unparseable text is still refused", () => {
   let caught: unknown;
   try {

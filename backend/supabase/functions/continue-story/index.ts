@@ -921,7 +921,13 @@ serve(async (req) => {
             metadataText: metadata.text,
             prose: prose.text,
             fallbackTitle: `Chapter ${nextChapterNum}`,
-            // Always: this handler refuses a non-series story up front.
+            // Always true, and not because the handler checks `story_mode`
+            // -- it does not, outside the extension branch. A continuation
+            // IS a series chapter by construction: the band is asked for as
+            // series (`wordBandFor("series", ...)` above) and the metadata
+            // prompt is built with `storyMode: "series"`, so whatever the
+            // story row says, the chapter being written here hands its state
+            // to a chapter after it and must carry that state.
             requireContinuity: true,
             overrides: earlyNames?.chapterTitle
               ? { chapter_title: earlyNames.chapterTitle }
