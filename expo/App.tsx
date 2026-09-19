@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSharedValue } from "react-native-reanimated";
-import { initPostHog, initSentry } from "@/lib/analytics";
+import { captureError, initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
@@ -369,6 +369,15 @@ export default function App() {
       // font, which is a cosmetic loss; never opening is a total one.
       .catch((error) => {
         console.warn("Font loading failed; falling back to system fonts:", error);
+        // A boot that silently lost the brand face is worth knowing about:
+        // it is invisible to the user (the system font substitutes cleanly)
+        // and it is the same failure that used to hang the splash.
+        captureError({
+          bucket: "client.app",
+          severity: "low",
+          errorCode: "font_load_failed",
+          error,
+        });
       })
       .then(() => setFontsReady(true));
   }, []);

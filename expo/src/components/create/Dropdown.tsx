@@ -569,7 +569,8 @@ export function Dropdown<T extends string = string>({
       setLocalOpenMenu(descriptor);
     }
     onOpen?.();
-    triggerRef.current?.measureInWindow((x, y, width, height) => {
+
+    const applyAnchor = (x: number, y: number, width: number, height: number) => {
       // A measurement for an opening that has since been superseded tells us
       // where the trigger was, not where it is.
       if (seq !== openSeq.current) return;
@@ -578,7 +579,33 @@ export function Dropdown<T extends string = string>({
       else {
         setLocalOpenMenu((current) => (current && current.id === menuId ? { ...current, anchor } : current));
       }
-    });
+    };
+    const measure = () => triggerRef.current?.measureInWindow(applyAnchor);
+
+    /*
+      Measure AFTER the keyboard has finished leaving, not while it goes.
+
+      `Keyboard.dismiss()` above starts an animation; the brief sits in a
+      `KeyboardAvoidingView`, so as the keyboard leaves, its padding is
+      removed, the scroll content grows, and everything near the foot of the
+      page -- Language most of all -- slides down by up to the keyboard's
+      height. Measuring immediately captures where the trigger WAS, and the
+      menu is then pinned confidently to a stale position: exactly the
+      "it opens somewhere else" symptom, arrived at by a different road.
+
+      So when a keyboard is actually up, the measurement waits for
+      `keyboardDidHide`, with the immediate one still taken so the menu is
+      placed at once on every ordinary open. The listener is one-shot and is
+      also removed if this opening is superseded.
+    */
+    measure();
+    if (Keyboard.isVisible?.()) {
+      const subscription = Keyboard.addListener("keyboardDidHide", () => {
+        subscription.remove();
+        if (seq !== openSeq.current) return;
+        measure();
+      });
+    }
   }, [context, dropdownId, help, helpId, label, onChange, onOpen, options, testID, value]);
 
   const open = useCallback(() => show("options"), [show]);
@@ -789,6 +816,16 @@ const styles = StyleSheet.create({
   menuUnplaced: {
     opacity: 0,
   },
+  /*
+    Note on what this deliberately does NOT do: it does not set
+    `pointerEvents: "none"`. An invisible view is still hit-testable, so in
+    principle a tap in this one-measurement window lands on a menu nobody can
+    see. In practice the window is a single bridge round-trip and the fallback
+    position is off under the header -- and making it untouchable means any
+    platform or harness where the measurement is slow or never arrives
+    swallows real taps on a menu that is otherwise working. A missed tap is
+    worse than a theoretical one.
+  */
   menuScroll: { flexGrow: 0 },
   menuList: { padding: spacing.xs, gap: 2 },
   option: {

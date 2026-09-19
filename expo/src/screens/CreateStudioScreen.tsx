@@ -322,7 +322,21 @@ export default function CreateStudioScreen({
     // a generation, because each one reserves and spends credits.
     if (startedRef.current) return;
     const choice = options?.choice ?? pendingChoiceRef.current ?? undefined;
-    if (!options?.forcePrivate && draft.visibility === "public") {
+    /*
+      What the writer is actually asking for, which for a guest is not what
+      the draft says.
+
+      The brief's toggle defaults to Public now, and a guest's toggle is
+      DISPLAYED as private and disabled (`CreateBriefFlow`) without the draft
+      ever being written back. So the draft of a guest who never touched the
+      control still said "public": the request said public while the screen
+      said Private, and a guest whose idea named a real person was shown the
+      "this cannot be public" modal about a story the UI had just called
+      private. The server applies `account_required` and makes it private
+      either way, so nothing broke -- it was the question that was wrong.
+    */
+    const requestedVisibility = isAnonymous ? "private" : draft.visibility;
+    if (!options?.forcePrivate && requestedVisibility === "public") {
       const reason = pendingGatingReason({
         gatingReason: draft.gatingReason,
         groundingEntities: draft.groundingEntities,
@@ -354,7 +368,7 @@ export default function CreateStudioScreen({
       // "Keep it private" from the warning wins over the toggle: the writer
       // has just been told this story cannot be public and chose to write it
       // anyway.
-      visibility: options?.forcePrivate ? "private" : draft.visibility,
+      visibility: options?.forcePrivate ? "private" : requestedVisibility,
       // Belt and braces with the clamp in loadDraft: validation.ts enforces the
       // same cap, and a request over it is a 400 rather than a truncation.
       characters: draft.characters.slice(0, MAX_CHARACTERS),
@@ -388,7 +402,7 @@ export default function CreateStudioScreen({
     startedRef.current = true;
     pendingChoiceRef.current = null;
     onGenerationStarted(startStoryGeneration({ draft: createDraft }));
-  }, [canGenerate, credits, draft, onGenerationStarted]);
+  }, [canGenerate, credits, draft, isAnonymous, onGenerationStarted]);
 
   return (
     <>

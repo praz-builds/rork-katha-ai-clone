@@ -356,6 +356,26 @@ describe("the six dropdowns", () => {
     expect(trigger.props.accessibilityState.disabled).toBe(true);
     expect(trigger.props.accessibilityValue).toEqual({ text: "Private" });
   });
+
+  it("sends private for a guest, whatever the draft's default says", async () => {
+    // The toggle defaults to Public, and a guest's trigger only DISPLAYS
+    // private -- it never writes the draft back. So the request used to say
+    // public while the screen said Private. The server refuses it either way
+    // (`account_required`), but the client should not be asking.
+    mockGenerateStory.mockResolvedValueOnce(generatedStory);
+    const view = await renderCreate({ isAnonymous: true });
+    await fillIdea(view);
+
+    await fireEvent.press(view.getByRole("button", { name: /create/i }));
+    await fireEvent.press(
+      await view.findByTestId("create-direction-composer-submit"),
+    );
+    await waitFor(() => expect(mockGenerateStory).toHaveBeenCalledTimes(1));
+
+    expect(mockGenerateStory.mock.calls[0][0]).toMatchObject({
+      visibility: "private",
+    });
+  });
 });
 
 describe("dropdown menus and their help", () => {
