@@ -107,6 +107,10 @@ export const MUSIC_TRACKS: readonly MusicTrack[] = [
  * genres most picked on the Create screen, and they now have their own tracks.
  * The rest live on older and seed stories.
  */
+// Every member of Genre must end up with a track, its own or borrowed: a
+// story reaches the reader carrying one of the 17 in GENRES, not one of the 12
+// Create offers, and a genre missing from here opens in silence with no error.
+// A test walks all of GENRES so adding one without music fails there.
 const BORROWED_MUSIC_GENRE: Partial<Record<Genre, Genre>> = {
   romantasy: "fantasy",
   contemporary: "sliceOfLife",

@@ -2,6 +2,46 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-20: Music coverage was tested against 12 genres, not 17
+
+PR #118, prompted by a challenge on whether #116 had actually been tested.
+
+### The gap
+
+A story reaches the reader carrying one of `GENRES` (17), not one of
+`UI_GENRES` (12). The five Create does not offer -- `romantasy`,
+`darkRomance`, `thriller`, `contemporary`, `poetry` -- live on older stories
+and Katha Originals, and **there are `contemporary` stories in production
+today**.
+
+All 17 do resolve to a track; that was checked against the real catalogue
+rather than assumed, and all 110 production stories use genres the catalogue
+covers. So nothing was silent. But the test only walked `UI_GENRES`, so had one
+of those five been missing, nothing would have failed -- that genre would have
+opened in silence, no error anywhere, for a slice of stories nobody was
+watching. The test walks `GENRES` now, which also makes it the guard for the
+next genre added to the taxonomy.
+
+### Both story paths were traced
+
+A saved row goes through `mapStoryRecord`; a story still being generated goes
+through `provisionalStory(session)`, which the reader uses before the story
+exists server-side. Both set `genre` to a validated `Genre`, and both render the
+same `ReaderScreen` -- there is one reading surface, not two.
+
+The backend's `PrimaryGenre` union has **19** members to the client's 17
+(`cozyFantasy`, `paranormalRomance`). `isGenre` in `api.ts` catches those and
+falls back, which is what keeps an unknown genre playable.
+
+### Known and not fixed
+
+During creation the reader identifies the story by **session** id; afterwards by
+the **server story** id. The default track is hashed from the story id, so a
+brand-new story's first live read can use a different one of its genre's two
+tracks than every later read. "The same story always opens on the same track"
+holds per id, not across that handoff. Cosmetic -- nobody memorises which of two
+ambient tracks played -- so it was left rather than widen the PR.
+
 ## 2026-09-20: A story opens with music for its genre, and the tracks are not in the app
 
 PR #116.
