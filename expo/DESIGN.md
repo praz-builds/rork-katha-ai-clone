@@ -483,8 +483,8 @@ After onboarding or paywall changes:
 1. Run `pnpm typecheck`.
 2. Run `pnpm exec expo-doctor`.
 3. Confirm the Expo web bundle compiles.
-4. Start or reuse the Expo web server on port 8090.
-5. Open `http://localhost:8090/` automatically in the in-app browser.
+4. Start the preview with `scripts/preview.sh`. It serves `main` on port 8090 from its own worktree -- so run this pass **after** the change has merged. Do not start a server on 8090 from your lane worktree to shortcut it; that silently replaces the reviewed state with your branch (see *The preview shows main, and only main* in AGENTS.md). For a pre-merge look, use port 8091 and expect edge calls to fail CORS.
+5. Open `http://localhost:8090/` automatically in the in-app browser, and confirm the commit the script printed is the one you expect.
 6. Set the viewport to 390 x 844.
 7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
 8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.

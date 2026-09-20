@@ -136,6 +136,19 @@ A screen that reads a saved preference on mount and calls `setState` when it res
 
 **Known and unfixed:** `CreateStudioScreen`'s draft restore (`loadDraft().then(...)` around line 195) calls `setDraft` wholesale with no such guard. Typing into Create before that read resolves is overwritten. It was left alone in #116 because the Create flow was being worked on in another lane; fix it in whichever branch owns that screen.
 
+## The preview shows main, and only main
+
+`http://localhost:8090` is where the product gets looked at and signed off. It must therefore answer exactly one question -- *what does a user get today?* -- and that is the state of `main`.
+
+This repo has ~30 worktrees, one per agent lane. A preview started inside any of them serves **that lane's branch**, and goes stale the moment anything else merges. It fails silently, because the page keeps working: nothing is broken, it is just answering a question nobody asked. On 2026-09-20 the preview had run for ten hours out of a lane worktree that predated #121, so Reimagine was being reviewed in a design `main` no longer had. Nobody could have noticed from the screen.
+
+**Start the preview only with `scripts/preview.sh`.** It owns a dedicated worktree (`~/Katha-AI-preview`, branch `local-preview`, tracking `origin/main`), hard-resets it to `origin/main`, reinstalls if the lockfile moved, kills whatever else holds the port, and prints the commit it is serving. It refuses to start on a dirty tree rather than serve something it cannot name.
+
+- **Never point it at a branch, and never edit that worktree.** To see a change before it merges, read the PR. The preview is not a development surface; it is the record of what shipped.
+- **Merge first, then refresh the preview.** The sequence is merge to `main` -> re-run `scripts/preview.sh` -> look. Not the reverse.
+- **Deploying is still a separate step.** The preview reflects `main`; it says nothing about production. See *Deploy discipline* -- merged is not deployed.
+- **Agents: do not start your own web server on 8090.** You will take the port from the preview and replace a known state with your branch, which is the exact failure above. Run your branch on another port and say which one.
+
 ## Security Gate (MANDATORY before pushing to GitHub)
 
 **Every agent session MUST run `/security-scan` before pushing code to GitHub.** The skill is at `.agents/skills/security-scan/SKILL.md`. It runs entirely on the CLI agent (no external API keys needed).
@@ -300,6 +313,27 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
 
 `ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
+
+#### Looking at the product: `scripts/preview.sh`
+
+```bash
+scripts/preview.sh              # sync ~/Katha-AI-preview to origin/main, serve on :8090
+scripts/preview.sh --offline    # skip the fetch (no network), never the checks
+```
+
+This is the only supported way to open the preview -- see *The preview shows main, and only main* for why a preview started inside a lane worktree is worse than no preview. It prints the commit it is serving; if that is not `origin/main`, stop and say so.
+
+`--offline` skips the network, not the guarantee: it still refuses a dirty tree, still hard-resets to the local `origin/main` ref, and says out loud that the ref may be behind. There is no flag that serves an arbitrary checkout, by design. Re-running while the right commit is already up is free -- it leaves the server alone rather than paying for a Metro reboot.
+
+The worktree is created once and then left alone:
+
+```bash
+git worktree add -b local-preview ~/Katha-AI-preview origin/main
+cd ~/Katha-AI-preview/expo && pnpm install
+cp <any working worktree>/expo/.env ~/Katha-AI-preview/expo/.env   # not in git
+```
+
+Use a phone-sized viewport. At desktop width the intro carousel traps the flow before the app is reachable.
 
 **Run the web app on port 8090, not 8081.** The deployed `ALLOWED_ORIGINS`
 secret contains `http://localhost:8090` and does **not** contain 8081, and the
