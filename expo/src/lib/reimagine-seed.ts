@@ -1,8 +1,10 @@
 import {
   CREATION_LANGUAGES,
+  PLANNED_CHAPTER_COUNT_OFFER,
   UI_GENRES,
   type CreationLanguage,
   type Genre,
+  type PlannedChapterCountOffer,
   type Story,
 } from "@/types/domain";
 import type { StudioDraft } from "@/screens/CreateStudioScreen";
@@ -87,14 +89,24 @@ export function seedDraftFromStory(story: Story): Partial<StudioDraft> {
   return draft;
 }
 
-/** The chapter counts the Create flow actually offers. */
-const OFFERED_CHAPTER_COUNTS = [3, 7, 15] as const;
-
+/**
+ * Whether the picker actually offers this length.
+ *
+ * Read from `PLANNED_CHAPTER_COUNT_OFFER` rather than written out here. The
+ * first version of this listed 3, 7 and 15 and silently dropped **1** -- and a
+ * one-chapter story is not an edge case, it is a deliberate offer: the comment
+ * on that constant explains that one chapter is a series of one so it can be
+ * extended from the end of the reader, where a standalone cannot. A reader
+ * reimagining a one-chapter story would have got a three-chapter brief.
+ *
+ * Duplicating the list was the bug. Importing it means a fifth offer added
+ * there arrives here for free.
+ */
 function isOfferedChapterCount(
   value: number | undefined,
-): value is StudioDraft["plannedChapterCount"] & number {
+): value is PlannedChapterCountOffer {
   return typeof value === "number" &&
-    (OFFERED_CHAPTER_COUNTS as readonly number[]).includes(value);
+    (PLANNED_CHAPTER_COUNT_OFFER as readonly number[]).includes(value);
 }
 
 /**

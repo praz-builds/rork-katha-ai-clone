@@ -142,7 +142,37 @@ counter, and the sheet renders "1 free" on every open because
 ### Checks
 
 `pnpm typecheck` clean. `pnpm lint` 0 errors (30 pre-existing warnings, none in
-the new files). `pnpm test` green. Smoke-tested on Expo web at 390x844.
+the new files). `pnpm test` green. Smoked in the running app: a reader's
+Reimagine lands in Create with the premise pre-filled verbatim and editable.
+
+Two gaps, named rather than hidden: the smoke ran at desktop width because the
+viewport would not clamp to 390 px, and the author's Re-prompt path was not
+smoked in a browser because reaching it needs a story the tester owns and
+therefore a real generation against live credits. Unit tests cover it instead.
+
+### What review caught
+
+Three real defects, all found by CodeAnt on the first push:
+
+1. **`reimagine-seed.ts` carried its own copy of the offered chapter counts**
+   -- `[3, 7, 15]` -- and `PLANNED_CHAPTER_COUNT_OFFER` is `[1, 3, 7, 15]`. A
+   reader reimagining a **one-chapter** story would have got a three-chapter
+   brief. One chapter is a deliberate offer, not an edge case: it is a series
+   of one so it can be extended from the end of the reader, where a standalone
+   cannot. Fixed by importing the constant instead of restating it.
+2. **The seed outlived the visit it was made for.** It was cleared only when a
+   generation started, so a reader who opened the seeded brief and backed out
+   would find a stranger's premise waiting the next time they opened Create.
+   Now cleared on leaving the Create tab, which also covers the tab bar as a
+   second way out.
+3. **The canonical documents contradicted themselves.** §3 was amended but the
+   summary, §1 and §10 tables still priced "Reimagine a chapter of somebody
+   else's story" as a fork, still said "recast it", and still linked the
+   deleted `ReimagineSheet.tsx`. All corrected in the same pass.
+
+A fourth was caught by lint on the fix itself: the new `useEffect` was written
+beside `goTabs`, which lives below `if (!fontsReady) return`, so it was a
+conditionally-called hook. Moved beside the state it clears.
 
 ---
 

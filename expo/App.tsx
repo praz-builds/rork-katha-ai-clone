@@ -299,6 +299,29 @@ export default function App() {
     null,
   );
   /**
+   * A reimagine seed belongs to ONE visit to Create, and dies when that visit
+   * ends.
+   *
+   * Without this it outlives the trip that created it: a reader taps Reimagine
+   * on somebody else's story, reads the seeded brief, decides against it and
+   * backs out -- and the next time they open Create, days later, it opens on a
+   * stranger's premise with no explanation of where it came from. Clearing it
+   * only when a generation starts covers the happy path and nothing else.
+   *
+   * Keyed on leaving the tab rather than on the studio's back button, because
+   * the tab bar is a second way out and would have missed it. Setting the seed
+   * and switching TO Create is safe: this only fires when the tab is not
+   * Create, so the arrival it was set for cannot clear it.
+   *
+   * Declared here, beside the state it clears, and NOT next to `goTabs` where
+   * it started: `goTabs` is defined below `if (!fontsReady) return`, so a hook
+   * there is called conditionally and breaks the rules-of-hooks order.
+   */
+  useEffect(() => {
+    if (tab !== "create") setReimagineSeed(null);
+  }, [tab]);
+
+  /**
    * Did this session just come through onboarding?
    *
    * Read by exactly one thing: the welcome credits flight, which plays once
@@ -1021,6 +1044,7 @@ export default function App() {
     setTab(nextTab);
     setScreen({ name: "tabs" });
   };
+
 
   /**
    * The post-auth routine, run once a code has verified.

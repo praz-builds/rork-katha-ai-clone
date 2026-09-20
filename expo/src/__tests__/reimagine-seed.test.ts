@@ -64,6 +64,16 @@ it("keeps a standalone standalone, and does not invent a chapter count for it", 
   expect(draft.plannedChapterCount).toBeUndefined();
 });
 
+it("keeps a one-chapter series, which is an offered length and not a standalone", () => {
+  // Regression: this module used to carry its own [3, 7, 15] and silently
+  // dropped 1, so a reader reimagining a one-chapter story got a
+  // three-chapter brief. `PLANNED_CHAPTER_COUNT_OFFER` is [1, 3, 7, 15] and is
+  // now the only list.
+  const draft = seedDraftFromStory({ ...base, plannedChapterCount: 1 });
+  expect(draft.isSeries).toBe(true);
+  expect(draft.plannedChapterCount).toBe(1);
+});
+
 it("drops a chapter count the Create flow does not offer", () => {
   // A story extended to 9 chapters is a real row; 9 is not a button. Seeding
   // it would open the brief on a length the picker cannot show as chosen.

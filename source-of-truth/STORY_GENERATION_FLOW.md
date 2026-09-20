@@ -1037,8 +1037,10 @@ the prompt and gets prose actually written for them.
 
 **A reader's control is Reimagine, and it does not touch the story they are
 reading at all.** It opens Create with that story's premise already in the box
--- verbatim, off `stories.topic`, so they can read exactly what produced the
-story they liked and edit any word of it -- and they write their own, with
+-- verbatim, off `stories.topic` (which the client carries as `Story.synopsis`;
+`mapStoryRow`, `mapSearchRow` and `mapGeneratedStory` all map the one onto the
+other), so they can read exactly what produced the story they liked and edit any
+word of it -- and they write their own, with
 their own characters, through the ordinary create flow
 ([`expo/src/lib/reimagine-seed.ts`](../expo/src/lib/reimagine-seed.ts)).
 **Nothing is forked, and the original is never written to.**
