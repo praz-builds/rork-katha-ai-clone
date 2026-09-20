@@ -323,7 +323,19 @@ export default function PhraseCaptureReader({
   const [coachVisible, setCoachVisible] = useState(false);
   const coachDismissedRef = useRef(false);
   useEffect(() => {
-    if (liveSessionId || screenReaderEnabled) return;
+    if (liveSessionId || screenReaderEnabled) {
+      // NOT JUST AN EARLY RETURN. Both of these can become true while the mark
+      // is already on screen -- a continuation starts writing underneath the
+      // reader, or VoiceOver is switched on mid-page -- and an effect that
+      // only declines to SHOW it would leave the one already showing there:
+      // a tip about a gesture over prose being written, or over a page that
+      // has just stopped having tappable words at all.
+      //
+      // Withdrawn, not spent: `COACH_KEY` is deliberately not written here, so
+      // the writer still gets their one showing once the chapter is finished.
+      setCoachVisible(false);
+      return;
+    }
     let alive = true;
     void (async () => {
       let seen: string | null = null;
@@ -952,7 +964,17 @@ export default function PhraseCaptureReader({
         underneath is still readable and tappable around the card -- a scrim
         would make the first thing a new reader meets a modal.
       */}
-      {coachVisible && !selection && !webSelection && !selectionMode ? (
+      {/*
+        `liveSessionId` and `screenReaderEnabled` are checked HERE as well as in
+        the effect above, deliberately. The effect withdraws the mark when
+        either turns on, but it does so in a passive effect -- one commit later
+        than the render that changed them. Checking both here means the frame
+        in between never draws a gesture tip over prose that is still being
+        written, or over a page that just stopped having tappable words.
+      */}
+      {coachVisible && !liveSessionId && !screenReaderEnabled && !selection &&
+          !webSelection && !selectionMode
+        ? (
         <View pointerEvents="box-none" style={styles.coachWrap}>
           <View style={styles.coach} testID="phrase-coach" accessibilityLiveRegion="polite">
             <Text style={styles.coachText}>{COACH_COPY}</Text>

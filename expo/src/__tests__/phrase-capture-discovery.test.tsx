@@ -175,6 +175,33 @@ it("stays quiet during a live generation, without spending the one showing", asy
   expect(storage.setItem).not.toHaveBeenCalledWith(COACH_KEY, "seen");
 });
 
+/**
+ * WITHDRAWN, NOT SPENT.
+ *
+ * The gate above runs when the reader mounts. Both of the things it gates on
+ * can become true LATER, while the mark is already on screen: a continuation
+ * starts writing underneath the reader, or VoiceOver is switched on mid-page.
+ * A gate that only declines to show the mark leaves the one already showing —
+ * a tip about long-pressing a line, over prose being written, or over a page
+ * that has just stopped having tappable words at all.
+ *
+ * And it must not burn the flag on the way out: the writer is owed their one
+ * showing once the chapter is finished.
+ */
+it("takes the coach mark back when a generation starts under it", async () => {
+  const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
+  await waitFor(() => expect(view.getByTestId("phrase-coach")).toBeTruthy());
+
+  await act(async () => {
+    await view.rerender(
+      <PhraseCaptureReader story={STORY} onBack={jest.fn()} liveSessionId="session-1" />,
+    );
+  });
+
+  expect(view.queryByTestId("phrase-coach")).toBeNull();
+  expect(storage.setItem).not.toHaveBeenCalledWith(COACH_KEY, "seen");
+});
+
 it("the save toast says where the phrase went", async () => {
   mockSavePhrase.mockResolvedValueOnce(savedRecord());
   const view = await render(<PhraseCaptureReader story={STORY} onBack={jest.fn()} />);
