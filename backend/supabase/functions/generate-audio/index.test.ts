@@ -75,12 +75,45 @@ interface ServerState {
    * failure window `generate-audio` has to reconcile.
    */
   failJobStartedPatch: boolean;
+  /**
+   * Simulate a second reader's `audio-status` poll adopting the parent row's
+   * job id onto chunk 0 the moment `markChapterAudioJobStarted` writes it.
+   *
+   * That is the real ordering (`audio-status/index.ts`, the chunk-0 adopt
+   * branch), and it is the one that makes this function's own chunk-0
+   * compare-and-swap fail against an id that is ITS OWN.
+   */
+  adoptChunkZeroOnJobStart: boolean;
   sentryEvents: Array<Record<string, unknown>>;
   errorEventsInserts: Array<Record<string, unknown>>;
   /** Part objects left in the `audio` bucket by an earlier, abandoned attempt. */
   stagedParts: string[];
+  /**
+   * `chapter_audio_chunks`, keyed by chunk row id.
+   *
+   * The whole point of migration 00095: every chunk of a chapter now has its
+   * own row and its own provider job id, because they are all started at once
+   * and `chapter_audio.provider_job_id` admits exactly one.
+   */
+  chunkRows: Map<string, {
+    id: string;
+    chapter_audio_id: string;
+    chunk_index: number;
+    char_count: number | null;
+    provider_job_id: string | null;
+    status: string;
+  }>;
+  /**
+   * Which `/run` calls refuse, by the zero-based order they are made in.
+   *
+   * Chunk 0 failing to start must kill the narration; a later chunk failing
+   * must not, and the two are only distinguishable if the fixture can refuse
+   * one particular request.
+   */
+  failRunsAt: number[];
   calls: {
     rpc: number;
+    chunkRpc: number;
     edgeTts: number;
     uploads: Array<{ path: string; bytes: number }>;
     runpodRun: number;
@@ -107,11 +140,15 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     runpodRunStatus: 200,
     runpodRunBody: () => ({ id: "job-xyz" }),
     failJobStartedPatch: false,
+    adoptChunkZeroOnJobStart: false,
     sentryEvents: [],
     errorEventsInserts: [],
     stagedParts: [],
+    chunkRows: new Map(),
+    failRunsAt: [],
     calls: {
       rpc: 0,
+      chunkRpc: 0,
       edgeTts: 0,
       uploads: [],
       patches: [] as ServerState["calls"]["patches"],
@@ -247,6 +284,18 @@ function makeFetchStub(state: ServerState): typeof fetch {
         // would land, so a test can assert on the row's state afterwards
         // rather than only on which PATCH bodies were sent.
         const idFilter = url.searchParams.get("id")?.replace(/^eq\./, "");
+        if (
+          state.adoptChunkZeroOnJobStart &&
+          typeof body.provider_job_id === "string"
+        ) {
+          for (const [id, chunk] of state.chunkRows) {
+            if (chunk.chunk_index !== 0) continue;
+            state.chunkRows.set(id, {
+              ...chunk,
+              provider_job_id: body.provider_job_id as string,
+            });
+          }
+        }
         if (idFilter) {
           for (const [key, row] of state.chapterAudio) {
             if (row.id === idFilter) {
@@ -309,6 +358,77 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return json({ Key: url.pathname });
     }
 
+    // `chapter_audio_chunks`: one row per provider request (migration 00095).
+    if (url.pathname === "/rest/v1/chapter_audio_chunks") {
+      if (request.method === "PATCH") {
+        const body = await request.json() as Record<string, unknown>;
+        state.calls.patches.push({ table: "chapter_audio_chunks", body });
+        const idFilter = url.searchParams.get("id")?.replace(/^eq\./, "");
+        const row = idFilter ? state.chunkRows.get(idFilter) : undefined;
+        if (!row) return json([]);
+        // `markChapterAudioChunkStarted` is a compare-and-swap on "still
+        // pending, still has no job". A fixture that always answered with a
+        // row would make every caller believe it won.
+        if (
+          url.searchParams.get("provider_job_id") === "is.null" &&
+          row.provider_job_id !== null
+        ) {
+          return json([]);
+        }
+        state.chunkRows.set(idFilter!, { ...row, ...body } as typeof row);
+        return json([{ id: row.id }]);
+      }
+      const parent = url.searchParams.get("chapter_audio_id")?.replace(
+        /^eq\./,
+        "",
+      );
+      // `chapterAudioChunkJobId` reads one row by id, which is how a lost
+      // compare-and-swap finds out WHOSE job the row is holding.
+      const byId = url.searchParams.get("id")?.replace(/^eq\./, "");
+      return json(
+        [...state.chunkRows.values()]
+          .filter((row) => !byId || row.id === byId)
+          .filter((row) => !parent || row.chapter_audio_id === parent)
+          .sort((a, b) => a.chunk_index - b.chunk_index),
+      );
+    }
+
+    if (url.pathname === "/rest/v1/rpc/claim_chapter_audio_chunks") {
+      state.calls.chunkRpc += 1;
+      const body = await request.json() as {
+        p_audio_id: string;
+        p_count: number;
+        p_char_counts: number[] | null;
+      };
+      // A claim always restarts at chunk 0, so it replaces the set rather
+      // than adding to it -- the migration deletes, and so does this.
+      for (const [id, row] of [...state.chunkRows]) {
+        if (row.chapter_audio_id === body.p_audio_id) {
+          state.chunkRows.delete(id);
+        }
+      }
+      const created = [];
+      for (let index = 0; index < body.p_count; index += 1) {
+        const id = `chunk-${body.p_audio_id}-${index}`;
+        const charCount = body.p_char_counts?.[index] ?? null;
+        state.chunkRows.set(id, {
+          id,
+          chapter_audio_id: body.p_audio_id,
+          chunk_index: index,
+          char_count: charCount,
+          provider_job_id: null,
+          status: "pending",
+        });
+        created.push({
+          chunk_id: id,
+          chunk_index: index,
+          char_count: charCount,
+          status: "pending",
+        });
+      }
+      return json(created);
+    }
+
     if (url.pathname === "/rest/v1/rpc/claim_chapter_audio_generation") {
       state.calls.rpc += 1;
       const body = await request.json() as {
@@ -341,6 +461,7 @@ function makeFetchStub(state: ServerState): typeof fetch {
     if (
       url.href.startsWith("https://api.runpod.ai/v2/minimax-speech-02-hd/run")
     ) {
+      const at = state.calls.runpodRun;
       state.calls.runpodRun += 1;
       const runBody = await request.json().catch(() => ({})) as {
         input?: { prompt?: unknown };
@@ -348,7 +469,17 @@ function makeFetchStub(state: ServerState): typeof fetch {
       if (typeof runBody?.input?.prompt === "string") {
         state.calls.runpodRunPrompts.push(runBody.input.prompt);
       }
-      return json(state.runpodRunBody(), state.runpodRunStatus);
+      if (state.failRunsAt.includes(at)) {
+        return json({ error: "no capacity" }, 503);
+      }
+      // A chapter now starts several jobs in one request, so each answer
+      // carries its own id -- "which job got cancelled" is otherwise
+      // unanswerable. The first keeps the id the older tests assert on.
+      const configured = state.runpodRunBody();
+      const body = configured.id === "job-xyz" && at > 0
+        ? { ...configured, id: `job-${at + 1}` }
+        : configured;
+      return json(body, state.runpodRunStatus);
     }
 
     if (
@@ -730,7 +861,9 @@ Deno.test("a retry after a failed recording claims cleanly and starts one new jo
     );
     const row = state.chapterAudio.get(`${CHAPTER_ID}:aria`);
     assertEquals(row?.status, "pending");
-    assertEquals(row?.provider_job_id, "job-xyz");
+    // The RETRY's job, not the cancelled one: the fixture hands out a distinct
+    // id per `/run` now, because a chapter can start several in one request.
+    assertEquals(row?.provider_job_id, "job-2");
   } finally {
     restoreEnv(env);
   }
@@ -895,7 +1028,7 @@ function chapterOf(content: string) {
   };
 }
 
-Deno.test("a chapter the provider would refuse whole is sent as its first chunk instead", async () => {
+Deno.test("a chapter the provider would refuse whole starts every chunk at once", async () => {
   const env = setTestEnv({
     NARRATION_GENERATION_ENABLED: "true",
     RUNPOD_API_KEY: "test-runpod-key",
@@ -915,16 +1048,289 @@ Deno.test("a chapter the provider would refuse whole is sent as its first chunk 
     assertEquals(status, 202);
     assertEquals(body.status, "PENDING");
     assertEquals(body.chunks, 2);
+    // Additive, and always empty here: nothing can be ready in the request
+    // that started it.
+    assertEquals(body.chunks_ready, []);
 
-    // One provider request, carrying a prompt the provider will actually take.
+    // BOTH chunks are at the provider when this request returns. They used to
+    // go one per `audio-status` poll, which is why a two-chunk chapter took a
+    // measured 101.6s to its first second of audio.
+    assertEquals(state.calls.runpodRun, 2);
+    assertEquals(state.calls.runpodRunPrompts.length, 2);
+    for (const sent of state.calls.runpodRunPrompts) {
+      assert(sent.length <= NARRATION_CHUNK_CHARS);
+      assert(sent.length < NARRATION_PROVIDER_CHAR_LIMIT);
+    }
+    // ...and between them they are the whole chapter, in order.
+    assertEquals(state.calls.runpodRunPrompts.join(""), content);
+
+    // One chunk row per chunk, each carrying its own job id and its own
+    // character count -- `chapter_audio.provider_job_id` admits exactly one
+    // id, which is why these rows exist at all.
+    const rows = [...state.chunkRows.values()];
+    assertEquals(rows.map((row) => row.chunk_index), [0, 1]);
+    assertEquals(rows.map((row) => row.provider_job_id), ["job-xyz", "job-2"]);
+    assertEquals(
+      rows.map((row) => row.char_count),
+      state.calls.runpodRunPrompts.map((prompt) => prompt.length),
+    );
+
+    // Chunk 0's id is still what the PARENT row holds, so
+    // `stillOwnsNarrationJob`, `isNarrationJobStale` and 00054's re-claim all
+    // keep reading what they have always read.
+    assertEquals(
+      state.chapterAudio.get(`${CHAPTER_ID}:aria`)!.provider_job_id,
+      "job-xyz",
+    );
+    assertEquals(body.job_id, "job-xyz");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a three-chunk chapter starts three jobs in ONE request and writes three rows", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // Past two chunks and inside `MAX_NARRATION_CHARS`. This is the case the
+    // old pipeline was worst at: three sequential ~45s jobs, ~135s before the
+    // reader heard anything, against a 180s `NARRATION_OVERDUE_MS`.
+    const content = longChapter(22_000);
+    const state = newState({ chapter: chapterOf(content) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.chunks, 3);
+    assertEquals(state.calls.runpodRun, 3);
+    assertEquals(state.calls.chunkRpc, 1);
+    assertEquals(
+      [...state.chunkRows.values()].map((row) => row.chunk_index),
+      [0, 1, 2],
+    );
+    assertEquals(
+      [...state.chunkRows.values()].map((row) => row.provider_job_id),
+      ["job-xyz", "job-2", "job-3"],
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a single-chunk chapter writes no chunk rows at all", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // 62% of the library. It keeps the path it has always had -- one job, one
+    // upload, straight to the stable path -- and no chunk rows, which is also
+    // what keeps `audio-status`'s legacy branch handling it unchanged.
+    const state = newState({ chapter: chapterOf(longChapter(8_900)) });
+
+    const { json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(body.chunks, 1);
     assertEquals(state.calls.runpodRun, 1);
-    const sent = state.calls.runpodRunPrompts[0];
-    assert(sent.length <= NARRATION_CHUNK_CHARS);
-    assert(sent.length < NARRATION_PROVIDER_CHAR_LIMIT);
-    // It is the START of the chapter, not a summary or a truncation: the rest
-    // follows in the next request.
-    assert(content.startsWith(sent));
-    assert(sent.length < content.length);
+    assertEquals(state.calls.chunkRpc, 0);
+    assertEquals(state.chunkRows.size, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("chunk 0 failing to start kills the narration and cancels the chunks that did start", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+    // The first `/run` refuses. Chunk 1's job is accepted and is now spend
+    // with nothing pointing at it, because the claim is about to be released.
+    state.failRunsAt = [0];
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 502);
+    assertEquals(body.error, "Narration generation failed to start");
+    assertEquals(state.calls.runpodCancel, ["job-2"]);
+    assertEquals(
+      state.chapterAudio.get(`${CHAPTER_ID}:aria`)!.status,
+      "failed",
+      "the claim must be released so a retry is not blocked for ten minutes",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a concurrent poll adopting chunk 0's job id must not get that job cancelled", async () => {
+  // Two readers press Listen at once. This request starts the jobs and writes
+  // chunk 0's id to the PARENT row; the other reader's `audio-status` poll,
+  // arriving in the window before the chunk-row swap, adopts that id onto the
+  // chunk-0 row. The swap here then fails -- against our own id. Cancelling on
+  // that boolean cancels the job BOTH rows point at, and the next poll reads
+  // CANCELLED, fails the narration, cancels the siblings and deletes the
+  // parts: two readers told "Try again", three jobs billed for nothing.
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+    state.adoptChunkZeroOnJobStart = true;
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.status, "PENDING");
+    assertEquals(
+      state.calls.runpodCancel,
+      [],
+      "chunk 0's job is the narration: it must survive its own adoption",
+    );
+    const rows = [...state.chunkRows.values()].sort((a, b) =>
+      a.chunk_index - b.chunk_index
+    );
+    assertEquals(rows[0].provider_job_id, "job-xyz");
+    assertEquals(rows[1].provider_job_id, "job-2");
+    assertEquals(
+      state.chapterAudio.get(`${CHAPTER_ID}:aria`)!.status,
+      "pending",
+      "the narration survives",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a LATER chunk failing to start leaves its row pending rather than failing the chapter", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+    // Chunk 1 gets a transient 503. Chunk 0 -- the only chunk the reader needs
+    // in the first 45 seconds -- went through, so killing the chapter here
+    // would cost them everything to save one retry.
+    state.failRunsAt = [1];
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.status, "PENDING");
+    assertEquals(body.chunks, 2);
+    assertEquals(
+      state.chapterAudio.get(`${CHAPTER_ID}:aria`)!.status,
+      "pending",
+    );
+
+    const rows = [...state.chunkRows.values()];
+    assertEquals(rows[0].provider_job_id, "job-xyz");
+    // Pending with NO job id is exactly the state `audio-status` recognises as
+    // "start this one, once".
+    assertEquals(rows[1].provider_job_id, null);
+    assertEquals(rows[1].status, "pending");
+    // Nothing is cancelled: chunk 0's job is the narration.
+    assertEquals(state.calls.runpodCancel, []);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a prefetch is refused with 503 before any row is claimed or job started", async () => {
+  // The gate ships closed. A prefetch is paid synthesis nobody asked for, so
+  // a client bug that prefetches in a loop must be stoppable with an env
+  // change rather than an app store release.
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+      purpose: "prefetch",
+    });
+
+    assertEquals(status, 503);
+    assertEquals(body.error, NARRATION_REFUSAL);
+    assertEquals(state.calls.rpc, 0, "no claim");
+    assertEquals(state.calls.chunkRpc, 0, "no chunk rows");
+    assertEquals(state.calls.runpodRun, 0, "no provider spend");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("with NARRATION_PREFETCH_ENABLED set, a prefetch generates like any other narration", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    NARRATION_PREFETCH_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+      purpose: "prefetch",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.chunks, 2);
+    assertEquals(state.calls.runpodRun, 2);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("an unrecognised purpose is treated as a reader pressing Listen, not as a way past the gate", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(8_900)) });
+
+    const { status } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+      purpose: "something_else",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(state.calls.runpodRun, 1);
   } finally {
     restoreEnv(env);
   }
@@ -1039,10 +1445,14 @@ Deno.test("a fresh claim clears the parts an abandoned attempt left behind", asy
       `${STORY_ID}/${CHAPTER_ID}/parts/aria.00.mp3`,
     ]);
     assertEquals(state.stagedParts, []);
-    // ...and the pipeline restarts at chunk 0.
-    assertEquals(state.calls.runpodRun, 1);
+    // ...and the pipeline restarts at chunk 0, with a fresh chunk set.
+    assertEquals(state.calls.runpodRun, 2);
     assert(
       state.chapter!.content.startsWith(state.calls.runpodRunPrompts[0]),
+    );
+    assertEquals(
+      [...state.chunkRows.values()].map((row) => row.chunk_index),
+      [0, 1],
     );
   } finally {
     restoreEnv(env);

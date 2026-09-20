@@ -7049,3 +7049,292 @@ zero" and this is not that:
 published against the current production functions by another lane; deploying
 mid-run would mean the library was written by two different pipelines. Deploy
 and migration are the owner's call, after that run finishes.
+
+## 2026-09-20 — Narration starts playing after one chunk, not after all of them
+
+**Both halves, one change.** The migration, the two edge functions **and** the
+Expo client that consumes the manifest are all in this diff: a manifest nobody
+reads is not a feature, and the two sides cannot be reviewed apart — the
+deploy-order note at the bottom is only correct because they ship together.
+Gates for both are in Tests below.
+
+### The problem, as the reader experienced it
+
+A chapter over the provider's ~10,000 character limit is split into up to three
+chunks. Those chunks were synthesised **one per `audio-status` poll**: chunk 1
+did not start until chunk 0 came back, chunk 2 not until chunk 1 did, and
+nothing was playable until all of them had been stitched into one file.
+
+Measured on production 2026-09-19: **101.6s** before a two-chunk chapter played
+its first second, and ~135s for a three-chunk one — against a 180s
+`NARRATION_OVERDUE_MS` in `expo/src/lib/listen-machine.ts`, the point at which
+the screen stops reassuring the reader and starts offering them a way out. A
+narration that was working perfectly was most of the way to looking broken.
+
+The reader now hears chunk 0 after roughly **one chunk's synthesis, whatever
+the chapter's length**, because every chunk starts in the same `generate-audio`
+request and each part is published as it lands. The ~45s figure attached to
+"one chunk" is one production job on 2026-09-19, and three requests arriving
+together queue against each other on a shared public endpoint, so treat this as
+a projection until it is re-measured live.
+
+### What changed
+
+**`00095_chapter_audio_chunks.sql` — a table, not columns.** Each chunk now
+carries its own provider job id, and `chapter_audio.provider_job_id` has a CHECK
+that admits exactly one, so this could not be columns on the parent. One row per
+chunk with `chunk_index`, `provider_job_id`, `storage_path`, `status`,
+`duration_seconds`, `char_count`; RLS mirroring `chapter_audio` exactly one join
+further out; `claim_chapter_audio_chunks(p_audio_id, p_count, p_char_counts)`,
+`security definer`, advisory-locked on the same (chapter, voice) key the
+generation claim uses, deleting any prior rows so a claim always restarts at
+chunk 0. `revoke all ... from public` before the `grant execute to service_role`
+— 00048's comment explains why that revoke and not the grant is what restricts
+it, and the companion test fails without it.
+
+**The migration number was confirmed against REMOTE**, not against the local
+directory: `supabase migration list --linked` shows local and remote both
+ending at `00094`, with no local-only and no remote-only rows. (The worktree had
+no `supabase/.temp`; it was linked by copying `project-ref` from the main
+checkout.)
+
+**`chapter_audio.provider_job_id` still holds chunk 0's job id.** Nothing that
+reads it changed meaning, so `stillOwnsNarrationJob`, `isNarrationJobStale` and
+00054's re-claim path are untouched.
+
+**`generate-audio`** claims the chunk set, then starts **every** chunk with
+`Promise.allSettled` bounded by a new `NARRATION_MAX_CONCURRENT_CHUNKS = 3`
+(equal to `NARRATION_MAX_CHUNKS`, so today a documented no-op guard), and
+records each job id on its row. Chunk 0 failing to start still fails the whole
+claim exactly as before (`releaseClaim` + `reportError` + 502) and cancels
+anything that did start; **a later chunk failing to start does not** — its row
+is left `pending` with a null job id and `audio-status` retries the start once.
+Killing a chapter the reader could already be listening to because chunk 3 got a
+transient 500 is the worse trade.
+
+**`audio-status`** polls every pending chunk in parallel, publishes each
+finished one to its existing `narrationPartPath`, measures its duration from its
+own MPEG frames, and **answers with a manifest on every poll**:
+
+```json
+{
+  "status": "PENDING",
+  "story_id": "...", "chapter_id": "...", "voice_id": "aria",
+  "chunks": 3,
+  "chunk_manifest": [
+    { "index": 0, "url": "https://.../audio/<story>/<chapter>/parts/aria.00.mp3",
+      "duration_ms": 45120, "char_count": 8610, "ready": true },
+    { "index": 1, "url": null, "duration_ms": null, "char_count": 8610, "ready": false },
+    { "index": 2, "url": null, "duration_ms": null, "char_count": 4780, "ready": false }
+  ]
+}
+```
+
+`url` is `null` for a chunk that is not ready — never omitted, never a
+placeholder — so the array's length is the chunk count and index `i` is always
+chunk `i`. The COMPLETED answer carries `audio_url` **and** the same manifest,
+and so does a cached replay, so a client mid-playthrough is never forced to
+switch sources on the same poll.
+
+**The stitch stays.** `concatenateMp3`'s frame-count check is the only thing in
+this system that catches a lost seam. It is simply no longer on the critical
+path: it runs behind a reader who has been listening since chunk 0.
+
+**The staged parts now SURVIVE a successful stitch.** They used to be deleted
+the instant the joined file existed, because they were dead weight in a bucket
+billed by the gigabyte. They are not dead weight now — the manifest hands those
+exact URLs to the reader, who is still playing them. They are still removed on
+the failure path and on a fresh claim, where the reason was never storage cost
+but "never resume onto debris from a different revision of the prose".
+
+> **Follow-up (not done here):** `record_orphaned_audio_object()` (00062)
+> records only the parent row's `storage_path` when a `chapter_audio` row is
+> deleted. It should also enqueue the `parts/` prefix, or deleting a
+> `chapter_audio` row now leaves its parts in the bucket forever. This is a
+> storage-cost leak, not a correctness one, and it wants its own migration.
+
+**The prefetch gate ships closed.** `generate-audio` accepts
+`purpose: "prefetch"` and `canGenerateNarration` refuses it unless
+`NARRATION_PREFETCH_ENABLED` is set — **checked before**
+`NARRATION_GENERATION_ENABLED`, so opening narration to readers never silently
+opens prefetch too. A prefetch is paid synthesis nobody asked for; behind its
+own flag, a client that prefetches in a loop is stopped with an env change
+rather than an app store release. Safe default: 503, before any chunk row is
+written or any job started.
+
+**Two comments that had become lies.** `NARRATION_MAX_CHUNKS`'s rationale
+argued from "chunks run sequentially … 3 × ~45s = 135s, inside
+`NARRATION_OVERDUE_MS`". That reasoning is gone, so it was rewritten: the
+constant is now derived from the Edge Function's ~150MB memory ceiling **alone**,
+with an explicit "do not raise this because narration got faster". The constant
+itself did not move. `narrationPartPath` and `removeNarrationParts` were
+rewritten for the same reason.
+
+### The client half
+
+**`lib/chunk-player.ts` — a playlist, outside React.** Two `Audio.Sound` slots
+(never three), one global timeline stitched from the pieces' durations, an
+8s preload lead before each boundary, and `setParts` as the only way a
+playthrough learns anything. The screen keeps a ref to one of these and
+forwards its status; nothing in it imports React, so every boundary rule is
+tested against a fake `createAsync` with no renderer and no timers.
+
+**`listenReducer` keeps polling past `ready`.** A progressive playthrough is
+`ready` on chunk 0 with the rest still at the provider, and the poll is the only
+thing that ever learns the later chunks' urls. `shouldPoll` returns true for
+`ready` with an incomplete manifest. A playthrough commits to its source: a
+cached narration and every replay play the single stitched file and never look
+at a manifest.
+
+**A total that spans the chapter before the chapter exists.** Unready manifest
+entries' `char_count` is kept (`manifest.pending`) and the player estimates
+those pieces' length from it, so the provisional total covers the whole chapter
+from the first poll and only gets sharper. Dropping them made the scrubber hit
+100% of "~10:12" at the end of chunk 0 and jump to "~20:00" when chunk 1 landed.
+
+**Failure is rendered, in three places it was not.** A load that rejects on
+`start`, at a boundary, or after a seek now reports through `onError` and the
+screen dispatches the same `playback_failed` the single-file path always did —
+the chunked path used to reject into a `void`, leaving a player bar whose Play
+button did nothing. A terminal `failed` or `missing` poll ends a progressive
+playthrough and names the chapter, instead of polling a dead row every 2.5s
+behind silence. A terminal answer also stops the audio, because a
+progressive playthrough can fail while chunk 0 is still playing and narration
+behind a "did not finish" screen leaves no transport to stop it.
+`waitingForChunk` is rendered under the scrubber, so a genuine wait at a
+boundary reads as a wait rather than a hang. `offline` and
+`unavailable` are deliberately **not** terminal here: they say nothing about
+the chunks already in hand.
+
+**Two races the review caught, both on the backend.** `generate-audio`'s
+per-chunk compare-and-swap cancelled the job on a lost swap — including chunk
+0's own job, which a second reader's poll may legitimately have adopted onto
+the chunk row from the parent in the window before the swap. It now reads the
+row and cancels only a job that is genuinely somebody else's. And the stale
+path in `audio-status`'s chunk reconcile marked the row failed without
+cancelling the siblings or removing the parts, unlike `failNarration`; it now
+does both, so a timeout no longer leaks up to two paid jobs.
+
+### The deploy window, and why the old path is still here
+
+**The entire one-chunk-per-poll branch in `audio-status` is kept**, reached
+exactly when a `chapter_audio` row has NO chunk rows. That is one of two things:
+a single-chunk chapter (which never needed chunk rows and still does not get
+any), or a multi-chunk job started by the pre-00095 deploy and still in flight.
+It is commented as deletable once no such row can remain — a `pending` row goes
+stale in ten minutes, so an hour after the deploy there are none.
+
+**A single-chunk chapter is the minority, not 62% of the library.** An earlier
+draft of this note and of `generate-audio`'s comment said 62%; that is the share
+of live chapters under the *provider's* 10,000-character limit, which is not the
+line that decides this. The split happens at `NARRATION_CHUNK_CHARS` = 9,000,
+and the median live chapter is 9,112 characters — so rather more than half of
+published chapters take two provider requests, and the multi-chunk path is the
+ordinary one, not the exception.
+
+### Tests
+
+Both halves, because both halves are in this diff.
+
+```
+deno check supabase/functions/**/*.ts        clean
+deno test --allow-all supabase/functions/    ok | 1062 passed | 0 failed (46s)
+deno test --allow-all supabase/migrations/   ok | 290 passed | 0 failed (9m45s)
+  (of which 00095_chapter_audio_chunks_test.ts: 7 passed)
+deno fmt --check <touched files>             clean
+
+pnpm typecheck                               clean
+pnpm lint                                    0 errors (33 pre-existing warnings)
+pnpm exec jest --ci                          129 suites, 1358 passed, 0 failed
+```
+
+`_shared/narration-chunks.test.ts` and `_shared/narration-mp3.test.ts` needed
+**no changes**, which was the point of checking: the splitter and the stitcher
+did not move.
+
+Every new assertion was checked by reverting what it guards, per the standing
+rule that a regression test is not done until it has failed:
+
+- removing the function's `revoke`/`grant` → the two migration security tests
+  fail (the claim RPC becomes callable by an ordinary reader).
+- putting `removeNarrationParts` back on the success path → "keeps the parts"
+  fails.
+- forcing every manifest `url` to null → "a playable url for chunk 0" fails.
+- restoring the unconditional `cancelRunpodNarration` on a lost chunk swap →
+  "a concurrent poll adopting chunk 0's job id" fails.
+- removing the sibling-cancel/part-removal from the stale path → "a chunked run
+  that goes stale" fails.
+- dropping the try/catch from `start`, `advance` and `seek`, and the token
+  guard in `advance` → all four of the client's new player tests fail.
+- dropping unready entries' `char_count`, and the terminal `failed`/`missing`
+  branch in the reducer → three of the client's new tests fail.
+
+### NOT DEPLOYED
+
+Nothing here has been deployed and the migration has not been run. Merged is not
+deployed on this repo.
+
+**Deploy order, and it matters:**
+
+1. `supabase db push` — migration `00095`.
+2. `supabase functions deploy audio-status`.
+3. `supabase functions deploy generate-audio`.
+
+`audio-status` goes **before** `generate-audio` because it must understand chunk
+rows before anything starts writing them. The reverse order leaves a window
+where `generate-audio` writes chunk rows that the deployed `audio-status` cannot
+see, so it takes the legacy branch, counts staged parts to decide which chunk is
+next, and starts chunk 1 a second time — duplicate spend and a file that repeats
+its opening.
+
+`NARRATION_PREFETCH_ENABLED` must stay **unset** at deploy. That is what makes
+the prefetch half of this ship dark.
+
+**Both functions must be deployed before any client build reaches devices, or
+"ships dark" is false.** `origin/main`'s deployed `generate-audio` hardcodes
+`purpose: "chapter"` and ignores the request body, and
+`NARRATION_GENERATION_ENABLED` is **on** in production. So a client that
+shipped first would have every reader who passes max(50%, 45s) of a chapter
+start a real, ungated, paid RunPod job for the next one — and the new 15s
+background prefetch poll would drive each of them to completion against the old
+`audio-status`. The prefetch flag cannot stop that, because the deployed
+function never reads the field the flag gates.
+
+**Functions before the migration is a full narration outage, not a degraded
+window.** Deployed against a database without `chapter_audio_chunks`, every
+`audio-status` poll 500s on the missing relation and every multi-chunk
+`generate-audio` 502s at the chunk claim — which, per the paragraph above, is
+now most chapters. The migration is step 1 for that reason and not only for
+tidiness.
+
+### Known and not fixed, deliberately
+
+Recorded here rather than patched, because each one needs a change wider than
+this one and none of them is reachable while the gates are shut.
+
+**Two narrow duplicate-spend windows remain.**
+
+1. `audio-status`'s chunk-start retry records the job id (`markChapterAudio-
+   ChunkStarted`) *after* the provider has accepted the job, and that write is
+   not wrapped: a throw leaks an uncancelled job. It is worse than it was,
+   because the client now polls a ready-with-manifest narration indefinitely —
+   so a *persistent* write failure is a new job every 2.5 seconds rather than
+   one and then silence. The fix is a start/record pairing that cancels on a
+   failed record, in both functions, and it wants its own change.
+2. An isolate dying between `startAllChunks` and `markChapterAudioJobStarted`
+   leaves rows with no job ids while the jobs run unseen; the next poll starts
+   a fresh set within 2.5s. The legacy path waited out the ten-minute stale
+   window here, so this is a regression in exposure even though the underlying
+   hole is old. Closing it means recording intent before spending — a
+   `provider_job_id`-less "starting" marker, or ids written before the run call
+   returns.
+
+**Stable part paths can splice two revisions of the prose.** Parts now survive
+at `parts/{voice}.NN.mp3`, and `edit-story` deletes the `chapter_audio` row but
+not the parts. The next Listen re-creates the *same* paths with the new prose,
+so a reader still on the old playthrough preloads chunk N+1 from the same URL
+and hears the revision. Putting the `chapter_audio` row id (or its
+`generated_at`) into the parts prefix fixes this **and** the
+`record_orphaned_audio_object()` follow-up noted above in one change — the
+prefix becomes unique per generation, so sweeping it is unambiguous. They should
+be done together, in the migration that extends the orphan sweep.

@@ -32,8 +32,12 @@ import { generateWithEdgeTts } from "../_shared/edge-tts.ts";
 import {
   cancelRunpodNarration,
   canReadChapter,
+  chapterAudioChunkJobId,
+  type ChapterAudioChunkRow,
+  claimChapterAudioChunks,
   claimChapterAudioGeneration,
   findReadyChapterAudio,
+  markChapterAudioChunkStarted,
   markChapterAudioFailed,
   markChapterAudioJobStarted,
   markChapterAudioReady,
@@ -49,6 +53,7 @@ import {
   MAX_NARRATION_CHARS,
   NARRATION_CHUNK_CHARS,
   NARRATION_MAX_CHUNKS,
+  NARRATION_MAX_CONCURRENT_CHUNKS,
   NARRATION_PROVIDER_CHAR_LIMIT,
   splitNarrationText,
 } from "../_shared/narration-chunks.ts";
@@ -168,12 +173,20 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
+    // What this narration is for, which the gate below now reads.
+    //
+    // Anything other than the one value a client may ask for is treated as a
+    // reader pressing Listen, which is the conservative reading: an unknown
+    // purpose must never be a way around the prefetch gate, and it must never
+    // turn a normal Listen into a 503 either.
+    const purpose = body.purpose === "prefetch" ? "prefetch" : "chapter";
+
     const entitlement = canGenerateNarration({
       userId: user.id,
       storyId,
       chapterId,
       voiceId,
-      purpose: "chapter",
+      purpose,
     });
     if (!entitlement.allowed) {
       return respond({ error: NARRATION_REFUSAL }, 503);
@@ -188,9 +201,11 @@ export async function handleRequest(req: Request): Promise<Response> {
     // refuses anything over ~10,000 characters and a normal full-length
     // chapter is 9,000-13,000, so `splitNarrationText` cuts the prose at
     // paragraph (then sentence) boundaries into pieces the provider will
-    // actually take. The pieces are narrated one per `audio-status` poll and
-    // stitched into a single MP3 at the end; none of that is visible to the
-    // caller, which still gets one 202 and then polls exactly as before.
+    // actually take. Every piece is started below in this same request, and
+    // `audio-status` publishes each one as it lands and stitches them into a
+    // single MP3 once they are all in. The caller still gets one 202 and then
+    // polls exactly as before -- what changed is that its poll now answers
+    // with playable chunk URLs long before the stitched file exists.
     //
     // Done here, after the cache lookups and the entitlement gate, so a
     // chapter that was narrated before it grew still replays for free; and
@@ -325,9 +340,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     // objects, which is precisely how that could happen.)
     await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
 
-    let jobId: string;
-    try {
-      if (voice.provider === "edge_tts") {
+    // edge-tts is synchronous: one call, one file, no chunks, no polling.
+    if (voice.provider === "edge_tts") {
+      try {
         const params = voice.provider_voice_params as { voice?: unknown };
         const edgeVoice = typeof params.voice === "string"
           ? params.voice
@@ -346,14 +361,96 @@ export async function handleRequest(req: Request): Promise<Response> {
           audio_url: await publicAudioUrl(serviceClient, storagePath),
           cached: false,
         });
+      } catch (providerError) {
+        const errorCode = providerErrorCode(providerError);
+        await releaseClaim(serviceClient, claim.id!, errorCode, {
+          story_id: storyId,
+          chapter_id: chapterId,
+        });
+        await reportError({
+          bucket: "generation.audio",
+          severity: classifyStartFailureSeverity(errorCode),
+          errorCode,
+          error: providerError,
+          userId: user.id,
+          context: { story_id: storyId, chapter_id: chapterId },
+        });
+        return respond({ error: "Narration generation failed to start" }, 502);
       }
-      // Chunk 0 only. `audio-status` derives the same chunk list from the same
-      // stored chapter text when this job finishes, and starts chunk 1 then.
-      jobId = await startProviderJob(voice, chunks[0]);
-    } catch (providerError) {
-      // The provider never accepted a job, so there is nothing to reconcile
-      // -- this is the ordinary "generation failed to start" path.
-      const errorCode = providerErrorCode(providerError);
+    }
+
+    // --- Every chunk starts here, in this request ---------------------------
+    //
+    // Chunks used to be started one per `audio-status` poll, which meant the
+    // reader heard nothing until the last one finished and the parts were
+    // stitched: a measured 101.6s on a two-chunk chapter, ~135s on three.
+    // Starting them together makes time-to-first-audio one chunk's synthesis
+    // (~45s) whatever the chapter's length, because `audio-status` publishes
+    // chunk 0's part as soon as it lands and the client plays it while the
+    // rest are still at the provider. The stitch still happens and is still
+    // verified, but behind a reader who is already listening.
+    //
+    // Chunk rows are written only for a chapter that actually has more than
+    // one chunk, which is the MINORITY of the library: the split happens at
+    // `NARRATION_CHUNK_CHARS` (9,000), not at the provider's 10,000, and the
+    // median live chapter is 9,112 characters -- so rather more than half of
+    // published chapters take two requests. (62% is the share under the
+    // *provider* limit, which is a different line and not the one that
+    // decides this.) A single-chunk chapter keeps the path it has always had: one job, one upload, straight to the stable
+    // path, no staged part and no second object in the bucket. It also keeps
+    // `audio-status`'s legacy branch working for it unchanged, which is the
+    // same branch that finishes jobs started by the pre-00095 function.
+    let chunkRows: ChapterAudioChunkRow[] = [];
+    if (chunks.length > 1) {
+      try {
+        chunkRows = await claimChapterAudioChunks(
+          serviceClient,
+          claim.id!,
+          chunks.map((chunk) => chunk.length),
+        );
+      } catch (chunkClaimError) {
+        // Nothing has been started yet, so this costs no provider spend --
+        // but the claim must be released or the (chapter, voice) pair sits
+        // `pending` for ten minutes before 00054 lets anyone retry it.
+        await releaseClaim(
+          serviceClient,
+          claim.id!,
+          "narration_chunk_claim_failed",
+          { story_id: storyId, chapter_id: chapterId },
+        );
+        await reportError({
+          bucket: "generation.audio",
+          severity: "high",
+          errorCode: "narration_chunk_claim_failed",
+          error: chunkClaimError,
+          userId: user.id,
+          context: {
+            story_id: storyId,
+            chapter_id: chapterId,
+            chunks: chunks.length,
+          },
+        });
+        return respond({ error: "Narration generation failed to start" }, 502);
+      }
+    }
+
+    const started = await startAllChunks(voice, chunks);
+    const startedJobIds = started.flatMap((outcome) =>
+      outcome.ok ? [outcome.jobId] : []
+    );
+
+    // **Chunk 0 is the only chunk the reader needs in the first 45 seconds**,
+    // so it is the only one whose failure to start kills the whole narration.
+    // A later chunk that got a transient 500 leaves its row `pending` with no
+    // job id; `audio-status` retries that start once on its next poll. Failing
+    // a chapter the reader could already be listening to because chunk 3 was
+    // unlucky is the worse trade -- it costs them everything, to save a retry.
+    const first = started[0];
+    if (!first.ok) {
+      // Any later chunk that DID start is spend with nothing pointing at it:
+      // this claim is about to be released, so cancel them before it is.
+      for (const jobId of startedJobIds) await cancelRunpodNarration(jobId);
+      const errorCode = providerErrorCode(first.error);
       await releaseClaim(serviceClient, claim.id!, errorCode, {
         story_id: storyId,
         chapter_id: chapterId,
@@ -362,7 +459,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         bucket: "generation.audio",
         severity: classifyStartFailureSeverity(errorCode),
         errorCode,
-        error: providerError,
+        error: first.error,
         userId: user.id,
         context: { story_id: storyId, chapter_id: chapterId },
       });
@@ -370,16 +467,20 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
 
     try {
-      await markChapterAudioJobStarted(serviceClient, claim.id!, jobId);
+      // Chunk 0's id, on the PARENT row, exactly as before. Everything that
+      // reads `chapter_audio.provider_job_id` -- `stillOwnsNarrationJob`,
+      // `isNarrationJobStale`, 00054's re-claim -- keeps working untouched
+      // because what it finds there has not changed meaning.
+      await markChapterAudioJobStarted(serviceClient, claim.id!, first.jobId);
     } catch (recordError) {
-      // RunPod already accepted `jobId` and is generating on it -- this
-      // write is what would have let anything ever learn that id again. A
-      // retry now would reclaim this same row and start a second job on top
-      // of one already running unseen, exactly the duplicate spend the
+      // RunPod already accepted these jobs and is generating on them -- this
+      // write is what would have let anything ever learn their ids again. A
+      // retry now would reclaim this same row and start more jobs on top of
+      // ones already running unseen, exactly the duplicate spend the
       // (chapter, voice) claim exists to prevent. Cancel what we can, then
       // fail the row so a retry gets a clean claim instead of an untracked
       // race.
-      await cancelRunpodNarration(jobId);
+      for (const jobId of startedJobIds) await cancelRunpodNarration(jobId);
       await releaseClaim(serviceClient, claim.id!, "job_not_recorded", {
         story_id: storyId,
         chapter_id: chapterId,
@@ -399,19 +500,111 @@ export async function handleRequest(req: Request): Promise<Response> {
       return respond({ error: "Narration generation failed to start" }, 502);
     }
 
+    for (let index = 0; index < chunkRows.length; index += 1) {
+      const outcome = started[index];
+      if (!outcome?.ok) {
+        // Left `pending` with no job id on purpose: that is the state
+        // `audio-status` recognises as "start this one, once".
+        await logError({
+          bucket: "generation.audio",
+          severity: "low",
+          errorCode: "narration_chunk_start_deferred",
+          error: outcome?.ok === false ? outcome.error : undefined,
+          userId: user.id,
+          context: {
+            story_id: storyId,
+            chapter_id: chapterId,
+            chunk: index,
+            chunks: chunks.length,
+          },
+        });
+        continue;
+      }
+      try {
+        const recorded = await markChapterAudioChunkStarted(
+          serviceClient,
+          chunkRows[index].id,
+          outcome.jobId,
+        );
+        // Lost the compare-and-swap -- but "lost" and "somebody already wrote
+        // OUR id" look identical from a boolean, and on chunk 0 the second is
+        // a real ordering, not a theoretical one: `markChapterAudioJobStarted`
+        // above puts this job id on the PARENT row, and a concurrent reader's
+        // `audio-status` poll adopts a parent id onto a chunk-0 row that has
+        // none. That adoption lands between the two, this swap then fails, and
+        // cancelling here would cancel the one job both rows point at --
+        // ending a narration two readers are waiting on and billing three jobs
+        // for nothing. So ask what the row actually holds, and cancel only
+        // when it is genuinely somebody else's.
+        if (!recorded) {
+          let ownedByUs = false;
+          try {
+            ownedByUs = await chapterAudioChunkJobId(
+              serviceClient,
+              chunkRows[index].id,
+            ) ===
+              outcome.jobId;
+          } catch (readError) {
+            // Unknowable. Chunk 0's id survives on the parent row either way,
+            // so leaving it running costs at most a job `audio-status` will
+            // adopt; cancelling it costs the narration. Any later chunk has no
+            // second record, so an uncollectable job is the worse outcome.
+            ownedByUs = index === 0;
+            await logError({
+              bucket: "generation.audio",
+              severity: "low",
+              errorCode: "narration_chunk_owner_unreadable",
+              error: readError,
+              userId: user.id,
+              context: {
+                story_id: storyId,
+                chapter_id: chapterId,
+                chunk: index,
+              },
+            });
+          }
+          if (!ownedByUs) await cancelRunpodNarration(outcome.jobId);
+        }
+      } catch (recordChunkError) {
+        // Chunk 0 is recoverable without cancelling anything: the parent row
+        // holds its id and `audio-status` adopts it rather than starting a
+        // second job. Any later chunk's id is genuinely lost, so the job is
+        // cancelled and the row left for the one retry.
+        if (index > 0) await cancelRunpodNarration(outcome.jobId);
+        await logError({
+          bucket: "generation.audio",
+          severity: index === 0 ? "medium" : "high",
+          errorCode: "narration_chunk_job_not_recorded",
+          error: recordChunkError,
+          userId: user.id,
+          context: {
+            story_id: storyId,
+            chapter_id: chapterId,
+            chunk: index,
+            chunks: chunks.length,
+          },
+        });
+      }
+    }
+
     return respond({
       status: "PENDING",
       story_id: storyId,
       chapter_id: chapterId,
       voice_id: voiceId,
-      job_id: jobId,
+      job_id: first.jobId,
       cached: false,
       // How many provider requests this narration will take. Additive and
       // advisory: the client polls the same way whatever the number is, but a
-      // four-chunk chapter takes roughly four times as long as a one-chunk
-      // chapter and a progress indicator that knows this can stop calling a
-      // working narration "slow".
+      // progress indicator that knows the number can stop calling a working
+      // narration "slow".
       chunks: chunks.length,
+      // Additive, and always empty here: nothing can be ready in the same
+      // request that started it. It exists so the field's TYPE is present from
+      // the first response of a narration rather than appearing partway
+      // through, and so a client can hold one shape for the whole lifecycle.
+      // `audio-status` fills the real manifest.
+      chunks_ready: [] as number[],
     }, 202);
   } catch (error) {
     console.error("generate-audio error:", error);
@@ -423,6 +616,50 @@ export async function handleRequest(req: Request): Promise<Response> {
     });
     return respond({ error: "Internal server error" }, 500);
   }
+}
+
+/** One chunk's attempt to reach the provider: an id, or the reason there is none. */
+type ChunkStartOutcome =
+  | { ok: true; jobId: string }
+  | { ok: false; error: unknown };
+
+/**
+ * Start every chunk, together, and report each one's fate separately.
+ *
+ * `Promise.allSettled` rather than `Promise.all` because one chunk's failure
+ * must not discard the others' job ids: those jobs are already running and
+ * already being billed, and an id that never comes back is spend nothing can
+ * collect or cancel. The caller decides what each failure means -- chunk 0's
+ * is fatal, a later chunk's is a retry.
+ *
+ * Batched at `NARRATION_MAX_CONCURRENT_CHUNKS`, which today equals
+ * `NARRATION_MAX_CHUNKS` and so never actually splits a chapter into more than
+ * one batch. It is a guard for the day the chunk ceiling rises, not a
+ * behaviour anything currently exercises.
+ */
+async function startAllChunks(
+  voice: VoiceRecord,
+  chunks: string[],
+): Promise<ChunkStartOutcome[]> {
+  const outcomes: ChunkStartOutcome[] = [];
+  for (
+    let at = 0;
+    at < chunks.length;
+    at += NARRATION_MAX_CONCURRENT_CHUNKS
+  ) {
+    const batch = chunks.slice(at, at + NARRATION_MAX_CONCURRENT_CHUNKS);
+    const settled = await Promise.allSettled(
+      batch.map((text) => startProviderJob(voice, text)),
+    );
+    for (const result of settled) {
+      outcomes.push(
+        result.status === "fulfilled"
+          ? { ok: true, jobId: result.value }
+          : { ok: false, error: result.reason },
+      );
+    }
+  }
+  return outcomes;
 }
 
 /** Start a provider job for a voice's configured backend, or throw. */

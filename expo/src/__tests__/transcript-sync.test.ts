@@ -1,10 +1,12 @@
 import {
+  buildChunkAnchoredCues,
   buildCues,
   buildTranscriptLines,
   cueIndexAt,
   cueStartMs,
   estimateCues,
   formatClock,
+  TRANSCRIPT_LEAD_MS,
 } from "@/lib/transcript-sync";
 
 const PARAGRAPHS = [
@@ -127,6 +129,132 @@ describe("finding the line being read", () => {
   it("hands back a line's start so tapping it can seek there", () => {
     expect(cueStartMs(cues, 1)).toBe(cues[1].startMs);
     expect(cueStartMs(cues, 42)).toBeNull();
+  });
+});
+
+describe("the highlight runs slightly ahead of the playhead", () => {
+  const lines = buildTranscriptLines(PARAGRAPHS);
+  const cues = estimateCues(lines, 30_000);
+
+  it("lights the next line while the playhead is still inside the previous one", () => {
+    const boundary = cues[1].startMs;
+    // Every cause of the lag pushes the same way -- the reported position is
+    // stale, the device output is behind it, and React has to render -- so the
+    // lookup is deliberately ahead of where the player says it is.
+    expect(cueIndexAt(cues, boundary - 1)).toBe(1);
+    expect(cueIndexAt(cues, boundary - TRANSCRIPT_LEAD_MS + 1)).toBe(1);
+    // ...but only within the lead. A line that starts a full second away is
+    // not the line being read.
+    expect(cueIndexAt(cues, boundary - TRANSCRIPT_LEAD_MS - 1_000)).toBe(0);
+  });
+
+  it("never lights a line that has not started within the lead window", () => {
+    cues.forEach((cue) => {
+      const index = cueIndexAt(cues, cue.startMs);
+      const lit = cues.find((candidate) => candidate.index === index);
+      expect(lit).toBeTruthy();
+      expect((lit as { startMs: number }).startMs)
+        .toBeLessThanOrEqual(cue.startMs + TRANSCRIPT_LEAD_MS);
+    });
+  });
+
+  it("leaves seeking alone: tapping a line starts at that line", () => {
+    // Shifting this too would start playback partway through the previous
+    // sentence, which is the one thing a tap must not do.
+    expect(cueStartMs(cues, 1)).toBe(cues[1].startMs);
+    expect(cueIndexAt(cues, cues[1].startMs, 0)).toBe(1);
+  });
+});
+
+describe("anchoring the transcript to the chunks it was synthesized in", () => {
+  const CHAPTER = [
+    "aaaaaaaaaa. bbbbbbbbbb.",
+    "cccccccccc. dddddddddd.",
+  ];
+
+  it("starts the first line of the second chunk exactly where the first chunk ends", () => {
+    const lines = buildTranscriptLines(CHAPTER);
+    const chunks = [
+      { durationMs: 20_000, charCount: 22 },
+      { durationMs: 40_000, charCount: 22 },
+    ];
+    const cues = buildChunkAnchoredCues(lines, chunks);
+    // Two lines a chunk, by cumulative character count.
+    expect(cues).toHaveLength(4);
+    expect(cues[2].startMs).toBe(20_000);
+    expect(cues[cues.length - 1].endMs).toBe(60_000);
+  });
+
+  it("resets the estimate's error at each boundary instead of accumulating it", () => {
+    const lines = buildTranscriptLines(CHAPTER);
+    // The two chunks hold the same amount of text but the narrator took twice
+    // as long over the second. A whole-chapter estimate cannot know that; the
+    // chunk-anchored one cannot get it wrong.
+    const cues = buildChunkAnchoredCues(lines, [
+      { durationMs: 20_000, charCount: 22 },
+      { durationMs: 40_000, charCount: 22 },
+    ]);
+    const flat = estimateCues(lines, 60_000);
+    expect(cues[2].startMs).toBe(20_000);
+    expect(flat[2].startMs).toBe(30_000);
+  });
+
+  it("refuses to invent a timeline when a chunk has no measured duration", () => {
+    const lines = buildTranscriptLines(CHAPTER);
+    expect(
+      buildChunkAnchoredCues(lines, [
+        { durationMs: 20_000, charCount: 22 },
+        { durationMs: null, charCount: 22 },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("leaves the prose beyond the synthesized chunks uncued", () => {
+    const lines = buildTranscriptLines(CHAPTER);
+    const cues = buildChunkAnchoredCues(lines, [
+      { durationMs: 20_000, charCount: 22 },
+    ]);
+    // Two of the four lines exist as audio. Crushing the other two into the
+    // chunk that does exist would put the highlight on the wrong line.
+    expect(cues).toHaveLength(2);
+    expect(cues[cues.length - 1].endMs).toBe(20_000);
+  });
+});
+
+describe("which timeline buildCues uses", () => {
+  const lines = buildTranscriptLines(PARAGRAPHS);
+  const chunks = [
+    { durationMs: 10_000, charCount: 20 },
+    { durationMs: 20_000, charCount: 80 },
+  ];
+
+  it("prefers real timings over everything", () => {
+    const cues = buildCues(
+      lines,
+      60_000,
+      [{ index: 0, startMs: 0, endMs: 1200 }],
+      chunks,
+    );
+    expect(cues).toEqual([{ index: 0, startMs: 0, endMs: 1200 }]);
+  });
+
+  it("prefers chunk boundaries over the whole-chapter estimate", () => {
+    const cues = buildCues(lines, 60_000, undefined, chunks);
+    expect(cues).toEqual(buildChunkAnchoredCues(lines, chunks));
+    expect(cues).not.toEqual(estimateCues(lines, 60_000));
+  });
+
+  it("falls back to the estimate with no timings and no chunks", () => {
+    expect(buildCues(lines, 60_000, undefined, undefined))
+      .toEqual(estimateCues(lines, 60_000));
+  });
+
+  it("falls back to the estimate when the chunks cannot carry a timeline", () => {
+    expect(
+      buildCues(lines, 60_000, undefined, [
+        { durationMs: null, charCount: 20 },
+      ]),
+    ).toEqual(estimateCues(lines, 60_000));
   });
 });
 

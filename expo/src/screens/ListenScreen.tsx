@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  AppState,
   BackHandler,
   Modal,
   Platform,
@@ -28,6 +29,16 @@ import { imageAssets } from "@/data/images";
 import { getDefaultVoices, type VoiceId } from "@/data/voices";
 import { preferredVoiceId } from "@/lib/voices";
 import { captureError } from "@/lib/analytics";
+import {
+  CHUNK_PROGRESS_INTERVAL_MS,
+  type ChunkPlayer,
+  createChunkPlayer,
+} from "@/lib/chunk-player";
+import {
+  AUTO_ADVANCE_DEFAULT,
+  autoAdvanceEnabled,
+  setAutoAdvanceEnabled,
+} from "@/lib/listen-prefs";
 import {
   canRetry,
   initialListenState,
@@ -92,6 +103,30 @@ const POLL_INTERVAL_MS = 2500;
 const TICK_INTERVAL_MS = 1000;
 
 /**
+ * How far into a chapter to start narrating the next one.
+ *
+ * Halfway is the point where staying is more likely than leaving, and it leaves
+ * roughly a chapter's worth of time for a job that takes about a minute and a
+ * half. The floor matters more than the fraction: **every prefetch is a real
+ * RunPod job costing real money**, so a short chapter -- where half of it is
+ * less than 45 seconds of listening -- never prefetches at all. Whoever is
+ * skimming three-minute chapters is not the reader this spend is for.
+ */
+const PREFETCH_AT_FRACTION = 0.5;
+const PREFETCH_MIN_ELAPSED_MS = 45_000;
+
+/**
+ * How often a prefetch job is polled.
+ *
+ * **A prefetch that is never polled is money burned.** Chunk synthesis is
+ * driven by the client asking `audio-status` how it is going; a job nobody asks
+ * about stalls and is reclaimed as stale at ten minutes, having produced
+ * nothing anyone can play. So the prefetch owns its own poll, slow enough to be
+ * background noise beside the 2.5s foreground one.
+ */
+const PREFETCH_POLL_INTERVAL_MS = 15_000;
+
+/**
  * Placeholder flavour copy under the honest status lines.
  *
  * Decorative and replaceable -- the designed message list drops in here. See
@@ -144,9 +179,59 @@ export default function ListenScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
+  const [durationIsProvisional, setDurationIsProvisional] = useState(false);
+  /**
+   * Playback has reached the end of what exists and is holding there.
+   *
+   * Not a failure and not the end of the chapter -- the next piece is still
+   * being synthesized and playback resumes by itself when a poll hands it
+   * over. Rendered, because a transport that has stopped and says nothing is
+   * indistinguishable from one that has broken.
+   */
+  const [waitingForChunk, setWaitingForChunk] = useState(false);
   const [rate, setRate] = useState<PlaybackRate>(1);
+  /** The chapter finished and there is nowhere to go. See `onFinishRef`. */
+  const [ended, setEnded] = useState(false);
+  /** Set when this chapter was reached by the previous one ending, not by a tap. */
+  const [arrivedByAutoAdvance, setArrivedByAutoAdvance] = useState(false);
+
+  const [autoAdvance, setAutoAdvance] = useState(AUTO_ADVANCE_DEFAULT);
+  /**
+   * The reader's own press wins over the stored value arriving late.
+   *
+   * Without it, turning autoplay off in the first moments of a screen is
+   * silently undone by the AsyncStorage read resolving afterwards and writing
+   * the old preference back over the new one.
+   */
+  const autoAdvanceChosenByUserRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void autoAdvanceEnabled().then((enabled) => {
+      if (alive && !autoAdvanceChosenByUserRef.current) setAutoAdvance(enabled);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const soundRef = useRef<Audio.Sound | null>(null);
+  /**
+   * The playlist controller, for a narration being generated while it plays.
+   *
+   * Exactly one of `soundRef` and `chunkPlayerRef` is live at a time: a
+   * playthrough commits to its source. A cached narration plays the single
+   * stitched file through `soundRef` exactly as it always has.
+   */
+  const chunkPlayerRef = useRef<ChunkPlayer | null>(null);
+  /**
+   * What to do when the audio ends.
+   *
+   * A ref rather than a dependency because the status callback that fires it is
+   * created once per loaded sound and deliberately does not re-run on `rate`,
+   * `autoAdvance` or `chapterIndex` -- its closure is stale by construction.
+   * Reaching current state from it is exactly what a ref is for.
+   */
+  const onFinishRef = useRef<(() => void) | null>(null);
   /**
    * Bumped whenever the work in flight is no longer wanted -- the chapter
    * changed, the reader retried, or the screen unmounted. Every async
@@ -196,7 +281,22 @@ export default function ListenScreen({
    * timings when they exist; nothing produces them today, so this is the
    * proportional estimate documented in `lib/transcript-sync.ts`.
    */
-  const cues = useMemo(() => buildCues(lines, durationMs), [durationMs, lines]);
+  const cues = useMemo(
+    () =>
+      buildCues(
+        lines,
+        durationMs,
+        undefined,
+        // Chunk boundaries bound the estimate's drift to one chunk of prose.
+        // Only a progressive playthrough has them; a cached single file keeps
+        // the whole-chapter estimate it has always used.
+        state.manifest?.entries.map((entry) => ({
+          durationMs: entry.durationMs,
+          charCount: entry.charCount,
+        })),
+      ),
+    [durationMs, lines, state.manifest],
+  );
   const activeLine = useMemo(
     () => cueIndexAt(cues, positionMs),
     [cues, positionMs],
@@ -205,9 +305,14 @@ export default function ListenScreen({
   const unloadSound = useCallback(async () => {
     const sound = soundRef.current;
     soundRef.current = null;
+    const player = chunkPlayerRef.current;
+    chunkPlayerRef.current = null;
     setIsPlaying(false);
     setPositionMs(0);
     setDurationMs(0);
+    setDurationIsProvisional(false);
+    setWaitingForChunk(false);
+    if (player) void player.dispose();
     if (sound) {
       try {
         await sound.unloadAsync();
@@ -225,11 +330,18 @@ export default function ListenScreen({
       const sound = soundRef.current;
       soundRef.current = null;
       if (sound) void sound.unloadAsync();
+      const player = chunkPlayerRef.current;
+      chunkPlayerRef.current = null;
+      if (player) void player.dispose();
     };
   }, []);
 
+  /** Set once the reader leaves, so no background work outlives the screen. */
+  const closedRef = useRef(false);
+
   const handleClose = useCallback(() => {
     runRef.current += 1;
+    closedRef.current = true;
     void unloadSound();
     onClose();
   }, [onClose, unloadSound]);
@@ -259,6 +371,7 @@ export default function ListenScreen({
     const run = runRef.current + 1;
     runRef.current = run;
     void unloadSound();
+    setEnded(false);
     dispatch({ type: "open", at: Date.now() });
 
     const cached = existingAudioUrl(chapter, voiceId, femaleVoice ?? "aria");
@@ -281,9 +394,15 @@ export default function ListenScreen({
     // the poll.
   }, [chapter, femaleVoice, state.attempt, story.id, unloadSound, voiceId]);
 
-  /** Poll while a job is running. */
+  /**
+   * Poll while a job is running -- and while chunks are still arriving.
+   *
+   * `shouldPoll` is given the manifest for the second case: a progressive
+   * playthrough is already `ready` and playing, and this poll is the only thing
+   * that ever learns where the rest of the chapter is.
+   */
   useEffect(() => {
-    if (!chapter || !shouldPoll(state.phase)) return;
+    if (!chapter || !shouldPoll(state.phase, state.manifest)) return;
     const run = runRef.current;
     const timer = setInterval(() => {
       void pollNarration({
@@ -296,7 +415,7 @@ export default function ListenScreen({
       });
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [chapter, state.phase, story.id, voiceId]);
+  }, [chapter, state.manifest, state.phase, story.id, voiceId]);
 
   /** Advance elapsed time so `slow` and `overdue` can fire. */
   useEffect(() => {
@@ -308,15 +427,29 @@ export default function ListenScreen({
     return () => clearInterval(timer);
   }, [state.phase]);
 
-  /** Load and start the audio the moment there is a URL for it. */
+  /**
+   * Load and start the audio the moment there is a URL for it.
+   *
+   * The single-file path: a cached narration, a completed one, or any client
+   * where progressive playback is off. A playthrough that has a manifest is
+   * driven by the chunk player below instead, and the two never both run.
+   */
   useEffect(() => {
     if (state.phase !== "ready" || !state.audioUrl || soundRef.current) return;
+    if (state.manifest) return;
     const run = runRef.current;
     let created: Audio.Sound | null = null;
 
     void Audio.Sound.createAsync(
       { uri: state.audioUrl },
-      { shouldPlay: true, rate, shouldCorrectPitch: true },
+      {
+        shouldPlay: true,
+        rate,
+        shouldCorrectPitch: true,
+        // Halves how stale the reported playhead can be, which is the floor on
+        // how late the transcript highlight can arrive. See `TRANSCRIPT_LEAD_MS`.
+        progressUpdateIntervalMillis: CHUNK_PROGRESS_INTERVAL_MS,
+      },
       (status) => {
         if (!status.isLoaded || runRef.current !== run) return;
         setIsPlaying(status.isPlaying);
@@ -324,7 +457,9 @@ export default function ListenScreen({
         if (typeof status.durationMillis === "number") {
           setDurationMs(status.durationMillis);
         }
-        if (status.didJustFinish) setIsPlaying(false);
+        // The end of a chapter is a decision, not a stop. `onFinishRef` holds
+        // the current one; this closure cannot, by design (see the ref).
+        if (status.didJustFinish) onFinishRef.current?.();
       },
     ).then(({ sound }) => {
       created = sound;
@@ -367,9 +502,150 @@ export default function ListenScreen({
     };
     // `rate` is deliberately absent: changing speed must not reload the file.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapter?.id, state.audioUrl, state.phase, story.id, voiceId]);
+  }, [chapter?.id, state.audioUrl, state.manifest, state.phase, story.id, voiceId]);
+
+  /**
+   * Status out of the chunk player, in the one shape the screen understands.
+   *
+   * Stable: the effect below creates the player once per chapter and must not
+   * tear it down because a callback identity changed.
+   */
+  const handleChunkStatus = useCallback(
+    (status: {
+      isPlaying: boolean;
+      positionMs: number;
+      durationMs: number;
+      durationIsProvisional: boolean;
+      waitingForChunk: boolean;
+    }) => {
+      setIsPlaying(status.isPlaying);
+      setPositionMs(status.positionMs);
+      setDurationMs(status.durationMs);
+      setDurationIsProvisional(status.durationIsProvisional);
+      setWaitingForChunk(status.waitingForChunk);
+    },
+    [],
+  );
+
+  /**
+   * A piece that exists but will not load.
+   *
+   * Reported and dispatched exactly the way the single-file loader's `catch`
+   * does, because it is the same event for the reader: audio they were
+   * promised is not going to play. Without this the chunked path failed in
+   * silence -- the server's own failure path deletes the parts, so a chunk
+   * that fails at the provider can remove the object the reader is streaming.
+   */
+  const handleChunkError = useCallback(
+    ({ index, error }: { index: number; error: unknown }) => {
+      captureError({
+        bucket: "generation.audio",
+        severity: "medium",
+        errorCode: error instanceof Error ? error.name : "playback_error",
+        error,
+        context: {
+          story_id: story.id,
+          chapter_id: chapter?.id,
+          voice_id: voiceId,
+          chunk: index,
+        },
+      });
+      dispatch({
+        type: "outcome",
+        outcome: { kind: "failed", errorCode: "playback_failed" },
+        at: Date.now(),
+      });
+    },
+    [chapter?.id, story.id, voiceId],
+  );
+
+  /**
+   * Drive a narration that is still being made.
+   *
+   * Created once per chapter, on the first manifest; every later poll only
+   * hands it more pieces. `setParts` is also what restarts playback when it
+   * stopped at a boundary waiting for a chunk that has now landed.
+   */
+  useEffect(() => {
+    const manifest = state.manifest;
+    if (state.phase !== "ready" || !manifest) return;
+    const existing = chunkPlayerRef.current;
+    if (existing) {
+      existing.setParts(manifest.entries, manifest.chunks, manifest.pending);
+      return;
+    }
+    const player = createChunkPlayer({
+      parts: manifest.entries,
+      pending: manifest.pending,
+      totalChunks: manifest.chunks,
+      rate,
+      onStatus: handleChunkStatus,
+      onFinish: () => onFinishRef.current?.(),
+      onError: handleChunkError,
+    });
+    chunkPlayerRef.current = player;
+    void player.start();
+    // `rate` is read once at creation and applied through `setRate` afterwards,
+    // for the same reason the single-file loader excludes it: changing speed
+    // must not rebuild the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleChunkError, handleChunkStatus, state.manifest, state.phase]);
+
+  /**
+   * A terminal answer stops the audio, not just the screen.
+   *
+   * A progressive playthrough can now fail while chunk 0 is still playing --
+   * the chapter's later pieces failed at the provider, and the server has
+   * deleted the parts. Leaving the player running would put narration behind a
+   * screen that says the narration did not finish, with no transport to stop
+   * it: the reader's only way out would be closing the player.
+   */
+  useEffect(() => {
+    if (state.phase !== "failed" && state.phase !== "unavailable") return;
+    void unloadSound();
+  }, [state.phase, unloadSound]);
+
+  /**
+   * What happens when the audio ends.
+   *
+   * Assigned here, with real dependencies, and read through `onFinishRef` from
+   * a status callback whose closure is deliberately stale.
+   */
+  useEffect(() => {
+    onFinishRef.current = () => {
+      // The chunk player swaps pieces itself; it only calls this at the real
+      // end of the chapter. This guard is for the single-file callback, which
+      // cannot know the difference.
+      if (chunkPlayerRef.current?.hasNextChunk()) return;
+      if (autoAdvance && chapterIndex < story.chapters.length - 1) {
+        // Everything else follows on its own: the acquisition effect runs for
+        // the new chapter (cached -> request -> poll) and the load effect
+        // starts it with `shouldPlay: true`. Nothing here has to play anything.
+        setArrivedByAutoAdvance(true);
+        setChapterIndex(chapterIndex + 1);
+        return;
+      }
+      setIsPlaying(false);
+      // Only the end of the *story* gets an end state. Stopping because
+      // autoplay is off is what the reader asked for, and the transcript they
+      // just listened to is a better thing to be left looking at than a
+      // notice telling them the chapter they chose to stop on has stopped.
+      if (chapterIndex >= story.chapters.length - 1) setEnded(true);
+    };
+  }, [autoAdvance, chapterIndex, story.chapters.length]);
 
   const handleTogglePlay = useCallback(() => {
+    const player = chunkPlayerRef.current;
+    if (player) {
+      if (isPlaying) {
+        void player.pause();
+        setIsPlaying(false);
+      } else {
+        void player.play();
+        setIsPlaying(true);
+      }
+      return;
+    }
     const sound = soundRef.current;
     if (!sound) return;
     if (isPlaying) {
@@ -388,6 +664,11 @@ export default function ListenScreen({
     // Optimistic, so the scrubber and the highlight move with the finger
     // rather than waiting a status callback behind it.
     setPositionMs(clamped);
+    const player = chunkPlayerRef.current;
+    if (player) {
+      void player.seek(clamped);
+      return;
+    }
     void soundRef.current?.setPositionAsync(clamped);
   }, [durationMs]);
 
@@ -399,7 +680,24 @@ export default function ListenScreen({
 
   const handleRateChange = useCallback((next: PlaybackRate) => {
     setRate(next);
+    void chunkPlayerRef.current?.setRate(next);
     void soundRef.current?.setRateAsync(next, true);
+  }, []);
+
+  /**
+   * Turn autoplay on or off.
+   *
+   * **Off does not stop what is playing.** It suppresses the step into the next
+   * chapter and nothing else; a reader reaching for the switch mid-chapter is
+   * saying "stop after this", not "stop now".
+   */
+  const handleToggleAutoAdvance = useCallback(() => {
+    autoAdvanceChosenByUserRef.current = true;
+    setAutoAdvance((enabled) => {
+      const next = !enabled;
+      void setAutoAdvanceEnabled(next);
+      return next;
+    });
   }, []);
 
   const goToChapter = useCallback((next: number) => {
@@ -408,11 +706,121 @@ export default function ListenScreen({
       return;
     }
     setChaptersOpen(false);
+    // A chapter the reader chose is not a continuation, whatever the last one
+    // did, so the loader must not frame it as one.
+    setArrivedByAutoAdvance(false);
     setChapterIndex(next);
   }, [chapterIndex, story.chapters.length]);
 
   const hasNextChapter = chapterIndex < story.chapters.length - 1;
+  const nextChapter = hasNextChapter
+    ? story.chapters[chapterIndex + 1]
+    : undefined;
   const copy = listenCopy(state.phase);
+
+  /**
+   * Chapters this session has already asked for ahead of time.
+   *
+   * The latch that makes a prefetch fire once and only once per
+   * (chapter, voice). Scrubbing back over the trigger point must not ask
+   * again: a second job is a second charge for the same audio.
+   */
+  const prefetchedRef = useRef(new Set<string>());
+  /** The prefetch currently in flight, if any -- what the background poll polls. */
+  const [prefetching, setPrefetching] = useState<
+    { chapterId: string; voiceId: VoiceId } | null
+  >(null);
+
+  /** Start narrating the next chapter while this one is still playing. */
+  useEffect(() => {
+    if (closedRef.current) return;
+    if (state.phase !== "ready" || !isPlaying || !autoAdvance) return;
+    if (!nextChapter) return;
+    // Backgrounded is not listening. A prefetch is only worth its cost for a
+    // reader who is actually about to arrive at that chapter.
+    //
+    // Written as "not known to be away" rather than `=== "active"` on purpose:
+    // `currentState` is undefined wherever the native module is not present
+    // (the test environment, web), and a condition that reads as a foreground
+    // check but is really a native-module check would silently switch the
+    // whole feature off there.
+    if (
+      AppState.currentState === "background" ||
+      AppState.currentState === "inactive"
+    ) {
+      return;
+    }
+    if (existingAudioUrl(nextChapter, voiceId, femaleVoice ?? "aria")) return;
+    if (durationMs <= 0) return;
+    const key = `${nextChapter.id}:${voiceId}`;
+    if (prefetchedRef.current.has(key)) return;
+    const trigger = Math.max(
+      durationMs * PREFETCH_AT_FRACTION,
+      PREFETCH_MIN_ELAPSED_MS,
+    );
+    if (positionMs < trigger) return;
+
+    prefetchedRef.current.add(key);
+    void requestNarration({
+      storyId: story.id,
+      chapterId: nextChapter.id,
+      voiceId,
+      purpose: "prefetch",
+    }).then((outcome) => {
+      if (outcome.kind === "pending" || outcome.kind === "ready") {
+        setPrefetching({ chapterId: nextChapter.id, voiceId });
+        return;
+      }
+      // Everything else -- most often the server's deliberate 503 for a
+      // prefetch it is not configured to accept -- is dropped in silence.
+      // Auto-advance still works; it just meets the loader at the boundary.
+      setPrefetching(null);
+    });
+  }, [
+    autoAdvance,
+    durationMs,
+    femaleVoice,
+    isPlaying,
+    nextChapter,
+    positionMs,
+    state.phase,
+    story.id,
+    voiceId,
+  ]);
+
+  /**
+   * Keep a prefetched job moving.
+   *
+   * Chunk synthesis advances because a client is asking `audio-status` about
+   * it. Nobody is on that chapter's screen yet, so this is that client -- on a
+   * slow interval, and torn down the moment the job is over, the reader
+   * arrives at that chapter, or the screen goes away.
+   */
+  useEffect(() => {
+    if (!prefetching) return;
+    const target = prefetching;
+    const timer = setInterval(() => {
+      if (closedRef.current) return;
+      void pollNarration({
+        storyId: story.id,
+        chapterId: target.chapterId,
+        voiceId: target.voiceId,
+      }).then((outcome) => {
+        if (outcome.kind === "pending") return;
+        setPrefetching((current) =>
+          current && current.chapterId === target.chapterId ? null : current
+        );
+      });
+    }, PREFETCH_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [prefetching, story.id]);
+
+  /** Arriving at the prefetched chapter hands polling back to the foreground. */
+  useEffect(() => {
+    setPrefetching((current) =>
+      current && current.chapterId === chapter?.id ? null : current
+    );
+  }, [chapter?.id]);
 
   /**
    * The way out of a wait that went wrong.
@@ -447,6 +855,20 @@ export default function ListenScreen({
     );
   }
 
+  /**
+   * Whose chapter this wait belongs to, when the reader did not ask for it.
+   *
+   * A wait that arrives on its own -- the previous chapter ended and this one
+   * has never been narrated -- reads as a restart unless it names what is being
+   * prepared. And a chapter that *failed* always names itself, whether the
+   * reader arrived by autoplay or by pressing Listen: a progressive
+   * playthrough can now fail mid-chapter, and "the narration did not finish"
+   * with no chapter on it is the silent skip this must never be.
+   */
+  const loaderContext = isWaiting(state.phase)
+    ? arrivedByAutoAdvance ? `Next: ${chapter.title}` : undefined
+    : `Chapter ${chapterIndex + 1}: ${chapter.title}`;
+
   return (
     <View style={styles.root} testID="listen-screen">
       <View style={styles.cover}>
@@ -476,7 +898,23 @@ export default function ListenScreen({
         </Pressable>
       </View>
 
-      {state.phase === "ready"
+      {state.phase === "ready" && ended
+        ? (
+          /**
+           * The end of the story, said out loud.
+           *
+           * The alternative is silence after the last sentence, which reads as
+           * the player having broken rather than the book having finished.
+           */
+          <View style={styles.loaderGround}>
+            <NarrationLoader
+              status={`That's the end of ${story.title}.`}
+              detail="There are no more chapters to listen to."
+              action={{ label: "Close", onPress: handleClose }}
+            />
+          </View>
+        )
+        : state.phase === "ready"
         ? (
           <>
             <TranscriptView
@@ -491,13 +929,17 @@ export default function ListenScreen({
                 isPlaying={isPlaying}
                 positionMs={positionMs}
                 durationMs={durationMs}
+                durationIsProvisional={durationIsProvisional}
+                waitingForChunk={waitingForChunk}
                 rate={rate}
                 hasNextChapter={hasNextChapter}
+                autoAdvance={autoAdvance}
                 onTogglePlay={handleTogglePlay}
                 onSeek={handleSeek}
                 onRateChange={handleRateChange}
                 onChapters={() => setChaptersOpen(true)}
                 onNextChapter={() => goToChapter(chapterIndex + 1)}
+                onToggleAutoAdvance={handleToggleAutoAdvance}
               />
             </View>
           </>
@@ -505,6 +947,7 @@ export default function ListenScreen({
         : (
           <View style={styles.loaderGround}>
             <NarrationLoader
+              contextLabel={loaderContext}
               status={copy.status}
               detail={copy.detail}
               messages={isWaiting(state.phase) ? PLACEHOLDER_MESSAGES : undefined}

@@ -19,7 +19,15 @@
  *
  * **Do not mistake these cues for alignment data, and do not build anything on
  * them that needs to be exact** (word-level karaoke, clip extraction, captions
- * for accessibility compliance). The moment the pipeline returns real timings,
+ * for accessibility compliance).
+ *
+ * There is one thing between the estimate and real data: when narration is
+ * synthesized in chunks, each chunk's *measured* duration covers a known span
+ * of characters, so `buildChunkAnchoredCues` can reset the estimate's error to
+ * zero at every chunk boundary instead of letting it accumulate across a
+ * thirteen-minute chapter. Still an estimate; a much shorter-lived one.
+ *
+ * The moment the pipeline returns real timings,
  * pass them to `buildCues` as `timings` and this estimate stops being used --
  * that seam is the whole reason `buildCues` takes an optional argument it has
  * no caller for yet.
@@ -134,6 +142,7 @@ export function buildCues(
   lines: readonly TranscriptLine[],
   durationMs: number,
   timings?: readonly NarrationTiming[],
+  chunks?: readonly CueChunk[],
 ): TranscriptCue[] {
   if (timings && timings.length > 0) {
     // Real data wins outright. Only the lines it covers are cued; a partial
@@ -152,7 +161,94 @@ export function buildCues(
       }))
       .sort((a, b) => a.startMs - b.startMs);
   }
+  // Chunk boundaries are the next best thing to real timings: they are measured
+  // durations for known spans of text, so the estimate only has to be right
+  // within a chunk instead of across a whole chapter.
+  if (chunks && chunks.length > 0) {
+    const anchored = buildChunkAnchoredCues(lines, chunks);
+    if (anchored.length > 0) return anchored;
+  }
   return estimateCues(lines, durationMs);
+}
+
+/** A synthesized piece, as far as the transcript cares: how long, how much text. */
+export type CueChunk = {
+  durationMs: number | null;
+  charCount: number;
+};
+
+/**
+ * Cues anchored to the chunk boundaries the narration was synthesized on.
+ *
+ * The whole-chapter estimate accumulates error for thirteen minutes: one slow
+ * line early on pushes every later line late, and nothing ever pulls it back.
+ * Chunking gives us measured durations for known spans of text, so the same
+ * proportional estimate can run *within* each chunk and the error resets to
+ * zero at every boundary. Drift is then bounded by one chunk of prose -- around
+ * 9,000 characters -- instead of by the chapter.
+ *
+ * Lines are assigned to chunks greedily by cumulative character count against
+ * the chunks' cumulative `char_count`, which is the same measure the server
+ * split on. A line that straddles a boundary belongs to the earlier chunk: the
+ * narrator has already started it there.
+ *
+ * Returns `[]` when the chunks cannot support this -- a missing duration, no
+ * character counts -- so `buildCues` falls back to the whole-chapter estimate
+ * rather than inventing a timeline.
+ */
+export function buildChunkAnchoredCues(
+  lines: readonly TranscriptLine[],
+  chunks: readonly CueChunk[],
+): TranscriptCue[] {
+  if (lines.length === 0 || chunks.length === 0) return [];
+  if (
+    chunks.some((chunk) =>
+      !chunk.durationMs || chunk.durationMs <= 0 || chunk.charCount <= 0
+    )
+  ) {
+    return [];
+  }
+
+  // Which chunk each line belongs to.
+  const groups: TranscriptLine[][] = chunks.map(() => []);
+  const budget = chunks.reduce((sum, chunk) => sum + chunk.charCount, 0);
+  let chunkAt = 0;
+  let consumed = 0;
+  let boundary = chunks[0].charCount;
+  for (const line of lines) {
+    // Past the prose these chunks cover. While a chapter is still being
+    // synthesized that is the whole unrecorded tail, and it gets no cue at all
+    // rather than being crushed into the last chunk that exists -- an
+    // uncued line is honest, a wrong one moves the highlight.
+    if (consumed >= budget) break;
+    groups[chunkAt].push(line);
+    consumed += weightOf(line);
+    while (consumed >= boundary && chunkAt < chunks.length - 1) {
+      chunkAt += 1;
+      boundary += chunks[chunkAt].charCount;
+    }
+  }
+
+  const cues: TranscriptCue[] = [];
+  let offset = 0;
+  chunks.forEach((chunk, at) => {
+    const group = groups[at];
+    const duration = chunk.durationMs as number;
+    // A chunk with no lines still moves the clock on: its audio exists even if
+    // the line split put its prose on either side of it.
+    if (group.length > 0) {
+      const within = estimateCues(group, duration);
+      within.forEach((cue, i) => {
+        cues.push({
+          index: group[i].index,
+          startMs: offset + cue.startMs,
+          endMs: offset + cue.endMs,
+        });
+      });
+    }
+    offset += duration;
+  });
+  return cues;
 }
 
 /**
@@ -187,28 +283,58 @@ export function estimateCues(
 }
 
 /**
+ * How far ahead of the playhead the highlight looks.
+ *
+ * The highlight was reliably late, and every cause pushed the same way:
+ *
+ * - expo-av reports position on an interval, so the number is already up to
+ *   one interval old. We halve that interval to 250ms; half of it, ~125ms,
+ *   is the average staleness left.
+ * - Device output latency is real and never negative -- 100-300ms over
+ *   Bluetooth, less on a speaker. The audio the reader hears is behind the
+ *   position the player reports.
+ * - React has to render, and a FlatList has to scroll.
+ *
+ * Roughly 250 + 150 covers the machinery; the last ~150 is deliberate. A reader
+ * wants the line lit *as* the narrator starts it, which means lighting it a
+ * beat before -- a highlight that arrives on the first syllable reads as late
+ * even when it is exact.
+ *
+ * **Display only.** Seeking uses `cueStartMs` unshifted; a tap that seeked
+ * `TRANSCRIPT_LEAD_MS` early would start playback mid-way through the previous
+ * sentence.
+ */
+export const TRANSCRIPT_LEAD_MS = 450;
+
+/**
  * Which line is being read at `positionMs`.
  *
  * Binary search: a long chapter is a few thousand lines and this runs on every
  * playback status callback. Returns -1 when there are no cues, and clamps to
  * the first/last line outside the covered range.
+ *
+ * `leadMs` is looked *ahead* (see `TRANSCRIPT_LEAD_MS`): the answer is the line
+ * the narrator is about to be on, because by the time it is rendered and heard,
+ * they are.
  */
 export function cueIndexAt(
   cues: readonly TranscriptCue[],
   positionMs: number,
+  leadMs: number = TRANSCRIPT_LEAD_MS,
 ): number {
   if (cues.length === 0) return -1;
-  if (positionMs <= cues[0].startMs) return cues[0].index;
+  const at = positionMs + leadMs;
+  if (at <= cues[0].startMs) return cues[0].index;
   const last = cues[cues.length - 1];
-  if (positionMs >= last.endMs) return last.index;
+  if (at >= last.endMs) return last.index;
 
   let low = 0;
   let high = cues.length - 1;
   while (low <= high) {
     const mid = (low + high) >> 1;
     const cue = cues[mid];
-    if (positionMs < cue.startMs) high = mid - 1;
-    else if (positionMs >= cue.endMs) low = mid + 1;
+    if (at < cue.startMs) high = mid - 1;
+    else if (at >= cue.endMs) low = mid + 1;
     else return cue.index;
   }
   // Only reachable across a gap between two cues, which `estimateCues` never
