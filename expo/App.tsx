@@ -23,7 +23,8 @@ import LoaderPreview from "@/screens/dev/LoaderPreview";
 import NarrationLoaderPreview from "@/screens/dev/NarrationLoaderPreview";
 import OriginalsCoverPreview from "@/screens/dev/OriginalsCoverPreview";
 import { ScreenScaffold } from "@/components/KathaPrimitives";
-import CreateStudioScreen from "@/screens/CreateStudioScreen";
+import CreateStudioScreen, { type StudioDraft } from "@/screens/CreateStudioScreen";
+import { seedDraftFromStory } from "@/lib/reimagine-seed";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
@@ -276,6 +277,25 @@ export default function App() {
    * story nobody opens.
    */
   const [onboardingDraft, setOnboardingDraft] = useState<OnboardingDraft | null>(
+    null,
+  );
+  /**
+   * The brief a reader starts from when they reimagine somebody else's story.
+   *
+   * Reimagine does not rewrite what they are reading. It opens Create with
+   * that story's premise already in the box -- verbatim, so they can read
+   * exactly what produced the story they liked and edit any word of it -- and
+   * they write their own, with their own characters. Nothing is forked and the
+   * original is never written to. See `lib/reimagine-seed.ts` for why.
+   *
+   * Held here rather than inside the studio because the studio is unmounted
+   * while the reader is open: the seed has to survive the tab change that
+   * carries the reader to Create.
+   *
+   * Cleared once the generation is away, so returning to Create later opens on
+   * the writer's own persisted draft rather than on a stranger's premise.
+   */
+  const [reimagineSeed, setReimagineSeed] = useState<Partial<StudioDraft> | null>(
     null,
   );
   /**
@@ -1105,8 +1125,14 @@ export default function App() {
           <CreateStudioScreen
             credits={credits}
             isAnonymous={isAnonymous}
-            initialDraft={onboardingDraft ?? undefined}
+            /*
+              A reimagine seed outranks an onboarding blueprint: the reader
+              tapped Reimagine seconds ago, and opening on a months-old
+              onboarding draft instead would look like the button did nothing.
+            */
+            initialDraft={reimagineSeed ?? onboardingDraft ?? undefined}
             onGenerationStarted={(session) => {
+              setReimagineSeed(null);
               // Straight to the reader, before a word of the story exists. It
               // shows the crafting screen until there are finished pages and
               // then becomes the reader; the session id is what it is pointed
@@ -1343,6 +1369,16 @@ export default function App() {
                 // it reveals page by page instead of waiting behind a cover.
                 // `findStoryGeneration` above then picks it up on the next
                 // render and the reader is live on it.
+                /*
+                  A reader's Reimagine leaves the reader entirely: seed the
+                  brief from this story and put them in Create. The author's
+                  control is Re-prompt and never reaches here -- `ReaderScreen`
+                  decides which of the two the viewer gets.
+                */
+                onReimagineStory={(sourceStory) => {
+                  setReimagineSeed(seedDraftFromStory(sourceStory));
+                  goTabs("create");
+                }}
                 onReimagineStarted={(run) => {
                   const target = allStories.find((item) => item.id === screen.storyId);
                   if (!target) return;
@@ -1353,7 +1389,7 @@ export default function App() {
                   });
                 }}
                 onBack={() => goTabs(tab)}
-                renderChapterEnd={(chapter, { reimagine }) => {
+                renderChapterEnd={(chapter, { reimagine, reimagineLabel }) => {
                   const story =
                     allStories.find((item) => item.id === screen.storyId) ??
                       allStories[0];
@@ -1371,6 +1407,7 @@ export default function App() {
                       // is the one thing left, so the pill has to be reachable
                       // from the ending itself and not only from the chrome.
                       onReimagine={reimagine ?? undefined}
+                      reimagineLabel={reimagineLabel}
                       onContinue={(direction, offered, extend) => {
                         const next = chapter.chapterNumber + 1;
                         startChapterGeneration({

@@ -1018,16 +1018,42 @@ and is extended by hand, one deliberate tap at a time, like any other.
 > to enforce those caps and §11 had a p95 metric to tune one of them. Both are
 > cancelled there (§1a of that file).
 
-**There is one AI editing action, and it is Reimagine.**
-[`expo/src/components/reader/ReimagineSheet.tsx`](../expo/src/components/reader/ReimagineSheet.tsx)
-over the `reimagine-chapter` edge function: pick a chapter, optionally swap
-characters for saved or brand-new ones, type what should change, and the chapter
-is written again.
+> **Revised 2026-09-20. The rewrite control is now TWO actions, and which one
+> a viewer gets depends on whether they wrote the story.** Character
+> replacement is gone from both. It was a find-and-replace across the prose
+> (`_shared/character-substitution.ts`), which by its own documentation can
+> never touch a pronoun, and cannot touch anything a chapter states about who
+> somebody is -- so the one thing it could not do was replace a character. A
+> story "reimagined" with new people also kept the old people's cover and
+> chapter art, because a fork copies both.
+
+**The author's control is Re-prompt.**
+[`expo/src/components/reader/RepromptSheet.tsx`](../expo/src/components/reader/RepromptSheet.tsx)
+over the `reimagine-chapter` edge function: one box, what should change, and
+the chapter is written again in place. No roster, because offering the person
+who invented the cast a find-and-replace over their own characters was never
+the thing they wanted; a writer who wants somebody else in the story says so in
+the prompt and gets prose actually written for them.
+
+**A reader's control is Reimagine, and it does not touch the story they are
+reading at all.** It opens Create with that story's premise already in the box
+-- verbatim, off `stories.topic`, so they can read exactly what produced the
+story they liked and edit any word of it -- and they write their own, with
+their own characters, through the ordinary create flow
+([`expo/src/lib/reimagine-seed.ts`](../expo/src/lib/reimagine-seed.ts)).
+**Nothing is forked, and the original is never written to.**
+
+What travels into that brief is the story's shape: premise, genre, audience
+mode, spice, language, and standalone-versus-series with its chapter count. What
+deliberately does not: the original's cast (the reader brings their own), its
+`beats` and `grounding` (they belong to a premise that is about to be edited),
+and its visibility (a reader does not inherit a stranger's choice to be public).
 
 | | Cost |
 |---|---|
 | Type, rewrite, restructure by hand | **0, unlimited, forever** |
-| **Reimagine a chapter** | Free tier: 1 free per chapter of a story you created, then the plan. Non-author: 1 credit from the first, because it forks. **Any paid plan: unlimited** |
+| **Re-prompt a chapter** (author) | Free tier: 1 free per chapter, then the plan. **Any paid plan: unlimited** |
+| **Reimagine** (reader) | **It is a story start, priced as one.** Nothing new: the reader generates a story they own |
 
 Hand editing is the existing Create Studio draft editor and the reader's chapter
 editor, and both stay exactly as they are. They call nothing, so under principle
@@ -1038,6 +1064,9 @@ The prices above are read from
 which is canonical for them. **⚠ The shipped `reimagine-chapter` charges 1 credit
 from the first call for every user on every tier** — it has no subscriber check
 and no counter. The subscriber exemption and the free counter are follow-ups.
+**⚠ The sheet still quotes "1 free" on every open**, because the per-chapter
+count is never passed to it; the quote is optimistic and the server is the thing
+that charges.
 
 ### 10.4 Chapter art, and the cover
 

@@ -856,12 +856,33 @@ reimagines three chapters ends up with one copy rather than three.
 **Price, revised 2026-09-11. The 2026-09-10 rule was 2 free per chapter, then 1
 credit each, and it carried two ⚠ open holes. Both are resolved here.**
 
+> ### Revised 2026-09-20: the non-author row is retired, and nothing replaces it.
+>
+> **A reader's Reimagine no longer forks and no longer rewrites.** It opens
+> Create with the source story's premise pre-filled, and the reader generates a
+> story they own through the ordinary create flow — so it is **priced as a story
+> start and nothing else** (§1, 1 credit, bundling cast, chapter one and its
+> art). There is no separate reimagine price for a non-author, no fork to price,
+> and Hole 1 below is resolved by construction rather than by a counter: a reader
+> cannot spend a free allowance on somebody else's chapter because there is no
+> longer an action that touches one.
+>
+> **Character replacement is gone from both surfaces**, so the portrait and
+> renaming rows below no longer describe anything reachable. Replacement was a
+> find-and-replace that could not touch a pronoun
+> (`_shared/character-substitution.ts` says so in its own header) or anything a
+> chapter stated about who somebody was. A reader who wants their characters in a
+> story now gets a story **written for them**, which is generation, which is
+> already priced.
+>
+> The author's row stands unchanged, and the action is now called **Re-prompt**.
+
 | | Free | Any paid plan |
 |---|---|---|
-| Reimagine a chapter of a story **you created** | **1 free** per chapter, then the plan is offered | **Unlimited**, never charged |
-| Reimagine a chapter of **somebody else's** story | **1 credit**, from the first | **Unlimited**, never charged |
-| A brand-new character who needs a portrait | **1** (the portrait) | **0** — portraits are unlimited on a plan |
-| Renaming a character across other chapters | **0** — substitution, no model call | **0** |
+| Re-prompt a chapter of a story **you created** | **1 free** per chapter, then the plan is offered | **Unlimited**, never charged |
+| ~~Reimagine a chapter of **somebody else's** story~~ | *Retired 2026-09-20 — it is a story start now* | *Retired* |
+| ~~A brand-new character who needs a portrait~~ | *Retired — replacement is gone; a portrait is priced by the create flow* | *Retired* |
+| ~~Renaming a character across other chapters~~ | *Retired — there is no rename* | *Retired* |
 
 **Subscribers are never charged and never counted**, which is the single largest
 simplification available here: there is no counter to scope, no fork to copy it

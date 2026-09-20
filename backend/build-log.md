@@ -49,6 +49,100 @@ as a failure rather than a pass.
 AGENTS.md carries the standing rule: an expensive CI job runs only when its
 inputs change, and the test for whether gating is safe is whether anything
 outside those paths can change the job's result.
+## 2026-09-20 UTC — Reimagine splits in two: the author re-prompts, the reader writes their own
+
+**Session:** story-quality lane, worktree `codex/story-quality-research`.
+**Client only. No migration, no edge-function change, no price change.**
+
+### What the button used to be, and why it could not work
+
+One control, `ReimagineSheet`, shown to everybody: a list of the story's cast
+with a Replace control on each, plus a prompt box. For a non-author the server
+forked the story first and rewrote one chapter of the copy.
+
+Three things were wrong with it and none of them were fixable in that shape:
+
+1. **Replacement could not replace anybody.** `apply_to_all_chapters` is a
+   find-and-replace (`_shared/character-substitution.ts`), and that module's own
+   header says pronouns are never touched because "a gender change is a job for
+   reimagining, not for a rename". It also cannot touch a single word the prose
+   says about who somebody is. Swap a 61-year-old Dutch dairy farmer for a
+   28-year-old Mumbai architect and you get an architect who has kept cows in
+   Zierikzee since 1983, called "she" throughout.
+2. **The cast list was empty for every story, always.** `story.characters` is
+   never populated by any client mapper -- `SHELF_STORY_COLUMNS` selects no cast,
+   and `mapStoryRow`, `mapGeneratedStory` and `mapSearchRow` all omit the field.
+   So `detectChapterCharacters` returned `[]` at its `roster.length === 0` guard
+   before it ever filtered anything. Never caught because it is only tested
+   against hand-built fixtures, never through the real hydration path.
+3. **The fork carried the old story's pictures.** `fork_story` copies
+   `cover_image_url` and every `chapters.image_url`; only `audio_url` is nulled.
+   A story reimagined with new people shipped with pictures of the old ones --
+   the loudest possible failure of that exact feature.
+
+### What it is now
+
+**Author: Re-prompt.** `RepromptSheet`, one box, what should change, same
+`reimagine-chapter` endpoint, same chapter, same price. No roster, because
+offering the person who invented the cast a find-and-replace over their own
+characters was never the thing they wanted.
+
+**Reader: Reimagine, and it does not touch the story being read.** It opens
+Create with that story's premise already in the box -- verbatim off
+`stories.topic`, so the reader can see exactly what produced the story they
+liked and edit any word of it -- and they generate their own, with their own
+characters, through the ordinary create flow. **Nothing is forked and the
+original is never written to.**
+
+`lib/reimagine-seed.ts` carries the story's *shape*: premise, genre, audience
+mode, spice, language, standalone-vs-series and its chapter count. It
+deliberately does not carry the cast (the reader brings their own), `beats` or
+`grounding` (they belong to a premise about to be edited), or visibility (a
+reader does not inherit a stranger's choice to be public). Three values are
+dropped when the picker cannot show them as chosen -- a retired genre, a
+retired language, a chapter count that is not one of the offered buttons --
+because a brief opened on a control with nothing selected is worse than one
+opened on its default.
+
+`ReaderScreen.rewriteAction` resolves which of the two a viewer gets, once, so
+the chrome and the chapter-end pill can never disagree or offer a reader the
+author's sheet.
+
+### What this deleted
+
+`ReimagineSheet.tsx`, `detectChapterCharacters`, `nameAppearsIn`,
+`replacementFromSaved`, `replacementTargetIsSaved`, `serializeReplacement`, and
+the `character_replacements` field on the request. **The server still accepts
+that field; it simply never arrives.** Removing it from the client rather than
+hiding it in the UI was deliberate -- a payload nothing produces and nothing
+tests is a trap for whoever reads the endpoint next.
+
+### Pricing
+
+**Nothing moved.** The author's re-prompt is the same 1 credit through
+`reserve_generation_operation`. The reader's reimagine is a story start, which
+is already 1 credit and already bundles cast, chapter one and its art. The
+non-author fork row in `CREDITS_AND_PRICING.md` §3 is retired rather than
+repriced, and Hole 1 of that section is now resolved by construction: a reader
+cannot spend a free allowance on somebody else's chapter because no action
+touches one any more.
+
+Two known-stale quotes were recorded rather than fixed, because both belong to
+the credit ledger and not to this change: `reserve_generation_operation` charges
+1 credit for a reimagine unconditionally with no subscriber check and no
+counter, and the sheet renders "1 free" on every open because
+`repromptsUsedOnChapter` is never passed a real value.
+
+### Canonical documents
+
+`source-of-truth/STORY_GENERATION_FLOW.md` §10.3 and
+`source-of-truth/CREDITS_AND_PRICING.md` §3 amended in the same commit, as
+`source-of-truth/README.md` requires of a change that crosses both.
+
+### Checks
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors (30 pre-existing warnings, none in
+the new files). `pnpm test` green. Smoke-tested on Expo web at 390x844.
 
 ---
 
