@@ -138,9 +138,9 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | 17 | Paywall CTA |
 | 18 | Text fields and prompt boxes |
 | 20 | Primary text CTA |
-| 18 | Option rows, plan cards, review cards, one-time-offer CTA |
+| 18 | Option rows, plan cards, review cards |
 | 20 | Publish card |
-| 22 | Create card, genre chips, edit chips, one-time-offer card |
+| 22 | Create card, genre chips, edit chips |
 | 24 | Large shared card radius |
 | 28 | Apple-style notification education alert |
 | 999 | Pills only |
@@ -382,8 +382,8 @@ The implemented order is:
 7. Profile-building transition.
 8. Notification education.
 9. Personalized paywall.
-10. If the paywall is closed, one-time offer.
-11. Email capture after the user acts on the paywall or one-time-offer path.
+10. If the paywall is closed, a confirmation sheet. **There is no one-time offer** -- it was removed 2026-09-10 and deleted rather than deprecated (`../source-of-truth/ONBOARDING_FLOW.md` §14, decision 35). The welcome grant fires on declining the paywall.
+11. Email capture after the user acts on the paywall.
 12. Six-digit OTP verification.
 13. Personalized success screen.
 14. Home handoff.
@@ -442,7 +442,7 @@ The paywall receives and must continue to use:
 
 Read-first, write-first, and both users must not receive the same generic value proposition. The paywall must not use a trial toggle. Annual is selected by default and includes the canonical trial; weekly is available through the additional plan option and has no trial. All prices, grants, trials, and offers are defined only in `../source-of-truth/CREDITS_AND_PRICING.md` §3. The UI must read price, renewal, trial eligibility, and offer copy from RevenueCat product data — never hardcode these values.
 
-Closing the paywall shows a confirmation sheet before the one-time offer. The one-time offer may follow that close flow, but it must not erase the collected persona. Email/OTP is an integration handoff after the paywall or offer action. Supabase should persist the final `onDone` payload. RevenueCat should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
+Closing the paywall shows a confirmation sheet, and that is where the close flow ends. **The one-time offer is deleted, not deprecated**, and the countdown ban is absolute (`../source-of-truth/ONBOARDING_FLOW.md` §14 and decision 35): at $29 for 600 credits it netted $24.65 against $44.28 of cost at the worst story mix. Closing must not erase the collected persona. Email/OTP is an integration handoff after the paywall action. Supabase should persist the final `onDone` payload. RevenueCat should provide localized product titles, prices, currencies, eligibility, restore, and purchase results.
 
 ## Accessibility, Motion, and Responsiveness
 
@@ -489,7 +489,7 @@ After onboarding or paywall changes:
 7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
 8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.
 9. Confirm all three intro slides use identical hero, stage, sheet, headline, description, and action slots.
-10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, annual paywall trial, weekly no-trial option, close confirmation, one-time offer, email, OTP, success, and Home handoff.
+10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, annual paywall trial, weekly no-trial option, close confirmation, email, OTP, success, and Home handoff. There is **no** one-time offer step to verify; if you find one on screen, that is the bug.
 11. Check keyboard-open states, narrow width, and at least one native phone build before release.
 12. Leave the 390 x 844 preview visible for product review.
 
