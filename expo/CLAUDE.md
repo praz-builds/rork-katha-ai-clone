@@ -26,7 +26,7 @@ After onboarding or paywall changes:
 1. Run `pnpm typecheck`.
 2. Run `pnpm exec expo-doctor`.
 3. Confirm an Expo web bundle can compile.
-4. Open `http://localhost:8090/` automatically in the in-app browser.
+4. Start the preview with `scripts/preview.sh` (repo root) and open the URL it prints -- `http://localhost:8090/` unless `KATHA_PREVIEW_PORT` overrides it -- in the in-app browser. Trust the banner over this line: only 8090 is in `ALLOWED_ORIGINS`, so a run on any other port will fail every edge call. **It serves `main`, not your branch** -- it owns its own worktree and hard-resets to `origin/main`, so run this pass after the change has merged. Do not start a server on 8090 from your worktree to shortcut it: you take the port and silently replace a known state with your branch, which is how Reimagine came to be reviewed in a design main no longer had (see *The preview shows main, and only main* in `../AGENTS.md`). For a pre-merge look use port 8091, where edge calls fail CORS because only 8090 is in `ALLOWED_ORIGINS`.
 5. Keep the browser at a 390 x 844 mobile viewport.
 6. Use browser controls to complete the flow, not only inspect screenshots.
 7. Verify intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, success, and Home handoff. **There is no one-time offer step**: it was removed 2026-09-10 and its copy, timer, SKU and `onboarding_offer_*` events are deleted, not deprecated (`../source-of-truth/ONBOARDING_FLOW.md` §14). The welcome grant now fires on declining the paywall.
