@@ -51,13 +51,26 @@ jobs:
     name: Edge Functions — Typecheck + Test
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 so `origin/main` exists as a ref for the migration
+      # number check below. Fetching it in a later step instead would need
+      # credentials this checkout deliberately does not keep.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
+
+      # A hand-numbered migration that reuses a number already on main is
+      # skipped silently in production: Supabase records applied migrations by
+      # version string, so a second 00093 is "already applied" and never runs.
+      # It passes every test, works on the developer's machine, and is missing
+      # only where it matters. #115 and a branch in flight both took 00093 on
+      # 2026-09-20; a human caught it. This is so a human does not have to.
+      - name: Migration numbers do not collide with main
+        run: scripts/check-migration-numbers.sh origin/main
 
       # Every function, not a hand-maintained list: a new one is covered the
       # day it lands. feed/index.ts reached main with four TS2345 errors
