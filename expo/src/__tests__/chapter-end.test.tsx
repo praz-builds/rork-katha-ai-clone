@@ -707,13 +707,21 @@ describe("ReaderScreen renderChapterEnd wiring", () => {
   */
   it("hands the chapter-end module a way to open Reimagine", async () => {
     const renderChapterEnd = jest.fn(
-      (_chapter: Chapter, _actions: { reimagine: (() => void) | null }): React.ReactNode => null,
+      (
+        _chapter: Chapter,
+        _actions: { reimagine: (() => void) | null; reimagineLabel: string },
+      ): React.ReactNode => null,
     );
+    // `wiredStory` is authored by "author-1" and the viewer is nobody, so this
+    // is a READER at the end of somebody else's story. Their rewrite control
+    // does not touch what they just read: it opens Create seeded from it.
+    const onReimagineStory = jest.fn();
     const view = await render(
       <ReaderScreen
         story={wiredStory}
         onBack={jest.fn()}
         renderChapterEnd={renderChapterEnd}
+        onReimagineStory={onReimagineStory}
       />,
     );
 
@@ -731,14 +739,17 @@ describe("ReaderScreen renderChapterEnd wiring", () => {
       renderChapterEnd.mock.calls.length - 1
     ][1];
     expect(typeof actions.reimagine).toBe("function");
+    // The pill says what it actually does. An author's would say Re-prompt.
+    expect(actions.reimagineLabel).toBe("Write my own version");
 
-    // And it really opens the sheet, rather than being a handle to nothing.
+    // And it really does something, rather than being a handle to nothing --
+    // it hands the host this story to seed a new brief from, and it does NOT
+    // open the author's re-prompt sheet over somebody else's chapter.
     await act(async () => {
       actions.reimagine?.();
     });
-    await waitFor(() =>
-      expect(view.getByText("Reimagine this chapter")).toBeTruthy()
-    );
+    expect(onReimagineStory).toHaveBeenCalledWith(wiredStory);
+    expect(view.queryByText("Re-prompt this chapter")).toBeNull();
   });
 });
 

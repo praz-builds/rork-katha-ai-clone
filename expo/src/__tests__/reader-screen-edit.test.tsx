@@ -84,16 +84,40 @@ afterEach(() => {
 });
 
 it("does not show the Edit control for a story the reader does not own", async () => {
-  const view = await render(<ReaderScreen story={baseStory} onBack={jest.fn()} />);
+  const view = await render(
+    <ReaderScreen
+      story={baseStory}
+      onBack={jest.fn()}
+      onReimagineStory={jest.fn()}
+    />,
+  );
 
   await act(async () => {
     await fireEvent.press(view.getByLabelText("Toggle reader controls"));
   });
 
   expect(view.queryByLabelText("Edit")).toBeNull();
-  // Reimagine is not author-only: a reader rewrites into a private copy of
-  // their own (created-flow spec §4), so the control stays.
+  // Reimagine is not author-only, but it is a DIFFERENT action for a reader:
+  // it does not rewrite the story they are reading, it opens Create seeded
+  // from it. The author's control is labelled Re-prompt.
   expect(view.getByLabelText("Reimagine")).toBeTruthy();
+  expect(view.queryByLabelText("Re-prompt")).toBeNull();
+});
+
+it("offers a reader no rewrite control at all when the host cannot open Create", async () => {
+  // Deliberate, and the reason is that the two halves of this control do
+  // different things. A reader's Reimagine has to leave the reader, so a host
+  // that supplies neither `onReimagineStory` nor its own `onReimagine` has
+  // nowhere to send them -- and the honest answer is no button, not a button
+  // that opens the author's re-prompt sheet over somebody else's chapter.
+  const view = await render(<ReaderScreen story={baseStory} onBack={jest.fn()} />);
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+
+  expect(view.queryByLabelText("Reimagine")).toBeNull();
+  expect(view.queryByLabelText("Re-prompt")).toBeNull();
 });
 
 it("offers Reimagine to a reader who did not write the story", async () => {
@@ -320,7 +344,9 @@ describe("the chrome while the chapter is still being written", () => {
       await fireEvent.press(view.getByLabelText("Toggle reader controls"));
     });
     await waitFor(() => expect(view.getByLabelText("Edit")).toBeTruthy());
-    expect(view.getByLabelText("Reimagine")).toBeTruthy();
+    // The author's rewrite control is Re-prompt, not Reimagine: Reimagine is
+    // what a READER gets, and it opens Create rather than this sheet.
+    expect(view.getByLabelText("Re-prompt")).toBeTruthy();
   });
 
   /**
