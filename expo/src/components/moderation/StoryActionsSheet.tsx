@@ -10,6 +10,7 @@ import {
 import { Ban, Check, Download, Flag } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import {
   MAX_STORY_REPORT_DETAILS_LENGTH,
   STORY_REPORT_REASONS,
@@ -252,39 +253,20 @@ export default function StoryActionsSheet({
               />
               {reportError ? <Text style={styles.error}>{reportError}</Text> : null}
               <View style={styles.footer}>
-                <Pressable
+                <Button
+                  label="Cancel"
                   onPress={handleClose}
-                  style={({ pressed }) => [
-                    styles.footerCancel,
-                    pressed && styles.footerPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                >
-                  <Text style={styles.footerCancelLabel}>Cancel</Text>
-                </Pressable>
-                <Pressable
+                  variant="secondary"
+                  style={styles.footerHalf}
+                />
+                <Button
+                  label={reportBusy ? "Sending..." : "Submit Report"}
+                  accessibilityLabel="Submit report"
                   onPress={handleSubmitReport}
                   disabled={!canSubmitReport}
-                  style={({ pressed }) => [
-                    styles.footerSubmit,
-                    !canSubmitReport && styles.footerSubmitDisabled,
-                    pressed && canSubmitReport && styles.footerPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Submit report"
-                  accessibilityState={{ disabled: !canSubmitReport }}
                   testID="story-report-submit"
-                >
-                  <Text
-                    style={[
-                      styles.footerSubmitLabel,
-                      !canSubmitReport && styles.footerSubmitLabelDisabled,
-                    ]}
-                  >
-                    {reportBusy ? "Sending..." : "Submit Report"}
-                  </Text>
-                </Pressable>
+                  style={styles.footerHalf}
+                />
               </View>
             </>
           ) : null}
@@ -295,14 +277,7 @@ export default function StoryActionsSheet({
               <Text style={styles.subtitle}>
                 Thanks for letting us know - our team will take a look.
               </Text>
-              <Pressable
-                onPress={handleClose}
-                style={styles.primaryButton}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Text style={styles.primaryButtonLabel}>Done</Text>
-              </Pressable>
+              <Button label="Done" onPress={handleClose} style={styles.primaryButton} />
             </>
           ) : null}
 
@@ -343,14 +318,7 @@ export default function StoryActionsSheet({
               <Text style={styles.subtitle}>
                 You won&apos;t see stories by {authorName} anymore.
               </Text>
-              <Pressable
-                onPress={handleClose}
-                style={styles.primaryButton}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Text style={styles.primaryButtonLabel}>Done</Text>
-              </Pressable>
+              <Button label="Done" onPress={handleClose} style={styles.primaryButton} />
             </>
           ) : null}
         </View>
@@ -479,56 +447,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  footerCancel: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.borderStrong,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  footerCancelLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.strong,
-  },
-  footerSubmit: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  footerSubmitDisabled: {
-    backgroundColor: colors.surface2,
-  },
-  footerSubmitLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.surface,
-  },
-  footerSubmitLabelDisabled: {
-    color: colors.tertiary,
-  },
-  footerPressed: {
-    opacity: 0.85,
-  },
-
-  primaryButton: {
-    marginTop: spacing.related,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.surface,
-  },
+  /** Layout only: the two buttons split the footer row. */
+  footerHalf: { flex: 1 },
+  /** Layout only; the recipe is `Button`'s. */
+  primaryButton: { marginTop: spacing.related },
   destructiveButton: {
     marginTop: spacing.related,
     minHeight: 48,

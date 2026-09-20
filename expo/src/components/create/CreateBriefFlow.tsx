@@ -59,6 +59,7 @@ import {
   savedCharacterInputFromDraft,
 } from "@/lib/saved-characters";
 import type { SavedCharacterInput } from "@/lib/saved-characters";
+import { Button } from "@/components/Button";
 import { colors, fonts, genreLabels, radius, shadows, spacing } from "@/theme";
 import type {
   AudienceMode,
@@ -1126,7 +1127,7 @@ function StorySetupScreen({
       {!hasCredits ? <Text style={styles.creditWarning}>You need {formatCredits(STORY_START_CREDITS)} to start this story.</Text> : null}
       {!ideaReady ? <Text style={styles.creditWarning}>Add a little more before generating this story.</Text> : null}
       {hasPendingCharacterImage ? <Text style={styles.creditWarning}>Wait for character images to finish before creating the story.</Text> : null}
-      <Pressable disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} onPress={onCreate} accessibilityRole="button" accessibilityState={{ disabled: !ideaReady || !hasCredits || hasPendingCharacterImage }} style={[styles.primaryCta, (!ideaReady || !hasCredits || hasPendingCharacterImage) && styles.primaryCtaDisabled]}><Text style={styles.primaryCtaText}>Create story</Text></Pressable>
+      <Button label="Create story" onPress={onCreate} disabled={!ideaReady || !hasCredits || hasPendingCharacterImage} style={styles.primaryCta} />
       <Text style={styles.ctaStrength}>strength {Math.min(100, Math.round((strength.slots / STRENGTH_SLOTS) * 100))}% · {strength.label.toLowerCase()}</Text>
     </ScrollView>
   );
@@ -1515,9 +1516,7 @@ export function CharacterCraftScreen({
           {onDelete ? <Pressable onPress={onDelete} accessibilityRole="button" style={styles.deleteButton}><Text style={styles.deleteText}>Delete character</Text></Pressable> : null}
         </ScrollView>
         <View style={[styles.stickyFooter, { paddingBottom: Math.max(bottomInset, spacing.md) }]}>
-          <Pressable disabled={!character.name.trim() || imageBusy} onPress={onSave} accessibilityRole="button" accessibilityState={{ disabled: !character.name.trim() || imageBusy }} style={[styles.primaryCta, (!character.name.trim() || imageBusy) && styles.primaryCtaDisabled]}>
-            <Text style={styles.primaryCtaText}>Save</Text><Check size={20} color={colors.surface} />
-          </Pressable>
+          <Button label="Save" onPress={onSave} disabled={!character.name.trim() || imageBusy} icon={<Check size={20} color={colors.surface} />} style={styles.primaryCta} />
         </View>
       {/*
         Rendered as an overlay inside this screen rather than as a second
@@ -1547,14 +1546,11 @@ export function CharacterCraftScreen({
               CAN be saved, so the primary offers the other safe way out
               instead of sitting disabled with no explanation.
             */}
-            <Pressable
-              onPress={canSave ? onSave : onKeepEditing}
-              accessibilityRole="button"
+            <Button
+              label={canSave ? "Save character" : "Keep editing"}
               accessibilityLabel={canSave ? "Save character" : "Keep editing this character"}
-              style={styles.dialogPrimary}
-            >
-              <Text style={styles.dialogPrimaryText}>{canSave ? "Save character" : "Keep editing"}</Text>
-            </Pressable>
+              onPress={canSave ? onSave : onKeepEditing}
+            />
             <Pressable
               onPress={onDiscard}
               accessibilityRole="button"
@@ -1605,9 +1601,9 @@ const styles = StyleSheet.create({
   viewIdeasLabel: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "700" },
   horizontalChips: { gap: spacing.sm, paddingRight: spacing.xl },
   grow: { flex: 1, minHeight: spacing.lg },
-  primaryCta: { minHeight: 54, borderRadius: radius.md, backgroundColor: colors.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
-  primaryCtaDisabled: { opacity: 0.42 },
-  primaryCtaText: { color: colors.surface, fontFamily: fonts.ui, fontWeight: "800", fontSize: 16 },
+  /** Layout only. The recipe is `Button`'s; this used to be a 54pt `radius.md` slab. */
+  primaryCta: { marginTop: spacing.sm },
+
   ctaStrength: { marginTop: -spacing.lg, color: colors.tertiary, fontFamily: fonts.ui, fontSize: 11, fontWeight: "700", textAlign: "center", textTransform: "lowercase" },
   section: { gap: spacing.sm },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm },
@@ -1720,8 +1716,7 @@ const styles = StyleSheet.create({
   dialogCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.related },
   dialogTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 22 },
   dialogBody: { color: colors.muted, fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, marginBottom: spacing.sm },
-  dialogPrimary: { minHeight: 52, borderRadius: radius.md, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
-  dialogPrimaryText: { color: colors.surface, fontFamily: fonts.ui, fontWeight: "800", fontSize: 16 },
+
   dialogDestructive: { minHeight: 52, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   dialogDestructiveText: { color: colors.heart, fontFamily: fonts.ui, fontWeight: "800", fontSize: 15 },
   stickyFooter: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg, paddingHorizontal: spacing.xl, paddingTop: spacing.md },

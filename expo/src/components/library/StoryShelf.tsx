@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { StoryCard } from "@/components/KathaPrimitives";
 import { colors, radius, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import type { Story } from "@/types/domain";
 
 export type ShelfState = "loading" | "ready" | "error";
@@ -77,15 +78,13 @@ export default function StoryShelf({
         <Text style={styles.emptyTitle}>{emptyTitle}</Text>
         <Text style={styles.stateText}>{emptyBody}</Text>
         {emptyAction ? (
-          <Pressable
+          <Button
+            label={emptyAction.label}
             onPress={emptyAction.onPress}
-            accessibilityRole="button"
-            accessibilityLabel={emptyAction.label}
             testID={`${testID}-empty-action`}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.primaryLabel}>{emptyAction.label}</Text>
-          </Pressable>
+            fullWidth={false}
+            style={styles.primaryButton}
+          />
         ) : null}
       </View>
     );
@@ -155,15 +154,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: spacing.lg,
   },
-  primaryButton: {
-    marginTop: spacing.sm,
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  primaryLabel: { ...type.body, fontWeight: "800", color: colors.surface },
+  /** Layout only. It hugs its label rather than stretching an empty shelf. */
+  primaryButton: { marginTop: spacing.sm, alignSelf: "center" },
   secondaryButton: {
     minHeight: 40,
     justifyContent: "center",

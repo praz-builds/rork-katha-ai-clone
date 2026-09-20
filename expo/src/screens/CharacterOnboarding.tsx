@@ -58,7 +58,6 @@ import { saveCharacterToLibrary } from "@/lib/saved-characters";
 import { sendEmailCode } from "@/lib/session";
 import {
   colors,
-  controls,
   fonts,
   IconPerson,
   motion,
@@ -68,6 +67,7 @@ import {
   spacing,
   type,
 } from "@/theme";
+import { Button } from "@/components/Button";
 import type { Genre } from "@/types/domain";
 import portraitAarav from "../../assets/onboarding/portrait-aarav.png";
 import portraitPriya from "../../assets/onboarding/portrait-priya.png";
@@ -1159,20 +1159,7 @@ function Cta({
   busy?: boolean;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || busy}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled || busy) }}
-      style={({ pressed }) => [
-        styles.cta,
-        pressed && styles.ctaPressed,
-        (disabled || busy) && styles.ctaDisabled,
-      ]}
-    >
-      <Text style={styles.ctaText}>{label}</Text>
-    </Pressable>
+    <Button label={label} onPress={onPress} disabled={disabled} loading={busy} />
   );
 }
 
@@ -1591,22 +1578,11 @@ function MeetScreen({
                   multiline
                   accessibilityLabel="Appearance"
                 />
-                <Pressable
+                <Button
+                  label="Redraw"
                   onPress={submitRedraw}
                   disabled={!draftAppearance.trim()}
-                  accessibilityRole="button"
-                  accessibilityLabel="Redraw"
-                  accessibilityState={{
-                    disabled: !draftAppearance.trim(),
-                  }}
-                  style={({ pressed }) => [
-                    styles.cta,
-                    pressed && styles.ctaPressed,
-                    !draftAppearance.trim() && styles.ctaDisabled,
-                  ]}
-                >
-                  <Text style={styles.ctaText}>Redraw</Text>
-                </Pressable>
+                />
               </Collapsible>
             </View>
 
@@ -2039,22 +2015,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   error: { ...type.subhead, color: colors.accentPressed },
-  cta: {
-    height: controls.onboardingCtaHeight,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: shadows.onboardingCta,
-  },
-  ctaPressed: { backgroundColor: colors.accentPressed },
-  ctaDisabled: { opacity: 0.4 },
-  ctaText: {
-    fontFamily: fonts.ui,
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.surface,
-  },
 
   /* W3 */
   stageCard: {

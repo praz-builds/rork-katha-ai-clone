@@ -85,6 +85,30 @@ export const type = {
     fontFamily: fonts.ui,
     fontWeight: '500' as const,
   },
+  /**
+   * The label on a text button. 17/22, `fonts.ui`, 700.
+   *
+   * NOT a ramp step, and deliberately between `headline` (18) and `body` (16):
+   * a button label is a control, not a level of the page, and it is the one
+   * piece of text in the app that has to read as pressable rather than as
+   * prose. 17/700 is the weight onboarding's CTA already used and the closest
+   * thing the hand-rolled buttons agreed on — they ran 15/800, 16/800,
+   * `type.body` at 700 and `type.headline` at 700, which is four labels for
+   * one act. Only `src/components/Button.tsx` should name it.
+   */
+  button: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontFamily: fonts.ui,
+    fontWeight: '700' as const,
+  },
+  /** The same label on the small (44pt) button. 15/20. */
+  buttonSmall: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: fonts.ui,
+    fontWeight: '700' as const,
+  },
   reader: {
     fontSize: 18,
     fontFamily: fonts.reader,

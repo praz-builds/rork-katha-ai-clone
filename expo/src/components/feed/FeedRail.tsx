@@ -1,9 +1,10 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
+  feedCardMetrics,
   RAIL_CARD_WIDTH,
   StoryFeedCard,
 } from "@/components/feed/StoryFeedCard";
-import { colors, fonts, radius, spacing, type } from "@/theme";
+import { colors, fonts, radius, spacing, type, useLayoutWidth } from "@/theme";
 import type { Story } from "@/types/domain";
 
 /**
@@ -29,6 +30,13 @@ export function FeedRail({
   stories: Story[];
   onStory: (id: string) => void;
 }) {
+  // The snap interval has to be the width the CARD actually drew itself at, not
+  // the 390pt reference constant. `feedCardMetrics` narrows a rail card on a
+  // window under 390, and a snap interval wider than the card walks the row a
+  // little further with every swipe until the "next" card is off screen.
+  const { content } = useLayoutWidth();
+  const { cardWidth } = feedCardMetrics(content, "rail");
+
   if (items.length === 0) return null;
 
   return (
@@ -38,7 +46,7 @@ export function FeedRail({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
-        snapToInterval={RAIL_CARD_WIDTH + spacing.md}
+        snapToInterval={(cardWidth ?? RAIL_CARD_WIDTH) + spacing.md}
         decelerationRate="fast"
       >
         {items.map((story) => (

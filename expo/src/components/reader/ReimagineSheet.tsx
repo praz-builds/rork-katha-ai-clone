@@ -22,6 +22,7 @@ import {
   type ReimagineRequest,
 } from "@/lib/reimagine-client";
 import { colors, radius, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import type { Chapter, SavedCharacter, Story } from "@/types/domain";
 
 export const MAX_REIMAGINE_PROMPT_CHARS = 500;
@@ -276,19 +277,12 @@ export function ReimagineSheet({
 
             <View style={styles.footer}>
               <Text style={styles.price}>Reimagine · {quote.label}</Text>
-              <Pressable
+              <Button
+                label={isAuthor ? "Reimagine chapter" : "Reimagine in my copy"}
                 onPress={submit}
                 disabled={!canSubmit}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !canSubmit }}
-                accessibilityLabel={isAuthor ? "Reimagine chapter" : "Reimagine in my copy"}
-                style={[styles.submit, !canSubmit && styles.submitDisabled]}
-              >
-                <Sparkles size={18} color={colors.surface} />
-                <Text style={styles.submitLabel}>
-                  {isAuthor ? "Reimagine chapter" : "Reimagine in my copy"}
-                </Text>
-              </Pressable>
+                icon={<Sparkles size={18} color={colors.surface} />}
+              />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -474,20 +468,5 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: colors.muted,
   },
-  submit: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  submitDisabled: {
-    backgroundColor: colors.tertiary,
-  },
-  submitLabel: {
-    ...type.headline,
-    color: colors.surface,
-  },
+
 });

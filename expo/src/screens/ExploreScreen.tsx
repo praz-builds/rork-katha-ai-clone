@@ -19,7 +19,16 @@ import {
   type UseStorySearchOptions,
 } from "@/components/explore/useStorySearch";
 import { hasUsableTerm } from "@/lib/search";
-import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
+import {
+  colors,
+  fonts,
+  genreLabels,
+  radius,
+  shadows,
+  spacing,
+  type,
+  useLayoutWidth,
+} from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
 
@@ -100,6 +109,13 @@ export default function ExploreScreen({
   /** Test seam, forwarded to `useStorySearch`. */
   searchOptions?: UseStorySearchOptions;
 }) {
+  // The list is the one surface here that has to answer to the window: on a
+  // tablet or a desktop browser a full-width row stretches the card until the
+  // cover and the stats sit at opposite ends of the eye's travel. `content`
+  // caps the column and the gutters are added back so it keeps its margins.
+  // Nothing else on this screen changes shape — see `useLayoutWidth`.
+  const { content, gutter, band } = useLayoutWidth();
+
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -324,6 +340,7 @@ export default function ExploreScreen({
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <FlatList
+        testID="explore-list"
         data={visible}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
@@ -350,7 +367,13 @@ export default function ExploreScreen({
         }
         ListEmptyComponent={listEmpty}
         ItemSeparatorComponent={ItemSeparator}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          band === "wide" && {
+            width: content + gutter * 2,
+            alignSelf: "center",
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -559,8 +582,18 @@ const styles = StyleSheet.create({
 
   /* The title used to carry this space with it. Without one the row starts at
      the very top of the safe area and the profile link is clipped, so the
-     padding the heading was implicitly providing is now explicit. */
-  headerStack: { paddingTop: spacing.lg },
+     padding the heading was implicitly providing is now explicit.
+
+     The bottom padding is the gap between the controls and the results, and
+     it has to live here rather than on the first card: `ItemSeparatorComponent`
+     only inserts space BETWEEN items, so without this the "Filters / Most
+     loved" row sat flush against the first cover with nothing between them.
+     `betweenGroups` because that is exactly what this is - the end of the
+     control group and the start of the list. */
+  headerStack: {
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.betweenGroups,
+  },
 
   /* ── 1. Header ── */
   header: {

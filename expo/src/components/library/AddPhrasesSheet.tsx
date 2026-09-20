@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import { CREATION_LANGUAGES, type CreationLanguage } from "@/types/domain";
 import {
   MAX_PHRASE_INPUT_LENGTH,
@@ -188,23 +189,14 @@ export default function AddPhrasesSheet({
               </Text>
             ) : null}
 
-            <Pressable
+            <Button
+              label={busy ? "Saving" : "Save"}
+              accessibilityLabel="Save phrases"
               onPress={handleSave}
               disabled={!canSave}
-              accessibilityRole="button"
-              accessibilityLabel="Save phrases"
-              accessibilityState={{ disabled: !canSave }}
               testID="add-phrases-save"
-              style={({ pressed }) => [
-                styles.primaryButton,
-                !canSave && styles.primaryButtonDisabled,
-                pressed && canSave && styles.primaryButtonPressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonLabel}>
-                {busy ? "Saving" : "Save"}
-              </Text>
-            </Pressable>
+              style={styles.primaryButton}
+            />
           </View>
         </KeyboardAvoidingView>
       </View>
@@ -312,19 +304,6 @@ const styles = StyleSheet.create({
   counter: { ...type.caption, color: colors.tertiary },
   counterOverLimit: { color: colors.premium, fontWeight: "700" },
   error: { ...type.caption, color: colors.premium },
-  primaryButton: {
-    marginTop: spacing.related,
-    minHeight: 52,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonPressed: { backgroundColor: colors.accentPressed },
-  primaryButtonDisabled: { backgroundColor: colors.borderStrong },
-  primaryButtonLabel: {
-    ...type.body,
-    fontWeight: "800",
-    color: colors.surface,
-  },
+  /** Layout only; the recipe is `Button`'s. */
+  primaryButton: { marginTop: spacing.related },
 });

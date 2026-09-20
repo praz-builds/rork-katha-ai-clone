@@ -69,11 +69,15 @@
  *
  * GEOMETRY. Sizes, radii and colours are the hand-off's
  * (`W7-Paywall.dc.html`), and they are exact: the hand-off is pixel-signed, so
- * its 30pt gutter, 20pt card radius, 44pt close plate and 56pt CTA are named
- * tokens (`spacing.onboardingGutter`, `radius.onboardingCard`,
- * `controls.onboardingPlate`, `controls.onboardingCtaHeight`) rather than the
- * nearest step on the general scale. Rounding each of them to a neighbour is
- * how a signed design arrives two points off in four places at once.
+ * its 30pt gutter, 20pt card radius and 44pt close plate are named tokens
+ * (`spacing.onboardingGutter`, `radius.onboardingCard`,
+ * `controls.onboardingPlate`) rather than the nearest step on the general
+ * scale. Rounding each of them to a neighbour is how a signed design arrives
+ * two points off in four places at once. The one exception is the CTA: the
+ * hand-off drew it at 56, and it is now the app's single 52pt `Button`
+ * (`controls.onboardingCtaHeight` is an alias of `controls.primaryCtaHeight`),
+ * because one button across the whole app beats four points of a signed
+ * height on one screen.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -102,6 +106,7 @@ import {
   shadows,
   spacing,
 } from "@/theme";
+import { Button } from "@/components/Button";
 
 export type OnboardingPaywallPurpose = "read" | "write" | "both";
 
@@ -402,14 +407,11 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
           ))}
         </View>
         {notice ? <Text style={styles.memberNotice}>{notice}</Text> : null}
-        <Pressable
+        <Button
+          label="Manage subscription"
           onPress={manage}
-          accessibilityRole="button"
-          accessibilityLabel="Manage subscription"
-          style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
-        >
-          <Text style={styles.primaryText}>Manage subscription</Text>
-        </Pressable>
+          style={styles.primary}
+        />
       </ScrollView>
     </View>
   );
@@ -655,20 +657,12 @@ function PaywallOffer({
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Pressable
+        <Button
+          label={CTA_LABEL}
           onPress={purchase}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel={CTA_LABEL}
-          accessibilityState={{ disabled: busy, busy }}
-          style={({ pressed }) => [
-            styles.primary,
-            pressed && styles.primaryPressed,
-            busy && styles.primaryDisabled,
-          ]}
-        >
-          <Text style={styles.primaryText}>{CTA_LABEL}</Text>
-        </Pressable>
+          loading={busy}
+          style={styles.primary}
+        />
       </View>
     </View>
   );
@@ -742,7 +736,7 @@ function PlanCard({
   );
 }
 
-/** The hand-off's 104 x 134 portrait, and the 56pt CTA pill it pins at the bottom. */
+/** The hand-off's 104 x 134 portrait. The CTA below it is the shared 52pt `Button`. */
 const PORTRAIT_WIDTH = 104;
 const PORTRAIT_HEIGHT = 134;
 /**
@@ -958,24 +952,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: spacing.md,
   },
-  primary: {
-    marginTop: spacing.md,
-    height: controls.onboardingCtaHeight,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: shadows.onboardingCta,
-  },
-  primaryPressed: { backgroundColor: colors.accentPressed },
-  primaryDisabled: { opacity: 0.4 },
-  primaryText: {
-    fontFamily: fonts.ui,
-    fontWeight: "700",
-    fontSize: 17,
-    lineHeight: 22,
-    color: colors.surface,
-  },
+  /** Layout only; the recipe is `Button`'s. */
+  primary: { marginTop: spacing.md },
 });
 
 export default OnboardingPaywall;

@@ -7,6 +7,139 @@
 
 ---
 
+## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
+
+**Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no
+`backend/` file, no migration, no function. **Nothing to deploy.**
+
+### The button did not exist
+
+`controls.primaryCtaHeight` (64) at `controls.primaryCtaRadius` (20) was written
+down in `source-of-truth/DESIGN_SYSTEM.md` §6, exported from the theme, and
+**imported by nothing** for the whole life of the app. `KathaPrimitives.PrimaryButton`
+existed at 52/`radius.md` and was imported by nothing either — it survived only
+in three test files that mocked it. Onboarding had its own `Primary` at 56.
+Everything else was a `Pressable` with a local `StyleSheet` entry, and those had
+settled at 48, 50, 52, 54 and 56, across three radii, with labels at 15/800,
+16/800, `type.body` 700 and `type.headline` 700.
+
+So the same act — press the orange thing — looked like a different control on
+almost every screen, and the token meant to prevent that had never been
+connected to anything. **The lesson is not "the number was wrong".** A test that
+asserts a token's value passes perfectly well while nothing reads the token;
+`theme.test.ts` had been green over this the entire time. A token only holds if
+exactly one component reads it.
+
+`expo/src/components/Button.tsx` is now that component: `primary | secondary |
+ghost`, `lg` (52) / `sm` (44), `minHeight` not `height` because the credit
+sheet's Purchase label is a whole sentence. 20 style blocks across 16 files
+migrated; `PrimaryButton` and Home's local `HeaderAction` deleted.
+
+`primaryCtaHeight` 64 → 52, `primaryCtaRadius` → `radius.pill`,
+`onboardingCtaHeight` 56 → 52 as an explained alias. The two-recipe split is
+over, and `DESIGN_SYSTEM.md` §6 — which argued for it at length — is rewritten
+as §6.1 (the one button) and §6.2 (the circular icon button, whose rules had
+been sitting headingless at the tail of the onboarding-field section). The old
+argument is kept as "What the two-recipe split got right, and what it got
+wrong": its observation that 64 reads as a slab is the reason the button is 52.
+
+### The guard, and what it honestly does not catch
+
+`expo/src/__tests__/button-recipe.test.ts` checks two different things: that
+`Button` consumes the tokens, and that nothing else draws a tall pill. It was
+proved by planting `naughtyCta: { minHeight: 56, borderRadius: radius.pill }`
+in `LibraryScreen` and watching it fail.
+
+It does **not** catch an inline style object, a computed height
+(`spacing.huge + spacing.sm`), or a height arriving through an unresolvable
+variable, and the file says so rather than implying coverage it does not have.
+The compile-time half is `ButtonLayoutStyle`, which omits every geometry key
+from the `style` prop — because the prop is applied last and an unnarrowed
+`ViewStyle` silently overrode the recipe while the doc comment claimed it could
+not be overridden.
+
+A radius floor of 20 pulled in six discs, avatars and cards. Rather than six
+exemptions they are excluded by shape: a style that pins `width <= height` is a
+disc or a card, never a text button.
+
+`DeleteAccountSheet#continueButton` stays exempt, dated, with the condition
+that would flip it. It is primary-*shaped* but deliberately not the primary:
+`colors.ink`, one row above "Keep my account", one screen before the red
+confirm. Moving it to `Button` would make the route to deleting an account the
+friendliest control on the sheet.
+
+### Chrome without plates
+
+Home's credits pill and bell, Get credits' `balancePill` and Create's
+`CreditPill` were three drawings of one idea — white shadowed circle, peach
+`accentSoft` capsule, and a third in the brief flow. All now use one
+containerless `HeaderAction`: no plate, no shadow, 44pt target kept, unread dot
+kept (its ring moved from `surface` to `bg`, there being nothing behind it now).
+
+**One regression this caused, caught in review and fixed:** the Get Credits
+balance is a *readout*, and `HeaderAction` had a required `onPress` and a
+hardcoded `accessibilityRole="button"`, so the balance was wired to `onBack`.
+A screen reader announced "7 credits, button" and activating it left the screen.
+`onPress` is now optional and its absence renders a plain `View`. The API forced
+the bug; that is the kind of default worth noticing when extracting a component.
+
+### The covers that never arrived
+
+Explore's first screenful of cards showed their genre gradient forever while
+cards scrolled to later were fine. `StoryFeedCard`'s `CardCover` reset the
+fade-in opacity in a **mount effect, which runs after commit**:
+
+    const opacity = useRef(new Animated.Value(0)).current;
+    useEffect(() => { opacity.setValue(0); }, [imageKey]);   // after paint
+    <FocalImage onLoad={reveal} />                            // can fire first
+
+A cover that resolves fast — warm HTTP cache, already-decoded image — fires
+`onLoad`, fades in, and is then set back to 0 by the effect, and `onLoad` never
+fires again for the life of the mount. Cards mounted during a scroll fetch cold,
+so their `onLoad` lands after the effect and they reveal correctly. Hence
+"the first set is missing and the rest are fine".
+
+The reveal is now a **fact, not an event**: `revealed = shownKey === imageKey`,
+set by `onLoad`, so a load that arrives before first paint is still true
+afterwards. The regression test earns its keep — a first version passed against
+the broken code because the mocked image re-fired `onLoad` on every render,
+which repaired the reveal. Firing it once per source, like a real image, is what
+exposes the bug, and the test says so.
+
+**The card is deliberately NOT gated on its image**, which is what the report
+asked for. A story whose cover generation failed would then never appear at all,
+and the feed would go blank for as long as the slowest cover took. Instead the
+first six covers are warmed with `Image.prefetch` behind a 180ms
+`Promise.race` — best effort, never blocking beyond the timeout, sequence guard
+re-checked after the await. The trade: every search hands over up to 180ms late,
+not only the first.
+
+### Viewports
+
+`useLayoutWidth()` (window, content, gutter, band `compact | regular | wide`)
+and `feedCardMetrics()` replace fixed 300/116/155 card geometry. 390 reproduces
+the reference frame exactly — cover 116×155, rail 300 — and moves only where the
+window forces it. `FeedRail` now snaps by the width the card actually drew at;
+snapping by the old 300 constant walked the row further with every swipe on a
+narrow window.
+
+### Gates
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors, 30 warnings (all pre-existing).
+`pnpm exec jest --ci` **1326 passed, 131 suites**. Security scan: 0 findings —
+cover URLs reaching `Image.prefetch` are written only by `_shared/media.ts` and
+`regenerate-cover`, never accepted from a client.
+
+### Follow-ups
+
+1. `expo/DESIGN.md:398-410` still lists the one-time offer in its paywall
+   ordering — the feature was removed 2026-09-10. Needs renumbering, not just
+   deletion.
+2. A URL-scheme allowlist before `Image.prefetch` as defence in depth. Not a
+   finding today: the value is always a Supabase Storage HTTPS URL.
+
+---
+
 ## 2026-09-19 UTC — The story bible's merge cannot lose a chapter to the next one
 
 **Session:** the coordinating session, from a CodeAnt finding on the docs PR

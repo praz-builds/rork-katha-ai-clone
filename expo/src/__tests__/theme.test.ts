@@ -206,12 +206,18 @@ describe('theme tokens', () => {
   });
 
   describe('typography', () => {
-    it('exports the full ramp', () => {
+    it('exports the full ramp, plus the two that are not ramp steps', () => {
+      // `button` and `buttonSmall` are in `type` but not in the ramp: a button
+      // label is a control, not a level of the page, and `button` sits at 17
+      // between `headline` (18) and `body` (16) precisely because it is not
+      // competing with them. They are counted here so that adding a third
+      // off-ramp style is a deliberate act rather than a silent one.
       const styles = Object.keys(type);
-      expect(styles.length).toBe(12);
+      expect(styles.length).toBe(14);
       expect(styles).toEqual(expect.arrayContaining([
         'largeTitle', 'title', 'section', 'titleSmall', 'headline', 'body',
         'bodySmall', 'subhead', 'meta', 'caption', 'micro', 'reader',
+        'button', 'buttonSmall',
       ]));
     });
 
@@ -223,6 +229,10 @@ describe('theme tokens', () => {
       const ladder = ['largeTitle', 'title', 'section', 'titleSmall', 'headline', 'body', 'bodySmall', 'subhead', 'meta', 'caption', 'micro'] as const;
       const sizes = ladder.map((k) => type[k].fontSize);
       expect(sizes).toEqual([34, 24, 22, 20, 18, 16, 15, 14, 13, 12, 11]);
+      // The button labels are not in the ladder, but they are still held to
+      // the integer rule and the 11pt floor below.
+      expect(type.button.fontSize).toBe(17);
+      expect(type.buttonSmall.fontSize).toBe(15);
       for (const size of Object.values(type).map((s) => s.fontSize)) {
         expect(Number.isInteger(size)).toBe(true);
         // 11 is the floor. Below it text is illegible at any fontScale under 1.
@@ -348,7 +358,7 @@ describe('theme tokens', () => {
 
     it('leaves the app-wide `type` scale untouched', () => {
       expect(type.title.fontFamily).toBe(fonts.display);
-      expect(Object.keys(type).length).toBe(12);
+      expect(Object.keys(type).length).toBe(14);
     });
   });
 

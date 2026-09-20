@@ -60,17 +60,11 @@ jest.mock("@/components/KathaPrimitives", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pressable, Text } = require("react-native");
+  const { Text } = require("react-native");
 
   return {
     CreditPill: ({ credits }: { credits: number }) =>
       React.createElement(Text, null, `${credits} credits`),
-    PrimaryButton: ({ children, onPress }: { children: React.ReactNode; onPress: () => void }) =>
-      React.createElement(
-        Pressable,
-        { accessibilityRole: "button", onPress },
-        React.createElement(Text, null, children),
-      ),
   };
 });
 

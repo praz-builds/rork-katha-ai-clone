@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import { KathaMark } from "@/components/brand/KathaMark";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, spacing } from "@/theme";
+import { Button } from "@/components/Button";
 
 /**
  * The wait before a chapter can be heard.
@@ -130,34 +131,22 @@ export function NarrationLoader({
           <View style={styles.actions}>
             {action
               ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={action.label}
+                <Button
+                  label={action.label}
                   onPress={action.onPress}
-                  style={({ pressed }) => [
-                    styles.action,
-                    pressed && styles.actionPressed,
-                  ]}
-                >
-                  <Text style={styles.actionText}>{action.label}</Text>
-                </Pressable>
+                  style={styles.action}
+                />
               )
               : null}
             {secondaryAction
               ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={secondaryAction.label}
+                <Button
+                  label={secondaryAction.label}
                   onPress={secondaryAction.onPress}
-                  style={({ pressed }) => [
-                    styles.secondaryAction,
-                    pressed && styles.actionPressed,
-                  ]}
-                >
-                  <Text style={styles.secondaryActionText}>
-                    {secondaryAction.label}
-                  </Text>
-                </Pressable>
+                  variant="ghost"
+                  size="sm"
+                  style={styles.secondaryAction}
+                />
               )
               : null}
           </View>
@@ -213,36 +202,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  action: {
-    minHeight: 48,
-    minWidth: 180,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionPressed: {
-    opacity: 0.85,
-  },
-  actionText: {
-    fontFamily: fonts.ui,
-    fontWeight: "600",
-    fontSize: 15,
-    color: colors.surface,
-  },
-  secondaryAction: {
-    minHeight: 44,
-    minWidth: 180,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryActionText: {
-    fontFamily: fonts.ui,
-    fontWeight: "600",
-    fontSize: 15,
-    color: colors.muted,
-  },
+  /*
+    Layout only for both. They sit centred under a failed narration, so they
+    keep their 180pt floor -- two buttons the width of their own labels under
+    a centred paragraph read as links, not as the way out.
+  */
+  action: { minWidth: 180 },
+  secondaryAction: { minWidth: 180 },
 });
