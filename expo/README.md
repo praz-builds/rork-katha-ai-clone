@@ -54,4 +54,13 @@ pnpm exec expo export --platform ios --output-dir dist-check-ios
 pnpm exec expo export --platform android --output-dir dist-check-android
 ```
 
-For rapid product review, run Expo web on port 8090 and use a 390 x 844 browser viewport.
+For product review, start the preview with `scripts/preview.sh` (from the repo root) and use a 390 x 844 browser viewport.
+
+**Port 8090 serves `main`, not your branch.** The script owns a dedicated worktree and hard-resets it to `origin/main`, so the preview always answers "what does a user get today?". Do not start a web server on 8090 from a lane worktree -- you would take the port and silently replace a known state with your branch. To review your own work before it merges, run it on another port:
+
+```bash
+pnpm expo start --web --port 8091   # your branch; note that 8091 is NOT in
+                                    # ALLOWED_ORIGINS, so edge calls will fail CORS
+```
+
+Backend calls only work on 8090 (see `ALLOWED_ORIGINS` in AGENTS.md), so anything needing live data has to be reviewed on the preview after merge, or with 8091 added to the deployed allowlist first.

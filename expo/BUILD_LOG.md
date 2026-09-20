@@ -2,6 +2,56 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-21: The preview had been reviewing a branch, not main
+
+Raised by the founder: *"can you check what I'm checking on my local is actually
+the code we have in main"* -- asked because deploys had sometimes run ahead of
+merges, and he wanted to know whether what he was signing off was real.
+
+### What was actually wrong
+
+Production was clean. All three layers matched `main` exactly: 90 migrations
+applied of 90 in the repo, 37 edge functions deployed of 37 in the repo, and
+#115's code was confirmed *inside* the live `continue-story` and
+`generate-story-stream` bundles by downloading them and searching for a symbol
+only #115 introduced. Nothing was deployed that was not merged, and nothing
+merged was waiting to deploy.
+
+The drift was on the desk, not the server. The preview on :8090 had been served
+for ten hours out of `Katha-AI-wt-genre-music`, a lane worktree on
+`codex/ci-cost-and-offline-gate`, which predated #121. So Reimagine was being
+looked at in the design #121 replaced. The tree was clean and the page worked;
+there was no symptom. A preview pinned to a lane worktree does not break when
+main moves, it just quietly stops being the answer to the question being asked.
+
+### The fix
+
+`scripts/preview.sh`, and a rule in AGENTS.md: **the preview shows main, and
+only main.** It owns `~/Katha-AI-preview` (branch `local-preview`, tracking
+`origin/main`), hard-resets to `origin/main`, reinstalls when the lockfile
+moved, frees the port from whatever else holds it, and prints the commit it is
+serving so the state has a name. It refuses to start on a dirty tree rather
+than serve something it cannot identify.
+
+`expo/README.md` and `expo/DESIGN.md` said "run Expo web on 8090" and "start or
+reuse the Expo web server on port 8090" -- the word *reuse* being precisely the
+trap, since the thing reused was some other lane's branch. Both now send
+pre-merge review to 8091 and note that edge calls fail CORS there, because 8091
+is not in `ALLOWED_ORIGINS`.
+
+### Note on the diagnosis
+
+The first pass reported this backwards: `ReimagineSheet.tsx` was called the new
+file and `RepromptSheet.tsx` the deleted one. It is the reverse -- #121 removed
+`ReimagineSheet` and added `RepromptSheet` plus `reimagine-seed.ts`. The
+conclusion held, but a two-dot `git diff` was read as though it ran the other
+way. When a diff is the evidence, name which side is which before drawing from
+it. A verification step also reported "0 occurrences" of #115's symbol in the
+live bundle -- a broken shell pipeline, not a missing deploy, caught only by
+checking that the bundle was readable at all before believing the number. A
+check that can fail silently to zero needs a control that proves it can find
+something.
+
 ## 2026-09-20: Music coverage was tested against 12 genres, not 17
 
 PR #118, prompted by a challenge on whether #116 had actually been tested.
