@@ -1,12 +1,9 @@
 import {
-  detectChapterCharacters,
-  nameAppearsIn,
-  replacementFromSaved,
   startReimagine,
-  type ReimagineRequest,
+  type RepromptRequest,
   type ReimagineResult,
 } from "@/lib/reimagine-client";
-import type { Chapter, Story } from "@/types/domain";
+import type { Chapter } from "@/types/domain";
 
 jest.mock("@/lib/supabase", () => ({
   isSupabaseConfigured: false,
@@ -23,58 +20,26 @@ const chapter: Chapter = {
   isPublished: false,
   paragraphs: [
     "Naina Mistry closed the bakery early.",
-    "Aarav was waiting by the auto stand, and Ana's banana bread was still warm.",
+    "Aarav was waiting by the auto stand.",
   ],
 };
 
-const story = {
-  characters: [
-    { name: "Naina Mistry", role: "A baker" },
-    { name: "Aarav", role: "Her oldest friend" },
-    { name: "Ana" },
-    { name: "Ravi" },
-    { name: "aarav" },
-  ],
-} as unknown as Story;
+/*
+  Character replacement is gone from this client, and its tests with it.
 
-describe("nameAppearsIn", () => {
-  it("matches whole words only, case-insensitively", () => {
-    expect(nameAppearsIn("Ana", "Ana's banana bread")).toBe(true);
-    expect(nameAppearsIn("Ana", "banana bread")).toBe(false);
-    expect(nameAppearsIn("aarav", "Aarav was waiting")).toBe(true);
-  });
-
-  it("counts the first name of a multi-word roster entry", () => {
-    expect(nameAppearsIn("Naina Mistry", "Naina closed the bakery.")).toBe(true);
-    expect(nameAppearsIn("Naina Mistry", "Nainital was cold.")).toBe(false);
-  });
-});
-
-describe("detectChapterCharacters", () => {
-  it("lists roster characters whose name is on the page, once each, in roster order", () => {
-    expect(detectChapterCharacters(story, chapter).map((item) => item.name)).toEqual([
-      "Naina Mistry",
-      "Aarav",
-      "Ana",
-    ]);
-  });
-
-  it("never invents a character from the prose", () => {
-    expect(detectChapterCharacters({ characters: [] }, chapter)).toEqual([]);
-    expect(detectChapterCharacters({}, chapter)).toEqual([]);
-  });
-});
+  The sheet in front of it is the author's Re-prompt now: one instruction, no
+  roster. Replacement was a find-and-replace across the prose, which could not
+  touch a pronoun or anything a chapter said about who somebody was -- so the
+  one thing it could not do was replace a character. A reader who wants
+  somebody else in a story gets a story written for them instead
+  (`lib/reimagine-seed.ts`), which is covered by `reimagine-seed.test.ts`.
+*/
 
 describe("startReimagine", () => {
-  const request: ReimagineRequest = {
+  const request: RepromptRequest = {
     storyId: "s1",
     chapterNumber: 1,
     prompt: "Make it rain.",
-    replacements: [replacementFromSaved("Aarav", {
-      id: "saved-1",
-      name: "Kabir",
-      createdAt: "2026-09-09T00:00:00Z",
-    }, true)],
   };
 
   it("accumulates prose, reports stage, and settles with the result", async () => {
@@ -111,19 +76,23 @@ describe("startReimagine", () => {
     expect(run.result).toBeNull();
   });
 
-  it("serialises a saved-character replacement with its id and the all-chapters flag", () => {
-    expect(request.replacements[0]).toEqual({
-      fromName: "Aarav",
-      to: { savedCharacterId: "saved-1", name: "Kabir", portraitUrl: undefined },
-      applyToAllChapters: true,
+  it("carries the prompt through to the transport", async () => {
+    let seen: RepromptRequest | null = null;
+    const run = startReimagine(request, async (received, _id, handlers) => {
+      seen = received;
+      handlers.onDelta("ok");
+      return {
+        chapter,
+        model: "test",
+        storyId: "s1",
+        forked: false,
+      };
     });
-  });
-
-  it("walks the offline stub end to end when no backend is configured", async () => {
-    const run = startReimagine(request);
-    const result = await run.promise;
-    expect(result.model).toBe("mock");
-    expect(result.chapter.paragraphs.join(" ")).toContain("Aarav became Kabir");
-    expect(run.text).toContain("Make it rain.");
+    await run.promise;
+    expect(seen).toEqual({
+      storyId: "s1",
+      chapterNumber: 1,
+      prompt: "Make it rain.",
+    });
   });
 });

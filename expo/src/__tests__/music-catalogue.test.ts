@@ -7,7 +7,7 @@ import {
   orderTracksForGenre,
   type MusicTrack,
 } from "@/lib/music-catalogue";
-import { UI_GENRES } from "@/types/domain";
+import { GENRES, UI_GENRES } from "@/types/domain";
 
 // jest.setup.js empties the catalogue for every other suite; this one checks the real rows.
 jest.unmock("@/lib/music-catalogue");
@@ -55,6 +55,34 @@ describe("the shipped catalogue", () => {
   it("gives every genre on the Create screen a default track, borrowed or its own", () => {
     for (const genre of UI_GENRES) {
       expect(defaultTrackForStory("any-story", genre)).toBeDefined();
+    }
+  });
+
+  it("gives EVERY genre a track, not only the ones Create offers", () => {
+    // UI_GENRES is the 12 genres Create shows. GENRES is all 17 the client can
+    // hold, and a story reaches the reader carrying one of those 17 -- not one
+    // of the 12. Stories created before the v7 taxonomy, and Katha Originals,
+    // carry romantasy, darkRomance, thriller, contemporary and poetry; there
+    // are contemporary stories in production today. Checking only UI_GENRES
+    // would have passed while those five opened in silence.
+    //
+    // This is also the guard for the next genre added to the taxonomy: it
+    // fails here rather than being discovered as one genre that never plays.
+    const silent = GENRES.filter((genre) => !defaultTrackForStory("any-story", genre));
+    expect(silent).toEqual([]);
+  });
+
+  it("covers the genres the backend can store but the client does not name", () => {
+    // The backend's PrimaryGenre union has 19 members; the client's GENRES has
+    // 17. `cozyFantasy` and `paranormalRomance` exist server-side only, so a
+    // row carrying one arrives as a string this client cannot type.
+    //
+    // `isGenre` in api.ts is what stops that reaching the reader: an unknown
+    // value falls back to a real genre. This asserts the other half of that
+    // contract -- that whatever it falls back to can actually play. If the
+    // fallback ever changes, this is the test that should be revisited.
+    for (const fallback of ["adventure"] as const) {
+      expect(defaultTrackForStory("any-story", fallback)).toBeDefined();
     }
   });
 

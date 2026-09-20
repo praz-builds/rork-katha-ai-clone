@@ -14,7 +14,7 @@
  * allowance counters are passed in by the caller from whatever it knows, so a
  * caller with no count quotes the first-use price. The ledger that actually
  * decides whether a reimagine is free lives on the server and is a follow-up
- * (see the `reimaginesUsedOnChapter` prop on `ReimagineSheet`).
+ * (see the `repromptsUsedOnChapter` prop on `RepromptSheet`).
  */
 import { useEffect, useState } from "react";
 

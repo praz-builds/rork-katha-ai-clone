@@ -194,6 +194,13 @@ export type ChapterEndProps = {
    */
   onReimagine?: () => void;
   /**
+   * What that pill is called. The author's version re-prompts the chapter they
+   * wrote; a reader's starts a story of their own from this one's premise. The
+   * chrome makes the same distinction, and the two must not disagree on the
+   * same screen.
+   */
+  reimagineLabel?: string;
+  /**
    * The viewer's balance, for the auto fallback's own gate.
    *
    * Required rather than optional: a default would silently re-create the
@@ -208,6 +215,7 @@ export default function ChapterEnd({
   resolveOptions = defaultResolveOptions,
   onContinue,
   onReimagine,
+  reimagineLabel = "Reimagine this story",
   credits,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
@@ -507,7 +515,7 @@ export default function ChapterEnd({
         {onReimagine ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Reimagine this story"
+            accessibilityLabel={reimagineLabel}
             style={({ pressed }) => [
               styles.secondaryButton,
               pressed && !reduceMotion && styles.textCtaPressed,
@@ -516,7 +524,7 @@ export default function ChapterEnd({
             testID="chapter-end-reimagine"
           >
             <Sparkles size={16} color={colors.accent} />
-            <Text style={styles.secondaryButtonText}>Reimagine this story</Text>
+            <Text style={styles.secondaryButtonText}>{reimagineLabel}</Text>
           </Pressable>
         ) : null}
       </View>

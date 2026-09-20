@@ -42,9 +42,11 @@ Reading is **free and unlimited on every tier, forever**. Audio is **1 credit pe
 chapter, unlocked permanently**. **Editing by hand is free and unlimited**, and
 it is not capped, because it calls nothing.
 
-**Reimagining a chapter** is unlimited on any paid plan; on the free tier it is
-free once per chapter on a story you created, and beyond that the free tier is
-offered the plan rather than a price.
+**Re-prompting a chapter** (the author's control; called Reimagine before
+2026-09-20) is unlimited on any paid plan; on the free tier it is free once per
+chapter on a story you created, and beyond that the free tier is offered the
+plan rather than a price. **A reader's Reimagine is not an editing action at
+all** -- it seeds a new story in Create and is priced as a story start (§3).
 
 **Character images are six per account, for the life of the account, on every
 tier** — generating and editing both count — and the seventh costs 1 credit
@@ -174,8 +176,8 @@ One credit = one AI action.
 | **Auto-continue** — the story writes ahead without asking | **1 per chapter, or 2 illustrated**, and the whole run is bought at once |
 | Regenerate a cover | **1** — there is no free retry |
 | **Create or edit a character image** | **6 free per account, ever**, then **1** each |
-| Reimagine a chapter of a story you created | **1 free** per chapter, then a plan |
-| Reimagine a chapter of somebody else's story | **1** — it makes you your own copy |
+| Re-prompt a chapter of a story you created | **1 free** per chapter, then a plan |
+| Reimagine somebody else's story | **1** — it is a story start, and the story is yours (§3) |
 | Unlock a chapter's audio | **1**, once, and it is yours |
 
 **Two things worth saying plainly, because they surprise people:**
@@ -237,13 +239,15 @@ plan; we don't lock voices behind a tier.
 | | Free | Any paid plan |
 |---|---|---|
 | Type, rewrite, restructure your draft by hand | **0**, unlimited | **0**, unlimited |
-| **Reimagine a chapter** — re-prompt it, recast it | **1 free** per chapter, on stories you created | **Unlimited** |
-| Reimagine a chapter in somebody else's story | **1** — it makes you your own copy | **Unlimited** |
+| **Re-prompt a chapter** — say what should change | **1 free** per chapter, on stories you created | **Unlimited** |
+| Reimagine somebody else's story | **1** — it is a story start, and the story is yours (§3) | **1** — a story start is never free |
 | **Create or edit a character image** | **6 free** per account, then **1** each | **Unlimited** ⚠ *not what ships today — see below* |
 | Use a saved character in a new story | **0**, always | **0**, always |
 | Regenerate a cover you paid for | **1** — there is no free retry | **1** |
 
-**Reimagine is the only AI editing action, and hand editing is free forever.**
+**Re-prompt is the only AI editing action, and hand editing is free forever.**
+*(Recasting was removed on 2026-09-20: it was a find-and-replace that could not
+touch a pronoun, so it could not actually replace a character. See §3.)*
 *(2026-09-11: the 3 free AI redrafts and 20 free paragraph edits this table used
 to list are retired — see §1a.)*
 
@@ -281,11 +285,12 @@ one-credit refund without discarding the completed chapter. Every time.
 *20 free paragraph AI edits per chapter* from the first version of the editing
 table. **Neither action exists in the shipped product.**
 
-What actually ships is `ReimagineSheet`
-([`expo/src/components/reader/ReimagineSheet.tsx`](../expo/src/components/reader/ReimagineSheet.tsx)),
-backed by the `reimagine-chapter` edge function: the person picks a chapter,
-optionally swaps characters, types what should change, and the chapter is written
-again. There is no "redraft this chapter" button and no "rewrite this paragraph"
+What actually ships is `RepromptSheet`
+([`expo/src/components/reader/RepromptSheet.tsx`](../expo/src/components/reader/RepromptSheet.tsx)),
+backed by the `reimagine-chapter` edge function: the **author** types what
+should change and the chapter is written again. (Until 2026-09-20 this was
+`ReimagineSheet` and also offered character swaps; see §3 for why they went.)
+There is no "redraft this chapter" button and no "rewrite this paragraph"
 button anywhere in the reader or the studio. Hand editing is a plain text editor,
 free and uncapped, calling nothing.
 
@@ -856,12 +861,33 @@ reimagines three chapters ends up with one copy rather than three.
 **Price, revised 2026-09-11. The 2026-09-10 rule was 2 free per chapter, then 1
 credit each, and it carried two ⚠ open holes. Both are resolved here.**
 
+> ### Revised 2026-09-20: the non-author row is retired, and nothing replaces it.
+>
+> **A reader's Reimagine no longer forks and no longer rewrites.** It opens
+> Create with the source story's premise pre-filled, and the reader generates a
+> story they own through the ordinary create flow — so it is **priced as a story
+> start and nothing else** (§1, 1 credit, bundling cast, chapter one and its
+> art). There is no separate reimagine price for a non-author, no fork to price,
+> and Hole 1 below is resolved by construction rather than by a counter: a reader
+> cannot spend a free allowance on somebody else's chapter because there is no
+> longer an action that touches one.
+>
+> **Character replacement is gone from both surfaces**, so the portrait and
+> renaming rows below no longer describe anything reachable. Replacement was a
+> find-and-replace that could not touch a pronoun
+> (`_shared/character-substitution.ts` says so in its own header) or anything a
+> chapter stated about who somebody was. A reader who wants their characters in a
+> story now gets a story **written for them**, which is generation, which is
+> already priced.
+>
+> The author's row stands unchanged, and the action is now called **Re-prompt**.
+
 | | Free | Any paid plan |
 |---|---|---|
-| Reimagine a chapter of a story **you created** | **1 free** per chapter, then the plan is offered | **Unlimited**, never charged |
-| Reimagine a chapter of **somebody else's** story | **1 credit**, from the first | **Unlimited**, never charged |
-| A brand-new character who needs a portrait | **1** (the portrait) | **0** — portraits are unlimited on a plan |
-| Renaming a character across other chapters | **0** — substitution, no model call | **0** |
+| Re-prompt a chapter of a story **you created** | **1 free** per chapter, then the plan is offered | **Unlimited**, never charged |
+| ~~Reimagine a chapter of **somebody else's** story~~ | *Retired 2026-09-20 — it is a story start now* | *Retired* |
+| ~~A brand-new character who needs a portrait~~ | *Retired — replacement is gone; a portrait is priced by the create flow* | *Retired* |
+| ~~Renaming a character across other chapters~~ | *Retired — there is no rename* | *Retired* |
 
 **Subscribers are never charged and never counted**, which is the single largest
 simplification available here: there is no counter to scope, no fork to copy it
@@ -2492,7 +2518,8 @@ economy is tuned on evidence rather than argued about.
     exception to a third action without re-running the same honesty pass.
 18h. **The 3 free AI redrafts and 20 free paragraph edits are retired**
     *(2026-09-11)*. Neither action exists in the shipped product: the only AI
-    editing action is **Reimagine** (`ReimagineSheet` → `reimagine-chapter`), and
+    editing action is **Re-prompt** (`RepromptSheet` → `reimagine-chapter`; it
+    was called Reimagine and offered character swaps until 2026-09-20), and
     hand editing is a plain text editor, free and uncapped. The caps were pricing
     a feature that was never built, and they were being cited — by §3's scoping
     argument, §10's counter columns and §11's p95 metric. All three are corrected.

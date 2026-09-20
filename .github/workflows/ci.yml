@@ -72,6 +72,42 @@ jobs:
       - name: Migration numbers do not collide with main
         run: scripts/check-migration-numbers.sh origin/main
 
+      # Does this change touch SQL at all?
+      #
+      # The migration suite below spins up PGlite per test and takes ~8 of this
+      # job's ~8.5 minutes. It ran on EVERY pull request, including the many
+      # that only touch the Expo app -- about 200 runs in September, which is
+      # how a 2,000-minute monthly allowance was spent by the 20th and stopped
+      # CI for every agent at once.
+      #
+      # It is safe to skip when no `.sql` changed because these tests execute
+      # the migration files against a real Postgres and assert on the schema
+      # and policies they produce. Nothing in `expo/` or in the edge functions
+      # can change that outcome; only a migration file can.
+      #
+      # Computed with git rather than a paths-filter action: the checkout above
+      # already has full history, so this needs no third-party action in the
+      # supply chain for something a one-line diff answers.
+      - name: Does this change touch the database?
+        id: changed
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            files="$(git diff --name-only "$base...HEAD")"
+          else
+            # A push to main. Compare against the commit before it; if that is
+            # not available for any reason, fall through to running them.
+            files="$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo backend/supabase/migrations/force.sql)"
+          fi
+          if echo "$files" | grep -q '^backend/supabase/migrations/.*\.sql$'; then
+            echo "sql=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Migration files changed -- running the migration suite"
+          else
+            echo "sql=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No migration files changed -- skipping the migration suite (~8 min)"
+          fi
+
       # Every function, not a hand-maintained list: a new one is covered the
       # day it lands. feed/index.ts reached main with four TS2345 errors
       # because nothing here typechecked the Deno workspace at all.
@@ -111,7 +147,12 @@ jobs:
       #
       # They spin up PGlite and take a few minutes. That is the right price for
       # the only thing standing between a bad migration and production.
+      #
+      # Gated on a migration file actually changing. See "Does this change
+      # touch the database?" above for why that is safe, and what it cost not
+      # to do it. A PR that touches SQL still runs every one of them.
       - name: Test migrations
+        if: steps.changed.outputs.sql == 'true'
         run: deno test --allow-env --allow-net --allow-read backend/supabase/migrations/
 
       - name: Format check (shared LLM modules)

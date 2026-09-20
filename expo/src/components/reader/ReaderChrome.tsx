@@ -53,6 +53,15 @@ export type ReaderChromeProps = {
   onEdit?: () => void;
   /** Anyone, once the chapter is complete. Omit and the control is not rendered at all. */
   onReimagine?: () => void;
+  /**
+   * What the rewrite control is called for this viewer.
+   *
+   * The author's version re-prompts the chapter they wrote; a reader's starts
+   * a new story of their own from this one's premise. Two different actions
+   * behind one slot, so the label is the caller's to set and defaults to the
+   * reader's word.
+   */
+  reimagineLabel?: string;
   onPreferences: () => void;
   onChapters: () => void;
   onListen: () => void;
@@ -210,6 +219,7 @@ export function ReaderChrome({
   onPageChange,
   onEdit,
   onReimagine,
+  reimagineLabel = "Reimagine",
   onPreferences,
   onChapters,
   onListen,
@@ -252,7 +262,7 @@ export function ReaderChrome({
     },
     ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
     ...(onReimagine
-      ? [{ label: "Reimagine", icon: Sparkles, onPress: onReimagine }]
+      ? [{ label: reimagineLabel, icon: Sparkles, onPress: onReimagine }]
       : []),
   ];
   const rowTwo: ChromeAction[] = [

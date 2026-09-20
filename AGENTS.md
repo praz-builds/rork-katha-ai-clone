@@ -92,6 +92,21 @@ After onboarding or paywall changes:
 4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
 5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, success, Home handoff. There is no one-time offer step -- it was removed 2026-09-10 (`source-of-truth/ONBOARDING_FLOW.md` §14).
 
+## An expensive CI job runs only when its inputs change
+
+**Before adding a slow step to `.github/workflows/ci.yml`, gate it on the paths it actually depends on.** This is a standing rule for every new flow, not a one-off cleanup.
+
+The migration suite is the worked example. It spins up PGlite per test, takes ~8 of the backend job's ~8.5 minutes, and ran on **every** pull request -- including the majority that only touch `expo/`. About 200 runs in September, and on 2026-09-20 a 2,000-minute monthly allowance was gone by the 20th: **every job on every branch failed in three seconds with no runner and no logs**, for every agent at once, and GitHub's only explanation was a billing annotation. It now runs only when a `.sql` file changed.
+
+The test for whether gating is safe is one question: **can anything outside those paths change this job's result?** For the migration suite the answer is no -- it executes SQL against a real Postgres and asserts on the schema and policies that produces; no TypeScript can alter that. If the answer is yes, or you are unsure, do not gate it. A skipped check that should have run is worse than a slow one.
+
+Two rules that go with it:
+
+- **Compute changed paths with `git`, not a third-party action.** The backend checkout uses `fetch-depth: 0`, so `git diff --name-only "$base...HEAD"` answers it with nothing added to the supply chain. A `paths-filter` action is another dependency to pin and trust for a one-line diff.
+- **Prove the detection on real branches before trusting it.** The gate was checked against five merged PRs -- the two carrying SQL were detected, the three without were not. A gate nobody tested is a check nobody runs.
+
+**When CI cannot run at all**, `scripts/ci-local.sh` runs the same set locally and prints a summary to paste into the PR, so "it looked fine locally" is one defined thing rather than a different thing per person. It treats a missing toolchain as a failure, not a pass.
+
 ## A regression test is not done until it has failed
 
 **Revert the fix, re-run the test, confirm it fails, then restore the fix.** A test written against a bug you have already fixed passes for two reasons -- because the fix works, or because the test never reproduced the bug -- and they are indistinguishable until you check.
@@ -103,6 +118,16 @@ Two shapes that produce a test proving nothing:
 - **The mock reads state at resolve time instead of call time.** Any "stale read" test has to capture the value when the read starts, or it is not stale.
 - **The assertion runs before the async work lands.** A negative assertion (`still muted`, `no sound created`) passes trivially if the thing it is guarding against has not happened yet. Flush until the work has actually run, and prove the flushing is enough by reverting the fix.
 
+## Test against the type the data carries, not the subset the UI offers
+
+`UI_GENRES` is the 12 genres Create shows. `GENRES` is the 17 the client can hold, and **a story reaches the reader carrying one of the 17**. The five that are not on Create -- `romantasy`, `darkRomance`, `thriller`, `contemporary`, `poetry` -- live on older stories and Katha Originals, and there are `contemporary` stories in production today.
+
+#116's music coverage test walked `UI_GENRES`. Every genre did in fact resolve to a track, so nothing was broken -- but had one of those five been missing, **nothing would have failed**: that genre would have opened in silence, with no error, for a slice of stories nobody was looking at. The test now walks `GENRES`.
+
+The same seam exists one layer out: the backend's `PrimaryGenre` union has **19** members (`cozyFantasy` and `paranormalRomance` are server-side only). `isGenre` in `api.ts` is what stops an untypable value reaching a screen, by falling back to a real genre. Anything keyed on genre depends on that fallback, so it is worth asserting rather than assuming.
+
+The general rule: when a feature is keyed on an enum, enumerate the **widest** set the runtime can produce, not the set the happy path uses. A picker's list is a UI decision; the data outlives it.
+
 ## An async restore must never overwrite a choice already made
 
 A screen that reads a saved preference on mount and calls `setState` when it resolves will silently undo anything the person did in the meantime. The person presses mute, and a moment later the music starts anyway: the control visibly does not work.
@@ -110,6 +135,19 @@ A screen that reads a saved preference on mount and calls `setState` when it res
 **Every restore of a persisted preference needs a `<thing>ChosenByUserRef`** -- set by the handler, checked by the restore before it applies. `ReaderScreen` has three (`prefsChosenByUserRef`, `voiceChosenByUserRef`, `mutedChosenByUserRef`); all three exist because the bug shipped without them at least once. The music one was dropped during a rewrite and had to be found by review, so a comment claiming the guarantee is not the guarantee.
 
 **Known and unfixed:** `CreateStudioScreen`'s draft restore (`loadDraft().then(...)` around line 195) calls `setDraft` wholesale with no such guard. Typing into Create before that read resolves is overwritten. It was left alone in #116 because the Create flow was being worked on in another lane; fix it in whichever branch owns that screen.
+
+## The preview shows main, and only main
+
+`http://localhost:8090` is where the product gets looked at and signed off. It must therefore answer exactly one question -- *what does a user get today?* -- and that is the state of `main`.
+
+This repo has ~30 worktrees, one per agent lane. A preview started inside any of them serves **that lane's branch**, and goes stale the moment anything else merges. It fails silently, because the page keeps working: nothing is broken, it is just answering a question nobody asked. On 2026-09-20 the preview had run for ten hours out of a lane worktree that predated #121, so Reimagine was being reviewed in a design `main` no longer had. Nobody could have noticed from the screen.
+
+**Start the preview only with `scripts/preview.sh`.** It owns a dedicated worktree (`~/Katha-AI-preview`, branch `local-preview`, tracking `origin/main`), hard-resets it to `origin/main`, reinstalls if the lockfile moved, kills whatever else holds the port, and prints the commit it is serving. It refuses to start on a dirty tree rather than serve something it cannot name.
+
+- **Never point it at a branch, and never edit that worktree.** To see a change before it merges, read the PR. The preview is not a development surface; it is the record of what shipped.
+- **Merge first, then refresh the preview.** The sequence is merge to `main` -> re-run `scripts/preview.sh` -> look. Not the reverse.
+- **Deploying is still a separate step.** The preview reflects `main`; it says nothing about production. See *Deploy discipline* -- merged is not deployed.
+- **Agents: do not start your own web server on 8090.** You will take the port from the preview and replace a known state with your branch, which is the exact failure above. Run your branch on another port and say which one.
 
 ## Security Gate (MANDATORY before pushing to GitHub)
 
@@ -275,6 +313,27 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
 
 `ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist for browser clients. Native clients do not send an `Origin` header.
+
+#### Looking at the product: `scripts/preview.sh`
+
+```bash
+scripts/preview.sh              # sync ~/Katha-AI-preview to origin/main, serve on :8090
+scripts/preview.sh --offline    # skip the fetch (no network), never the checks
+```
+
+This is the only supported way to open the preview -- see *The preview shows main, and only main* for why a preview started inside a lane worktree is worse than no preview. It prints the commit it is serving; if that is not `origin/main`, stop and say so.
+
+`--offline` skips the network, not the guarantee: it still refuses a dirty tree, still hard-resets to the local `origin/main` ref, and says out loud that the ref may be behind. There is no flag that serves an arbitrary checkout, by design. Re-running while the right commit is already up is free -- it leaves the server alone rather than paying for a Metro reboot.
+
+The worktree is created once and then left alone:
+
+```bash
+git worktree add -b local-preview ~/Katha-AI-preview origin/main
+cd ~/Katha-AI-preview/expo && pnpm install
+cp <any working worktree>/expo/.env ~/Katha-AI-preview/expo/.env   # not in git
+```
+
+Use a phone-sized viewport. At desktop width the intro carousel traps the flow before the app is reachable.
 
 **Run the web app on port 8090, not 8081.** The deployed `ALLOWED_ORIGINS`
 secret contains `http://localhost:8090` and does **not** contain 8081, and the
