@@ -38,7 +38,7 @@ After onboarding or paywall changes:
 - Email/OTP, notification permission, subscriptions, restores, and offer purchases are currently UI handoff points. Keep their callbacks explicit so Supabase, RevenueCat, and native notification wiring can replace the local transitions cleanly.
 - Notification education currently advances to the paywall from any tap. Background taps and `Not now` continue with consent unset/false. `Allow` is where the real Apple/Android permission request must be inserted; only a granted native response may set consent true, then continue to the paywall.
 - The notification review rail auto-scrolls and remains horizontally draggable.
-- Keep email/OTP after the paywall action or first meaningful save; do not reintroduce mandatory authentication before personalization and value delivery.
+- **Email/OTP comes before the portrait and the paywall, deliberately** (`../source-of-truth/ONBOARDING_FLOW.md`): W5 asks for the address while the portrait is still a placeholder, so the drawing has an owner before it exists, and the email and code screens cover the wait for the image call fired on W4. Auth never gates the aha; it runs beside it. The shipped order is `w3 -> w4 -> w5 -> code -> w6 -> paywall -> welcome` (`Step` in `src/screens/CharacterOnboarding.tsx`). The older rule here said to keep email *after* the paywall action -- that was superseded by #92 on 2026-09-11.
 - `KathaOnboardingFlowV2` emits the collected onboarding result through `onDone`; persist that payload when account/profile wiring is added.
 - Do not hard-code localized production pricing when RevenueCat integration begins. Render product and currency values from the store payload.
 
