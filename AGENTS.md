@@ -103,6 +103,16 @@ Two shapes that produce a test proving nothing:
 - **The mock reads state at resolve time instead of call time.** Any "stale read" test has to capture the value when the read starts, or it is not stale.
 - **The assertion runs before the async work lands.** A negative assertion (`still muted`, `no sound created`) passes trivially if the thing it is guarding against has not happened yet. Flush until the work has actually run, and prove the flushing is enough by reverting the fix.
 
+## Test against the type the data carries, not the subset the UI offers
+
+`UI_GENRES` is the 12 genres Create shows. `GENRES` is the 17 the client can hold, and **a story reaches the reader carrying one of the 17**. The five that are not on Create -- `romantasy`, `darkRomance`, `thriller`, `contemporary`, `poetry` -- live on older stories and Katha Originals, and there are `contemporary` stories in production today.
+
+#116's music coverage test walked `UI_GENRES`. Every genre did in fact resolve to a track, so nothing was broken -- but had one of those five been missing, **nothing would have failed**: that genre would have opened in silence, with no error, for a slice of stories nobody was looking at. The test now walks `GENRES`.
+
+The same seam exists one layer out: the backend's `PrimaryGenre` union has **19** members (`cozyFantasy` and `paranormalRomance` are server-side only). `isGenre` in `api.ts` is what stops an untypable value reaching a screen, by falling back to a real genre. Anything keyed on genre depends on that fallback, so it is worth asserting rather than assuming.
+
+The general rule: when a feature is keyed on an enum, enumerate the **widest** set the runtime can produce, not the set the happy path uses. A picker's list is a UI decision; the data outlives it.
+
 ## An async restore must never overwrite a choice already made
 
 A screen that reads a saved preference on mount and calls `setState` when it resolves will silently undo anything the person did in the meantime. The person presses mute, and a moment later the music starts anyway: the control visibly does not work.
