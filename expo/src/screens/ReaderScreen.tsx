@@ -726,17 +726,23 @@ export default function ReaderScreen({
   // choice for this story. Neither is saved against the story, so both follow
   // the catalogue if tracks change later.
   //
-  // A reader can mute before this read resolves, and the restore would then
-  // start music on a muted reader. `musicMutedRef` is the live answer, and a
-  // choice made by the person beats a value read from disk, always.
+  // A reader can press mute before this read resolves. The restore must not
+  // then apply the older value from disk: they would mute, and a moment later
+  // the music would start anyway -- the control visibly not working. A choice
+  // made by the person beats a value read from disk, always, so the restore
+  // skips the muted half once they have touched it. The track half still
+  // applies, because nothing in the reader chooses a track.
   const musicMutedRef = useRef(false);
+  const mutedChosenByUserRef = useRef(false);
   const [musicMuted, setMusicMutedState] = useState(false);
   useEffect(() => {
     let alive = true;
     void Promise.all([getMusicMuted(), getGenreTrackId(story.genre)]).then(([muted, genreTrackId]) => {
       if (!alive) return;
-      musicMutedRef.current = muted;
-      setMusicMutedState(muted);
+      if (!mutedChosenByUserRef.current) {
+        musicMutedRef.current = muted;
+        setMusicMutedState(muted);
+      }
       const chosen = findMusicTrack(genreTrackId, MUSIC_TRACKS)
         ?? defaultTrackForStory(story.id, story.genre, MUSIC_TRACKS);
       setMusicTrackId(chosen?.id ?? null);
@@ -1057,6 +1063,8 @@ export default function ReaderScreen({
   // setting, not something to do in the middle of a chapter.
   const handleMusicMuteToggle = useCallback(() => {
     const next = !musicMutedRef.current;
+    // Marks the choice as the reader's, so a slower restore cannot undo it.
+    mutedChosenByUserRef.current = true;
     musicMutedRef.current = next;
     setMusicMutedState(next);
     void setMusicMuted(next);

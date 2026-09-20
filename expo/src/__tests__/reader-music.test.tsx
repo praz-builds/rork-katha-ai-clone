@@ -176,6 +176,46 @@ describe("the mute control", () => {
     expect(view.getByLabelText("Music")).toBeTruthy();
   });
 
+  it("survives a mute pressed before the saved preference has loaded", async () => {
+    // The reader opens a story and hits mute straight away, while the read
+    // from AsyncStorage is still in flight. The restore must not then apply
+    // the older "unmuted" it captured: the music would start a moment after
+    // they silenced it, and the control would look broken.
+    //
+    // The mock reads the value FIRST and resolves late, which is what a slow
+    // read actually does. Awaiting the gate before reading instead would hand
+    // back the value the reader's own press had just written, and the test
+    // would pass against the bug.
+    let releaseStorage: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseStorage = resolve;
+    });
+    const realGetItem = storage.getItem.getMockImplementation()!;
+    storage.getItem.mockImplementation(async (key: string) => {
+      const valueAtReadTime = await realGetItem(key);
+      if (key === MUTED_KEY) await gate;
+      return valueAtReadTime;
+    });
+
+    const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
+    await openChrome(view);
+
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText("Music"));
+    });
+    expect(view.getByLabelText("Music, off")).toBeTruthy();
+
+    // Now let the stale read land.
+    await act(async () => {
+      releaseStorage();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    expect(view.getByLabelText("Music, off")).toBeTruthy();
+    expect(createdSounds).toHaveLength(0);
+    storage.getItem.mockImplementation(realGetItem);
+  });
+
   it("there is no track picker in the reader any more", async () => {
     const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
     await openChrome(view);

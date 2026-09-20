@@ -24,6 +24,18 @@ const CACHE_DIR = `${FileSystem.cacheDirectory ?? ""}music/`;
 /** In-flight downloads, keyed by track id, so two callers share one fetch. */
 const inFlight = new Map<string, Promise<string>>();
 
+/**
+ * Bumped by every clear.
+ *
+ * A download that was already in flight when the cache was cleared would
+ * otherwise finish afterwards and write its file back into a directory the
+ * reader had just emptied -- so "Clear downloaded music" would report success
+ * and leave a track behind. A download compares this against the value it
+ * started with, and a download from before the clear removes its own file
+ * instead of keeping it.
+ */
+let cacheGeneration = 0;
+
 async function ensureCacheDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(CACHE_DIR);
   if (!info.exists) {
@@ -51,16 +63,27 @@ export async function resolveMusicUri(track: MusicTrack): Promise<string> {
   if (existing) return existing;
 
   const target = `${CACHE_DIR}${track.file}`;
+  const startedAt = cacheGeneration;
   const download = (async () => {
     try {
       const info = await FileSystem.getInfoAsync(target);
       // A zero-byte file is a download that died midway. Treating it as a hit
       // would hand the player an empty file and cache the failure forever, so
       // it is re-fetched like a miss.
-      if (info.exists && "size" in info && (info.size ?? 0) > 0) return target;
+      if (info.exists && "size" in info && (info.size ?? 0) > 0) {
+        // A clear that landed while this read was in flight has already taken
+        // the file, so the path is stale even though it existed a moment ago.
+        return cacheGeneration === startedAt ? target : remoteUrl;
+      }
       await ensureCacheDir();
       const result = await FileSystem.downloadAsync(remoteUrl, target);
       if (result.status !== 200) {
+        await FileSystem.deleteAsync(target, { idempotent: true });
+        return remoteUrl;
+      }
+      if (cacheGeneration !== startedAt) {
+        // Cleared while this was downloading. Undo it rather than leave a file
+        // behind in a cache the reader asked to be empty.
         await FileSystem.deleteAsync(target, { idempotent: true });
         return remoteUrl;
       }
@@ -79,12 +102,22 @@ export async function resolveMusicUri(track: MusicTrack): Promise<string> {
 /**
  * Drops every cached track. Exposed for a "Clear downloaded music" control in
  * the Profile settings; nothing calls it automatically.
+ *
+ * Resolves only once the cache is genuinely empty. The generation is bumped
+ * before the delete so a download already in flight cleans up after itself,
+ * and the in-flight set is awaited afterwards so a reader who clears while a
+ * story is fetching is not told it is done while a file is still landing.
  */
 export async function clearMusicCache(): Promise<void> {
+  cacheGeneration += 1;
+  const pending = Array.from(inFlight.values());
   try {
     await FileSystem.deleteAsync(CACHE_DIR, { idempotent: true });
   } catch {
     // Best-effort: a cache that would not clear is not worth an error to a
     // reader, and the OS reclaims it under pressure anyway.
   }
+  // Never rejects (resolveMusicUri swallows its own failures), but allSettled
+  // keeps that true even if that ever changes.
+  await Promise.allSettled(pending);
 }
