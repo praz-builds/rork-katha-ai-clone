@@ -57,6 +57,8 @@ export type ReaderChromeProps = {
   onChapters: () => void;
   onListen: () => void;
   onMusic?: () => void;
+  /** Music is silenced: the Music glyph renders struck through. */
+  musicMuted?: boolean;
 };
 
 /**
@@ -97,6 +99,12 @@ type ChromeAction = {
   label: string;
   icon: React.ComponentType<{ size: number; color: string }>;
   onPress: () => void;
+  /**
+   * Draws a diagonal line across the glyph, the standard "this is off"
+   * treatment. Used by Music: the same icon struck through rather than a
+   * second icon, so the control does not change shape when it changes state.
+   */
+  struck?: boolean;
 };
 
 /**
@@ -115,14 +123,18 @@ function ChromeButton({ action }: { action: ChromeAction }) {
     <Pressable
       onPress={action.onPress}
       accessibilityRole="button"
-      accessibilityLabel={action.label}
+      accessibilityLabel={action.struck ? `${action.label}, off` : action.label}
+      accessibilityState={action.struck === undefined ? undefined : { selected: !action.struck }}
       hitSlop={8}
       style={({ pressed }) => [
         styles.chromeButton,
         pressed && styles.chromeButtonPressed,
       ]}
     >
-      <Icon size={CHROME_ICON_SIZE} color={CHROME.text} />
+      <View style={styles.chromeGlyph}>
+        <Icon size={CHROME_ICON_SIZE} color={CHROME.text} />
+        {action.struck ? <View style={styles.chromeGlyphStrike} testID="chrome-strike" /> : null}
+      </View>
       <Text style={styles.chromeButtonText}>{action.label}</Text>
     </Pressable>
   );
@@ -202,6 +214,7 @@ export function ReaderChrome({
   onChapters,
   onListen,
   onMusic = () => {},
+  musicMuted = false,
 }: ReaderChromeProps) {
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
@@ -231,7 +244,12 @@ export function ReaderChrome({
   // all rather than render disabled. A greyed control mid-generation is a
   // question the writer cannot answer; an absent one is not.
   const rowOne: ChromeAction[] = [
-    { label: "Music", icon: Music, onPress: onMusic },
+    {
+      label: "Music",
+      icon: Music,
+      onPress: onMusic,
+      struck: musicMuted,
+    },
     ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
     ...(onReimagine
       ? [{ label: "Reimagine", icon: Sparkles, onPress: onReimagine }]
@@ -544,6 +562,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
+  },
+  /**
+   * Wraps the glyph so the strike can be positioned against the glyph's own
+   * box rather than the button's, which is taller and wider (it also holds
+   * the label).
+   */
+  chromeGlyph: {
+    width: CHROME_ICON_SIZE,
+    height: CHROME_ICON_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  /**
+   * The "off" diagonal. A rotated 1px rule rather than a second icon: lucide
+   * has no music-off glyph, and drawing the line keeps the on and off states
+   * the same shape and weight, which is the point of the convention.
+   *
+   * Width is the glyph's diagonal (side x sqrt 2) so the line reaches both
+   * corners, and it is drawn in the chrome's own text colour so it reads as
+   * part of the glyph rather than as a separate mark.
+   */
+  chromeGlyphStrike: {
+    position: "absolute",
+    width: Math.round(CHROME_ICON_SIZE * 1.41),
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: CHROME.text,
+    transform: [{ rotate: "-45deg" }],
   },
   chromeButtonPressed: {
     backgroundColor: CHROME.track,

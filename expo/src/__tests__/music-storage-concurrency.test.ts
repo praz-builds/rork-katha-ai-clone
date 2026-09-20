@@ -1,11 +1,11 @@
 /**
- * Two selections in quick succession must not erase each other.
+ * Two per-genre defaults set in quick succession must not erase each other.
  *
- * Every write read the whole selection map, edited one key and wrote it back.
- * Two of those overlapping meant the second read saw the state from before the
+ * Every write read the whole genre map, edited one key and wrote it back. Two
+ * of those overlapping meant the second read saw the state from before the
  * first write landed, so the earlier choice vanished with no error anywhere. A
- * reader hits this by changing track twice quickly, which is exactly what
- * someone auditioning music does.
+ * reader hits this by setting two genres quickly in Profile, which is exactly
+ * what someone auditioning music does.
  *
  * This lives in its own file because it needs AsyncStorage mocked with real
  * await boundaries -- without them the interleaving the bug depends on cannot
@@ -26,40 +26,41 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import {
-  getStoryMusicTrackId,
-  setStoryMusicTrackId,
+  getGenreTrackId,
+  setGenreTrackId,
 } from "@/lib/music-storage";
 
 beforeEach(() => {
   for (const key of Object.keys(store)) delete store[key];
 });
 
-it("keeps both selections when two writes overlap", async () => {
+it("keeps both defaults when two writes overlap", async () => {
   await Promise.all([
-    setStoryMusicTrackId("story-a", "track-a"),
-    setStoryMusicTrackId("story-b", "track-b"),
+    setGenreTrackId("horror", "horror_01"),
+    setGenreTrackId("fantasy", "fantasy_02"),
   ]);
 
-  expect(await getStoryMusicTrackId("story-a")).toBe("track-a");
-  expect(await getStoryMusicTrackId("story-b")).toBe("track-b");
+  expect(await getGenreTrackId("horror")).toBe("horror_01");
+  expect(await getGenreTrackId("fantasy")).toBe("fantasy_02");
 });
 
-it("keeps the last write when the same story is set twice in a row", async () => {
+it("keeps the last write when the same genre is set twice in a row", async () => {
   await Promise.all([
-    setStoryMusicTrackId("story-a", "track-a"),
-    setStoryMusicTrackId("story-a", "track-b"),
+    setGenreTrackId("horror", "horror_01"),
+    setGenreTrackId("horror", "horror_02"),
   ]);
 
-  expect(await getStoryMusicTrackId("story-a")).toBe("track-b");
+  expect(await getGenreTrackId("horror")).toBe("horror_02");
 });
 
-it("a clear is not undone by a concurrent write to another story", async () => {
-  await setStoryMusicTrackId("story-a", "track-a");
+it("a clear is not undone by a concurrent write to another genre", async () => {
+  await setGenreTrackId("horror", "horror_01");
   await Promise.all([
-    setStoryMusicTrackId("story-a", null),
-    setStoryMusicTrackId("story-b", "track-b"),
+    setGenreTrackId("horror", null),
+    setGenreTrackId("fantasy", "fantasy_02"),
   ]);
 
-  expect(await getStoryMusicTrackId("story-a")).toBeNull();
-  expect(await getStoryMusicTrackId("story-b")).toBe("track-b");
+  // Cleared back to "no preference", so the catalogue chooses again.
+  expect(await getGenreTrackId("horror")).toBeUndefined();
+  expect(await getGenreTrackId("fantasy")).toBe("fantasy_02");
 });
