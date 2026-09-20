@@ -21,7 +21,7 @@ import type { ContinuationOption, DirectionStatus } from "@/components/Direction
 import { toDirection } from "@/lib/directions";
 import { CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
 import { colors, radius, spacing, type } from "@/theme";
-import type { Chapter, Story } from "@/types/domain";
+import type { Chapter, DirectionChooser, Story } from "@/types/domain";
 
 /**
  * The cards, the composer and the surprise-me path are `DirectionChoices` --
@@ -45,6 +45,37 @@ const UNAVAILABLE_REASON = {
 
 /** The resolver is given this long before its result is treated as failed. */
 const RESOLVE_TIMEOUT_MS = 4000;
+
+/**
+ * One honest sentence about who sent the story this way.
+ *
+ * THE RULE THIS EXISTS TO KEEP: a reader is never told they chose a path the
+ * model chose. `direction_chosen_by` is the only thing that knows, so this
+ * reads it and says nothing when it says nothing.
+ *
+ * - `reader` -- a person tapped a chip or typed a direction. Which person
+ *   matters: on somebody else's story "You chose this" is simply false, so the
+ *   author is named instead. The story's own author sees "You".
+ * - `model` -- auto mode, and the direction model actually picked among the
+ *   chips. Katha chose, and the sentence says so.
+ * - `ranking` -- auto mode with no choosing step: the call failed or was not
+ *   made, and the top-ranked chip was taken. Deliberately NOT the same
+ *   sentence as `model` (00078 says why): calling a fallback a choice is a
+ *   small lie, and it is the exact lie this column was added to prevent.
+ * - absent -- nothing was recorded, or the chapter predates the column. No
+ *   sentence at all; the cards stand on their own.
+ */
+function attributionFor(
+  chosenBy: DirectionChooser | undefined,
+  story: Story,
+): string | undefined {
+  if (chosenBy === "reader") {
+    return isOwnStory(story) ? "You chose this." : "The author chose this.";
+  }
+  if (chosenBy === "model") return "Katha chose this one.";
+  if (chosenBy === "ranking") return "Katha continued with the first of these.";
+  return undefined;
+}
 
 function nonEmpty(value: string | undefined | null): string | undefined {
   const trimmed = value?.trim();
@@ -472,7 +503,50 @@ export default function ChapterEnd({
     nextChapterNumber,
   ]);
 
-  if (!isLatestChapter) return null;
+  /*
+    AN EARLIER CHAPTER ENDS ON THE PATHS IT TOOK.
+
+    This returned null, which was right about the one thing it was guarding --
+    re-reading chapter two must not offer to branch the series from the middle
+    of it -- and left the boundary blank. The record of that boundary exists:
+    since migration 00078 every continuation stores the chips that were on the
+    table and the one it was written from.
+
+    It is stored on the chapter that CAME OUT of the decision, not on the one
+    that ended, so the block is assembled from the NEXT chapter and rendered at
+    the end of this one. That is where the decision was made and where a reader
+    moving forward meets it, a beat before reading what it produced.
+  */
+  if (!isLatestChapter) {
+    const continuation = story.chapters.find(
+      (item) => item.chapterNumber === chapter.chapterNumber + 1,
+    );
+    const offered = continuation?.directionsOffered ?? [];
+    const chosen = nonEmpty(continuation?.directionChosen);
+    /*
+      A reader who typed their own direction chose something that was never on
+      a card, and `direction_chosen` holds it. Showing the offered chips and
+      silently dropping the one the story actually used would make this block
+      a list of paths none of which were taken -- so the typed direction joins
+      the list, last, as the one that was.
+    */
+    const paths = chosen && !offered.some((option) => option.prompt === chosen)
+      ? [...offered, { id: `${continuation?.id ?? "chapter"}-chosen`, prompt: chosen }]
+      : offered;
+    if (paths.length === 0) return null;
+    return (
+      <View style={styles.wrap}>
+        <DirectionChoices
+          readOnly
+          heading="The paths from here"
+          options={paths}
+          chosen={chosen}
+          attribution={attributionFor(continuation?.directionChosenBy, story)}
+          testIDPrefix="chapter-end"
+        />
+      </View>
+    );
+  }
 
   /*
     Two ways a story ends here, and they are different endings.

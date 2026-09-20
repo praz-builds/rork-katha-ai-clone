@@ -19,6 +19,19 @@ export type TappableWordProps = {
   onLongPress: () => void;
   /** Test-only hook. React Native gives it no runtime behaviour. */
   testID?: string;
+  /**
+   * Put this word in the accessibility tree as a button.
+   *
+   * OFF BY DEFAULT, and that default is the accessible choice for ordinary
+   * reading: a screen reader that stops on every word turns a chapter into a
+   * word list. It is turned ON only inside the reader's explicit "Save a
+   * phrase" mode, where stopping per word IS the task -- the reader has asked
+   * to choose the first and last word of a phrase, and a gesture they cannot
+   * perform is the only other way to do it. See `PhraseCaptureReader`.
+   */
+  accessible?: boolean;
+  /** Only meaningful with `accessible`. What a double-tap will do to this word. */
+  accessibilityHint?: string;
 };
 
 /**
@@ -42,11 +55,22 @@ export type TappableWordProps = {
  * practical ceiling for an inline word - the real safety net is that saving
  * is reversible (tap again to unsave) and forgiving of an imprecise first tap.
  */
-function TappableWordComponent({ word, state, onPress, onLongPress, testID }: TappableWordProps) {
+function TappableWordComponent({
+  word,
+  state,
+  onPress,
+  onLongPress,
+  testID,
+  accessible = false,
+  accessibilityHint,
+}: TappableWordProps) {
   return (
     <Text
       testID={testID}
-      accessible={false}
+      accessible={accessible}
+      accessibilityRole={accessible ? "button" : undefined}
+      accessibilityLabel={accessible ? word : undefined}
+      accessibilityHint={accessible ? accessibilityHint : undefined}
       suppressHighlighting
       onPress={state === "pending" ? undefined : onPress}
       onLongPress={state === "pending" ? undefined : onLongPress}

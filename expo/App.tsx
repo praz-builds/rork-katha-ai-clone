@@ -48,7 +48,6 @@ import { loadStoryChapters } from "@/lib/search";
 import {
   buildStoryCatalogue,
   hydrateForOpen,
-  isSeries,
   needsChapters,
   openTarget,
 } from "@/lib/story-catalogue";
@@ -330,9 +329,28 @@ export default function App() {
     session was pruned -- and the freshest series, the one the writer is most
     likely to want to continue, was the one the card refused to offer.
   */
+  /*
+    BOTH IDS, NOT `storyId ?? id`.
+
+    A session is knowable by two names and they are live at the same time. The
+    provisional row this session puts in `allStories` is keyed by the SESSION
+    id and keeps that key for its whole life, while `storyId` is filled in the
+    moment the first `meta` event arrives -- long before the writing finishes.
+    So `storyId ?? id` names the row that does not exist yet and stops naming
+    the row that does, and from that moment the session's own story no longer
+    matches itself.
+
+    The visible cost was a story opening its story page while it was still
+    being written: a front door with a cover and a Read button, for prose that
+    is still arriving. Home only escaped it by accident, passing an id that
+    resolved to no story at all and falling through a different branch.
+
+    A session is one story under two names until the server has caught up.
+    Both belong in the set.
+  */
   const liveStoryIds = generations
     .filter((session) => session.phase === "writing")
-    .map((session) => session.storyId ?? session.id)
+    .flatMap((session) => [session.storyId, session.id])
     .filter((id): id is string => Boolean(id));
 
   useEffect(() => {
@@ -825,9 +843,11 @@ export default function App() {
   if (preview === "narration-loader") return <NarrationLoaderPreview />;
   if (preview === "originals") return <OriginalsCoverPreview />;
 
-  // `isSeries` -- whether a tap lands on the series page or in the prose --
-  // lives in `lib/story-catalogue.ts` beside the hydrate-on-open decision it
-  // has to be made after.
+  // `openTarget` -- whether a tap lands on the story page or straight in the
+  // prose -- lives in `lib/story-catalogue.ts` beside the hydrate-on-open
+  // decision it has to be made after. BOTH openers below route through it;
+  // an inline copy of the rule here is how the two once disagreed.
+  const liveStoryIdSet = new Set(liveStoryIds);
 
   const openStory = (storyId: string) => {
     const story = allStories.find((item) => item.id === storyId);
@@ -848,8 +868,12 @@ export default function App() {
       void openDiscoveredStory(story);
       return;
     }
+    // An id that resolves to nothing is a story being written whose first
+    // page has not landed yet: `allStories` only gains a provisional row once
+    // a session has revealed prose. The reader is the screen that knows how
+    // to stand in for that (`provisionalStory`), so it keeps those taps.
     setScreen(
-      story && isSeries(story)
+      story && openTarget(story, liveStoryIdSet) === "story"
         ? { name: "story", storyId }
         : { name: "reader", storyId },
     );
@@ -865,10 +889,9 @@ export default function App() {
    * a blank page. Then it is merged into `discoveredStories`, so the id the
    * screen is about to be pointed at actually resolves in `allStories`.
    *
-   * The series-or-standalone decision is made on the HYDRATED copy, not on
-   * `allStories`: state set a line earlier is not visible to a read on the
-   * same tick, so consulting the list here would route every live result as
-   * a standalone and drop series readers past their own chapter list.
+   * The routing decision is made on the HYDRATED copy, not on `allStories`:
+   * state set a line earlier is not visible to a read on the same tick, so
+   * consulting the list here would decide on a copy with no chapters in it.
    *
    * And if the fetch FAILS, nothing is navigated to. Opening the reader on
    * the metadata-only copy put people inside a story with a cover, a title
@@ -908,7 +931,7 @@ export default function App() {
         : [...current, full]
     );
     setScreen(
-      openTarget(full) === "story"
+      openTarget(full, liveStoryIdSet) === "story"
         ? { name: "story", storyId: full.id }
         : { name: "reader", storyId: full.id },
     );

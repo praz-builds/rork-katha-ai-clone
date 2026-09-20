@@ -30,6 +30,11 @@
  * matched" from "nothing was reachable".
  */
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import {
+  parseDirectionChooser,
+  parseDirectionChosen,
+  parseOfferedDirections,
+} from "@/lib/chapter-directions";
 import { authorFor, stories as seedStories } from "@/data/seed";
 import { GENRES } from "@/types/domain";
 import type { Genre, Story } from "@/types/domain";
@@ -381,8 +386,11 @@ export async function loadStoryChapters(
   try {
     const { data, error } = await supabase
       .from("chapters")
+      // One string literal, not a concatenation: supabase-js infers the row
+      // type from the select text at compile time, and a `+` join defeats
+      // that inference and degrades the rows to `GenericStringError`.
       .select(
-        "id, story_id, chapter_number, title, content, first_line, previously_summary, is_published",
+        "id, story_id, chapter_number, title, content, first_line, previously_summary, is_published, directions_offered, direction_chosen, direction_chosen_by",
       )
       .eq("story_id", story.id)
       .eq("is_published", true)
@@ -411,6 +419,17 @@ export async function loadStoryChapters(
           ? c.previously_summary
           : undefined,
         isPublished: true,
+        // The paths the story was offered, and the one it took. THIS is the
+        // path that matters for the feature: `hydrateForOpen` sends every
+        // story opened from Explore, search or a curated rail through here,
+        // which is to say somebody ELSE's story -- the only kind whose
+        // branching a reader is ever curious about. `fetchMyStories` reads
+        // the same columns in `api.ts`; parsing is shared with it rather
+        // than restated, so the two paths cannot drift into disagreeing
+        // about what a malformed offer means.
+        directionsOffered: parseOfferedDirections(c.directions_offered),
+        directionChosen: parseDirectionChosen(c.direction_chosen),
+        directionChosenBy: parseDirectionChooser(c.direction_chosen_by),
       };
     });
 

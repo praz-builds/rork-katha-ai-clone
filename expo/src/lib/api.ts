@@ -10,6 +10,11 @@ import { bootstrapUser } from "@/lib/session";
 // the same age whichever read it arrived through.
 import { publishedOffsetFrom } from "@/lib/search";
 import {
+  parseDirectionChooser,
+  parseDirectionChosen,
+  parseOfferedDirections,
+} from "@/lib/chapter-directions";
+import {
   postEventStream,
   StreamStalledError,
   StreamTransportError,
@@ -872,7 +877,17 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
   const { data: chapterRows } = await supabase
     .from("chapters")
     .select(
-      "id, story_id, chapter_number, title, content, first_line, previously_summary, hook_type, hook_text, is_published, audio_url, image_url",
+      // The three direction columns (migration 00078). Written on every
+      // continuation since 00078 and, until now, selected by nothing at all --
+      // the record was real and invisible at the same time.
+      //
+      // This is one of TWO reads that need them. `loadStoryChapters` in
+      // `lib/search.ts` is the other, and it is the one that matters more:
+      // this path serves the stories you wrote, that one serves every story
+      // opened from Explore, search or a curated rail. Both parse through
+      // `lib/chapter-directions.ts` so they cannot come to disagree about what
+      // a malformed offer means.
+      "id, story_id, chapter_number, title, content, first_line, previously_summary, hook_type, hook_text, is_published, audio_url, image_url, directions_offered, direction_chosen, direction_chosen_by",
     )
     .eq("story_id", id)
     .order("chapter_number", { ascending: true });
@@ -896,6 +911,9 @@ async function hydrateStoryRow(row: unknown): Promise<Story | null> {
       isPublished: c.is_published === true,
       imageUrl: stringOrUndefined(c.image_url),
       audioUrl: typeof c.audio_url === "string" ? c.audio_url : undefined,
+      directionsOffered: parseOfferedDirections(c.directions_offered),
+      directionChosen: parseDirectionChosen(c.direction_chosen),
+      directionChosenBy: parseDirectionChooser(c.direction_chosen_by),
     };
   });
 
