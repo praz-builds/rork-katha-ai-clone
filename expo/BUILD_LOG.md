@@ -2,6 +2,71 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-20: A story opens with music for its genre, and the tracks are not in the app
+
+PR #116.
+
+### What a reader gets
+
+Opening a story fades in one of its genre's two tracks over about two seconds,
+at 0.45 rather than full volume. The same story always opens on the same track
+(hashed from the story id), and two stories in a genre differ. **The track
+loops** -- a chapter outlasts three minutes of music many times over, and music
+that stopped partway would be worse than none. Narration ducks it to 0.1 and
+restores it on stop.
+
+Fantasy and romance have their own tracks now instead of borrowing folktale and
+slice-of-life; they are the two most-picked genres on Create. Romantasy borrows
+fantasy, which is nearer than folktale was.
+
+### Choosing left the reader
+
+The track picker is deleted. The Music control in the reader chrome only mutes,
+drawn as the Music glyph with a rotated 1px strike (lucide has no music-off
+glyph, and drawing the rule keeps the on and off states the same shape and
+weight). Mute is global and immediate.
+
+Picking background music is a setting, not something to do mid-chapter, and the
+old per-story selection left a growing map of dead story ids behind. Per-genre
+defaults are stored and read by the reader already (`katha.reader.music-genre.v1`);
+**the Profile surface that writes them, beside the narration voice, is not built
+yet.**
+
+### 26 MB did not belong in the download
+
+The tracks were bundled in `expo/assets/music/`. That put 26 MB on every
+download for a feature a session may never hear, and made adding a track an
+app-store release. They moved to the public `music` bucket; `src/lib/music-cache.ts`
+fetches one on first play and caches it to the device, so a track is normally
+fetched once per device and played from disk after that. Normally, not always:
+the cache directory is the right home precisely because the OS may reclaim it
+under storage pressure, and the only cost of that is one more download.
+
+Two callers asking at once share one download, so nothing fetches a track twice
+concurrently -- the case that motivates it, a Profile preview and a story
+opening, cannot happen until Profile exists. A failed fetch falls back to
+streaming and retries next time rather than caching the failure, and a
+zero-byte file from a dead download is treated as a miss instead of being
+served as audio forever. Nothing in that path throws into opening a story:
+silence is the worst case.
+
+### Two races CodeAnt caught
+
+**A mute pressed before the saved preference loaded was undone.** The restore
+applied the stored value unconditionally, so the music started a moment after
+the reader silenced it. The comment above that code already claimed a choice
+made by the person beats a value read from disk; nothing implemented it. See
+AGENTS.md, "An async restore must never overwrite a choice already made".
+
+**Clearing the cache while a track was downloading left the track behind.** The
+download finished after the delete and wrote its file back. A generation counter
+now makes a pre-clear download remove its own file, and the clear awaits the
+in-flight set so it cannot resolve while a file is still landing.
+
+The first test for the mute race **passed with the fix reverted** -- the mock
+read storage after its gate, so it returned the value the press had just
+written. See AGENTS.md, "A regression test is not done until it has failed".
+
 ## 2026-09-19: Create's dropdowns move under More options, and two bugs that stopped the app being usable at all
 
 Three PRs: #109 (the Create flow), #111 (the paywall), and the client half of

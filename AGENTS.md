@@ -37,12 +37,29 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-19)
+## Production state (2026-09-20)
 
-**Production is current with main.** Migrations 00091 and 00092 are applied and
-the six functions carrying #105, #107, #108, #112 and #113 are deployed:
-`generate-story`, `generate-story-stream`, `continue-story`,
-`reimagine-chapter`, `generate-audio`, `audio-status`.
+**Production is current with main.** Verified on 2026-09-20 rather than
+assumed: the migration ledger matches main exactly through `00094` (no
+local-only, no remote-only), `stories.story_bible_rev` exists, and the deployed
+bundles for `continue-story`, `generate-story-stream` and `audio-status` were
+read back and contain the #113 and #115 changes.
+
+All 37 functions are listed ACTIVE, which is not the same claim: that is the
+platform saying a deployment exists, not that its code matches main. Only the
+three above were opened and checked. When it matters for a specific function,
+check that one -- a version number and an `ACTIVE` status cannot tell you which
+commit is inside.
+
+The `music` bucket holds 24 tracks and is served publicly; #116's client reads
+from it, so the bucket and its objects are a deploy dependency of that release,
+not an afterthought.
+
+**How to check this yourself, rather than trusting this line:** `supabase
+migration list --linked` for the ledger, and for a function, fetch its deployed
+bundle from the Management API (`/v1/projects/<ref>/functions/<slug>/body`) and
+`strings` it for a symbol the change introduced. Timestamps that match a merge
+are suggestive; the symbol being present is proof.
 
 Two things are worth keeping, because they are the shape of the next incident:
 
@@ -74,6 +91,25 @@ After onboarding or paywall changes:
 3. Confirm an Expo web bundle can compile.
 4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
 5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, success, Home handoff. There is no one-time offer step -- it was removed 2026-09-10 (`source-of-truth/ONBOARDING_FLOW.md` §14).
+
+## A regression test is not done until it has failed
+
+**Revert the fix, re-run the test, confirm it fails, then restore the fix.** A test written against a bug you have already fixed passes for two reasons -- because the fix works, or because the test never reproduced the bug -- and they are indistinguishable until you check.
+
+This is not hypothetical. PR #116 added a test for a lost mute (an async restore overwriting a choice the reader had just made). It passed with the fix reverted: the mocked read awaited its gate *before* reading storage, so it handed back the value the reader's own press had just written, and no clobber was possible. Three rounds of flushing microtasks were spent on a test that could never have failed. A real slow read captures the old value and resolves late; once the mock did that, the test failed without the fix, which is the only thing that made it worth committing.
+
+Two shapes that produce a test proving nothing:
+
+- **The mock reads state at resolve time instead of call time.** Any "stale read" test has to capture the value when the read starts, or it is not stale.
+- **The assertion runs before the async work lands.** A negative assertion (`still muted`, `no sound created`) passes trivially if the thing it is guarding against has not happened yet. Flush until the work has actually run, and prove the flushing is enough by reverting the fix.
+
+## An async restore must never overwrite a choice already made
+
+A screen that reads a saved preference on mount and calls `setState` when it resolves will silently undo anything the person did in the meantime. The person presses mute, and a moment later the music starts anyway: the control visibly does not work.
+
+**Every restore of a persisted preference needs a `<thing>ChosenByUserRef`** -- set by the handler, checked by the restore before it applies. `ReaderScreen` has three (`prefsChosenByUserRef`, `voiceChosenByUserRef`, `mutedChosenByUserRef`); all three exist because the bug shipped without them at least once. The music one was dropped during a rewrite and had to be found by review, so a comment claiming the guarantee is not the guarantee.
+
+**Known and unfixed:** `CreateStudioScreen`'s draft restore (`loadDraft().then(...)` around line 195) calls `setDraft` wholesale with no such guard. Typing into Create before that read resolves is overwritten. It was left alone in #116 because the Create flow was being worked on in another lane; fix it in whichever branch owns that screen.
 
 ## Security Gate (MANDATORY before pushing to GitHub)
 
@@ -223,6 +259,7 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 |--------|---------|--------|
 | `audio` | Narration MP3s | Public read, service role upload |
 | `covers` | Cover image PNGs | Public read, service role upload. Created 2026-08-25; 5 MB limit; `image/png`, `image/jpeg`, `image/webp` |
+| `music` | Ambient reader music (24 HE-AAC tracks) | Public read, service role upload. Migration `00094`, 2026-09-20; 10 MB limit; `audio/mp4`, `audio/aac`, `audio/mpeg`. **No write policy at all** -- the catalogue is licensed to us, so nothing holding a user JWT may add audio. Masters are not in git; upload with `scripts/upload-music.sh` |
 
 ### Local Dev
 

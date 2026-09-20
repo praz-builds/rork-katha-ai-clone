@@ -140,6 +140,60 @@ cover URLs reaching `Image.prefetch` are written only by `_shared/media.ts` and
 
 ---
 
+## 2026-09-20 UTC — The music bucket, and a migration number that was already taken
+
+**Session:** the coordinating session, shipping PR #116 (reader genre music).
+
+### The bucket
+
+Migration `00094_music_bucket.sql` creates a public `music` bucket: 10 MB
+limit, `audio/mp4` / `audio/aac` / `audio/mpeg`, one SELECT policy and **no
+write policy at all**. Unlike `avatars`, nothing uploads music from the app --
+the catalogue is ours and every track carries a licence we hold, so the service
+role (which bypasses RLS) is the only writer. A missing policy is the strongest
+form of "no user writes" and cannot be widened by a predicate drifting.
+
+24 HE-AAC tracks (64 kbps, `afconvert -f m4af -d aach`) were uploaded with
+`scripts/upload-music.sh`. **The masters are not in git** -- 26 MB of licensed
+audio does not belong in the repo. They live outside it; the bucket is the
+source of truth.
+
+### 00093 was already taken, and nothing would have told us
+
+The branch was cut before #115, which merged `00093_story_bible_rev.sql` and
+was already applied in production. The music branch had its own `00093`.
+
+`schema_migrations` keys on the version string, so once production recorded
+`00093`, a *different* `00093` is "already applied": `db push` skips it,
+reports success, and the change never lands. No error, every test green, works
+on the machine that wrote it, missing only where it matters. This is the second
+time -- `00056` is the renumbered `story_shape_no_anonymous_ceiling`, which
+shared `00046` with `engagement_persistence`.
+
+Renumbered to `00094` after rebasing on main. **`scripts/check-migration-numbers.sh`
+now runs in CI** and fails three shapes: a number duplicated on the branch, a
+number main already uses for a different migration, and an unused number below
+main's high-water mark (`00016`, `00024`, `00081`, `00083` are free, and taking
+one would apply out of order against databases already past it).
+
+### The bucket was created before the migration, deliberately
+
+The bucket was made through the Storage API first, so the feature could be
+tested, because `supabase db push` at that moment would have applied *every*
+pending migration rather than only this one. Once the ledger was confirmed to
+match main exactly, the dry run listed one migration and it was pushed
+properly -- so the ledger reads `00094` and the read policy exists, rather than
+production carrying a hand-made bucket the repo cannot account for.
+
+### Production was audited, not assumed
+
+Ledger matches main through `00094`. `stories.story_bible_rev` exists. Deployed
+bundles for `continue-story`, `generate-story-stream` and `audio-status` were
+fetched from the Management API and `strings`-searched for symbols the #113 and
+#115 changes introduced. Matching timestamps are suggestive; the symbol is proof.
+
+---
+
 ## 2026-09-19 UTC — The story bible's merge cannot lose a chapter to the next one
 
 **Session:** the coordinating session, from a CodeAnt finding on the docs PR
