@@ -514,6 +514,81 @@ describe("narrating the next chapter before the reader gets there", () => {
     expect(requestMock).toHaveBeenCalledTimes(1);
   });
 
+
+  it("starts no background poll when the reader has left the chapter it was for", async () => {
+    // Three chapters, and only the middle one needs paying for. The reader
+    // triggers its prefetch and then jumps PAST it, which is the ordinary way
+    // to leave a request in flight.
+    const story = makeStory({
+      chapters: [
+        makeChapter({ audioUrl: "https://audio/ch1.mp3" }),
+        makeChapter({
+          id: "chapter-2",
+          title: "The Salt Flats",
+          chapterNumber: 2,
+        }),
+        makeChapter({
+          id: "chapter-3",
+          title: "The Last Well",
+          chapterNumber: 3,
+          audioUrl: "https://audio/ch3.mp3",
+        }),
+      ],
+    });
+    const view = await render(<ListenScreen story={story} onClose={jest.fn()} />);
+    await waitFor(() => expect(view.getByTestId("listen-player-bar")).toBeTruthy());
+
+    // The prefetch is asked for, and left unresolved.
+    let resolvePrefetch: (outcome: { kind: "pending" }) => void = () => {};
+    requestMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrefetch = resolve as typeof resolvePrefetch;
+      }),
+    );
+    await act(async () => {
+      mockStatus.callback?.({
+        isLoaded: true,
+        isPlaying: true,
+        positionMillis: 61_000,
+        durationMillis: 120_000,
+      });
+    });
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith(
+        expect.objectContaining({ chapterId: "chapter-2", purpose: "prefetch" }),
+      )
+    );
+
+    // The reader moves on before the server answers.
+    await act(async () => {
+      fireEvent.press(view.getByLabelText("Chapter list"));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByLabelText("Listen to chapter 3: The Last Well"));
+    });
+    await waitFor(() => expect(view.getByText("The Last Well")).toBeTruthy());
+
+    // ...and only then does the prefetch resolve. The clock is taken over
+    // first, so that any interval the callback starts is one this test can
+    // actually run.
+    jest.useFakeTimers();
+    try {
+      await act(async () => {
+        resolvePrefetch({ kind: "pending" });
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+      // **Nothing is polling chapter 2.** The callback used to restore the old
+      // target after the arrival cleanup had already cleared it, and the
+      // background poll then outlived the thing it was for -- a request every
+      // fifteen seconds, for a chapter nobody is on.
+      expect(pollMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("does not prefetch a chapter that is already narrated", async () => {
     const view = await render(
       <ListenScreen story={makeTwoChapterStory()} onClose={jest.fn()} />,

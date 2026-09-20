@@ -177,8 +177,20 @@ export class ChunkPlayer {
    * Listen screen uses for its own loads.
    */
   private token = 0;
-  /** Guards against two preloads racing for the same standby slot. */
-  private preloading = false;
+  /**
+   * The load that owns the standby slot right now, if one is in flight.
+   *
+   * One in-flight load per slot, and the boundary ADOPTS it rather than
+   * starting a second. A boolean could say "a preload is running" but not
+   * "which piece it is for", so `advance` had no way to reuse it: it started
+   * its own load of the same chunk, and for as long as both were in flight
+   * there were two decoders and two fetches for one piece -- with the handover
+   * landing on whichever finished first. `adopted` is how the preload's own
+   * continuation knows the sound is no longer its to install or unload.
+   */
+  private preload:
+    | { index: number; promise: Promise<Audio.Sound | null>; adopted: boolean }
+    | null = null;
 
   constructor(options: ChunkPlayerOptions) {
     this.parts = [...options.parts].sort((a, b) => a.index - b.index);
@@ -345,26 +357,36 @@ export class ChunkPlayer {
   }
 
   private async preloadNext(): Promise<void> {
-    if (this.preloading || this.standby || this.disposed) return;
+    if (this.preload || this.standby || this.disposed) return;
     const nextIndex = this.currentIndex + 1;
     if (nextIndex >= this.totalChunks || !this.partAt(nextIndex)) return;
-    this.preloading = true;
+    const entry = {
+      index: nextIndex,
+      promise: this.load(nextIndex, { shouldPlay: false }),
+      adopted: false,
+    };
+    this.preload = entry;
+    let sound: Audio.Sound | null = null;
     try {
-      const sound = await this.load(nextIndex, { shouldPlay: false });
-      if (!sound) return;
-      if (this.standby || this.currentIndex !== nextIndex - 1) {
-        // Something moved under the load -- a seek, or a second preload that
-        // won the race. Never keep a third sound around.
-        void settle(sound.unloadAsync());
-        return;
-      }
-      this.standby = { index: nextIndex, sound };
+      sound = await entry.promise;
     } catch {
       // A preload that fails is retried at the boundary, where a failure is
       // visible as a wait rather than as nothing at all.
     } finally {
-      this.preloading = false;
+      if (this.preload === entry) this.preload = null;
     }
+    if (!sound) return;
+    // The boundary took this load over while it was in flight: the sound is
+    // playing (or about to), and unloading it here would cut the chapter off
+    // mid-handover.
+    if (entry.adopted) return;
+    if (this.disposed || this.standby || this.currentIndex !== nextIndex - 1) {
+      // Something moved under the load -- a seek, a dispose, or a slot that
+      // filled another way. Never keep a third sound around.
+      void settle(sound.unloadAsync());
+      return;
+    }
+    this.standby = { index: nextIndex, sound };
   }
 
   /** The end of a piece: promote the standby, load the next, or stop. */
@@ -403,10 +425,24 @@ export class ChunkPlayer {
     } else {
       // Not preloaded (a short chunk, a failed preload, a seek). Load it now;
       // there is a gap, but a gap is better than stopping.
+      //
+      // Unless a preload for this exact piece is still in flight, in which
+      // case it is adopted rather than raced: starting a second load of the
+      // same chunk here is two fetches and two decoders for one piece, and the
+      // handover then depends on which of them resolves first.
       const token = this.token;
+      const inFlight = this.preload && this.preload.index === nextIndex
+        ? this.preload
+        : null;
+      if (inFlight) {
+        inFlight.adopted = true;
+        this.preload = null;
+      }
       let sound: Audio.Sound | null;
       try {
-        sound = await this.load(nextIndex, { shouldPlay: true });
+        sound = inFlight
+          ? await inFlight.promise
+          : await this.load(nextIndex, { shouldPlay: true });
       } catch (error) {
         // The piece is in the manifest and will not load: a part deleted by
         // the server's own failure path, or an expired url. Stopping is
@@ -432,6 +468,9 @@ export class ChunkPlayer {
       this.current = { index: nextIndex, sound };
       this.playing = true;
       this.emit();
+      // An adopted preload was loaded paused, the way the standby slot always
+      // is, so it needs the same nudge the promoted branch gives.
+      if (inFlight) await settle(sound.playAsync());
     }
     if (outgoing) void settle(outgoing.sound.unloadAsync());
   }
@@ -543,6 +582,10 @@ export class ChunkPlayer {
 
     // A different piece: everything in flight is now wrong.
     this.token += 1;
+    // Including a preload of the piece we are leaving behind: its load checks
+    // the token and unloads itself, and dropping the entry here stops a later
+    // boundary adopting a promise that can now only resolve to null.
+    this.preload = null;
     const wasPlaying = this.playing;
     const outgoing = this.current;
     const standby = this.standby;
@@ -585,6 +628,7 @@ export class ChunkPlayer {
     if (this.disposed) return;
     this.disposed = true;
     this.token += 1;
+    this.preload = null;
     const sounds = [this.current?.sound, this.standby?.sound];
     this.current = null;
     this.standby = null;

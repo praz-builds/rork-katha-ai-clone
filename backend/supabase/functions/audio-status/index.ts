@@ -43,6 +43,7 @@ import {
   markChapterAudioChunkStarted,
   markChapterAudioFailed,
   markChapterAudioReady,
+  markChapterAudioReadyIfOwner,
   NARRATION_JOB_STALE_MS,
   narrationPartPath,
   pollRunpodNarration,
@@ -526,17 +527,42 @@ async function reconcileChunkedNarration(input: {
 
   const storagePath = row.storage_path ??
     stableChapterAudioPath(storyId, chapterId, voiceId);
+
+  // Still ours -- asked again, HERE, at the write.
+  //
+  // The check in step 3 happened before the parts were downloaded, joined and
+  // uploaded, which is the slowest stretch of this whole function. A re-claim
+  // (after `NARRATION_JOB_STALE_MS`) or an `edit-story` landing inside it left
+  // this poll free to overwrite the ACTIVE run's file at the STABLE path --
+  // the permanent, cached URL every later reader is served -- and then mark
+  // that run's row ready. Nothing would report a problem: the reader simply
+  // gets a different run's audio, of possibly different prose, under a row
+  // that says it succeeded.
+  const ownedAtUpload = row.provider_job_id
+    ? await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
+    : true;
+  if (!ownedAtUpload) return await pending();
+
   const audioUrl = await uploadAudio(
     serviceClient,
     storagePath,
     assembled.bytes,
   );
-  await markChapterAudioReady(
+  // And the publish itself is a compare-and-swap on the parent row, the same
+  // shape the per-chunk writes use, because the window above is narrow but not
+  // closed. A poll that lost the row between the two cannot flip somebody
+  // else's run to `ready`.
+  const published = await markChapterAudioReadyIfOwner(
     serviceClient,
     row.id!,
+    row.provider_job_id ?? null,
     storagePath,
     assembled.durationSeconds,
   );
+  // Lost it. Discard quietly: the run that holds the row now is doing this
+  // same work, and failing the row would take a narration away from a reader
+  // it does not belong to.
+  if (!published) return await pending();
   // **The staged parts are NOT deleted here any more.** They used to be, the
   // moment the stitched file existed, because they were dead weight. They are
   // not dead weight now: a reader who started on chunk 0 is still playing

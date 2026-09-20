@@ -522,12 +522,69 @@ export async function claimChapterAudioGeneration(
   };
 }
 
+/**
+ * The row's `updated_at`, read straight after a claim as the fence a later
+ * conditional write compares against.
+ *
+ * `claim_chapter_audio_generation` (00054) re-claims a `pending` row that has
+ * sat untouched for ten minutes, and a re-claim keeps the SAME row id while
+ * resetting `provider_job_id` to null -- so "is this still my claim?" cannot be
+ * answered from the id or from the job id, both of which look exactly as they
+ * did. `updated_at` is what the claim itself moves, so the value this reads is
+ * the one thing that identifies WHICH claim is on the row.
+ *
+ * Read immediately after a successful claim, where a re-claim needs ten
+ * minutes of staleness to be possible at all, so what comes back is this
+ * caller's own claim and not a race.
+ *
+ * A read that fails answers null rather than throwing: the caller then falls
+ * back to the weaker "still pending, still has no job" condition, which is
+ * never worse than the unconditional write this replaced.
+ */
+export async function chapterAudioClaimFence(
+  supabase: SupabaseClient,
+  audioId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("chapter_audio")
+      .select("updated_at")
+      .eq("id", audioId)
+      .limit(1);
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{ updated_at?: string | null }>;
+    return rows.length ? rows[0].updated_at ?? null : null;
+  } catch (error) {
+    console.error("narration: could not read the claim fence", error);
+    return null;
+  }
+}
+
+/**
+ * Record chunk 0's provider job id on the parent row, and report whether this
+ * caller was still the claim it belongs to.
+ *
+ * A compare-and-swap, not a plain write. Starting the jobs takes seconds and a
+ * claim can be re-claimed out from under this request while they are being
+ * started; an unconditional write then put the OLD attempt's chunk 0 job id
+ * onto the NEW attempt's row, and everything downstream that asks "do I still
+ * own this run" -- `stillOwnsNarrationJob`, the ten-minute staleness clock,
+ * 00054's re-claim -- would be comparing against a job the new attempt never
+ * started. The row would be tracking a job whose audio belongs to a different
+ * run of possibly different prose.
+ *
+ * `fence` is the `updated_at` this caller's claim wrote (see
+ * `chapterAudioClaimFence`). Without it the condition falls back to "still
+ * pending, still has no job", which catches the case where the replacing
+ * attempt has already recorded its own id.
+ */
 export async function markChapterAudioJobStarted(
   supabase: SupabaseClient,
   audioId: string,
   jobId: string,
-): Promise<void> {
-  const { error } = await supabase
+  fence?: string | null,
+): Promise<boolean> {
+  let query = supabase
     .from("chapter_audio")
     // `updated_at` is written explicitly: there is no trigger on
     // `chapter_audio`, and `claim_chapter_audio_generation` (00054) treats a
@@ -539,8 +596,13 @@ export async function markChapterAudioJobStarted(
       status: "pending",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", audioId);
+    .eq("id", audioId)
+    .eq("status", "pending")
+    .is("provider_job_id", null);
+  if (fence) query = query.eq("updated_at", fence);
+  const { data, error } = await query.select("id");
   if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -773,6 +835,50 @@ export async function markChapterAudioReady(
     })
     .eq("id", audioId);
   if (error) throw error;
+}
+
+/**
+ * Publish the finished narration, but only if this run still owns it.
+ *
+ * The same compare-and-swap the per-chunk writes use -- `(id, job, still
+ * pending)` -- applied to the write that matters most. `markChapterAudioReady`
+ * above is unconditional, and on the chunked path the ownership check happened
+ * before the parts were downloaded, joined and uploaded: a re-claim (or an
+ * `edit-story`) landing in that window let a superseded poll overwrite the
+ * ACTIVE run's stitched file at the stable path and then mark the row ready.
+ * Nothing failed; a reader simply got audio from a different run of possibly
+ * different prose, cached under the permanent URL, with the row claiming
+ * success.
+ *
+ * Returning false is not an error. The row belongs to somebody else now, and
+ * the run that owns it is already doing this work -- so the loser discards
+ * what it made and says nothing, exactly as the per-chunk loser does.
+ */
+export async function markChapterAudioReadyIfOwner(
+  supabase: SupabaseClient,
+  audioId: string,
+  jobId: string | null,
+  storagePath: string,
+  durationSeconds?: number | null,
+): Promise<boolean> {
+  let query = supabase
+    .from("chapter_audio")
+    .update({
+      status: "ready",
+      storage_path: storagePath,
+      duration_seconds: durationSeconds ?? null,
+      generated_at: new Date().toISOString(),
+      error_code: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", audioId)
+    .eq("status", "pending");
+  query = jobId
+    ? query.eq("provider_job_id", jobId)
+    : query.is("provider_job_id", null);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
 }
 
 export async function publicAudioUrl(

@@ -34,6 +34,7 @@ import {
   canReadChapter,
   chapterAudioChunkJobId,
   type ChapterAudioChunkRow,
+  chapterAudioClaimFence,
   claimChapterAudioChunks,
   claimChapterAudioGeneration,
   findReadyChapterAudio,
@@ -331,6 +332,16 @@ export async function handleRequest(req: Request): Promise<Response> {
       }, 202);
     }
 
+    // Which claim is on this row, captured before anything slow happens.
+    //
+    // A re-claim (00054, after ten minutes of staleness) keeps the SAME row id
+    // and resets `provider_job_id` to null, so nothing about the row's shape
+    // says whose attempt it is -- only `updated_at`, which the claim itself
+    // moved a moment ago. Read here, where a re-claim would need ten minutes
+    // of staleness to have happened, and spent below on the one write that
+    // could otherwise land on somebody else's attempt.
+    const claimFence = await chapterAudioClaimFence(serviceClient, claim.id!);
+
     // A fresh claim starts the pipeline at chunk 0, so any parts left staged
     // by an abandoned earlier attempt must go first. Resuming onto them would
     // be worse than starting over: if the chapter was edited between the two
@@ -466,12 +477,25 @@ export async function handleRequest(req: Request): Promise<Response> {
       return respond({ error: "Narration generation failed to start" }, 502);
     }
 
+    let recorded: boolean;
     try {
       // Chunk 0's id, on the PARENT row, exactly as before. Everything that
       // reads `chapter_audio.provider_job_id` -- `stillOwnsNarrationJob`,
       // `isNarrationJobStale`, 00054's re-claim -- keeps working untouched
       // because what it finds there has not changed meaning.
-      await markChapterAudioJobStarted(serviceClient, claim.id!, first.jobId);
+      //
+      // Conditional on the fence, because starting the jobs above takes
+      // seconds and this claim can be re-claimed inside them. Unconditional,
+      // this wrote the OLD attempt's chunk 0 job id onto the NEW attempt's
+      // row: the parent would then be tracking a job the live run never
+      // started, and every ownership check and every poll built on it would be
+      // comparing against the wrong run.
+      recorded = await markChapterAudioJobStarted(
+        serviceClient,
+        claim.id!,
+        first.jobId,
+        claimFence,
+      );
     } catch (recordError) {
       // RunPod already accepted these jobs and is generating on them -- this
       // write is what would have let anything ever learn their ids again. A
@@ -498,6 +522,39 @@ export async function handleRequest(req: Request): Promise<Response> {
         },
       });
       return respond({ error: "Narration generation failed to start" }, 502);
+    }
+
+    if (!recorded) {
+      // Lost the row. It is not ours to fail and not ours to release -- a
+      // fresh attempt claimed it while these jobs were starting and is
+      // generating this same chapter right now. Our jobs are spend nothing
+      // will ever collect, so cancel them and answer the way any caller who
+      // finds a live claim is answered: pending, keep polling. (Our chunk rows
+      // went with the claim: `claim_chapter_audio_chunks` deletes the set, and
+      // every chunk write below is a compare-and-swap on a row id that no
+      // longer exists.)
+      for (const jobId of startedJobIds) await cancelRunpodNarration(jobId);
+      await logError({
+        bucket: "generation.audio",
+        severity: "low",
+        errorCode: "narration_claim_superseded",
+        error: new Error(
+          `chapter_audio ${claim.id} was re-claimed while its chunks were starting`,
+        ),
+        userId: user.id,
+        context: {
+          story_id: storyId,
+          chapter_id: chapterId,
+          chunks: chunks.length,
+        },
+      });
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        cached: false,
+      }, 202);
     }
 
     for (let index = 0; index < chunkRows.length; index += 1) {

@@ -7338,3 +7338,64 @@ and hears the revision. Putting the `chapter_audio` row id (or its
 `record_orphaned_audio_object()` follow-up noted above in one change — the
 prefix becomes unique per generation, so sweeping it is unambiguous. They should
 be done together, in the migration that extends the orphan sweep.
+
+
+### 2026-09-21 — Four concurrency holes in the chunked narration path
+
+A review pass over the change above. Each one is a race that produces a wrong
+result rather than a failed request, which is why none of them was visible in
+the tests that already passed.
+
+**A stale poll could publish over the live run's file.** On the chunked path,
+`audio-status` asked "do I still own this run" *before* downloading the parts,
+joining them and uploading the stitch — the slowest stretch of the function.
+A re-claim (00054's ten-minute window) or an `edit-story` landing inside it
+left the superseded poll free to overwrite the ACTIVE run's object at the
+stable path and then mark that run's row `ready`. Nothing failed: a reader
+simply got audio from a different run, of possibly different prose, cached
+under the permanent URL, with the row claiming success. The ownership check now
+happens again at the write, and the publish itself is a compare-and-swap
+(`markChapterAudioReadyIfOwner`, `(id, provider_job_id, status = 'pending')` —
+the same shape the per-chunk writes already used). A poll that lost discards
+its work and answers `PENDING`; it never fails a row that now belongs to
+somebody else.
+
+**A superseded attempt could write its chunk 0 job id onto its replacement.**
+`generate-audio` starts every chunk and then records chunk 0's id on the parent
+row. That write was unconditional, and a re-claim keeps the same row id while
+resetting `provider_job_id` to null — so nothing about the row's shape said
+whose attempt it was. The old attempt's id landed on the new attempt's row and
+every ownership check, staleness reading and poll after that was measured
+against a job the live run never started. `updated_at` is the one thing a claim
+moves, so it is now read straight after the claim (`chapterAudioClaimFence`)
+and spent as the condition on that write. Losing it cancels this attempt's jobs
+and answers `202 PENDING` — the claim is not ours to fail and not ours to
+release.
+
+**The player could load the same chunk twice at a boundary.** `preloadNext` and
+`advance` both loaded into the standby slot, and a boolean "a preload is
+running" could not say which piece it was for — so a boundary arriving while
+the preload for that same piece was in flight started a second load: two
+fetches, two decoders, and a handover that landed on whichever resolved first.
+The in-flight load is now identified by index and the boundary ADOPTS it.
+
+**A prefetch callback could resurrect a chapter the reader had left.** Its
+`.then` restored `prefetching` unconditionally — after the arrival cleanup had
+already cleared it — and the 15-second background poll then ran against a
+chapter nobody was on. It now checks the same `runRef` token the narration
+loads use.
+
+**Gates.** Backend `deno test --allow-all supabase/functions/` 1065 passed
+(+3), `deno check` and `deno fmt --check` clean on every file touched. Client
+`pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci` 1360 passed across
+129 suites (+2). Each new test was run against the reverted fix and fails
+there.
+
+**One window is left open on purpose.** A check and a write cannot be one
+instruction against PostgREST, so the stitched bytes can still be written to
+the stable path by a poll that loses the row in the millisecond after its
+check. What the compare-and-swap guarantees is that no ROW ever points a reader
+at them — the run that owns the claim publishes its own stitch to the same path
+on its next poll. Closing it completely needs a per-run token on
+`chapter_audio`, which is the migration the note above already wants for the
+parts prefix; they belong in the same change.

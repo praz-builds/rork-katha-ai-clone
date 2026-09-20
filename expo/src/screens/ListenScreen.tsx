@@ -761,12 +761,20 @@ export default function ListenScreen({
     if (positionMs < trigger) return;
 
     prefetchedRef.current.add(key);
+    // The same run token the narration loads use, for the same reason. This
+    // request outlives a chapter change, and its callback used to restore
+    // `prefetching` unconditionally -- after the arrival cleanup below had
+    // already cleared it. The background poll then started for a chapter the
+    // reader had left and kept running against it: a poll that outlives the
+    // thing it was for.
+    const run = runRef.current;
     void requestNarration({
       storyId: story.id,
       chapterId: nextChapter.id,
       voiceId,
       purpose: "prefetch",
     }).then((outcome) => {
+      if (closedRef.current || runRef.current !== run) return;
       if (outcome.kind === "pending" || outcome.kind === "ready") {
         setPrefetching({ chapterId: nextChapter.id, voiceId });
         return;

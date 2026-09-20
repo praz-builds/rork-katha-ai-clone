@@ -145,6 +145,18 @@ interface ServerState {
    * downloaded vanishes and the row is already `ready` when it is looked at.
    */
   publishRaceWinner: boolean;
+  /**
+   * A fresh run takes this (chapter, voice) over while the stitch is being
+   * assembled -- the ten-minute re-claim of 00054, or an `edit-story` -- by
+   * moving the parent row's `provider_job_id` to a job this poll never
+   * started.
+   *
+   * `"download"` fires it while the parts are being read, so the ownership
+   * check at the write is what catches it. `"after-check"` fires it in the
+   * millisecond AFTER that check passes, which only the compare-and-swap on
+   * the publish itself can catch.
+   */
+  reclaimDuringStitch: "download" | "after-check" | null;
 }
 
 function newState(overrides: Partial<ServerState> = {}): ServerState {
@@ -179,6 +191,7 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     failPartsList: false,
     ownershipLost: false,
     publishRaceWinner: false,
+    reclaimDuringStitch: null,
     ...overrides,
   };
 }
@@ -250,6 +263,15 @@ function makeFetchStub(state: ServerState): typeof fetch {
         // taken this row over.
         if (state.ownershipLost && Object.keys(body).join() === "updated_at") {
           return json([]);
+        }
+        if (
+          state.reclaimDuringStitch === "after-check" &&
+          Object.keys(body).join() === "updated_at" && state.row
+        ) {
+          // The check passes -- and the row changes hands immediately after,
+          // which is the window a check made before the write cannot close.
+          state.row = { ...state.row, provider_job_id: "job-99" };
+          return json([{ id: state.row.id }]);
         }
         // `advanceNarrationJob` is a compare-and-swap: it filters on the job
         // id it expects to still be there and reads the returned rows to find
@@ -391,6 +413,9 @@ function makeFetchStub(state: ServerState): typeof fetch {
         return json({ Key: `audio/${objectPath}` });
       }
       if (request.method === "GET") {
+        if (state.reclaimDuringStitch === "download" && state.row) {
+          state.row = { ...state.row, provider_job_id: "job-99" };
+        }
         if (state.publishRaceWinner) {
           // The other poll assembled, published and deleted the staged parts
           // while this one was downloading them.
@@ -1752,6 +1777,105 @@ Deno.test("a chunked poll that has lost its row to a fresh run writes nothing", 
     assertEquals(result.json.status, "PENDING");
     assertEquals([...state.storage.keys()], [], "nothing may be staged");
     assertEquals(state.chunkRows[0].status, "pending");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a poll that lost the run while stitching does not overwrite the live run's file", async () => {
+  const env = setTestEnv();
+  try {
+    // Every chunk is already `ready`, so this poll does nothing but assemble
+    // and publish -- which is precisely the path where the ownership check
+    // used to be skipped entirely: it lived behind "did anything finish this
+    // time", and nothing did.
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+        chunkFixture(2, {
+          jobId: "job-12",
+          ready: true,
+          durationSeconds: 0.25,
+        }),
+      ],
+      reclaimDuringStitch: "download",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+    state.storage.set(`${PARTS_PREFIX}/aria.01.mp3`, providerMp3(5, 0x20));
+    state.storage.set(`${PARTS_PREFIX}/aria.02.mp3`, providerMp3(7, 0x40));
+
+    const result = await run(state, QUERY);
+
+    // **Nothing was published.** The stable path is the permanent, cached URL
+    // every later reader is served; writing this run's stitch there would hand
+    // a reader audio from a superseded attempt, of possibly different prose,
+    // under a row that says it succeeded.
+    assertFalse(state.storage.has(FINAL_PATH), "the stable path is untouched");
+    assertEquals(state.row!.status, "pending");
+
+    // And it fails nothing: the row belongs to the run that took it over, and
+    // that run is doing this same work.
+    assertEquals(result.json.status, "PENDING");
+    assertEquals(state.row!.error_code ?? null, null);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("losing the run between the ownership check and the write cannot mark somebody else's row ready", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+        chunkFixture(2, {
+          jobId: "job-12",
+          ready: true,
+          durationSeconds: 0.25,
+        }),
+      ],
+      // The takeover lands in the instant after the check passes. Only a
+      // compare-and-swap on the publish itself sees it.
+      reclaimDuringStitch: "after-check",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+    state.storage.set(`${PARTS_PREFIX}/aria.01.mp3`, providerMp3(5, 0x20));
+    state.storage.set(`${PARTS_PREFIX}/aria.02.mp3`, providerMp3(7, 0x40));
+
+    const result = await run(state, QUERY);
+
+    // The row stays pending and stays the other run's. A `ready` here is the
+    // damaging half of this: a reader would be sent to the stable URL by a row
+    // claiming a narration this poll no longer owns.
+    assertEquals(state.row!.status, "pending");
+    assertEquals(state.row!.provider_job_id, "job-99");
+    assertEquals(result.json.status, "PENDING");
+    // The stitched bytes did get written -- a check and a write cannot be one
+    // instruction against a REST API, and closing that last millisecond would
+    // need a per-run token on the row, which is a migration this change does
+    // without. What the compare-and-swap guarantees is that no ROW ever
+    // points a reader at them: the run that owns the claim publishes its own
+    // stitch to the same path on its next poll.
+    assertEquals(
+      state.row!.storage_path,
+      FINAL_PATH,
+      "unchanged from the claim",
+    );
+    assertEquals(state.row!.status, "pending", "never published");
   } finally {
     restoreEnv(env);
   }

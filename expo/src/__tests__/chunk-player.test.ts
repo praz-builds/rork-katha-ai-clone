@@ -115,6 +115,12 @@ function harness(
     statuses,
     onFinish,
     onError,
+    /** Every call, including the ones still held -- `created` only has the resolved ones. */
+    createSound,
+    loadsOf: (uri: string) =>
+      createSound.mock.calls.filter((call) =>
+        (call[0] as { uri: string }).uri === uri
+      ).length,
     release: () => release(),
     last: () => statuses[statuses.length - 1],
   };
@@ -198,6 +204,52 @@ describe("one chapter, played in pieces", () => {
 
     h.created[1].emit({ positionMillis: 2_000, durationMillis: 7_000 });
     expect(h.last().positionMs).toBe(7_000);
+  });
+
+  it("adopts a preload that is still in flight instead of loading the piece twice", async () => {
+    // The boundary arrives while the preload for the very same piece is still
+    // loading -- an eight-second lead against a chunk that takes longer than
+    // that to fetch, which is a slow connection, not a rare one.
+    const h = harness(
+      [{ ...TWO_PARTS[0], durationMs: 60_000 }, TWO_PARTS[1]],
+      2,
+      { hold: "https://audio/c1.mp3" },
+    );
+    await h.player.start();
+
+    h.created[0].emit({
+      positionMillis: 60_000 - CHUNK_PRELOAD_LEAD_MS + 1_000,
+      durationMillis: 60_000,
+    });
+    await flush();
+    expect(h.loadsOf("https://audio/c1.mp3")).toBe(1);
+
+    // The piece ends before that preload has resolved.
+    h.created[0].emit({
+      positionMillis: 60_000,
+      durationMillis: 60_000,
+      didJustFinish: true,
+    });
+    await flush();
+
+    // **One load, not two.** The boundary used to start its own, so for as
+    // long as both were in flight there were two fetches and two decoders for
+    // one piece, and the handover landed on whichever resolved first.
+    expect(h.loadsOf("https://audio/c1.mp3")).toBe(1);
+
+    h.release();
+    await flush();
+
+    // And the adopted sound is the one that plays: it was loaded paused, the
+    // way the standby slot always is, so the boundary has to start it.
+    const second = h.created[1];
+    expect(second.uri).toBe("https://audio/c1.mp3");
+    expect(second.sound.playAsync).toHaveBeenCalled();
+    expect(second.sound.unloadAsync).not.toHaveBeenCalled();
+    expect(h.created).toHaveLength(2);
+    expect(h.last().isPlaying).toBe(true);
+    expect(h.last().waitingForChunk).toBe(false);
+    expect(h.created[0].sound.unloadAsync).toHaveBeenCalled();
   });
 
   it("finishes the chapter once, at the end of the last piece", async () => {

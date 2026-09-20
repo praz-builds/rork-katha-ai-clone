@@ -53,6 +53,14 @@ interface ChapterAudioFixture {
   status: "pending" | "ready" | "failed";
   word_count?: number | null;
   error_code?: string | null;
+  /**
+   * Moved by every claim, exactly as `claim_chapter_audio_generation` (00054)
+   * moves it. It is the only thing that distinguishes one claim on this row
+   * from the claim that replaced it -- the id is the same and
+   * `provider_job_id` is null again -- so it is what the conditional job-id
+   * write fences on.
+   */
+  updated_at?: string;
 }
 
 interface ServerState {
@@ -67,6 +75,8 @@ interface ServerState {
     is_published: boolean;
   } | null;
   chapterAudio: Map<string, ChapterAudioFixture>;
+  /** How many claims this fixture has handed out, so each stamps its own fence. */
+  claims: number;
   runpodRunStatus: number;
   runpodRunBody: () => Record<string, unknown>;
   /**
@@ -84,6 +94,16 @@ interface ServerState {
    * compare-and-swap fail against an id that is ITS OWN.
    */
   adoptChunkZeroOnJobStart: boolean;
+  /**
+   * Re-claim this (chapter, voice) while its provider jobs are being started,
+   * the way 00054 lets a second request take over a claim that has sat
+   * `pending` for ten minutes.
+   *
+   * Set to the zero-based `/run` call it happens on. The row keeps its id and
+   * goes back to `provider_job_id: null` -- which is why this request cannot
+   * tell it has been replaced from the row's shape alone.
+   */
+  reclaimAtRun: number | null;
   sentryEvents: Array<Record<string, unknown>>;
   errorEventsInserts: Array<Record<string, unknown>>;
   /** Part objects left in the `audio` bucket by an earlier, abandoned attempt. */
@@ -137,10 +157,12 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
       is_published: false,
     },
     chapterAudio: new Map(),
+    claims: 0,
     runpodRunStatus: 200,
     runpodRunBody: () => ({ id: "job-xyz" }),
     failJobStartedPatch: false,
     adoptChunkZeroOnJobStart: false,
+    reclaimAtRun: null,
     sentryEvents: [],
     errorEventsInserts: [],
     stagedParts: [],
@@ -217,7 +239,11 @@ function claimRow(
     provider_job_id: null,
     word_count: wordCount,
     error_code: null,
+    // Distinct per claim, because that is the whole of what tells two claims
+    // on one row apart.
+    updated_at: `claim-${state.claims}`,
   };
+  state.claims += 1;
   state.chapterAudio.set(key, row);
   return {
     audio_id: id,
@@ -298,20 +324,43 @@ function makeFetchStub(state: ServerState): typeof fetch {
         }
         if (idFilter) {
           for (const [key, row] of state.chapterAudio) {
-            if (row.id === idFilter) {
-              state.chapterAudio.set(
-                key,
-                { ...row, ...body } as ChapterAudioFixture,
-              );
-              break;
+            if (row.id !== idFilter) continue;
+            // `markChapterAudioJobStarted` is a compare-and-swap now, and the
+            // filters are what make it one: the caller reads the returned rows
+            // to find out whether it still owned the claim it started from. A
+            // fixture that applied the write regardless would let the exact
+            // defect this guards against pass unnoticed.
+            const wantsStatus = url.searchParams.get("status")?.replace(
+              /^eq\./,
+              "",
+            );
+            if (wantsStatus && row.status !== wantsStatus) return json([]);
+            const wantsJob = url.searchParams.get("provider_job_id");
+            if (wantsJob === "is.null" && row.provider_job_id !== null) {
+              return json([]);
             }
+            const wantsFence = url.searchParams.get("updated_at")?.replace(
+              /^eq\./,
+              "",
+            );
+            if (wantsFence && row.updated_at !== wantsFence) return json([]);
+            state.chapterAudio.set(
+              key,
+              { ...row, ...body } as ChapterAudioFixture,
+            );
+            return json([{ id: row.id }]);
           }
         }
         return json([]);
       }
       const voiceId = url.searchParams.get("voice_id")?.replace(/^eq\./, "");
       const statusFilter = url.searchParams.get("status")?.replace(/^eq\./, "");
-      const row = voiceId
+      // `chapterAudioClaimFence` reads the row by id, which is how a claim
+      // learns the value its own claim stamped.
+      const idRead = url.searchParams.get("id")?.replace(/^eq\./, "");
+      const row = idRead
+        ? [...state.chapterAudio.values()].find((entry) => entry.id === idRead)
+        : voiceId
         ? state.chapterAudio.get(`${CHAPTER_ID}:${voiceId}`)
         : undefined;
       if (!row) return json([]);
@@ -468,6 +517,20 @@ function makeFetchStub(state: ServerState): typeof fetch {
       };
       if (typeof runBody?.input?.prompt === "string") {
         state.calls.runpodRunPrompts.push(runBody.input.prompt);
+      }
+      if (state.reclaimAtRun === at) {
+        // Somebody else's request found this claim stale and took it over.
+        // Same row, same id, `provider_job_id` back to null -- only the fence
+        // moved.
+        for (const [key, row] of state.chapterAudio) {
+          state.chapterAudio.set(key, {
+            ...row,
+            provider_job_id: null,
+            status: "pending",
+            updated_at: `claim-${state.claims}`,
+          });
+        }
+        state.claims += 1;
       }
       if (state.failRunsAt.includes(at)) {
         return json({ error: "no capacity" }, 503);
@@ -1548,6 +1611,56 @@ Deno.test("an edge-tts chapter past its own ceiling is still refused", async () 
     assertEquals(status, 413);
     assertEquals(body.error_code, "chapter_too_long_to_narrate");
     assertEquals(state.calls.edgeTts, 0);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a claim re-taken while the jobs were starting does not get the old attempt's job id written onto it", async () => {
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    // Three chunks, so there is real time between the claim and the write --
+    // which is exactly the window 00054 lets a stale claim be taken over in.
+    const state = newState({
+      chapter: chapterOf(longChapter(22_000)),
+      // The takeover lands while chunk 2 is being started.
+      reclaimAtRun: 2,
+    });
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    const row = state.chapterAudio.get(`${CHAPTER_ID}:aria`)!;
+    // **The row is untouched.** Unconditionally, this attempt wrote its own
+    // chunk 0 job id onto the run that replaced it, and from then on every
+    // ownership check, every staleness reading and every poll of that row was
+    // measured against a job the live run never started.
+    assertEquals(row.provider_job_id, null);
+    assertEquals(row.status, "pending");
+
+    // Not failed and not released either: the claim is not ours to end. The
+    // caller is answered the way anyone who finds a live claim is answered.
+    assertEquals(status, 202);
+    assertEquals(body.status, "PENDING");
+    assertEquals(row.error_code ?? null, null);
+
+    // Our jobs are spend nothing will ever collect, so they are cancelled
+    // rather than left running for a row that no longer points at them.
+    assertEquals(state.calls.runpodCancel.slice().sort(), [
+      "job-2",
+      "job-3",
+      "job-xyz",
+    ]);
+    assertEquals(
+      state.errorEventsInserts.at(-1)?.error_code,
+      "narration_claim_superseded",
+    );
   } finally {
     restoreEnv(env);
   }
