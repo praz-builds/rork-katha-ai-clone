@@ -264,6 +264,7 @@ export default function StoryActionsSheet({
                   accessibilityLabel="Submit report"
                   onPress={handleSubmitReport}
                   disabled={!canSubmitReport}
+                  loading={reportBusy}
                   testID="story-report-submit"
                   style={styles.footerHalf}
                 />

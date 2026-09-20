@@ -2478,9 +2478,16 @@ error logging contract and contain identifiers and enums only.
 
 63. **The whole onboarding journey has one primary button recipe.** From the
     intro's **Get started** through the questionnaire, W3-W7, the email and
-    code screens and W6's **Redraw**, to WELCOME. Drawn by `Primary` in
+    code screens, to W6's **Redraw**. Drawn by `Primary` in
     `src/components/onboarding/primitives.tsx`, which every screen on the path
     composes.
+
+    **WELCOME is not in that list and never was.** This enumeration used to
+    end "…to WELCOME", which contradicted §15 and decision 67 on the same
+    page: WELCOME has no button, no skip and nothing to tap — the coins settle
+    and `onOpen()` fires on a timer (`WelcomeScreen.tsx` contains no `Primary`,
+    no `Pressable` and no `onPress`). A recipe that claims a screen with no
+    button is how the next reader adds one.
 
     **Amended 2026-09-20: it is the app's recipe, not a second one.**
     `controls.primaryCtaHeight` (**52**) at `radius.pill` in `colors.accent`,

@@ -156,26 +156,38 @@ export function Button({
         style,
       ]}
     >
+      {/*
+        THE SPINNER REPLACES THE ICON, NOT THE LABEL.
+
+        A spinner on its own says "wait" and nothing else. The label is what
+        says what is being waited FOR, and a button whose caller sets
+        `label={busy ? "Saving" : "Save"}` has already gone to the trouble of
+        writing that word -- swapping the whole content for a spinner threw it
+        away and made the busy branch of every such ternary unreachable, which
+        is dead code that reads as live.
+
+        So the spinner takes the icon's slot: same row, same `gap`, label
+        intact. The width still moves when the word does, which it would
+        anyway, and `accessibilityState.busy` carries the same fact to anyone
+        not looking at it.
+      */}
       {loading
         ? (
           <ActivityIndicator
+            size="small"
             color={variant === "primary" ? colors.surface : colors.strong}
           />
         )
-        : (
-          <>
-            {icon}
-            <Text
-              style={[
-                size === "sm" ? styles.labelSm : styles.labelLg,
-                labelColor[variant],
-                blocked && styles.labelBlocked,
-              ]}
-            >
-              {label}
-            </Text>
-          </>
-        )}
+        : icon}
+      <Text
+        style={[
+          size === "sm" ? styles.labelSm : styles.labelLg,
+          labelColor[variant],
+          blocked && styles.labelBlocked,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }

@@ -409,3 +409,111 @@ describe('the one button', () => {
     });
   });
 });
+
+/**
+ * A BUTTON THAT SAYS IT IS WORKING MUST SAY SO TO A SCREEN READER TOO.
+ *
+ * `Button` distinguishes two facts that look identical on screen: `disabled`
+ * means "not available", `loading` means "you already pressed this and it is
+ * working". Only `loading` puts `busy` in the accessibility state and swaps
+ * the label for a spinner.
+ *
+ * Four call sites had the busy half of that and not the other: their label
+ * swapped to "Saving" / "Sending..." while the press was in flight, and the
+ * button went dim with nothing to say it was a request rather than an
+ * unfilled form. Someone who cannot see the label change hears "dimmed" and
+ * has no way to tell a save in progress from a save that was refused.
+ *
+ * The rule this pins is exactly that pairing, and no wider: a label that
+ * TURNS INTO a busy word implies a busy state. It deliberately says nothing
+ * about a button disabled by work happening somewhere else -- CreateBriefFlow
+ * waits on a portrait generated in another part of the screen and its label
+ * never changes, and a spinner there would claim the button was working.
+ */
+describe('a busy label and a busy state', () => {
+  /** The words a button uses for "this press is in flight". */
+  const BUSY_LABEL = /^["'`](Saving|Sending|Submitting|Publishing|Loading)\b/i;
+
+  /** Each `<Button ... />` element in a file, as its raw JSX text. */
+  function buttonElements(source: string): { body: string; line: number }[] {
+    const found: { body: string; line: number }[] = [];
+    const opener = /<Button\b/g;
+    let match: RegExpExecArray | null;
+    while ((match = opener.exec(source)) !== null) {
+      // Props end at the first `>` that is not inside braces.
+      let depth = 0;
+      let index = match.index;
+      for (; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === '{') depth += 1;
+        else if (char === '}') depth -= 1;
+        else if (char === '>' && depth === 0) break;
+      }
+      found.push({
+        body: source.slice(match.index, index + 1),
+        line: source.slice(0, match.index).split('\n').length,
+      });
+    }
+    return found;
+  }
+
+  /** The busy flag a button names in its own label, when it names one. */
+  function busyFlag(body: string): string | null {
+    const ternary = /label=\{\s*([A-Za-z_$][\w$.]*)\s*\?\s*(["'`][^"'`]*["'`])/
+      .exec(body);
+    if (!ternary) return null;
+    return BUSY_LABEL.test(ternary[2]) ? ternary[1] : null;
+  }
+
+  /** Every `<Button>` in shipped source whose label swaps to a busy word. */
+  function busyLabelledButtons(): { file: string; line: number; flag: string }[] {
+    const found: { file: string; line: number; flag: string }[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const source = fs.readFileSync(file, 'utf8');
+      if (!source.includes('<Button')) continue;
+      for (const element of buttonElements(source)) {
+        const flag = busyFlag(element.body);
+        if (flag === null) continue;
+        found.push({
+          file: path.relative(SRC, file).split(path.sep).join('/'),
+          line: element.line,
+          flag,
+        });
+      }
+    }
+    return found;
+  }
+
+  it('gives every self-reported busy button a matching loading prop', () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const source = fs.readFileSync(file, 'utf8');
+      if (!source.includes('<Button')) continue;
+      for (const element of buttonElements(source)) {
+        const flag = busyFlag(element.body);
+        if (flag === null) continue;
+        const loading = new RegExp(
+          `loading=\\{\\s*${flag.replace(/\./g, '\\.')}\\s*\\}`,
+        );
+        if (!loading.test(element.body)) {
+          const relative = path.relative(SRC, file).split(path.sep).join('/');
+          offenders.push(`${relative}:${element.line} (${flag})`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('finds the sites it is meant to be watching', () => {
+    // A source-scanning guard that matches nothing passes forever. These four
+    // are the ones the sweep found; the assertion is that the scan still sees
+    // them at all, not that they are the only ones allowed to exist.
+    const watched = busyLabelledButtons().map((found) => found.file);
+    expect(watched).toEqual(expect.arrayContaining([
+      'components/library/AddPhrasesSheet.tsx',
+      'components/comments/CommentRow.tsx',
+      'components/moderation/StoryActionsSheet.tsx',
+      'components/profile/IdentityEditor.tsx',
+    ]));
+  });
+});

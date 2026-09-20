@@ -194,6 +194,7 @@ export default function AddPhrasesSheet({
               accessibilityLabel="Save phrases"
               onPress={handleSave}
               disabled={!canSave}
+              loading={busy}
               testID="add-phrases-save"
               style={styles.primaryButton}
             />

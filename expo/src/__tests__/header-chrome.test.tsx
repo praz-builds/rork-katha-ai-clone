@@ -104,12 +104,26 @@ describe("HeaderAction", () => {
     // The Get credits balance. It was made a HeaderAction and the component
     // required an onPress, so the call site passed the back action: a screen
     // reader announced "7 credits, button" and activating it left the screen.
-    // Without an onPress there is no role and nothing to activate -- and the
-    // label survives, so the value is still announced.
+    // Without an onPress there is nothing to activate.
+    //
+    // The role is "text", NOT undefined. Dropping the role entirely was the
+    // first fix and it went one step too far: a bare labelled View is not
+    // reliably an accessibility node, so the announcement went from wrong to
+    // possibly absent. "text" says what the thing is.
     const view = await render(<HeaderAction icon={Bell} label="7 credits" />);
     const node = view.getByLabelText("7 credits");
-    expect(node.props.accessibilityRole).toBeUndefined();
+    expect(node.props.accessibilityRole).toBe("text");
     expect(node.props.onClick).toBeUndefined();
+  });
+
+  it("announces the readout as one node, glyph and number together", async () => {
+    // `accessible` is what makes the label load-bearing: the spark and the
+    // "7" are leaves of one node rather than two things read in sequence.
+    // Without it the label on the parent View may never be spoken at all.
+    const view = await render(
+      <HeaderAction icon={Bell} label="7 credits" value="7" dot />,
+    );
+    expect(view.getByLabelText("7 credits").props.accessible).toBe(true);
   });
 
   it("looks identical in both modes", async () => {

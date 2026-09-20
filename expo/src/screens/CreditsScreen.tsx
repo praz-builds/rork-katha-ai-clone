@@ -127,9 +127,11 @@ export default function CreditsScreen({
               header and also the one thing there you actually read.
 
               No `onPress`: this balance is a readout, not a control. It draws
-              in HeaderAction's non-interactive mode, so it is announced as
+              in HeaderAction's non-interactive mode -- one accessibility node
+              with `accessibilityRole="text"` -- so it is announced as
               "7 credits" rather than "7 credits, button" and there is nothing
-              to activate. */}
+              to activate. The spark and the number are inside that one node,
+              which is why the whole reading is in `label`. */}
           <View testID="credits-balance">
             <HeaderAction
               icon={Sparkles}

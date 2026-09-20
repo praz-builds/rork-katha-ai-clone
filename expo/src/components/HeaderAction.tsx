@@ -49,14 +49,31 @@ import { colors, controls, fonts, radius, spacing } from "@/theme";
  *
  * ## Two modes, and why `onPress` is optional
  *
- * With an `onPress` this is a button. Without one it is a READOUT: a plain
- * `View`, no `accessibilityRole="button"`, nothing to activate — still
- * labelled, so the value is announced as text. The Get credits screen is why.
- * Its balance has always been a static number, and making `onPress` required
- * meant the call site handed it the nearest function to hand, which was the
- * back action: a screen reader then announced "7 credits, button" and
+ * With an `onPress` this is a button. Without one it is a READOUT: a `View`
+ * with `accessibilityRole="text"`, nothing to activate. The Get credits screen
+ * is why. Its balance has always been a static number, and making `onPress`
+ * required meant the call site handed it the nearest function to hand, which
+ * was the back action: a screen reader then announced "7 credits, button" and
  * activating it left the screen. A component whose API forces a behaviour is
  * how a refactor ships a regression nobody chose.
+ *
+ * The readout is `accessible`, which is the half that was missing when the
+ * role first came off. A bare labelled `View` is not guaranteed to be an
+ * accessibility node at all on either platform — the glyph and the number stay
+ * two separate leaves and the label on their parent may never be spoken, so
+ * removing the wrong announcement left it possibly not announced. `accessible`
+ * collapses the subtree into one node carrying one label, which is what a
+ * readout is.
+ *
+ * ## The label is the call site's job, in BOTH modes
+ *
+ * Because the subtree is one node, nothing inside it is read on its own: not
+ * the value `Text`, and not the dot, which is a bare styled `View` with no
+ * text and has never been announced in either mode. The convention is that the
+ * CALLER bakes the whole readout into `label` — `HomeScreen` passes
+ * `Notifications, ${n} unread` rather than relying on the dot to say it. A
+ * caller that draws a `value` or a `dot` and does not put it in `label` is
+ * shipping a control whose state a screen reader cannot reach.
  *
  * The look is identical in both modes — same 44pt target, same dot, same
  * containerless plate-less ground — because the two are the same object and
@@ -76,10 +93,18 @@ export function HeaderAction({
   icon: ComponentType<{ size?: number; color?: string; fill?: string }>;
   /** Rendered only when there is one, so the same component draws a bare bell and a flame with a day count. */
   value?: string;
+  /**
+   * The whole announcement. The subtree is one accessibility node in both
+   * modes, so `value` and `dot` are never read separately — say them here.
+   */
   label: string;
   /** Omit it to draw a non-interactive readout. See "Two modes" above. */
   onPress?: () => void;
-  /** An unread marker. Drawn only for something the reader has not seen. */
+  /**
+   * An unread marker. Drawn only for something the reader has not seen.
+   * Purely visual: it carries no text, so the count or the "unread" belongs in
+   * `label` at the call site. See "The label is the call site's job" above.
+   */
   dot?: boolean;
   /** The glyph's colour, when it should be one. Defaults to `colors.strong`. */
   tint?: string;
@@ -105,6 +130,8 @@ export function HeaderAction({
   if (!onPress) {
     return (
       <View
+        accessible
+        accessibilityRole="text"
         accessibilityLabel={label}
         testID={testID}
         style={[styles.action, value !== undefined && styles.actionWide]}

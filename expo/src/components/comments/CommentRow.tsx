@@ -572,6 +572,7 @@ export function ReportCommentSheet({
                 accessibilityLabel="Submit report"
                 onPress={handleSubmit}
                 disabled={!canSubmit}
+                loading={busy}
                 style={sheetStyles.primaryButton}
               />
               <Pressable

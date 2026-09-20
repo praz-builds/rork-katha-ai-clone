@@ -28,7 +28,8 @@
  * screenful of covers is warmed before the rows are handed over, because this
  * is the only point in the flow that knows what the reader is about to see.
  * It is bounded by `PREFETCH_TIMEOUT_MS` and can never hold results back
- * beyond it — see the comment on those constants.
+ * beyond it, and no cover is ever requested twice — see the comment on those
+ * constants and on `warmedCovers`.
  *
  * The state machine the caller renders from is deliberately explicit —
  * `idle`, `loading`, `ready`, `empty` — rather than a nullable list plus a
@@ -68,6 +69,51 @@ export type SearchStatus = "loading" | "ready" | "empty";
 const PREFETCH_COVERS = 6;
 const PREFETCH_TIMEOUT_MS = 180;
 
+/**
+ * Every cover URI this session has already asked for, warmed or still in
+ * flight, and the ceiling on how many it remembers.
+ *
+ * WHY THIS EXISTS. The warm-up above is a race against a 180ms timeout, and
+ * when the timeout wins the requests do NOT stop — `Image.prefetch` returns a
+ * promise with no abort, so the only thing the timeout ends is the waiting.
+ * A search runs per settled keystroke, and the same stories come back for
+ * "wol", "wolf", "wolve", so a reader typing a word could have the same six
+ * covers requested four times over, each attempt still on the wire when the
+ * next was made. The cost is the REQUEST, not the callback — so the fix has
+ * to be to stop asking again, and a cancellation that merely ignored the
+ * answer would fix nothing while looking like it had.
+ *
+ * WHY IT IS BOUNDED. This is module state with the lifetime of the JS
+ * context, and a reader who browses Explore all evening would otherwise grow
+ * it without limit. It evicts OLDEST FIRST rather than clearing wholesale,
+ * because a `Set` iterates in insertion order and the covers a reader just
+ * scrolled past are the ones most likely to come back in the next query;
+ * dropping everything at the ceiling would re-request the current screenful
+ * along with the rest. An evicted URI costs one extra request, which is what
+ * this was before, so the ceiling degrades rather than breaks.
+ */
+export const WARMED_COVER_LIMIT = 60;
+const warmedCovers = new Set<string>();
+
+/**
+ * Test seam. The set outlives a test file's modules, so two tests reusing a
+ * cover URL would silently share it — the second would skip the prefetch and
+ * pass without ever exercising what it names. Call this in `beforeEach`.
+ */
+export function resetWarmedCovers(): void {
+  warmedCovers.clear();
+}
+
+/** Marked when the request is MADE, so an in-flight cover is not asked twice. */
+function rememberCover(uri: string): void {
+  warmedCovers.add(uri);
+  while (warmedCovers.size > WARMED_COVER_LIMIT) {
+    const oldest = warmedCovers.values().next().value;
+    if (oldest === undefined) break;
+    warmedCovers.delete(oldest);
+  }
+}
+
 /** `Image.prefetch` is remote-only; a bundled seed asset is already local. */
 function coverUris(stories: readonly Story[]): string[] {
   const uris: string[] = [];
@@ -83,10 +129,15 @@ async function warmCovers(
   prefetch: (uri: string) => Promise<unknown>,
   timeoutMs: number,
 ): Promise<void> {
-  const uris = coverUris(stories);
+  // Anything already asked for is dropped here rather than re-requested. The
+  // screenful is taken FIRST and filtered second, so a query whose top rows
+  // are all warm warms nothing instead of reaching further down the list for
+  // covers the reader cannot see yet.
+  const uris = coverUris(stories).filter((uri) => !warmedCovers.has(uri));
   // No remote covers is the common case in tests and offline: return on the
   // same tick rather than arming a timer nothing is waiting for.
   if (uris.length === 0) return;
+  for (const uri of uris) rememberCover(uri);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

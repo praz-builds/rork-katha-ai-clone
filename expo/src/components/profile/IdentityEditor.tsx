@@ -435,6 +435,7 @@ export default function IdentityEditor({
               accessibilityLabel="Save profile"
               onPress={save}
               disabled={saving}
+              loading={saving}
               testID="identity-save"
               style={styles.save}
             />
