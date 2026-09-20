@@ -37,6 +37,13 @@ jest.mock("lucide-react-native", () => {
  * effect at commit and the parent's `useEffect` only afterwards, which is the
  * real-world race with a cached cover.
  */
+/**
+ * Called from inside the image's layout effect, i.e. DURING the commit that
+ * first rendered a new source and BEFORE anything reacts to its load. It is
+ * the only place a test can look at the frame a reader would actually see.
+ */
+let mockOnSourceCommitted: ((key: string) => void) | null = null;
+
 jest.mock("@/components/KathaPrimitives", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactModule = require("react");
@@ -59,6 +66,7 @@ jest.mock("@/components/KathaPrimitives", () => {
       ReactModule.useLayoutEffect(() => {
         if (fired.current === key) return;
         fired.current = key;
+        mockOnSourceCommitted?.(key);
         onLoad?.();
       });
       return ReactModule.createElement("FocalImage", { testID: "focal-image" });
@@ -72,6 +80,7 @@ import {
   RAIL_CARD_WIDTH,
   StoryFeedCard,
 } from "@/components/feed/StoryFeedCard";
+import { layoutWidth, REFERENCE_WINDOW_WIDTH } from "@/theme";
 import { stories } from "@/data/seed";
 /* eslint-enable import/first */
 
@@ -98,8 +107,21 @@ beforeEach(() => {
 
 afterEach(() => {
   timing.mockRestore();
+  mockOnSourceCommitted = null;
 });
 
+/**
+ * The cover's CURRENT opacity, as a number.
+ *
+ * WHY THE `typeof` CHECK IS HERE. A reviewer has read this as returning the
+ * `Animated.Value` object, which would make `toBe(1)` unsatisfiable and every
+ * assertion below vacuous. It does not: `Animated.View` resolves its style to
+ * a plain number on the host element the query returns, and reverting the
+ * reveal fix makes these tests report `Expected: 1, Received: 0` — a number,
+ * and one that discriminates. The check makes that permanent rather than
+ * remembered, because the failure mode if it ever DID become an object is a
+ * suite that passes while protecting nothing.
+ */
 const coverOpacity = (element: { props: Record<string, unknown> }) => {
   const style = element.props.style as
     | { opacity?: number }
@@ -107,7 +129,9 @@ const coverOpacity = (element: { props: Record<string, unknown> }) => {
   const flattened = Array.isArray(style)
     ? Object.assign({}, ...style)
     : style;
-  return (flattened as { opacity?: number }).opacity;
+  const opacity = (flattened as { opacity?: number }).opacity;
+  expect(typeof opacity).toBe("number");
+  return opacity;
 };
 
 it("shows a cover whose onLoad fires before the first paint", async () => {
@@ -129,6 +153,37 @@ it("fades a regenerated cover in again", async () => {
   // The new source loads on its own layout effect, so it ends visible too -
   // the remembered key is per-source, not a one-way "has ever loaded" latch.
   expect(coverOpacity(view.getByTestId("story-feed-cover"))).toBe(1);
+});
+
+it("starts a regenerated cover hidden, in the frame that swaps it", async () => {
+  /*
+    The mirror of the bug above. `revealed` going false and the effect calling
+    `setValue(0)` is not enough, because that effect is PASSIVE: the frame
+    that first paints the new source still carries the old source's opacity of
+    1, so regenerated art pops in at full strength instead of fading up from
+    the gradient.
+
+    The probe fires inside the new image's layout effect, which is during that
+    exact commit and before anything has reacted to its load, so what it reads
+    is the frame a reader would see.
+  */
+  const view = await render(<StoryFeedCard story={story} />);
+  await act(async () => {});
+  expect(coverOpacity(view.getByTestId("story-feed-cover"))).toBe(1);
+
+  const seen: number[] = [];
+  mockOnSourceCommitted = () => {
+    seen.push(coverOpacity(view.getByTestId("story-feed-cover")) as number);
+  };
+
+  await view.rerender(
+    <StoryFeedCard
+      story={{ ...story, coverImageUrl: "https://example.test/cover-2.png" }}
+    />,
+  );
+  await act(async () => {});
+
+  expect(seen).toEqual([0]);
 });
 
 it("never withholds the card while the cover is missing", async () => {
@@ -156,6 +211,41 @@ describe("the card scales with the window", () => {
     expect(feedCardMetrics(content(390), "rail").cardWidth).toBe(
       RAIL_CARD_WIDTH,
     );
+  });
+
+  it("draws the reference frame when the window has not been measured", () => {
+    /*
+      `useWindowDimensions()` reports 0 on the first web frame. Computed from
+      that number the geometry is not merely small, it is WRONG in both
+      directions at once: a list cover collapses to nothing and a rail card
+      clamps UP to its 236 minimum, i.e. a card wider than the window holding
+      it. One frame later it all snaps to the real size, and that snap is what
+      a cold load looks like.
+
+      So an unmeasured window is answered with 390 - the frame the design is
+      specified at - and the first frame is simply correct.
+    */
+    for (const unmeasured of [0, -1, Number.NaN]) {
+      const first = layoutWidth(unmeasured);
+      expect(first).toEqual(layoutWidth(REFERENCE_WINDOW_WIDTH));
+
+      const list = feedCardMetrics(first.content, "list");
+      const rail = feedCardMetrics(first.content, "rail");
+      expect(list.coverWidth).toBe(116);
+      expect(list.coverHeight).toBe(155);
+      expect(rail.cardWidth).toBe(RAIL_CARD_WIDTH);
+    }
+  });
+
+  it("never draws a rail card wider than the column it was given", () => {
+    // The clamp's job is to pull a small number UP, so on its own it hands
+    // back a 236pt card for any content narrower than that. Nothing feeds it
+    // such a width today; this is the guard that keeps that true.
+    for (const content of [0, 1, 100, 235]) {
+      const rail = feedCardMetrics(content, "rail");
+      expect(rail.cardWidth as number).toBeLessThanOrEqual(content);
+      expect(rail.coverWidth).toBeLessThanOrEqual(content);
+    }
   });
 
   it("keeps every width inside the window it was measured from", () => {

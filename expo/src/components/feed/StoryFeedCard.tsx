@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { BookOpen, ChevronRight, Heart } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
@@ -109,10 +109,17 @@ export function feedCardMetrics(
   content: number,
   variant: StoryFeedCardVariant,
 ): FeedCardMetrics {
-  const railWidth = clamp(
-    content - RAIL_PEEK,
-    RAIL_MIN_WIDTH,
-    RAIL_CARD_WIDTH,
+  /*
+    The outer `Math.min` is the guard, and it is not theoretical: the clamp's
+    JOB is to pull a small number UP to `RAIL_MIN_WIDTH`, so at any content
+    below 236 it hands back a card wider than the column it was asked to fit
+    in. `useLayoutWidth` no longer feeds this a zero (it falls back to the
+    390pt reference frame), but a card that can be wider than its own content
+    width is the kind of thing that only has to be true once.
+  */
+  const railWidth = Math.min(
+    clamp(content - RAIL_PEEK, RAIL_MIN_WIDTH, RAIL_CARD_WIDTH),
+    content,
   );
   const cardWidth = variant === "rail" ? railWidth : content;
   const coverWidth = Math.round(
@@ -184,13 +191,29 @@ function CardCover(
   const [shownKey, setShownKey] = useState<string | null>(null);
   const revealed = imageKey !== null && shownKey === imageKey;
 
-  const opacity = useRef(new Animated.Value(0)).current;
+  /*
+    A NEW SOURCE GETS A NEW, ZEROED OPACITY — IN THE RENDER THAT CHANGES THE
+    KEY, not in an effect after it.
+
+    `useRef` gave every source the same value, so a regenerated cover was
+    painted once at the OLD opacity of 1 and only then reset by the passive
+    effect below: the new art popped in at full strength instead of fading up
+    from the gradient. That is the same bug this card was fixed for, pointing
+    the other way — the first one revealed too late, this one too early.
+
+    Keying the value to `imageKey` makes the reset structural. There is no
+    ordering left to get wrong, because the frame that first shows a source is
+    also the frame that owns its zero.
+  */
+  const opacity = useMemo(
+    () => new Animated.Value(0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [imageKey],
+  );
 
   useEffect(() => {
-    if (!revealed) {
-      opacity.setValue(0);
-      return;
-    }
+    // `opacity` is already 0 for an unrevealed source; nothing to undo.
+    if (!revealed) return;
     Animated.timing(opacity, {
       toValue: 1,
       duration: motion.base,

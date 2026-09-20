@@ -45,6 +45,13 @@ export const LAYOUT_GUTTER = spacing.xl;
  */
 export const MAX_CONTENT_WIDTH = 560;
 
+/**
+ * The frame the whole design is specified against (390 x 844, see
+ * `source-of-truth/DESIGN_SYSTEM.md`), used as the answer when the window has
+ * not been measured yet.
+ */
+export const REFERENCE_WINDOW_WIDTH = 390;
+
 export type LayoutWidth = {
   /** The whole window, for the rare case something really does need it. */
   window: number;
@@ -57,19 +64,37 @@ export type LayoutWidth = {
 
 /** The pure half, so the bands can be tested without a window. */
 export function layoutWidth(window: number): LayoutWidth {
-  const band: LayoutBand = window >= LAYOUT_BREAKPOINTS.wide
+  /*
+    AN UNMEASURED WINDOW IS THE REFERENCE FRAME, NOT ZERO.
+
+    `useWindowDimensions()` reports 0 on the first web frame. Computing from
+    that number is not "safe just because it is clamped": a list card gets a
+    zero-width cover, and a rail card clamps UP to its 236 minimum, which is a
+    card wider than the window it sits in. Both then snap to their real size
+    one frame later, and a snap on a cold load is exactly the kind of thing
+    that gets reported as the layout "jumping".
+
+    390 is the frame every number in DESIGN_SYSTEM.md was drawn at, so falling
+    back to it means the first frame renders the INTENDED geometry and the
+    measured frame usually changes nothing at all.
+  */
+  const measured = Number.isFinite(window) && window > 0
+    ? window
+    : REFERENCE_WINDOW_WIDTH;
+
+  const band: LayoutBand = measured >= LAYOUT_BREAKPOINTS.wide
     ? "wide"
-    : window >= LAYOUT_BREAKPOINTS.regular
+    : measured >= LAYOUT_BREAKPOINTS.regular
     ? "regular"
     : "compact";
 
-  // `Math.max` rather than trusting the subtraction: a zero or unmeasured
-  // window (it happens on the first web frame) must not produce a negative
-  // width that every downstream `clamp` then has to defend against.
-  const usable = Math.max(0, window - LAYOUT_GUTTER * 2);
+  // `Math.max` rather than trusting the subtraction: a very narrow window must
+  // not produce a negative width that every downstream `clamp` then has to
+  // defend against.
+  const usable = Math.max(0, measured - LAYOUT_GUTTER * 2);
 
   return {
-    window,
+    window: measured,
     content: Math.min(usable, MAX_CONTENT_WIDTH),
     gutter: LAYOUT_GUTTER,
     band,

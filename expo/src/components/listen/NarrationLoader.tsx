@@ -134,6 +134,7 @@ export function NarrationLoader({
                 <Button
                   label={action.label}
                   onPress={action.onPress}
+                  fullWidth={false}
                   style={styles.action}
                 />
               )
@@ -145,6 +146,7 @@ export function NarrationLoader({
                   onPress={secondaryAction.onPress}
                   variant="ghost"
                   size="sm"
+                  fullWidth={false}
                   style={styles.secondaryAction}
                 />
               )
@@ -203,10 +205,18 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   /*
-    Layout only for both. They sit centred under a failed narration, so they
-    keep their 180pt floor -- two buttons the width of their own labels under
-    a centred paragraph read as links, not as the way out.
+    Layout only for both, and NEITHER IS FULL WIDTH. They sit centred under a
+    failed narration, so they keep their 180pt floor -- two buttons the width
+    of their own labels under a centred paragraph read as links, not as the
+    way out, and two full-width bars make the quieter ghost look like a second
+    primary. `Button` is full width by default and the migration to it
+    silently stretched both, which is why `fullWidth={false}` is passed at
+    both call sites.
+
+    `alignSelf: "center"` because the hug-content branch of `Button` is
+    `alignSelf: "flex-start"`, and that would override this column's
+    `alignItems: "center"` and shove both buttons against the left edge.
   */
-  action: { minWidth: 180 },
-  secondaryAction: { minWidth: 180 },
+  action: { minWidth: 180, alignSelf: "center" },
+  secondaryAction: { minWidth: 180, alignSelf: "center" },
 });
