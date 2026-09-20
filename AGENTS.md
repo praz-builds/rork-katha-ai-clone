@@ -43,7 +43,13 @@ When available, use the local Expo skills in `.agents/skills` for Expo, React Na
 assumed: the migration ledger matches main exactly through `00094` (no
 local-only, no remote-only), `stories.story_bible_rev` exists, and the deployed
 bundles for `continue-story`, `generate-story-stream` and `audio-status` were
-read back and contain the #113 and #115 changes. All 37 functions are deployed.
+read back and contain the #113 and #115 changes.
+
+All 37 functions are listed ACTIVE, which is not the same claim: that is the
+platform saying a deployment exists, not that its code matches main. Only the
+three above were opened and checked. When it matters for a specific function,
+check that one -- a version number and an `ACTIVE` status cannot tell you which
+commit is inside.
 
 The `music` bucket holds 24 tracks and is served publicly; #116's client reads
 from it, so the bucket and its objects are a deploy dependency of that release,

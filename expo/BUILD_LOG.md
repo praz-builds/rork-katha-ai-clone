@@ -37,14 +37,18 @@ yet.**
 The tracks were bundled in `expo/assets/music/`. That put 26 MB on every
 download for a feature a session may never hear, and made adding a track an
 app-store release. They moved to the public `music` bucket; `src/lib/music-cache.ts`
-fetches one on first play and caches it to the device, so the cost is paid once
-per track per device and every later open plays from disk.
+fetches one on first play and caches it to the device, so a track is normally
+fetched once per device and played from disk after that. Normally, not always:
+the cache directory is the right home precisely because the OS may reclaim it
+under storage pressure, and the only cost of that is one more download.
 
-Two callers asking at once share one download, so a Profile preview and a story
-opening do not fetch twice. A failed fetch falls back to streaming and retries
-next time rather than caching the failure, and a zero-byte file from a dead
-download is treated as a miss instead of being served as audio forever. Nothing
-in that path throws into opening a story: silence is the worst case.
+Two callers asking at once share one download, so nothing fetches a track twice
+concurrently -- the case that motivates it, a Profile preview and a story
+opening, cannot happen until Profile exists. A failed fetch falls back to
+streaming and retries next time rather than caching the failure, and a
+zero-byte file from a dead download is treated as a miss instead of being
+served as audio forever. Nothing in that path throws into opening a story:
+silence is the worst case.
 
 ### Two races CodeAnt caught
 

@@ -10,7 +10,8 @@ import type { Genre } from "@/types/domain";
  * live in the public `music` bucket in Supabase Storage (migration 00094),
  * alongside narration audio and covers, and are fetched once and cached on the
  * device by `@/lib/music-cache`. A track is silent only on a cold first play
- * with no network; every later open plays from disk.
+ * with no network; later opens play from disk, unless the OS has reclaimed the
+ * cache directory, in which case it costs one more download.
  *
  * The practical win is release cadence: adding or replacing a track is an
  * upload plus a row here, shippable over OTA, not an app-store release.
