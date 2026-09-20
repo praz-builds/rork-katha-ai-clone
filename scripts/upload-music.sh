@@ -19,7 +19,7 @@
 #   scripts/upload-music.sh masters/*.m4a
 #
 # Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. The service role is the
-# only thing that can write here: migration 00093 gives the bucket a read
+# only thing that can write here: migration 00094 gives the bucket a read
 # policy and no write policy at all.
 set -euo pipefail
 
