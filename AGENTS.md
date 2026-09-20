@@ -92,6 +92,21 @@ After onboarding or paywall changes:
 4. Open `http://localhost:8090/` in a 390 x 844 mobile viewport.
 5. Walk the full flow: intro timing, persona branching, form validation, building transition, notification education, personalized paywall, post-paywall OTP entry, success, Home handoff. There is no one-time offer step -- it was removed 2026-09-10 (`source-of-truth/ONBOARDING_FLOW.md` §14).
 
+## An expensive CI job runs only when its inputs change
+
+**Before adding a slow step to `.github/workflows/ci.yml`, gate it on the paths it actually depends on.** This is a standing rule for every new flow, not a one-off cleanup.
+
+The migration suite is the worked example. It spins up PGlite per test, takes ~8 of the backend job's ~8.5 minutes, and ran on **every** pull request -- including the majority that only touch `expo/`. About 200 runs in September, and on 2026-09-20 a 2,000-minute monthly allowance was gone by the 20th: **every job on every branch failed in three seconds with no runner and no logs**, for every agent at once, and GitHub's only explanation was a billing annotation. It now runs only when a `.sql` file changed.
+
+The test for whether gating is safe is one question: **can anything outside those paths change this job's result?** For the migration suite the answer is no -- it executes SQL against a real Postgres and asserts on the schema and policies that produces; no TypeScript can alter that. If the answer is yes, or you are unsure, do not gate it. A skipped check that should have run is worse than a slow one.
+
+Two rules that go with it:
+
+- **Compute changed paths with `git`, not a third-party action.** The backend checkout uses `fetch-depth: 0`, so `git diff --name-only "$base...HEAD"` answers it with nothing added to the supply chain. A `paths-filter` action is another dependency to pin and trust for a one-line diff.
+- **Prove the detection on real branches before trusting it.** The gate was checked against five merged PRs -- the two carrying SQL were detected, the three without were not. A gate nobody tested is a check nobody runs.
+
+**When CI cannot run at all**, `scripts/ci-local.sh` runs the same set locally and prints a summary to paste into the PR, so "it looked fine locally" is one defined thing rather than a different thing per person. It treats a missing toolchain as a failure, not a pass.
+
 ## A regression test is not done until it has failed
 
 **Revert the fix, re-run the test, confirm it fails, then restore the fix.** A test written against a bug you have already fixed passes for two reasons -- because the fix works, or because the test never reproduced the bug -- and they are indistinguishable until you check.

@@ -7,6 +7,51 @@
 
 ---
 
+## 2026-09-20 UTC — CI stopped for everyone, and what it cost to run migrations on every PR
+
+**Session:** the coordinating session.
+
+### The outage
+
+Every job on every branch began failing in ~3 seconds with `runner_name`
+empty, no steps executed and no logs. Not the code: the same workflow had
+passed on main 13 minutes earlier, and the branch under test changed two test
+files. The cause was only visible in the check-run annotations:
+
+> "The job was not started because recent account payments have failed or your
+> spending limit needs to be increased."
+
+~200 runs in September at ~13 job-minutes each is ~2,600 minutes against a
+2,000-minute monthly allowance on a private repo. Usage had accelerated with
+the agent fleet: 9 runs/day on the 14th, 19 on the 18th, 34 on the 19th.
+
+Resolved by making the repository public (owner's decision, with the IP and
+RLS-exposure tradeoffs put to them first). A history scan for committed
+credentials ran before the switch and found none: no `.env` has ever been
+committed, and no live key pattern appears anywhere in history.
+
+### The fix that should have been there first
+
+The migration suite is ~8 of the backend job's ~8.5 minutes and ran on every
+PR, including the majority that only touch `expo/`. It is now gated on a `.sql`
+file actually changing — safe because those tests execute migration files
+against a real Postgres and assert on the schema and policies they produce;
+nothing outside `backend/supabase/migrations/` can change that outcome.
+
+Detection is `git diff` against the PR base rather than a paths-filter action,
+since the checkout already carries full history. Verified against five merged
+PRs: both SQL-bearing ones detected, all three others skipped.
+
+`scripts/ci-local.sh` runs the same set locally for when CI cannot run at all,
+and prints a summary meant to be pasted into the PR. A missing toolchain counts
+as a failure rather than a pass.
+
+AGENTS.md carries the standing rule: an expensive CI job runs only when its
+inputs change, and the test for whether gating is safe is whether anything
+outside those paths can change the job's result.
+
+---
+
 ## 2026-09-20 UTC — The music bucket, and a migration number that was already taken
 
 **Session:** the coordinating session, shipping PR #116 (reader genre music).
