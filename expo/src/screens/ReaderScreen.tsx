@@ -26,7 +26,6 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { MusicPicker } from "@/components/reader/MusicPicker";
 import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
@@ -47,8 +46,13 @@ import {
   type ChapterSaveEntry,
 } from "@/lib/chapter-save-queue";
 import { blockAuthor, fetchThread, formatRelativeTime, postComment, reportContent } from "@/lib/comments";
-import { findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
-import { getStoryMusicTrackId, setStoryMusicTrackId } from "@/lib/music-storage";
+import { defaultTrackForStory, findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
+import { resolveMusicUri } from "@/lib/music-cache";
+import {
+  getGenreTrackId,
+  getMusicMuted,
+  setMusicMuted,
+} from "@/lib/music-storage";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
 import {
@@ -239,10 +243,16 @@ const CHAPTER_OPENER_HEIGHT = 300;
  */
 const CHAPTER_ART_HEIGHT = 220;
 const CHAPTER_ART_BLOCK_HEIGHT = CHAPTER_ART_HEIGHT + 12;
-/** Full-volume level for background music when narration is not playing. */
-const MUSIC_FULL_VOLUME = 1;
+/**
+ * Background level while reading. Under half: the tracks are mastered as
+ * foreground music, and at full level they pulled attention off the page.
+ */
+const MUSIC_FULL_VOLUME = 0.45;
 /** Ducked level while narration plays, so the two never compete at equal volume. */
-const MUSIC_DUCKED_VOLUME = 0.18;
+const MUSIC_DUCKED_VOLUME = 0.1;
+/** New music fades in over this long instead of starting at full level. */
+const MUSIC_FADE_IN_MS = 1800;
+const MUSIC_FADE_STEPS = 12;
 const TYPE_SIZES = [16, 18, 20, 22];
 const LINE_HEIGHTS = [26, 30, 34, 38];
 
@@ -490,7 +500,6 @@ export default function ReaderScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoadingAudioRef = useRef(false);
-  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [musicTrackId, setMusicTrackId] = useState<string | null>(null);
   const musicSoundRef = useRef<Audio.Sound | null>(null);
   const isNarrationPlayingRef = useRef(isPlaying);
@@ -712,31 +721,46 @@ export default function ReaderScreen({
     });
   }, [chapters, writingChapterNumber]);
 
-  // Restores the story's saved music choice (or "None") when the reader opens it.
+  // Chooses the story's track when the reader opens it: the reader's default
+  // for this genre if they set one in Profile, otherwise the catalogue's own
+  // choice for this story. Neither is saved against the story, so both follow
+  // the catalogue if tracks change later.
   //
-  // A reader can choose a track before this read resolves, and the restore then
-  // overwrote their newer choice with the older saved one -- their music
-  // changing under them a moment after they picked it. A choice made by the
-  // person beats a value read from disk, always.
-  const musicChosenByUserRef = useRef(false);
+  // A reader can press mute before this read resolves. The restore must not
+  // then apply the older value from disk: they would mute, and a moment later
+  // the music would start anyway -- the control visibly not working. A choice
+  // made by the person beats a value read from disk, always, so the restore
+  // skips the muted half once they have touched it. The track half still
+  // applies, because nothing in the reader chooses a track.
+  const musicMutedRef = useRef(false);
+  const mutedChosenByUserRef = useRef(false);
+  const [musicMuted, setMusicMutedState] = useState(false);
   useEffect(() => {
     let alive = true;
-    musicChosenByUserRef.current = false;
-    void getStoryMusicTrackId(story.id).then((trackId) => {
-      if (alive && !musicChosenByUserRef.current) setMusicTrackId(trackId);
+    void Promise.all([getMusicMuted(), getGenreTrackId(story.genre)]).then(([muted, genreTrackId]) => {
+      if (!alive) return;
+      if (!mutedChosenByUserRef.current) {
+        musicMutedRef.current = muted;
+        setMusicMutedState(muted);
+      }
+      const chosen = findMusicTrack(genreTrackId, MUSIC_TRACKS)
+        ?? defaultTrackForStory(story.id, story.genre, MUSIC_TRACKS);
+      setMusicTrackId(chosen?.id ?? null);
     });
     return () => {
       alive = false;
     };
-  }, [story.id]);
+  }, [story.id, story.genre]);
 
   useEffect(() => {
     isNarrationPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
   // Loads (or clears) the background-music sound whenever the chosen track
-  // changes. Deliberately does not depend on chapterIndex or pageIndex, so
-  // music keeps looping across page turns and chapter navigation.
+  // changes, or the reader mutes. Deliberately does not depend on chapterIndex
+  // or pageIndex, so music keeps looping across page turns and chapter
+  // navigation. Muting unloads rather than setting volume 0, so a muted reader
+  // is not holding a decoder open and streaming for a whole story.
   useEffect(() => {
     let cancelled = false;
     async function syncMusicTrack() {
@@ -745,37 +769,46 @@ export default function ReaderScreen({
         musicSoundRef.current = null;
         await previous.unloadAsync();
       }
+      if (musicMuted) return;
       const track = findMusicTrack(musicTrackId, MUSIC_TRACKS);
       if (!track) return;
       try {
-        const { sound } = await Audio.Sound.createAsync(track.source, {
+        // Cached after the first play; the first one fetches. Both come back
+        // as a URI, and a failed cache falls back to the remote URL inside
+        // resolveMusicUri rather than throwing.
+        const uri = await resolveMusicUri(track);
+        if (cancelled) return;
+        const { sound } = await Audio.Sound.createAsync({ uri }, {
           shouldPlay: true,
           isLooping: true,
-          volume: isNarrationPlayingRef.current ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME,
+          volume: 0,
         });
         if (cancelled) {
           await sound.unloadAsync();
           return;
         }
         musicSoundRef.current = sound;
-        // Narration can start while `createAsync` is still pending. The ducking
-        // effect keyed on `isPlaying` would have run already and found no sound
-        // to duck, so the track then began at full volume over the narration.
-        // Re-reading the current state here closes that window.
-        const volumeNow = isNarrationPlayingRef.current
-          ? MUSIC_DUCKED_VOLUME
-          : MUSIC_FULL_VOLUME;
-        await sound.setStatusAsync({ volume: volumeNow });
+        // Fades in. Each step re-reads whether narration is playing, because
+        // narration can start while `createAsync` is pending or mid-fade: the
+        // ducking effect keyed on `isPlaying` would have found no sound yet,
+        // and the track would climb to full volume over the narration.
+        for (let step = 1; step <= MUSIC_FADE_STEPS; step += 1) {
+          if (step > 1) await new Promise((resolve) => setTimeout(resolve, MUSIC_FADE_IN_MS / MUSIC_FADE_STEPS));
+          if (cancelled || musicSoundRef.current !== sound) return;
+          const target = isNarrationPlayingRef.current ? MUSIC_DUCKED_VOLUME : MUSIC_FULL_VOLUME;
+          await sound.setStatusAsync({ volume: step === MUSIC_FADE_STEPS ? target : (target * step) / MUSIC_FADE_STEPS });
+        }
       } catch {
-        // A catalogue row without a working asset (development-time state)
-        // fails silently rather than breaking the reader.
+        // A catalogue row whose object is missing from the bucket, or a fetch
+        // that failed with no cached copy, fails silently rather than breaking
+        // the reader. Silence is an acceptable outcome for background music.
       }
     }
     void syncMusicTrack();
     return () => {
       cancelled = true;
     };
-  }, [musicTrackId]);
+  }, [musicTrackId, musicMuted]);
 
   // Ducks music under narration and restores it when narration stops.
   useEffect(() => {
@@ -1024,12 +1057,18 @@ export default function ReaderScreen({
     void setPreferredVoiceGender(gender);
   }, [voiceGender]);
 
-  const handleMusicSelect = useCallback((trackId: string | null) => {
+  // Mute is global and immediate: it silences the current story now and every
+  // story after it. The track choosing that used to live here moved to
+  // Profile, beside the narration voice -- picking background music is a
+  // setting, not something to do in the middle of a chapter.
+  const handleMusicMuteToggle = useCallback(() => {
+    const next = !musicMutedRef.current;
     // Marks the choice as the reader's, so a slower restore cannot undo it.
-    musicChosenByUserRef.current = true;
-    setMusicTrackId(trackId);
-    void setStoryMusicTrackId(story.id, trackId);
-  }, [story.id]);
+    mutedChosenByUserRef.current = true;
+    musicMutedRef.current = next;
+    setMusicMutedState(next);
+    void setMusicMuted(next);
+  }, []);
   const closeEditor = useCallback((saved: SavedChapterEdit | null) => {
     setEditOpen(false);
     if (!saved) return;
@@ -1654,7 +1693,8 @@ export default function ReaderScreen({
         onListen={onListen
           ? () => onListen(chapterIndex)
           : () => setListenOpen(true)}
-        onMusic={() => setMusicPickerOpen(true)}
+        onMusic={handleMusicMuteToggle}
+        musicMuted={musicMuted}
       />
       {/*
         Mounted only while open. The sheet reads the safe-area inset, and a
@@ -1750,13 +1790,6 @@ export default function ReaderScreen({
         onVoiceChange={handleVoiceChange}
         onPlay={handlePlayTap}
         onClose={() => setListenOpen(false)}
-      />
-      <MusicPicker
-        visible={musicPickerOpen}
-        genre={story.genre}
-        selectedTrackId={musicTrackId}
-        onSelect={handleMusicSelect}
-        onClose={() => setMusicPickerOpen(false)}
       />
       {/*
         REIMAGINE SHEET GOES HERE.

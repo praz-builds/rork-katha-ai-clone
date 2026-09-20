@@ -332,7 +332,11 @@ Rules and known failure modes:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00090` applied (`00089` and `00090` pushed 2026-09-16) except the deliberately absent `00016` and `00024`. All **37** edge functions are deployed, so schema and code are in step. `00056` is the renumbered `story_shape_no_anonymous_ceiling` (it shared version `00046` with `engagement_persistence`, and `schema_migrations` keys on version). Before adding one, read the remote state with `supabase migration list` and take the next free number from that, never from a local directory listing -- a stale branch will not show the newest files and will collide.
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00094` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **37** edge functions are deployed, so schema and code are in step.
+
+**Take the next number from `origin/main`, never from your own directory listing.** `schema_migrations` keys on the version string, so once production has recorded `00093`, a *different* `00093` is considered already applied: `supabase db push` skips it, reports success, and the change never reaches production. Nothing errors, every test passes, and it works on the machine where it was written. This has happened twice -- `00056` is the renumbered `story_shape_no_anonymous_ceiling`, which shared `00046` with `engagement_persistence`, and on 2026-09-20 `00093` was taken by both `story_bible_rev` (#115) and a music branch cut before it merged.
+
+`scripts/check-migration-numbers.sh` is the guard, and CI runs it on every PR. It fails a branch that duplicates a number, reuses one of main's numbers for a different migration, or picks an unused number below main's high-water mark (applying out of order against databases already past it). Run it before you commit; rebase on main first, because a stale branch is exactly how the collision happens.
 
 `_test.ts` files live alongside the `.sql` in this directory. The CLI skips them by filename pattern, which is why they are safe there, but they are not migrations and must never be numbered as if they were.
 

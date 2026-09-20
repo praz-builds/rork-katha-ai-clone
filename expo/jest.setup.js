@@ -58,3 +58,18 @@ jest.mock("react-native-purchases-ui", () => ({
     presentCustomerCenter: jest.fn(),
   },
 }));
+
+/**
+ * The reader's music catalogue is empty in tests by default.
+ *
+ * The real catalogue ships tracks, and a story with no saved choice starts
+ * its genre's track on open. Every suite that mounts the reader would then
+ * load a music sound through the same mocked `Audio.Sound.createAsync` it
+ * uses to assert on narration, and count the wrong sound. The suite about
+ * music mocks the catalogue with its own fixture (reader-music), and
+ * music-catalogue.test unmocks it to check the real rows.
+ */
+jest.mock("@/lib/music-catalogue", () => ({
+  ...jest.requireActual("@/lib/music-catalogue"),
+  MUSIC_TRACKS: [],
+}));
