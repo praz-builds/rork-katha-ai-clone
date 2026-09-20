@@ -39,6 +39,35 @@ trap, since the thing reused was some other lane's branch. Both now send
 pre-merge review to 8091 and note that edge calls fail CORS there, because 8091
 is not in `ALLOWED_ORIGINS`.
 
+### What review caught
+
+CodeAnt raised five Major findings on the first cut, and all five were real:
+
+- **`--no-sync` contradicted the guarantee.** A documented flag that serves
+  "whatever is checked out" defeats the entire point of the script. It is now
+  `--offline`, which skips the *fetch* and nothing else: dirty-tree refusal and
+  the hard reset to the local `origin/main` still run, and it prints that the
+  ref may be behind rather than implying it is current. There is deliberately
+  no flag that serves an arbitrary checkout.
+- **The `.env` line in the setup help was wrong.** It read
+  `cd "$WORKTREE/expo" && ... && cp <src> expo/.env`, which resolves to
+  `$WORKTREE/expo/expo/.env`. Reproduced (`cp: expo/.env: No such file or
+  directory`) before fixing. AGENTS.md had it right; only the script's own
+  help text was broken, which is the copy someone hits when the worktree is
+  missing.
+- **`KATHA_PREVIEW_PORT` was honoured by Expo but hardcoded as 8090 in the
+  banner**, so the script sent you to a server it had not started.
+- **No locking between concurrent runs**, so two agents could interleave a
+  reset with an install, or kill the server the other had just started. A
+  `mkdir` lock now covers the prepare phase, released before `exec` because
+  `exec` replaces the shell and the EXIT trap would never fire.
+- **Re-running rebooted a preview that was already correct.** The fix for that
+  had a bug of its own: Expo holds the port with more than one process, and the
+  pid `lsof` lists first reports a cwd of `/`, so testing only that pid never
+  matched. It now checks every pid on the port. Found by testing the path
+  rather than by reading it -- the first version looked right and silently
+  never triggered.
+
 ### Note on the diagnosis
 
 The first pass reported this backwards: `ReimagineSheet.tsx` was called the new

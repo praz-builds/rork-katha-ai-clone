@@ -40,3 +40,6 @@ docs/design/*
 # evidence and are small, so the audits stay tracked and the bodies do not.
 backend/originals/bench/before/
 backend/originals/bench/after/
+
+# Preview worktree lock (scripts/preview.sh)
+.preview-lock/

@@ -318,10 +318,12 @@ ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 
 ```bash
 scripts/preview.sh              # sync ~/Katha-AI-preview to origin/main, serve on :8090
-scripts/preview.sh --no-sync    # serve what is already checked out
+scripts/preview.sh --offline    # skip the fetch (no network), never the checks
 ```
 
 This is the only supported way to open the preview -- see *The preview shows main, and only main* for why a preview started inside a lane worktree is worse than no preview. It prints the commit it is serving; if that is not `origin/main`, stop and say so.
+
+`--offline` skips the network, not the guarantee: it still refuses a dirty tree, still hard-resets to the local `origin/main` ref, and says out loud that the ref may be behind. There is no flag that serves an arbitrary checkout, by design. Re-running while the right commit is already up is free -- it leaves the server alone rather than paying for a Metro reboot.
 
 The worktree is created once and then left alone:
 
