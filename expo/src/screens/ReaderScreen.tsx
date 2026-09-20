@@ -28,10 +28,14 @@ import {
 import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/EditStoryScreen";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
-import { ReimagineSheet } from "@/components/reader/ReimagineSheet";
+import { RepromptSheet } from "@/components/reader/RepromptSheet";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import type { StoryReportReason } from "@/components/comments/types";
-import { startReimagine, type ReimagineRequest, type ReimagineRun } from "@/lib/reimagine-client";
+// `RepromptRequest` is main's rename of `ReimagineRequest` (#121). `FocalImage`
+// and `imageAssets` came with it for the opener's cover, which this change
+// removes: the cover belongs to the story page and the reader's first page is
+// a title page, so neither import has a use here any more.
+import { startReimagine, type RepromptRequest, type ReimagineRun } from "@/lib/reimagine-client";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { captureError } from "@/lib/analytics";
@@ -103,7 +107,7 @@ export type ReaderScreenProps = {
    */
   renderChapterEnd?: (
     chapter: Chapter,
-    actions: { reimagine: (() => void) | null },
+    actions: { reimagine: (() => void) | null; reimagineLabel: string },
   ) => ReactNode;
   /** Extension point for phrase-level modules that need to replace individual words. */
   renderWord?: (word: string, index: number) => ReactNode;
@@ -139,6 +143,16 @@ export type ReaderScreenProps = {
    * gets a private copy).
    */
   onReimagine?: () => void;
+  /**
+   * A reader who does not own this story wants their own version of it.
+   *
+   * Not a rewrite of what they are reading: the host opens Create with this
+   * story's premise already in the box (`lib/reimagine-seed.ts`), and they
+   * generate a story of their own. Absent means the host cannot do that, and
+   * the control is not offered to a non-author at all -- better than a button
+   * that opens the author's re-prompt sheet over somebody else's chapter.
+   */
+  onReimagineStory?: (story: Story) => void;
   /**
    * A Reimagine rewrite has started for the chapter on screen.
    *
@@ -440,6 +454,7 @@ export default function ReaderScreen({
   autoplay = false,
   liveSessionId = null,
   onReimagine,
+  onReimagineStory,
   onReimagineStarted,
   onListen,
   onSavePhrase,
@@ -518,10 +533,10 @@ export default function ReaderScreen({
   // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
   // the failure itself, and the "Saved to Your stories" toast for a reader
   // whose rewrite landed in a private copy.
-  const [reimagineOpen, setReimagineOpen] = useState(false);
-  const [reimaginePrompt, setReimaginePrompt] = useState("");
-  const [reimagineError, setReimagineError] = useState<string | null>(null);
-  const [reimagineWaiting, setReimagineWaiting] = useState(false);
+  const [repromptOpen, setRepromptOpen] = useState(false);
+  const [repromptPrompt, setRepromptPrompt] = useState("");
+  const [repromptError, setRepromptError] = useState<string | null>(null);
+  const [repromptWaiting, setRepromptWaiting] = useState(false);
   const [forkToast, setForkToast] = useState(false);
   const [preferences, setPreferences] = useState<ReaderPreferences>(DEFAULT_PREFS);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -1106,10 +1121,10 @@ export default function ReaderScreen({
     setChapterTitleEdits((prev) => ({ ...prev, [baseChapter.id]: saved.title }));
   }, [baseChapter.id]);
 
-  const handleReimagineSubmit = useCallback((request: ReimagineRequest) => {
-    setReimagineOpen(false);
-    setReimagineError(null);
-    setReimaginePrompt("");
+  const handleRepromptSubmit = useCallback((request: RepromptRequest) => {
+    setRepromptOpen(false);
+    setRepromptError(null);
+    setRepromptPrompt("");
     const run = startReimagine(request);
     if (onReimagineStarted) {
       onReimagineStarted(run);
@@ -1118,11 +1133,11 @@ export default function ReaderScreen({
     // No host is holding the run, so this screen holds it. It has no
     // page-by-page mechanism of its own, so it covers the reader until the
     // rewrite settles rather than showing prose arriving mid-sentence.
-    setReimagineWaiting(true);
+    setRepromptWaiting(true);
     const chapterId = baseChapter.id;
     run.promise.then(
       (result) => {
-        setReimagineWaiting(false);
+        setRepromptWaiting(false);
         setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
         setPageIndex(0);
         setVisiblePage(0);
@@ -1135,30 +1150,35 @@ export default function ReaderScreen({
       (error: unknown) => {
         // The chapter on screen was never replaced, so there is nothing to
         // restore; the sheet reopens with the prompt intact and the reason.
-        setReimagineWaiting(false);
-        setReimaginePrompt(request.prompt);
-        setReimagineError(
+        setRepromptWaiting(false);
+        setRepromptPrompt(request.prompt);
+        setRepromptError(
           error instanceof Error ? error.message : "The rewrite failed. Please try again.",
         );
-        setReimagineOpen(true);
+        setRepromptOpen(true);
       },
     );
   }, [baseChapter.id, onReimagineStarted]);
 
   /**
-   * Reimagine, as the chapter-end module may offer it.
+   * The rewrite control, which is TWO different actions sharing one slot.
    *
-   * The same control the chrome carries, resolved the same way: the host's
-   * handler if it supplied one, otherwise this screen's own sheet. Null while
-   * the chapter is unfinished, because there is nothing complete to rewrite.
+   * For the author it is Re-prompt: this chapter, written again from an
+   * instruction, in place. For everybody else it is Reimagine, and it does not
+   * touch the story being read at all -- it opens Create with this story's
+   * premise already in the box so the reader can write their own.
+   *
+   * Resolved once here so the chrome and the chapter-end pill can never offer
+   * a reader the author's sheet. Null while the chapter is unfinished (nothing
+   * complete to rewrite), and null for a reader when no host can open Create.
    */
-  const chapterEndReimagine = useMemo(
-    () =>
-      chapterComplete
-        ? (onReimagine ?? (() => setReimagineOpen(true)))
-        : null,
-    [chapterComplete, onReimagine],
-  );
+  const rewriteAction = useMemo(() => {
+    if (!chapterComplete) return null;
+    if (onReimagine) return onReimagine;
+    if (isAuthor) return () => setRepromptOpen(true);
+    if (!onReimagineStory) return null;
+    return () => onReimagineStory(story);
+  }, [chapterComplete, isAuthor, onReimagine, onReimagineStory, story]);
 
   /*
     The real thread, for THIS story, from the same endpoint the detail page
@@ -1533,7 +1553,12 @@ export default function ReaderScreen({
                         </View>
                       ) : null}
                       {showsChapterEnd
-                        ? renderChapterEnd?.(chapter, { reimagine: chapterEndReimagine })
+                        ? renderChapterEnd?.(chapter, {
+                            reimagine: rewriteAction,
+                            reimagineLabel: isAuthor
+                              ? "Re-prompt this chapter"
+                              : "Write my own version",
+                          })
                         : null}
                     </View>
                     {/*
@@ -1703,10 +1728,9 @@ export default function ReaderScreen({
         // before that: a greyed control mid-generation is a question the
         // writer cannot answer.
         onEdit={isAuthor && chapterComplete ? () => setEditOpen(true) : undefined}
-        // A host may own the sheet; by default this screen opens its own.
-        onReimagine={chapterComplete
-          ? (onReimagine ?? (() => setReimagineOpen(true)))
-          : undefined}
+        // One slot, two actions. See `rewriteAction`.
+        onReimagine={rewriteAction ?? undefined}
+        reimagineLabel={isAuthor ? "Re-prompt" : "Reimagine"}
         onPreferences={() => setPrefsOpen(true)}
         onChapters={() => setChaptersOpen(true)}
         onListen={onListen
@@ -1722,16 +1746,15 @@ export default function ReaderScreen({
         any host that has not wrapped this screen) would throw on a hook it
         never needed to run for a closed sheet.
       */}
-      {reimagineOpen ? (
-        <ReimagineSheet
+      {repromptOpen ? (
+        <RepromptSheet
           visible
           story={story}
           chapter={chapter}
-          isAuthor={isAuthor}
-          initialPrompt={reimaginePrompt}
-          errorMessage={reimagineError}
-          onClose={() => setReimagineOpen(false)}
-          onSubmit={handleReimagineSubmit}
+          initialPrompt={repromptPrompt}
+          errorMessage={repromptError}
+          onClose={() => setRepromptOpen(false)}
+          onSubmit={handleRepromptSubmit}
         />
       ) : null}
       {/*
@@ -1740,8 +1763,8 @@ export default function ReaderScreen({
         "Katha is writing a chapter" looks the same wherever it happens - and
         never implies measurable progress.
       */}
-      {reimagineWaiting ? (
-        <View style={StyleSheet.absoluteFill} accessibilityLabel="Reimagining this chapter">
+      {repromptWaiting ? (
+        <View style={StyleSheet.absoluteFill} accessibilityLabel="Writing this chapter again">
           <GeneratingOverlay genre={story.genre} mode="chapter" />
         </View>
       ) : null}
@@ -1811,20 +1834,6 @@ export default function ReaderScreen({
         onPlay={handlePlayTap}
         onClose={() => setListenOpen(false)}
       />
-      {/*
-        REIMAGINE SHEET GOES HERE.
-
-        The chrome's Reimagine control is already wired: it renders whenever the
-        `onReimagine` prop is supplied and is offered to every reader, not only
-        the author. To land the sheet, the Reimagine agent adds one piece of
-        state in this component (`const [reimagineOpen, setReimagineOpen] =
-        useState(false)`), passes `() => setReimagineOpen(true)` down as
-        `onReimagine` from wherever this screen is rendered - or defaults the
-        prop to it - and renders `<ReimagineSheet visible={reimagineOpen}
-        story={story} chapter={chapter} onClose={() => setReimagineOpen(false)}
-        />` right here, beside the other sheets. Nothing else in this file has
-        to move.
-      */}
     </View>
   );
 }

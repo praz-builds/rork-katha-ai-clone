@@ -69,7 +69,7 @@ export type PhraseCaptureReaderProps = {
    */
   renderChapterEnd?: (
     chapter: Chapter,
-    actions: { reimagine: (() => void) | null },
+    actions: { reimagine: (() => void) | null; reimagineLabel: string },
   ) => ReactNode;
   /**
    * Forwarded to `ReaderScreen`. Same reason as `autoplay`: a seam this wrapper
@@ -78,6 +78,13 @@ export type PhraseCaptureReaderProps = {
    * page like every other chapter.
    */
   onReimagineStarted?: (run: ReimagineRun) => void;
+  /**
+   * Forwarded to `ReaderScreen`. Same reason again: without it a reader's
+   * Reimagine has nowhere to go, so the control is not offered to them at all
+   * -- the feature would silently disappear for everybody but the author the
+   * moment phrase capture is enabled.
+   */
+  onReimagineStory?: (story: Story) => void;
   /**
    * Forwarded to `ReaderScreen`. Same reason again: without it the live reader
    * would silently stop being live the moment phrase capture is enabled, and
@@ -226,6 +233,7 @@ export default function PhraseCaptureReader({
   liveSessionId = null,
   onRequireSignIn,
   onReimagineStarted,
+  onReimagineStory,
   onListen,
 }: PhraseCaptureReaderProps) {
   const [savedPhrases, setSavedPhrases] = useState<SavedPhrase[]>([]);
@@ -822,6 +830,7 @@ export default function PhraseCaptureReader({
             onRequireSignIn={onRequireSignIn}
             onListen={onListen}
             onReimagineStarted={onReimagineStarted}
+            onReimagineStory={onReimagineStory}
             // The chrome's labelled way into phrase capture, for every reader
             // rather than only the ones who can make the gesture. Suppressed
             // while the mode is already open, so the control cannot re-enter

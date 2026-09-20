@@ -36,7 +36,7 @@ import type { Genre } from "@/types/domain";
  * back to it with or without a starter, which rules out a pushed screen that
  * makes leaving feel like going back. A sheet over the brief keeps the box
  * they were typing in visible behind the scrim, matches every other
- * disposable surface in the app (`ReimagineSheet`, the comments sheet), and
+ * disposable surface in the app (`RepromptSheet`, the comments sheet), and
  * has three ways out - the close button, the scrim, and the hardware back -
  * so dismissing without choosing is never a trap.
  *

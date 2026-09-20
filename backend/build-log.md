@@ -86,6 +86,175 @@ per the rule in AGENTS.md.
 
 ---
 
+## 2026-09-20 UTC — CI stopped for everyone, and what it cost to run migrations on every PR
+
+**Session:** the coordinating session.
+
+### The outage
+
+Every job on every branch began failing in ~3 seconds with `runner_name`
+empty, no steps executed and no logs. Not the code: the same workflow had
+passed on main 13 minutes earlier, and the branch under test changed two test
+files. The cause was only visible in the check-run annotations:
+
+> "The job was not started because recent account payments have failed or your
+> spending limit needs to be increased."
+
+~200 runs in September at ~13 job-minutes each is ~2,600 minutes against a
+2,000-minute monthly allowance on a private repo. Usage had accelerated with
+the agent fleet: 9 runs/day on the 14th, 19 on the 18th, 34 on the 19th.
+
+Resolved by making the repository public (owner's decision, with the IP and
+RLS-exposure tradeoffs put to them first). A history scan for committed
+credentials ran before the switch and found none: no `.env` has ever been
+committed, and no live key pattern appears anywhere in history.
+
+### The fix that should have been there first
+
+The migration suite is ~8 of the backend job's ~8.5 minutes and ran on every
+PR, including the majority that only touch `expo/`. It is now gated on a `.sql`
+file actually changing — safe because those tests execute migration files
+against a real Postgres and assert on the schema and policies they produce;
+nothing outside `backend/supabase/migrations/` can change that outcome.
+
+Detection is `git diff` against the PR base rather than a paths-filter action,
+since the checkout already carries full history. Verified against five merged
+PRs: both SQL-bearing ones detected, all three others skipped.
+
+`scripts/ci-local.sh` runs the same set locally for when CI cannot run at all,
+and prints a summary meant to be pasted into the PR. A missing toolchain counts
+as a failure rather than a pass.
+
+AGENTS.md carries the standing rule: an expensive CI job runs only when its
+inputs change, and the test for whether gating is safe is whether anything
+outside those paths can change the job's result.
+## 2026-09-20 UTC — Reimagine splits in two: the author re-prompts, the reader writes their own
+
+**Session:** story-quality lane, worktree `codex/story-quality-research`.
+**Client only. No migration, no edge-function change, no price change.**
+
+### What the button used to be, and why it could not work
+
+One control, `ReimagineSheet`, shown to everybody: a list of the story's cast
+with a Replace control on each, plus a prompt box. For a non-author the server
+forked the story first and rewrote one chapter of the copy.
+
+Three things were wrong with it and none of them were fixable in that shape:
+
+1. **Replacement could not replace anybody.** `apply_to_all_chapters` is a
+   find-and-replace (`_shared/character-substitution.ts`), and that module's own
+   header says pronouns are never touched because "a gender change is a job for
+   reimagining, not for a rename". It also cannot touch a single word the prose
+   says about who somebody is. Swap a 61-year-old Dutch dairy farmer for a
+   28-year-old Mumbai architect and you get an architect who has kept cows in
+   Zierikzee since 1983, called "she" throughout.
+2. **The cast list was empty for every story, always.** `story.characters` is
+   never populated by any client mapper -- `SHELF_STORY_COLUMNS` selects no cast,
+   and `mapStoryRow`, `mapGeneratedStory` and `mapSearchRow` all omit the field.
+   So `detectChapterCharacters` returned `[]` at its `roster.length === 0` guard
+   before it ever filtered anything. Never caught because it is only tested
+   against hand-built fixtures, never through the real hydration path.
+3. **The fork carried the old story's pictures.** `fork_story` copies
+   `cover_image_url` and every `chapters.image_url`; only `audio_url` is nulled.
+   A story reimagined with new people shipped with pictures of the old ones --
+   the loudest possible failure of that exact feature.
+
+### What it is now
+
+**Author: Re-prompt.** `RepromptSheet`, one box, what should change, same
+`reimagine-chapter` endpoint, same chapter, same price. No roster, because
+offering the person who invented the cast a find-and-replace over their own
+characters was never the thing they wanted.
+
+**Reader: Reimagine, and it does not touch the story being read.** It opens
+Create with that story's premise already in the box -- verbatim off
+`stories.topic`, so the reader can see exactly what produced the story they
+liked and edit any word of it -- and they generate their own, with their own
+characters, through the ordinary create flow. **Nothing is forked and the
+original is never written to.**
+
+`lib/reimagine-seed.ts` carries the story's *shape*: premise, genre, audience
+mode, spice, language, standalone-vs-series and its chapter count. It
+deliberately does not carry the cast (the reader brings their own), `beats` or
+`grounding` (they belong to a premise about to be edited), or visibility (a
+reader does not inherit a stranger's choice to be public). Three values are
+dropped when the picker cannot show them as chosen -- a retired genre, a
+retired language, a chapter count that is not one of the offered buttons --
+because a brief opened on a control with nothing selected is worse than one
+opened on its default.
+
+`ReaderScreen.rewriteAction` resolves which of the two a viewer gets, once, so
+the chrome and the chapter-end pill can never disagree or offer a reader the
+author's sheet.
+
+### What this deleted
+
+`ReimagineSheet.tsx`, `detectChapterCharacters`, `nameAppearsIn`,
+`replacementFromSaved`, `replacementTargetIsSaved`, `serializeReplacement`, and
+the `character_replacements` field on the request. **The server still accepts
+that field; it simply never arrives.** Removing it from the client rather than
+hiding it in the UI was deliberate -- a payload nothing produces and nothing
+tests is a trap for whoever reads the endpoint next.
+
+### Pricing
+
+**Nothing moved.** The author's re-prompt is the same 1 credit through
+`reserve_generation_operation`. The reader's reimagine is a story start, which
+is already 1 credit and already bundles cast, chapter one and its art. The
+non-author fork row in `CREDITS_AND_PRICING.md` §3 is retired rather than
+repriced, and Hole 1 of that section is now resolved by construction: a reader
+cannot spend a free allowance on somebody else's chapter because no action
+touches one any more.
+
+Two known-stale quotes were recorded rather than fixed, because both belong to
+the credit ledger and not to this change: `reserve_generation_operation` charges
+1 credit for a reimagine unconditionally with no subscriber check and no
+counter, and the sheet renders "1 free" on every open because
+`repromptsUsedOnChapter` is never passed a real value.
+
+### Canonical documents
+
+`source-of-truth/STORY_GENERATION_FLOW.md` §10.3 and
+`source-of-truth/CREDITS_AND_PRICING.md` §3 amended in the same commit, as
+`source-of-truth/README.md` requires of a change that crosses both.
+
+### Checks
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors (30 pre-existing warnings, none in
+the new files). `pnpm test` green. Smoked in the running app: a reader's
+Reimagine lands in Create with the premise pre-filled verbatim and editable.
+
+Two gaps, named rather than hidden: the smoke ran at desktop width because the
+viewport would not clamp to 390 px, and the author's Re-prompt path was not
+smoked in a browser because reaching it needs a story the tester owns and
+therefore a real generation against live credits. Unit tests cover it instead.
+
+### What review caught
+
+Three real defects, all found by CodeAnt on the first push:
+
+1. **`reimagine-seed.ts` carried its own copy of the offered chapter counts**
+   -- `[3, 7, 15]` -- and `PLANNED_CHAPTER_COUNT_OFFER` is `[1, 3, 7, 15]`. A
+   reader reimagining a **one-chapter** story would have got a three-chapter
+   brief. One chapter is a deliberate offer, not an edge case: it is a series
+   of one so it can be extended from the end of the reader, where a standalone
+   cannot. Fixed by importing the constant instead of restating it.
+2. **The seed outlived the visit it was made for.** It was cleared only when a
+   generation started, so a reader who opened the seeded brief and backed out
+   would find a stranger's premise waiting the next time they opened Create.
+   Now cleared on leaving the Create tab, which also covers the tab bar as a
+   second way out.
+3. **The canonical documents contradicted themselves.** §3 was amended but the
+   summary, §1 and §10 tables still priced "Reimagine a chapter of somebody
+   else's story" as a fork, still said "recast it", and still linked the
+   deleted `ReimagineSheet.tsx`. All corrected in the same pass.
+
+A fourth was caught by lint on the fix itself: the new `useEffect` was written
+beside `goTabs`, which lives below `if (!fontsReady) return`, so it was a
+conditionally-called hook. Moved beside the state it clears.
+
+---
+
 ## 2026-09-20 UTC — The music bucket, and a migration number that was already taken
 
 **Session:** the coordinating session, shipping PR #116 (reader genre music).

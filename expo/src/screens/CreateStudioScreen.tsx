@@ -66,7 +66,7 @@ type DraftCharacter = {
   savedCharacterId?: string;
 };
 
-type StudioDraft = {
+export type StudioDraft = {
   primaryGenre: Genre;
   genres?: Genre[];
   audienceMode: AudienceMode;
