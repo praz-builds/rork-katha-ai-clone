@@ -127,8 +127,10 @@ signed-off design without a second design system:
 | `colors.accentSoft` | The radial wash, the yearly card's tint, the W5 emoji disc |
 | `colors.premium` | The **SAVE 80%** badge and the **YEARLY** label |
 
-Elevation on this path uses `shadows.onboardingCta` (the primary CTA),
-`shadows.onboardingCard` (the W3 side cards), `shadows.onboardingHeroCard` (the
+Elevation on this path uses `shadows.primaryCta` (the primary CTA, since the
+button converged on the app's one recipe — see the 2026-09-20 amendment below;
+`shadows.onboardingCta` is deliberately kept in the theme but is no longer
+drawn by anything), `shadows.onboardingCard` (the W3 side cards), `shadows.onboardingHeroCard` (the
 W3 hero card), `shadows.onboardingPortrait` (the W6 card and the W7 hero
 portrait), `shadows.onboardingChip` (the W5 identity chip and small floating
 cards), and `shadows.onboardingFieldFocus` (a focused field). No other elevation
@@ -148,22 +150,45 @@ everywhere else.
 | Status-bar spacer | Safe-area inset, then the top row |
 | Back control | **44 × 44**, `radius.lg` (14), `colors.onboardingPlate` plate, chevron in `colors.muted`. Labelled **Back**, restores all state |
 | Progress row | **Seven pills, 22 × 5 pt, radius 3, gap 5**, centred between the back control and a 44 pt spacer that balances it |
-| Primary CTA | **56 pt tall**, fully rounded pill, `colors.accent`, white 17 pt / 700, `shadows.onboardingCta`, full width inside the gutter |
+| Primary CTA | **52 pt tall** (`controls.primaryCtaHeight`), fully rounded pill, `colors.accent`, white 17 pt / 700, full width inside the gutter. Drawn by `Button`; see the amendment below |
 | CTA block | 8 pt above the button and **40 pt below it**, on top of the safe-area inset. Pinned to the bottom on every character screen **except W3**, where it belongs to the centred group (§8) |
 
 **Amended 2026-09-12 (third round): that CTA recipe is the whole journey's, not
 just W3-W7's.** Every primary button from the intro's **Get started**, through
 the questionnaire's **Continue** on each step, W3-W7, the email and code screens
-and W6's **Redraw**, is `controls.onboardingCtaHeight` (56) at `radius.pill` in
-`colors.accent` with a white 17 / 700 `fonts.ui` label and `shadows.onboardingCta`.
-One primitive draws it — `Primary` in
+and W6's **Redraw**, is one recipe, drawn by one component.
+
+**Amended 2026-09-20: that recipe is now the APP's, and there is only one.**
+The journey's button is `controls.primaryCtaHeight` (**52**) at `radius.pill`
+in `colors.accent` with a white 17 / 700 `fonts.ui` label — the same control
+the story page, the reader and the Create brief press. `Primary` in
 [`expo/src/components/onboarding/primitives.tsx`](../expo/src/components/onboarding/primitives.tsx)
-— and a `.jsx` screen that cannot import it cleanly matches those six values
-exactly. **The app's own 64 / 20 primary (`controls.primaryCtaHeight`) is
-unchanged and stays everywhere outside onboarding.** The path had shipped three
-different button sizes across consecutive screens, so the same act looked like a
-different control each time it appeared. The full recipe and the argument for two
-recipes rather than one are `DESIGN_SYSTEM.md` §6.
+still exists and every onboarding screen still composes it, but it is now a
+thin wrapper over [`expo/src/components/Button.tsx`](../expo/src/components/Button.tsx)
+that adds the gap above the button and nothing else.
+`controls.onboardingCtaHeight` is kept as an alias of `primaryCtaHeight` so
+these call sites converge rather than drift.
+
+**Disabled is a grey plate, not a faded accent.** A blocked primary CTA on this
+path — W6 while the portrait is drawing, every questionnaire **Continue**
+before its step is answered, W6's **Redraw** with an empty field — fills
+`colors.borderStrong` with a `colors.tertiary` label and drops its shadow. It
+is announced through `accessibilityState` as disabled, and as busy as well
+whenever the block is work already in flight rather than an unanswered form.
+This replaces the **40% opacity on the accent** the path used to draw. It
+changed for the same reason the two recipes became one: a disabled state that
+differs per screen is exactly the drift the button unification removed, and one
+button can only have one disabled state. The faded orange was also the weaker
+of the two — an accent at 40% still reads as the accent, so the control looked
+pressable and did nothing, where a grey plate says plainly that it is not ready
+yet.
+
+The path had shipped three different button sizes across consecutive screens,
+so the same act looked like a different control each time it appeared. Fixing
+that with a second recipe fixed the sequence and left the seam at its edge:
+somebody who finished onboarding and opened a story pressed a different button.
+The full recipe, and what the two-recipe argument got right, are
+`DESIGN_SYSTEM.md` §6.1.
 
 Fields are `colors.surface` with a **1.5 pt `colors.onboardingBorderStrong`**
 border at radius 14 (16 on the multiline Appearance field), and focus to **2 pt
@@ -1084,7 +1109,7 @@ Step 7 of 7. One screen with two states and one cross-fade between them.
 | Eyebrow | **DRAWING** |
 | Header | **{name} is taking shape.** |
 | Caption | **Usually about 10 seconds** — the constant `PORTRAIT_WAIT_CAPTION` |
-| CTA | **Drawing {name}…**, disabled at 40% opacity |
+| CTA | **Drawing {name}…**, disabled — the shared `Button`'s grey `colors.borderStrong` plate, announced disabled and busy (§ frame, *Disabled is a grey plate*) |
 
 > **The caption is a constant, and its number is measured rather than chosen.**
 > **Amended 2026-09-12 (third round).** The string lives once, as
@@ -2031,9 +2056,10 @@ brings it back deliberately (§12-13); a tick mark, an emoji that is not
 `genreChipLabel`'s, or an "Other" option
 on the S2 genre chips; a genre on S2 that is not a real `Genre` id; a field
 anywhere in onboarding set in `fonts.display` or `fonts.reader` (§1); **a primary
-button anywhere between Get started and WELCOME drawn at any size but 56 /
-`radius.pill`, including the app's own 64 / 20 primary** (§1,
-`DESIGN_SYSTEM.md` §6); **a pinned CTA on W3** (§8); **a wait time typed into
+button anywhere between Get started and WELCOME that is not drawn by
+`Button`** -- the size is `controls.primaryCtaHeight` at `radius.pill` and
+there is no longer a second recipe to be drawn at instead (§1,
+`DESIGN_SYSTEM.md` §6.1); **a pinned CTA on W3** (§8); **a wait time typed into
 W6's JSX rather than read from `PORTRAIT_WAIT_CAPTION`** (§10B); **a button, a
 tap target or a skip on WELCOME** (§15); **a flat disc standing in for
 `CreditCoin`** anywhere a credit is drawn as an object (§15); or a
@@ -2450,19 +2476,31 @@ error logging contract and contain identifiers and enums only.
 > decisions below change where work happens and what a button looks like, not
 > what the flow asks for.
 
-63. **The whole onboarding journey has one primary button recipe, and it is the
-    56 pt pill.** `controls.onboardingCtaHeight` at `radius.pill` in
-    `colors.accent`, white 17 / 700 `fonts.ui`, `shadows.onboardingCta`, drawn by
-    `Primary` in `src/components/onboarding/primitives.tsx`, from the intro's
-    **Get started** through the questionnaire, W3-W7, the email and code screens
-    and W6's **Redraw**, to WELCOME. **The app's 64 / 20
-    `controls.primaryCtaHeight` primary is unchanged everywhere else.** Two
-    recipes is deliberate: onboarding is a sequence of full-bleed compositions
-    where a 64 pt slab competes with the picture above it, and the rest of the
-    app sits under dense content that wants the heavier target. The failure was
-    not two recipes, it was six buttons — three sizes across consecutive screens,
-    two of them rounding differently — so the same act looked like a different
-    control every time it appeared. `DESIGN_SYSTEM.md` §6 carries it.
+63. **The whole onboarding journey has one primary button recipe.** From the
+    intro's **Get started** through the questionnaire, W3-W7, the email and
+    code screens, to W6's **Redraw**. Drawn by `Primary` in
+    `src/components/onboarding/primitives.tsx`, which every screen on the path
+    composes.
+
+    **WELCOME is not in that list and never was.** This enumeration used to
+    end "…to WELCOME", which contradicted §15 and decision 67 on the same
+    page: WELCOME has no button, no skip and nothing to tap — the coins settle
+    and `onOpen()` fires on a timer (`WelcomeScreen.tsx` contains no `Primary`,
+    no `Pressable` and no `onPress`). A recipe that claims a screen with no
+    button is how the next reader adds one.
+
+    **Amended 2026-09-20: it is the app's recipe, not a second one.**
+    `controls.primaryCtaHeight` (**52**) at `radius.pill` in `colors.accent`,
+    white 17 / 700 `fonts.ui` — and `Primary` is now a wrapper over
+    `src/components/Button.tsx`, the one text button in the app.
+
+    The two-recipe argument was that onboarding is a sequence of full-bleed
+    compositions where a 64 pt slab competes with the picture above it. That
+    observation was right, and 52 is what it was reaching for; what was wrong
+    was the conclusion that the rest of the app should keep the slab. It never
+    had one — `primaryCtaHeight` was documented and consumed by nothing, and
+    the app's real buttons were per-screen copies at 48 to 56.
+    `DESIGN_SYSTEM.md` §6.1 carries it.
 64. **W3 centres its group and does not pin its CTA**, alone on the path. The
     stage, the copy and the button are one vertically centred group —
     `spacing.xxl` stage to copy, `spacing.xl` copy to CTA — with equal free space

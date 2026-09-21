@@ -385,7 +385,7 @@ maps onto the existing scale and no near-duplicate values were added:
 | Panels and sheets | 24 | `radius.xl` |
 | Sub-component detail | 8 | `radius.sm` |
 | Chips | 999 | `radius.pill` |
-| Full-width primary text CTA | 20 | `controls.primaryCtaRadius` |
+| The text button (see section 6.1) | 999 | `controls.primaryCtaRadius`, which is `radius.pill` |
 
 The rule: deeper shadow, larger radius.
 
@@ -404,18 +404,78 @@ existing five-value scale is a rule an engineer can apply without looking it up.
 
 ---
 
-## 6. The circular icon button
+## 6. The one button, and the circular icon button
 
-This rule is about **icon buttons** only: the 38 to 46px circular single-glyph
-controls such as Back and Close. The full-width primary text CTA is not one of
-these.
+Two controls, and they are not variants of each other. **Section 6 used to
+argue at length for two text-button recipes** -- 64 for the app, 56 for
+onboarding -- and that argument is over; what replaced it is below, along with
+the reasons the old one was wrong.
 
-### Text CTAs, Fields, And OTP
+### 6.1 The one button
+
+**Changed 2026-09-20.** There is **one** text button in the app. It is drawn by
+[`expo/src/components/Button.tsx`](../expo/src/components/Button.tsx) and by
+nothing else.
+
+| Part | Specification |
+|---|---|
+| Height | `controls.primaryCtaHeight` (**52**), as a `minHeight` |
+| Radius | `controls.primaryCtaRadius`, which **is** `radius.pill` |
+| Fill | `colors.accent`, going to `colors.accentPressed` while held |
+| Label | White, `type.button` (**17 / 700**, `fonts.ui`) |
+| Elevation | `shadows.primaryCta` |
+| Width | Full-bleed inside the screen gutter, unless `fullWidth={false}` |
+| Small size | `controls.buttonSmHeight` (**44**) with `type.buttonSmall` (15 / 700), for a control sitting in a row rather than under the content |
+| Variants | `primary` (accent fill), `secondary` (`colors.surface` with a 1.5pt `borderStrong` edge), `ghost` (label and target only) |
+
+**Why 52, and why the pill.** 64 at radius 20 was documented here, exported as
+`controls.primaryCtaHeight` / `controls.primaryCtaRadius`, and **consumed by
+nothing**. No file in `expo/src` imported either token. What was actually on
+screen was a button per screen -- 48, 50, 52, 54 and 56 points, at three radii,
+with labels at 15/800, 16/800, `type.body` at 700 and `type.headline` at 700 --
+so the same act looked like a different control almost everywhere, and the
+product owner's word for the result was *fat*. 52 is the height the most call
+sites had already chosen for themselves; it clears the 44pt platform minimum
+with room for a pressed state and is a visible step down from the 56/64 pair. A
+20pt radius on a 52pt box is a rounded rectangle, and a rounded rectangle at
+that size is the shape of a card, not of a button.
+
+**Why `minHeight` rather than `height`.** A few labels in the app are a whole
+sentence -- the credit sheet's Purchase carries the pack and the price, and its
+web fallback is a line of explanation. A fixed height clips the second line
+rather than wrapping it. The floor is what the recipe promises; growing past it
+is correct behaviour.
+
+**`controls.onboardingCtaHeight` is now an alias of `primaryCtaHeight`**, kept
+as a name so the dozen onboarding call sites and their tests converge on the
+single recipe rather than drifting from it one file at a time. Prefer
+`primaryCtaHeight` in new code.
+
+**What does NOT come from `Button`:**
+
+- **Destructive controls.** Deleting an account is `colors.danger` and blocking
+  an author is `colors.premium`, deliberately unlike every other button in the
+  app -- see the doc comment on `colors.danger`. A button that destroys
+  something must not be pressable by muscle memory, and giving it a `Button`
+  variant is the first step back toward it looking ordinary.
+- **Chips, filter pills, avatars, segmented tracks, the tab bar and the
+  toggle.** They are all `radius.pill` and none of them is a button. Roughly
+  ninety `radius.pill` call sites exist in `expo/src` and most are one of
+  these.
+- **The Reimagine pill at a chapter end**, which is an accent-outlined,
+  accent-labelled offer rather than the way forward.
+
+**The guard.** `expo/src/__tests__/button-recipe.test.ts` reads the source tree
+and fails on any StyleSheet entry outside `Button.tsx` that declares a height
+of 48 or more together with `borderRadius: radius.pill`. The exemptions above
+are listed there explicitly, one reason per line. It also asserts that `Button`
+still *consumes* the tokens, because the failure this whole section exists to
+fix was a token that everything documented and nothing read.
+
+### Fields and OTP
 
 | Token | Value | Use for |
 |---|---:|---|
-| `controls.primaryCtaHeight` | 64 | Full-width primary text CTAs. |
-| `controls.primaryCtaRadius` | 20 | Full-width primary text CTAs. |
 | `controls.formFieldMinHeight` | 58 | Single-line form fields. |
 | `controls.formFieldRadius` | 18 | Form fields and prompt boxes. |
 | `controls.otpCellHeight` | 58 | Individual OTP cells. |
@@ -423,9 +483,6 @@ these.
 
 Recipes:
 
-- Primary text CTA: `height: controls.primaryCtaHeight`,
-  `borderRadius: controls.primaryCtaRadius`, `backgroundColor: colors.accent`,
-  `boxShadow: shadows.primaryCta`, Hanken 700 label.
 - Text field: `minHeight: controls.formFieldMinHeight`,
   `borderRadius: controls.formFieldRadius`, `backgroundColor: colors.surface`,
   `boxShadow: shadows.formField`, Hanken body text.
@@ -434,42 +491,28 @@ Recipes:
 - Small accent icon CTA: accent-soft surface, `shadows.iconCta`, named icon
   component. Use the heavier `IconAdd` glyph for plus-only add controls.
 
-### The onboarding CTA
+### What the two-recipe split got right, and what it got wrong
 
-**Added 2026-09-12 (third round).** The onboarding journey has **one primary
-button**, and it is not the app's primary button.
-
-| Part | Specification |
-|---|---|
-| Height | `controls.onboardingCtaHeight` (**56**) |
-| Radius | `radius.pill`. Fully rounded, never `controls.primaryCtaRadius` |
-| Fill | `colors.accent` |
-| Label | White, **17 / 700**, `fonts.ui` |
-| Elevation | `shadows.onboardingCta` |
-| Width | Full width inside the screen gutter |
-| Primitive | `Primary` in [`expo/src/components/onboarding/primitives.tsx`](../expo/src/components/onboarding/primitives.tsx). A screen composes it; a `.jsx` file that cannot import it cleanly matches these six values exactly |
-
-**The scope is the whole journey, from the intro's Get started to WELCOME.** That
-is the three-screen animated intro's CTA, the questionnaire's **Continue** on
-every step, W3 through W7, the email and code screens, and every button inside
-them — W6's **Redraw** included, which is drawn in this recipe rather than in a
-recipe of its own. There is no second primary anywhere between those two points.
-
-**The app-wide primary is unchanged and stays everywhere else.**
-`controls.primaryCtaHeight` (64) at `controls.primaryCtaRadius` (20) with
-`shadows.primaryCta` is still the rule for Create, the reader, the library and
-the rest of the product. This is a deliberate two-recipe system, not a drift to
-be reconciled: onboarding is a sequence of full-bleed compositions where a 64 pt
-rounded-rectangle slab competes with the picture above it, and a 56 pt pill reads
-as the one thing to press. Outside onboarding the button sits under dense
+**Added 2026-09-12, retired 2026-09-20.** The onboarding CTA was given its own
+recipe -- 56 at `radius.pill` -- on the argument that onboarding is a sequence
+of full-bleed compositions where a 64pt rounded-rectangle slab competes with
+the picture above it, while outside onboarding the button sits under dense
 content and wants the heavier target.
 
-**The failure this fixes was six buttons, not two recipes.** The path shipped
-with the intro on one size, the questionnaire on another, and W3-W7 on a third,
-with two of them rounding differently and one carrying the wrong shadow, so the
-same act looked like a different control on every consecutive screen. One
-recipe in one primitive is what makes a sequence feel like one flow; the choice
-of 56 over 64 matters less than that nothing on the path chooses for itself.
+The first half of that was a real observation, and it is the reason the app's
+button is 52 and a pill today: 56 was reaching for exactly this. The second
+half was not. "Dense content wants a heavier target" is an argument for a
+comfortable minimum, not for a button four points taller than the one the same
+person pressed ninety seconds earlier on the sign-up screen -- a difference
+nobody can see and everybody's hand can feel.
+
+**The sentence worth keeping from that section is the one about the failure it
+fixed:** the path had shipped with the intro on one size, the questionnaire on
+another and W3-W7 on a third, two of them rounding differently and one carrying
+the wrong shadow. *One recipe in one primitive is what makes a sequence feel
+like one flow; the choice of number matters less than that nothing on the path
+chooses for itself.* That is exactly the argument for one recipe across the
+whole app, and it was being made in defence of two.
 
 ### The onboarding field
 
@@ -515,6 +558,11 @@ It is deferred because Create is out of scope under the section 2 migration
 boundary, and because a border weight and a radius on the app's busiest form is a
 change that deserves its own pull request rather than arriving as a side effect
 of onboarding work.
+
+### 6.2 The circular icon button
+
+The 38 to 46px circular single-glyph controls: Back, Close, and friends.
+The text button in 6.1 is not one of these, and nothing in 6.1 applies here.
 
 | Token | Value | Use for |
 |---|---|---|
@@ -876,6 +924,8 @@ Work down the list. Every item is answerable without asking anyone.
 | "The sub is too far from the heading" versus "do not add tokens" | A title and its sub were never grouped; the `related` / `betweenGroups` pair covers it with no case-specific token. Section 8.1. |
 | "The eyebrow must not be the quietest text in its group" versus "these headings are far too big" | The second wins, and the first was the wrong frame. An eyebrow is told apart by case, weight, tracking and colour, not by size; promoting it to 21 gave the details screen five near-titles and destroyed the hierarchy it was meant to build. 12pt eyebrow, 28pt title, nothing in between. Section 3.0. |
 | "Secondary copy at 14.5 sits too close to 16pt field text to read as intent" versus "secondary copy must not be as loud as the field" | The second wins. 1.5pt is below the threshold for a size difference carried by size ALONE; `helper` is also `colors.muted` against `colors.ink`, and two signals clear it. Section 3.0. |
+| "Onboarding's compositions need a lighter button" versus "one act, one control" | Both hold, once the app's button came down. 56 was reaching for a button that does not read as a slab; 52 at `radius.pill` is that button, so onboarding no longer needs an exception to get it. Section 6.1. |
+| "The buttons are too fat" versus a documented 64pt CTA | The document was describing something that did not exist: nothing consumed `primaryCtaHeight`. The fat buttons were per-screen copies at 48 to 56. One component now reads the token. Section 6.1. |
 | "Make the heading bigger" versus "34 was too big" | 28. Measured: 34 wraps even the short headings, 22 fits the longest by half a point, 28 wraps the two longest to exactly two lines. Section 3.0. |
 
 ---
@@ -893,8 +943,9 @@ Work down the list. Every item is answerable without asking anyone.
 8. **Radius follows depth: `md` flat, `lg` lifted, `xl` panels.**
 9. **The circular icon button is lit by an inset highlight, never a flat fill,
    and never a gradient library.**
-10. **The full-width primary CTA stays a flat accent pill and is not an icon
-    button.**
+10. **There is one text button, it is `expo/src/components/Button.tsx`, and
+    a screen never draws its own.** 52 at `radius.pill`, full-bleed, and not
+    an icon button. Section 6.1.
 11. **`spacing.related` inside a group, `spacing.betweenGroups` between groups**,
     always as a pair and never a raw size on either side of it.
 12. **New tokens ship with an invariant in `theme.test.ts`.**

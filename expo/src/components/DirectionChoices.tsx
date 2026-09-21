@@ -10,6 +10,7 @@ import {
 import { useReducedMotion } from "react-native-reanimated";
 import { Check, Circle, PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
 import { MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
+import { Button } from "@/components/Button";
 import { colors, fonts, radius, spacing, type } from "@/theme";
 
 /**
@@ -353,19 +354,17 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
               <Shuffle size={16} color={colors.muted} />
               <Text style={styles.textCtaLabel}>Surprise me</Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              label={submitLabel}
               accessibilityLabel={
                 composerText.trim()
                   ? "Continue with your direction"
                   : "Continue and let Katha decide"
               }
-              style={styles.primaryButton}
               onPress={() => onChoose(nonEmpty(composerText))}
               testID={`${testIDPrefix}-composer-submit`}
-            >
-              <Text style={styles.primaryButtonText}>{submitLabel}</Text>
-            </Pressable>
+              style={styles.primaryButton}
+            />
           </View>
         </View>
       ) : (
@@ -539,19 +538,6 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
     outlineWidth: 0,
   },
-  primaryButton: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  primaryButtonText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontWeight: "800",
-    fontSize: 15,
-  },
+  /** Layout only: it shares the composer's footer row with `textCta`. */
+  primaryButton: { flex: 1 },
 });

@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import {
   Pressable,
   ScrollView,
@@ -24,6 +23,7 @@ import { greetingLine } from "@/lib/greeting";
 import { greetingName } from "@/lib/profile";
 import { homeCtaCopy, resolveHomeCta } from "@/lib/home-cta";
 import { isMood, tonightStories, tonightTitle } from "@/lib/home-tonight";
+import { HeaderAction } from "@/components/HeaderAction";
 import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
@@ -225,81 +225,6 @@ export function buildFeedRows(
   }
 
   return rows;
-}
-
-/**
- * One header action: a 44x44 target, a glyph, and an optional value beside it.
- *
- * 44x44 is the floor Apple's HIG and WCAG 2.2 both land on, and it is a
- * MINIMUM on the touch target rather than on the ink: the flame and the bell
- * draw at 20pt inside a 44pt box. Three of these sit shoulder to shoulder in
- * the top-right corner, which is exactly where a too-small target hurts most
- * — the thumb arrives there at an angle, at the edge of its reach.
- *
- * `value` is rendered only when there is one, so the same component draws a
- * bare bell and a flame carrying a day count without a second variant.
- */
-function HeaderAction({
-  icon: Icon,
-  value,
-  label,
-  onPress,
-  dot = false,
-  tint,
-  fill,
-  iconSize = 20,
-}: {
-  icon: ComponentType<{ size?: number; color?: string; fill?: string }>;
-  value?: string;
-  label: string;
-  onPress: () => void;
-  /** An unread marker. Drawn only for something the reader has not seen. */
-  dot?: boolean;
-  /**
-   * The icon's colour, when it should be one.
-   *
-   * All three of these were `colors.strong` -- one grey row of glyphs, in
-   * which the streak and the credit balance, the two numbers on Home that are
-   * about the reader and that they check every day, looked exactly as
-   * important as the bell. Colour is what separates a standing you are proud
-   * of from a control. The bell keeps the neutral: it earns attention with
-   * its dot when it has something, and it should not compete before then.
-   */
-  tint?: string;
-  /** Fills the glyph, so the flame reads as lit rather than outlined. */
-  fill?: string;
-  /**
-   * Glyph size. The default matches the bell, which is a plain outline; a
-   * FILLED glyph at the same nominal size reads noticeably heavier, so the
-   * credit spark is set smaller to sit level with the others rather than
-   * looming over them.
-   */
-  iconSize?: number;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={4}
-      style={({ pressed }) => [
-        styles.headerAction,
-        value !== undefined && styles.headerActionWide,
-        pressed && styles.headerActionPressed,
-      ]}
-    >
-      {/* The glyph carries the colour; the NUMBER stays ink.
-          Tinting both made the credit balance a gold number on a warm ground,
-          which is the least legible thing in the header and also the one
-          thing there you actually read. Colour marks what the row is about;
-          black is what makes the value readable. */}
-      <Icon size={iconSize} color={tint ?? colors.strong} fill={fill ?? "none"} />
-      {value !== undefined && (
-        <Text style={styles.headerActionValue}>{value}</Text>
-      )}
-      {dot && <View style={styles.headerActionDot} />}
-    </Pressable>
-  );
 }
 
 export default function HomeScreen({
@@ -686,39 +611,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
   },
-  headerAction: {
-    position: "relative",
-    minWidth: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    backgroundColor: colors.surface,
-    boxShadow: shadows.card,
-  },
-  /** A value beside the glyph needs the room the bare glyph does not. */
-  headerActionWide: { paddingHorizontal: spacing.related },
-  headerActionPressed: { opacity: 0.86, transform: [{ scale: 0.97 }] },
-  headerActionValue: {
-    fontFamily: fonts.ui,
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  headerActionDot: {
-    position: "absolute",
-    top: 9,
-    right: 10,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.accent,
-    borderWidth: 1.5,
-    borderColor: colors.surface,
-  },
+  /*
+    The three header actions.
 
+    The 44pt target and the unread dot moved to `src/components/HeaderAction.tsx`
+    along with the component, and the plate and the shadow they used to carry
+    did not move — they were deleted. See that file for why.
+  */
   /* ── Write CTA (new user) ── */
 
   /* ── See everything (bottom exit into Explore) ── */

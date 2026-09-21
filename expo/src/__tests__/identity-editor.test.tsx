@@ -176,3 +176,43 @@ describe("a save where the handle lands and the bio does not", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("a save that is still in flight", () => {
+  it("reports itself as busy, not merely unavailable", async () => {
+    // The label already said "Saving...", so anyone watching the screen knew.
+    // The button was only `disabled`, though, which a screen reader announces
+    // as "dimmed" -- the same thing it says about a form that has not been
+    // filled in. `loading` is the distinction: it puts `busy` in the
+    // accessibility state, so a request in flight is not mistaken for a
+    // refusal.
+    let land: (value: { ok: true; username: string }) => void = () => {};
+    mockClaimUsername.mockReturnValue(
+      new Promise<{ ok: true; username: string }>((resolve) => {
+        land = resolve;
+      }),
+    );
+
+    const { view } = await renderEditor({ username: null, bio: null });
+    await fireEvent.changeText(view.getByTestId("username-input"), "adalovelace");
+
+    const save = view.getByTestId("identity-save");
+    expect(save.props.accessibilityState.busy).toBe(false);
+
+    // NOT awaited: `save()` is blocked on the promise above, so awaiting the
+    // press here would wait for the very thing this test is holding open.
+    await act(async () => {
+      fireEvent.press(save);
+    });
+    expect(view.getByTestId("identity-save").props.accessibilityState).toEqual(
+      expect.objectContaining({ busy: true, disabled: true }),
+    );
+
+    await act(async () => {
+      land({ ok: true, username: "adalovelace" });
+    });
+    await waitFor(() =>
+      expect(view.getByTestId("identity-save").props.accessibilityState.busy)
+        .toBe(false)
+    );
+  });
+});

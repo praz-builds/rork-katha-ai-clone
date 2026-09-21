@@ -134,10 +134,8 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | 12 | Intro cover cards |
 | 14 | OTP boxes, reaction chips |
 | 15 | Icon badges |
-| 16 | Intro notification, success button |
-| 17 | Paywall CTA |
+| 16 | Intro notification |
 | 18 | Text fields and prompt boxes |
-| 20 | Primary text CTA |
 | 18 | Option rows, plan cards, review cards |
 | 20 | Publish card |
 | 22 | Create card, genre chips, edit chips |
@@ -199,21 +197,42 @@ Use shadows to establish a single center piece or actionable surface, not on eve
 | Surface | iOS shadow | Android | Web |
 | --- | --- | --- | --- |
 | Intro warm cards | `#7A2E0E`, radius 15, offset 0/12, opacity supplied by component | elevation 12 | No explicit fallback in intro helper |
-| Primary flow CTA | orange, opacity 0.42, radius 18, offset 0/12 | elevation 6 | `boxShadow: shadows.primaryCta` |
+| The text button | orange, opacity 0.42, offset 0/12 | elevation 6 | `boxShadow: shadows.primaryCta`, applied by `Button` |
 | Notification alert | `#3D2B1E`, opacity 0.18, radius 24, offset 0/12 | elevation 10 | `0 12px 30px rgba(61,43,30,0.16)` |
 | Review card | `#7A2E0E`, opacity 0.15, radius 12, offset 0/6 | elevation 3 | Platform default |
-| Paywall CTA | orange, opacity 0.7, radius 17, offset 0/12 | elevation 8 | Platform default |
 
 ## Component Recipes
 
-### Primary Button
+### Button
 
-- Full available width inside the page gutter.
-- Standard flow: height 58, radius 16, orange fill, Hanken 700 at 17, white label.
-- Intro: height 56, radius 16.
-- Paywall: height 60, radius 17, vertical orange gradient.
-- Disabled: `#EDE3D4` fill and `#B7AB99` label; remain non-pressable.
-- Keep command copy direct. Current examples include `Continue`, `Build my profile`, and personalized paywall actions.
+**There is one text button and it is `src/components/Button.tsx`. A screen
+never draws its own.** The four recipes this section used to list — 58/16 for
+the standard flow, 56/16 for the intro, 60/17 for the paywall, 64/20 in the
+theme — are exactly the drift it replaced: four sizes and four radii for one
+act, none of them reading the token that was supposed to govern them.
+
+- `controls.primaryCtaHeight` **52** (a `minHeight`, so a long label wraps
+  rather than clipping) at `controls.primaryCtaRadius`, which is
+  `radius.pill`.
+- `colors.accent`, going to `colors.accentPressed` while held, with
+  `shadows.primaryCta`.
+- Label `type.button`: white, **17 / 700**, `fonts.ui`.
+- Full available width inside the page gutter, unless `fullWidth={false}`.
+- `size="sm"` is `controls.buttonSmHeight` **44** with `type.buttonSmall`
+  (15 / 700), for a control sitting in a row rather than under the content.
+- Variants: `primary`, `secondary` (`colors.surface` with a 1.5pt
+  `borderStrong` edge) and `ghost` (label and target only).
+- Disabled draws a `colors.borderStrong` plate with a `colors.tertiary`
+  label, not a faded orange one: a primary at 40% opacity still reads as the
+  accent, so it looks pressable and does nothing.
+- Destructive controls are **not** a variant. Deleting an account is
+  `colors.danger` and blocking an author is `colors.premium`, deliberately
+  unlike every other button in the app.
+- Keep command copy direct. Current examples include `Continue`,
+  `Build my profile`, and personalized paywall actions.
+
+`source-of-truth/DESIGN_SYSTEM.md` section 6.1 carries the reasoning and
+`src/__tests__/button-recipe.test.ts` enforces it.
 
 ### Option Row
 
@@ -266,7 +285,7 @@ token file here. `Toggle` draws every pixel itself from `@/theme`.
 - Name input uses a 2 point bottom rule, no enclosing card, Bricolage 24.
 - Email and Other inputs use a white surface, radius 14, border 1.5.
 - Email padding is 16 with Hanken 600 at 17.
-- Primary text CTAs use `controls.primaryCtaHeight` 64, `controls.primaryCtaRadius` 20, and `shadows.primaryCta`.
+- **Text buttons are never hand-rolled.** Compose `src/components/Button.tsx`: `controls.primaryCtaHeight` 52 at `controls.primaryCtaRadius` (`radius.pill`), a white `type.button` 17/700 label on `colors.accent`, and `shadows.primaryCta`. `size="sm"` is `controls.buttonSmHeight` 44 for a control in a row. The 58/60/64 heights and the 16/17/20 radii recorded elsewhere in this file were the per-screen copies this replaced; see `source-of-truth/DESIGN_SYSTEM.md` section 6.1.
 - Form fields and prompt boxes use `controls.formFieldMinHeight` 58, `controls.formFieldRadius` 18, and `shadows.formField`.
 - OTP is six equal cells, height 58, radius 14, with a single invisible numeric input over the row.
 - Focus is orange. Placeholders use `#B49A82`.
@@ -307,7 +326,7 @@ Message-sheet slots are fixed:
 - Headline: fixed height 64, Bricolage 27/31.3.
 - Description: fixed height 54, margin top 8, Hanken 15/22.5.
 - Action slot: fixed height 100, bottom aligned. It remains reserved on slides one and two.
-- Slide three CTA: height 56. Account sign-in follows with a 14 point gap.
+- Slide three CTA: the shared `Button` at `controls.primaryCtaHeight`. Account sign-in follows with a 14 point gap.
 
 Animation-object geometry:
 

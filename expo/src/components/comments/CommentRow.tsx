@@ -10,6 +10,7 @@ import {
 import { ChevronUp, Flag, MessageCircle, MoreHorizontal } from "lucide-react-native";
 
 import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import type { CommentNode, ReportReason } from "./types";
 import { REPORT_REASONS, countDescendants, displayScore } from "./types";
 
@@ -517,14 +518,11 @@ export function ReportCommentSheet({
               <Text style={sheetStyles.subtitle}>
                 Thanks - our team will take a look.
               </Text>
-              <Pressable
+              <Button
+                label="Done"
                 onPress={onClose}
                 style={sheetStyles.primaryButton}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Text style={sheetStyles.primaryButtonLabel}>Done</Text>
-              </Pressable>
+              />
             </>
           ) : (
             <>
@@ -569,21 +567,14 @@ export function ReportCommentSheet({
 
               {error ? <Text style={sheetStyles.error}>{error}</Text> : null}
 
-              <Pressable
+              <Button
+                label={busy ? "Sending..." : "Submit report"}
+                accessibilityLabel="Submit report"
                 onPress={handleSubmit}
                 disabled={!canSubmit}
-                style={[
-                  sheetStyles.primaryButton,
-                  !canSubmit && sheetStyles.primaryButtonDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Submit report"
-                accessibilityState={{ disabled: !canSubmit }}
-              >
-                <Text style={sheetStyles.primaryButtonLabel}>
-                  {busy ? "Sending..." : "Submit report"}
-                </Text>
-              </Pressable>
+                loading={busy}
+                style={sheetStyles.primaryButton}
+              />
               <Pressable
                 onPress={onClose}
                 style={sheetStyles.cancelButton}
@@ -851,22 +842,8 @@ const sheetStyles = StyleSheet.create({
     ...type.caption,
     color: colors.muted,
   },
-  primaryButton: {
-    marginTop: spacing.related,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonDisabled: {
-    backgroundColor: colors.surface2,
-  },
-  primaryButtonLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.surface,
-  },
+  /** Layout only; the recipe is `Button`'s. */
+  primaryButton: { marginTop: spacing.related },
   error: {
     ...type.caption,
     color: colors.accentPressed,

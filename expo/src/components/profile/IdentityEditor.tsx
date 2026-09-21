@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Camera, X } from "lucide-react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
+import { Button } from "@/components/Button";
 import { CREATURES, creatureSource } from "@/lib/creatures";
 import {
   avatarMessage,
@@ -429,22 +430,15 @@ export default function IdentityEditor({
               )
               : null}
 
-            <Pressable
+            <Button
+              label={saving ? "Saving..." : "Save"}
+              accessibilityLabel="Save profile"
               onPress={save}
               disabled={saving}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: saving }}
-              accessibilityLabel="Save profile"
+              loading={saving}
               testID="identity-save"
-              style={({ pressed }) => [
-                styles.save,
-                (pressed || saving) && styles.savePressed,
-              ]}
-            >
-              <Text style={styles.saveLabel}>
-                {saving ? "Saving..." : "Save"}
-              </Text>
-            </Pressable>
+              style={styles.save}
+            />
           </ScrollView>
         </View>
       </View>
@@ -595,19 +589,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  save: {
-    marginTop: spacing.md,
-    minHeight: 50,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  savePressed: { backgroundColor: colors.accentPressed },
-  saveLabel: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontWeight: "800",
-    fontSize: 16,
-  },
+  /** Layout only; the recipe is `Button`'s. */
+  save: { marginTop: spacing.md },
 });

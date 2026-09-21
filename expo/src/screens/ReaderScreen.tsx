@@ -75,7 +75,11 @@ import {
   setPreferredVoiceGender,
   type VoiceGender,
 } from "@/lib/voices";
+// `genreGradients` and `genreLabels` went with the opener's cover in #122 --
+// the reader's first page is a title page now, so there is no genre line and
+// no gradient to fall back to. `Button` is this branch's addition.
 import { colors, fonts, motion, radius, shadows, spacing, type } from "@/theme";
+import { Button } from "@/components/Button";
 import type { Chapter, Story } from "@/types/domain";
 
 type ReaderComment = { id: string; user: string; text: string; time: string };
@@ -2004,10 +2008,14 @@ function ChaptersSheet({ visible, chapters, currentIndex, onSelect, onClose }: {
 function ListenSheet({ visible, isPlaying, hasBothVoices, femaleVoiceName, maleVoiceName, voiceGender, onVoiceChange, onPlay, onClose }: { visible: boolean; isPlaying: boolean; hasBothVoices: boolean; femaleVoiceName: string; maleVoiceName: string; voiceGender: "female" | "male"; onVoiceChange: (gender: "female" | "male") => void; onPlay: () => void; onClose: () => void }) {
   return (
     <SheetFrame visible={visible} title="Listen" onClose={onClose}>
-      <Pressable onPress={onPlay} accessibilityLabel={isPlaying ? "Pause narration" : "Play narration"} accessibilityRole="button" style={styles.listenButton}>
-        {isPlaying ? <Pause size={18} color={colors.surface} /> : <Play size={18} color={colors.surface} />}
-        <Text style={styles.listenButtonText}>{isPlaying ? "Pause" : "Play"}</Text>
-      </Pressable>
+      <Button
+        label={isPlaying ? "Pause" : "Play"}
+        accessibilityLabel={isPlaying ? "Pause narration" : "Play narration"}
+        onPress={onPlay}
+        icon={isPlaying
+          ? <Pause size={18} color={colors.surface} />
+          : <Play size={18} color={colors.surface} />}
+      />
       {/* The chosen narrator is announced, not only tinted. This toggle now
           carries a remembered preference across stories, and a selection a
           screen reader cannot hear is also a selection nothing can verify. */}
@@ -2563,22 +2571,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     color: colors.accentPressed,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0,
-  },
-  listenButton: {
-    minHeight: 50,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  listenButtonText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontSize: 16,
     fontWeight: "800",
     letterSpacing: 0,
   },

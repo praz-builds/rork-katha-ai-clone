@@ -33,6 +33,15 @@ export const shadows = {
    * value: 1px at 4%, invisible next to the reference and enough to keep the
    * depth model honest.
    */
+  /**
+   * NO LONGER DRAWN. The onboarding CTA is the app's `Button` now, and it
+   * carries `primaryCta` like every other button (see DESIGN_SYSTEM.md §6.1).
+   *
+   * Kept rather than deleted because the rest of this onboarding group is
+   * still in use and the value is the hand-off's; if the onboarding screens
+   * ever want a warmer glow under the button again, it should be this one
+   * rather than a fourth number.
+   */
   onboardingCta: '0 1px 1px rgba(15, 14, 12, 0.04), 0 16px 30px -12px rgba(255, 107, 26, 0.55)',
   onboardingCard: '0 1px 1px rgba(30, 26, 22, 0.04), 0 24px 40px -22px rgba(30, 26, 22, 0.5)',
   onboardingHeroCard: '0 1px 1px rgba(30, 26, 22, 0.04), 0 32px 50px -20px rgba(30, 26, 22, 0.6)',

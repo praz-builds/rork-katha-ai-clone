@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,14 +18,12 @@ import Animated, {
 import {
   colors,
   controls,
-  fonts,
   IconBack,
   motion,
   onboardingType,
-  radius,
-  shadows,
   spacing,
 } from "@/theme";
+import { Button } from "@/components/Button";
 
 /**
  * The chrome every onboarding-shaped screen shares: a top bar (back control
@@ -282,6 +279,20 @@ export function StepScroll({
   );
 }
 
+/**
+ * The onboarding CTA — now a thin wrapper over the app's `Button`.
+ *
+ * It keeps its name and its four props because roughly a dozen screens call
+ * it, and it keeps the one thing that is genuinely local to this flow: the
+ * `spacing.md` above it, which is the gap between the last control on a step
+ * and the button that leaves the step.
+ *
+ * Everything else it used to own — the height, the radius, the fill, the
+ * 17/700 label — moved to `Button`, because the argument for onboarding
+ * having its own primary was an argument about 64 being too heavy for a
+ * full-bleed composition, and the app's primary is 52 now. See the comment on
+ * `controls.onboardingCtaHeight`.
+ */
 export function Primary({
   label,
   onPress,
@@ -294,22 +305,13 @@ export function Primary({
   busy?: boolean;
 }) {
   return (
-    <Pressable
+    <Button
+      label={label}
       onPress={onPress}
-      disabled={disabled || busy}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled || busy) }}
-      style={({ pressed }) => [
-        styles.primary,
-        pressed && styles.primaryPressed,
-        (disabled || busy) && styles.primaryDisabled,
-      ]}
-    >
-      {busy
-        ? <ActivityIndicator color={colors.surface} />
-        : <Text style={styles.primaryText}>{label}</Text>}
-    </Pressable>
+      disabled={disabled}
+      loading={busy}
+      style={styles.primary}
+    />
   );
 }
 
@@ -381,27 +383,10 @@ const styles = StyleSheet.create({
   headerGroup: { gap: spacing.related },
   title: { ...onboardingType.title, color: colors.ink },
   sub: { ...onboardingType.helper, color: colors.muted },
-  // The hand-off CTA (W3 to W7): a 56pt pill, not the app's 64pt primary. Every
-  // screen in this flow draws it, the code screen included, so the recipe
-  // lives here rather than in each step.
-  primary: {
-    marginTop: spacing.md,
-    height: controls.onboardingCtaHeight,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: shadows.onboardingCta,
-  },
-  primaryPressed: { backgroundColor: colors.accentPressed },
-  primaryDisabled: { opacity: 0.4 },
-  // 17/700 in the UI face: the hand-off's CTA label, not the app's `headline`
-  // (18/600). Every onboarding screen inherits this, so the weight lives here.
-  primaryText: {
-    fontFamily: fonts.ui,
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
-    color: colors.surface,
-  },
+  /**
+   * All that is left of the onboarding CTA's own style: the gap above it.
+   * The recipe is `Button`'s, and restating any of it here is exactly the
+   * drift `button-recipe.test.ts` fails on.
+   */
+  primary: { marginTop: spacing.md },
 });

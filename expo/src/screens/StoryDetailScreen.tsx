@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
+import { Button } from "@/components/Button";
 import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
 import type { StoryReportReason } from "@/components/comments/types";
@@ -742,24 +743,26 @@ export default function StoryDetailScreen({
           </View>
 
           <View style={styles.primaryActions}>
-            <Pressable
-              accessibilityRole="button"
+            {/* The two buttons the owner sees first, and for a long time the
+                two that were furthest from the documented recipe: a local
+                56pt pill with an 18/700 label. They are `Button` now, so
+                Read here and Continue with email in sign-in are the same
+                control. `cta` carries the `flex: 1` that splits the row and
+                nothing else. */}
+            <Button
+              label="Read"
               accessibilityLabel="Read story"
               onPress={handleRead}
-              style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
-            >
-              <BookOpen size={19} color={colors.surface} />
-              <Text style={styles.ctaText}>Read</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              icon={<BookOpen size={19} color={colors.surface} />}
+              style={styles.cta}
+            />
+            <Button
+              label="Listen"
               accessibilityLabel="Listen to story"
               onPress={handleListen}
-              style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
-            >
-              <Headphones size={19} color={colors.surface} />
-              <Text style={styles.ctaText}>Listen</Text>
-            </Pressable>
+              icon={<Headphones size={19} color={colors.surface} />}
+              style={styles.cta}
+            />
           </View>
           {listenNotice && (
             <Text
@@ -968,22 +971,16 @@ export function SignInPrompt({
             Reading is open to everyone. Saving, following and commenting need
             an account, so your library and your words are still here next time.
           </Text>
-          <Pressable
-            onPress={onSignIn}
-            style={styles.promptPrimary}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in"
-          >
-            <Text style={styles.promptPrimaryLabel}>Sign in</Text>
-          </Pressable>
-          <Pressable
+          <Button label="Sign in" onPress={onSignIn} />
+          {/* "Keep reading" is the way out of the sheet, not a second offer,
+              so it is a ghost: the label and a 44pt target, no plate. */}
+          <Button
+            label="Keep reading"
             onPress={onClose}
+            variant="ghost"
+            size="sm"
             style={styles.promptSecondary}
-            accessibilityRole="button"
-            accessibilityLabel="Keep reading"
-          >
-            <Text style={styles.promptSecondaryLabel}>Keep reading</Text>
-          </Pressable>
+          />
         </View>
       </View>
     </Modal>
@@ -1207,22 +1204,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.betweenGroups,
   },
 
-  cta: {
-    flex: 1,
-    minHeight: 56,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  ctaText: {
-    ...type.headline,
-    fontWeight: "700",
-    letterSpacing: 0,
-    color: colors.surface,
-  },
+  /** Layout only. The button's own recipe lives in `Button`. */
+  cta: { flex: 1 },
   listenNotice: {
     ...type.subhead,
     letterSpacing: 0,
@@ -1388,28 +1371,8 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: spacing.related,
   },
-  promptPrimary: {
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  promptPrimaryLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.surface,
-  },
-  promptSecondary: {
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  promptSecondaryLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.muted,
-  },
+  /** Layout only; see `cta`. */
+  promptSecondary: { marginTop: spacing.xs },
 
   /* ── Comments sheet ── */
   sheetRoot: {

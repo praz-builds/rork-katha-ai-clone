@@ -21,6 +21,7 @@ const mockFetchCreditClaims = jest.fn();
 const mockBootstrapUser = jest.fn();
 const mockPresentCustomerCenter = jest.fn();
 const mockFindPackageByProductId = jest.fn();
+const mockPurchasePackage = jest.fn();
 const revenueCatState = { premium: false, available: true };
 
 jest.mock("react-native-safe-area-context", () => {
@@ -57,7 +58,7 @@ jest.mock("@/lib/revenuecat", () => ({
     subscribe: () => () => undefined,
     presentCustomerCenter: (...args: unknown[]) => mockPresentCustomerCenter(...args),
     findPackageByProductId: (...args: unknown[]) => mockFindPackageByProductId(...args),
-    purchasePackage: jest.fn(),
+    purchasePackage: (...args: unknown[]) => mockPurchasePackage(...args),
   },
 }));
 
@@ -88,6 +89,7 @@ beforeEach(() => {
   mockBootstrapUser.mockReset().mockResolvedValue(null);
   mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
   mockFindPackageByProductId.mockReset().mockResolvedValue(null);
+  mockPurchasePackage.mockReset().mockResolvedValue(null);
 });
 
 afterEach(cleanup);
@@ -160,6 +162,41 @@ it("opens the packs sheet and disables purchase where the store cannot be reache
   expect(view.getByText(WEB_PURCHASE_NOTE)).toBeTruthy();
   // The store was never asked, because it cannot answer.
   expect(mockFindPackageByProductId).not.toHaveBeenCalled();
+});
+
+// A purchase in flight is BUSY, which is a different fact from a purchase
+// that is unavailable. The refactor to the shared Button passed only
+// `disabled`, so mid-purchase a screen reader heard "dimmed" and could not
+// tell a charge being processed from a button that was never live.
+it("announces a purchase in flight as busy, not merely disabled", async () => {
+  mockFindPackageByProductId.mockImplementation(async (sku: string) => ({
+    identifier: sku,
+    product: { identifier: sku, priceString: "$4.99", price: 4.99 },
+  }));
+  let settle: (() => void) | undefined;
+  mockPurchasePackage.mockImplementation(
+    () => new Promise<null>((resolve) => { settle = () => resolve(null); }),
+  );
+
+  const view = await render(<CreditsScreen {...props()} />);
+  await waitFor(() => view.getByTestId("credits-packs"));
+  fireEvent.press(view.getByTestId("credits-packs"));
+  await waitFor(() =>
+    expect(view.getByTestId("credit-packs-purchase").props.accessibilityState.disabled)
+      .toBe(false)
+  );
+
+  fireEvent.press(view.getByTestId("credit-packs-purchase"));
+  await waitFor(() => {
+    const state = view.getByTestId("credit-packs-purchase").props.accessibilityState;
+    expect(state.busy).toBe(true);
+    expect(state.disabled).toBe(true);
+  });
+
+  settle?.();
+  await waitFor(() =>
+    expect(view.getByTestId("credit-packs-purchase").props.accessibilityState.busy).toBe(false)
+  );
 });
 
 // The whole point of the ledger rewrite: these rows exist on the server or
