@@ -4,9 +4,14 @@
  * Every job this function polls was started by `generate-audio` against a
  * `chapter_audio` row, so a job id is never trusted on its own -- it is read
  * off the row for the (chapter, voice) the caller asked about, and that row's
- * RLS policy is what proves the caller may see it. Polling stops as soon as
- * the row says `ready` or `failed`; only a `pending` row with a
+ * RLS policy is what proves the caller may see it. Only a `pending` row with a
  * `provider_job_id` reaches the provider at all.
+ *
+ * A `ready` row is no longer the end of polling. A chunked narration is
+ * playable from chunk 0 while the rest is still at the provider, so the client
+ * deliberately keeps polling a narration it has already started playing --
+ * this function's answer is the only thing that ever tells it where the later
+ * chunks are. What ends the poll is a COMPLETE manifest, or a `failed` row.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import {
@@ -26,15 +31,23 @@ import {
   advanceNarrationJob,
   cancelRunpodNarration,
   canReadChapter,
+  type ChapterAudioChunkRow,
   type ChapterAudioRow,
   downloadNarrationParts,
   getChapterAudioRow,
   isNarrationJobStale,
+  listChapterAudioChunks,
   listNarrationParts,
+  markChapterAudioChunkFailed,
+  markChapterAudioChunkReady,
+  markChapterAudioChunkStarted,
   markChapterAudioFailed,
   markChapterAudioReady,
+  markChapterAudioReadyIfOwner,
   NARRATION_JOB_STALE_MS,
+  narrationPartPath,
   pollRunpodNarration,
+  type ProviderStatus,
   publicAudioUrl,
   removeNarrationParts,
   stableChapterAudioPath,
@@ -143,6 +156,430 @@ function measuredDuration(bytes: Uint8Array): number | null {
   }
 }
 
+/**
+ * One entry per chunk, in playback order, on every single poll.
+ *
+ * This is the whole point of the change: the client is given each chunk's URL
+ * the moment that chunk exists, so it can start playing chunk 0 while chunks 1
+ * and 2 are still at the provider. `url` is null for a chunk that is not ready
+ * -- never omitted, never a placeholder -- so the array's length is always the
+ * chunk count and index `i` is always chunk `i`.
+ *
+ * `duration_ms` is the measured length of that chunk's own audio, and it is
+ * what lets a client bound transcript drift: knowing chunk 0 is 45,120 ms long
+ * is what makes "where in the chapter am I" answerable before the stitched
+ * file (and its total duration) exists.
+ */
+interface ChunkManifestEntry {
+  index: number;
+  url: string | null;
+  duration_ms: number | null;
+  char_count: number | null;
+  ready: boolean;
+}
+
+async function chunkManifest(
+  serviceClient: SupabaseClient,
+  rows: ChapterAudioChunkRow[],
+): Promise<ChunkManifestEntry[]> {
+  return await Promise.all(
+    [...rows]
+      .sort((a, b) => a.chunk_index - b.chunk_index)
+      .map(async (row) => ({
+        index: row.chunk_index,
+        url: row.status === "ready" && row.storage_path
+          ? await publicAudioUrl(serviceClient, row.storage_path)
+          : null,
+        duration_ms: typeof row.duration_seconds === "number"
+          ? Math.round(row.duration_seconds * 1000)
+          : null,
+        char_count: typeof row.char_count === "number" ? row.char_count : null,
+        ready: row.status === "ready",
+      })),
+  );
+}
+
+/**
+ * Reconcile a narration whose chunks were all started at once.
+ *
+ * Every chunk row is polled on every poll, in parallel, and each one that has
+ * finished is published to its own staged part immediately -- so the reader
+ * gets audio after roughly one chunk's synthesis rather than after all of
+ * them plus a stitch. The stitch still runs when the last chunk lands, because
+ * `concatenateMp3`'s frame-count check is the only thing in this system that
+ * catches a lost seam, but by then the reader is already listening.
+ */
+async function reconcileChunkedNarration(input: {
+  serviceClient: SupabaseClient;
+  userId: string;
+  row: ChapterAudioRow;
+  chunkRows: ChapterAudioChunkRow[];
+  storyId: string;
+  chapterId: string;
+  voiceId: string;
+  chapterText: string;
+  respond: (body: unknown, status?: number) => Response;
+}): Promise<Response> {
+  const {
+    serviceClient,
+    userId,
+    row,
+    storyId,
+    chapterId,
+    voiceId,
+    respond,
+  } = input;
+  let chunkRows = input.chunkRows;
+  const ids = {
+    story_id: storyId,
+    chapter_id: chapterId,
+    voice_id: voiceId,
+  };
+  const pending = async (extra: Record<string, unknown> = {}) =>
+    respond({
+      status: "PENDING",
+      ...ids,
+      chunks: chunkRows.length,
+      chunk_manifest: await chunkManifest(serviceClient, chunkRows),
+      ...extra,
+    });
+
+  const failNarration = async (
+    errorCode: string,
+    error: unknown,
+    severity: ErrorSeverity = "high",
+    extraContext: Record<string, unknown> = {},
+  ): Promise<Response> => {
+    await markChapterAudioFailed(serviceClient, row.id!, errorCode);
+    // Every sibling still running is spend nothing will collect: this
+    // narration is over, and a retry starts a fresh set of jobs.
+    for (const chunk of chunkRows) {
+      if (chunk.status === "pending" && chunk.provider_job_id) {
+        await cancelRunpodNarration(chunk.provider_job_id);
+      }
+    }
+    // The parts go on the failure path, as they always have: a retry must
+    // rebuild from chunk 0 rather than resume onto a different revision of
+    // the prose.
+    await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+    await reportError({
+      bucket: "generation.audio",
+      severity,
+      errorCode,
+      error,
+      userId,
+      context: {
+        story_id: storyId,
+        chapter_id: chapterId,
+        chunks: chunkRows.length,
+        ...extraContext,
+      },
+    });
+    return respond({ status: "FAILED", ...ids, error_code: errorCode });
+  };
+
+  const voice = await getVoiceRecord(serviceClient, voiceId);
+  if (voice?.provider !== "runpod_minimax") {
+    // No poller is wired for this voice's provider; report pending rather
+    // than guessing at a status we cannot verify.
+    return await pending();
+  }
+
+  // The chunk list is re-derived from the stored chapter, exactly as before,
+  // because a chunk whose start has to be retried needs its TEXT and nothing
+  // stores that. `splitNarrationText` is pure, so this is the same split
+  // `generate-audio` made -- and if it is not, the prose changed underneath a
+  // narration in flight and the run must not be assembled from two revisions.
+  const chunks = splitNarrationText(input.chapterText, NARRATION_CHUNK_CHARS);
+  if (chunks.length !== chunkRows.length) {
+    return await failNarration(
+      "narration_text_changed",
+      new Error(
+        `${chunkRows.length} chunk rows for a ${chunks.length} chunk chapter`,
+      ),
+      "high",
+      { rows: chunkRows.length },
+    );
+  }
+
+  // --- 1. Every chunk needs a job before it can be polled -------------------
+  //
+  // A row left `pending` with no job id is a chunk `generate-audio` could not
+  // start (a transient provider 500 on chunk 2 while chunk 0 went through).
+  // It gets exactly one retry here; a second failure ends the narration.
+  const skip = new Set<string>();
+  for (const chunk of chunkRows) {
+    if (chunk.status !== "pending" || chunk.provider_job_id) continue;
+
+    // Chunk 0's id also lives on the parent row. If the chunk row's own copy
+    // never got written, adopt the parent's rather than starting a second job
+    // for audio that is already being synthesised and billed.
+    if (chunk.chunk_index === 0 && row.provider_job_id) {
+      const adopted = await markChapterAudioChunkStarted(
+        serviceClient,
+        chunk.id,
+        row.provider_job_id,
+      );
+      if (adopted) chunk.provider_job_id = row.provider_job_id;
+      else skip.add(chunk.id);
+      continue;
+    }
+
+    let jobId: string;
+    try {
+      jobId = await startRunpodNarration({
+        text: chunks[chunk.chunk_index],
+        voice,
+      });
+    } catch (startError) {
+      await markChapterAudioChunkFailed(
+        serviceClient,
+        chunk.id,
+        "narration_chunk_start_failed",
+      );
+      chunk.status = "failed";
+      return await failNarration(
+        "narration_chunk_start_failed",
+        startError,
+        "high",
+        { chunk: chunk.chunk_index },
+      );
+    }
+    const recorded = await markChapterAudioChunkStarted(
+      serviceClient,
+      chunk.id,
+      jobId,
+    );
+    if (recorded) chunk.provider_job_id = jobId;
+    else {
+      // An overlapping poll started this chunk first. Its job is the one the
+      // row points at; ours is spend nobody will collect.
+      await cancelRunpodNarration(jobId);
+      skip.add(chunk.id);
+    }
+  }
+
+  // --- 2. Poll every in-flight chunk, together ------------------------------
+  const inFlight = chunkRows.filter((chunk) =>
+    chunk.status === "pending" && chunk.provider_job_id && !skip.has(chunk.id)
+  );
+  const polls = await Promise.all(
+    inFlight.map(async (chunk): Promise<ProviderStatus> => {
+      try {
+        return await pollRunpodNarration(chunk.provider_job_id!);
+      } catch (pollError) {
+        // One chunk's transient status-call failure must not fail a chapter
+        // whose other chunks are fine. The job is still running; the next
+        // poll reads it again.
+        console.error(
+          `narration: could not poll chunk ${chunk.chunk_index}`,
+          pollError,
+        );
+        return { status: "pending" };
+      }
+    }),
+  );
+
+  const failedAt = polls.findIndex((poll) =>
+    poll.status === "failed" || (poll.status === "ready" && !poll.audioBytes)
+  );
+  if (failedAt >= 0) {
+    const chunk = inFlight[failedAt];
+    const errorCode = polls[failedAt].errorCode ?? "provider_failed";
+    await markChapterAudioChunkFailed(serviceClient, chunk.id, errorCode);
+    // Locally too, so the sibling cancellation below does not try to cancel
+    // the job the provider has already finished failing.
+    chunk.status = "failed";
+    return await failNarration(
+      errorCode,
+      new Error(`RunPod job ${chunk.provider_job_id} failed`),
+      "high",
+      { chunk: chunk.chunk_index },
+    );
+  }
+
+  // --- 3. Publish whatever finished, each to its own part --------------------
+  const finished = inFlight
+    .map((chunk, at) => ({ chunk, poll: polls[at] }))
+    .filter((entry) => entry.poll.status === "ready" && entry.poll.audioBytes);
+
+  let advanced = false;
+  if (finished.length) {
+    // Still ours? A claim left `pending` for ten minutes is re-claimable, so a
+    // fresh run may have cleared the staging and restarted while this poll was
+    // in flight. Writing into that run's staging area would leave it holding a
+    // part from a different attempt.
+    const stillOurs = row.provider_job_id
+      ? await stillOwnsNarrationJob(
+        serviceClient,
+        row.id!,
+        row.provider_job_id,
+      )
+      : true;
+    if (!stillOurs) return await pending();
+
+    for (const { chunk, poll } of finished) {
+      const partPath = narrationPartPath(
+        storyId,
+        chapterId,
+        voiceId,
+        chunk.chunk_index,
+      );
+      await uploadNarrationPart(
+        serviceClient,
+        storyId,
+        chapterId,
+        voiceId,
+        chunk.chunk_index,
+        poll.audioBytes!,
+      );
+      // Compare-and-swap on (id, job, still pending), so two overlapping polls
+      // that both saw this chunk finish cannot both advance it.
+      const won = await markChapterAudioChunkReady(
+        serviceClient,
+        chunk.id,
+        chunk.provider_job_id!,
+        partPath,
+        measuredDuration(poll.audioBytes!) ?? poll.durationSeconds ?? null,
+      );
+      if (won) advanced = true;
+    }
+  }
+
+  // Re-read rather than trust the local copies: an overlapping poll may have
+  // published a chunk this one never saw, and "are we done" must be answered
+  // from the rows, not from this request's view of them.
+  if (advanced || finished.length) {
+    chunkRows = await listChapterAudioChunks(serviceClient, row.id!);
+  }
+
+  if (!chunkRows.every((chunk) => chunk.status === "ready")) {
+    // Nothing moved and the claim has been sitting for ten minutes: this is
+    // the same abandonment check the single-chunk path makes, and it is the
+    // only thing that ever resolves a run whose isolate died.
+    if (!advanced && isNarrationJobStale(row.updated_at)) {
+      // A timeout is a failure and has to clean up like one. On the legacy
+      // single-chunk path there was one job and no parts, so marking the row
+      // failed was the whole of it; here there are up to three jobs and a
+      // staging prefix, and leaving them would leak the siblings' spend and
+      // let a retry resume onto parts from a different attempt -- the exact
+      // two things `failNarration` exists to prevent.
+      for (const chunk of chunkRows) {
+        if (chunk.status === "pending" && chunk.provider_job_id) {
+          await cancelRunpodNarration(chunk.provider_job_id);
+        }
+      }
+      await removeNarrationParts(serviceClient, storyId, chapterId, voiceId);
+      return respond(
+        await timedOutResponsePayload(
+          serviceClient,
+          userId,
+          row,
+          storyId,
+          chapterId,
+          voiceId,
+        ),
+      );
+    }
+    return await pending();
+  }
+
+  // --- 4. Every chunk is in: stitch, verify, publish -------------------------
+  let assembled;
+  try {
+    const parts = await downloadNarrationParts(
+      serviceClient,
+      storyId,
+      chapterId,
+      voiceId,
+      chunkRows.length,
+    );
+    // Kept deliberately. It re-reads the joined bytes and refuses if the frame
+    // count is not the sum of the parts', so a seam that lost or invented
+    // audio fails here rather than reaching the reader as a chapter that skips
+    // a paragraph. It is no longer on the critical path -- the reader has been
+    // listening since chunk 0 -- which makes it cheap to keep, not safe to
+    // drop.
+    assembled = concatenateMp3(parts);
+  } catch (assemblyError) {
+    // Did somebody else already finish this? Two polls can both see the last
+    // chunk complete. Marking the row failed here would flip a `ready` row to
+    // `failed` and take a working narration away from the reader.
+    const current = await getChapterAudioRow(serviceClient, chapterId, voiceId);
+    if (current?.status === "ready" && current.storage_path) {
+      return respond({
+        status: "COMPLETED",
+        ...ids,
+        audio_url: await publicAudioUrl(serviceClient, current.storage_path),
+        cached: true,
+        chunks: chunkRows.length,
+        chunk_manifest: await chunkManifest(serviceClient, chunkRows),
+      });
+    }
+    const errorCode = assemblyError instanceof Error &&
+        assemblyError.message.startsWith("narration_part_missing")
+      ? "narration_part_missing"
+      : "narration_assembly_failed";
+    // Every chunk has been generated and billed by now, so failing at the join
+    // wastes the whole cost of the narration rather than one request's worth.
+    return await failNarration(errorCode, assemblyError, "critical");
+  }
+
+  const storagePath = row.storage_path ??
+    stableChapterAudioPath(storyId, chapterId, voiceId);
+
+  // Still ours -- asked again, HERE, at the write.
+  //
+  // The check in step 3 happened before the parts were downloaded, joined and
+  // uploaded, which is the slowest stretch of this whole function. A re-claim
+  // (after `NARRATION_JOB_STALE_MS`) or an `edit-story` landing inside it left
+  // this poll free to overwrite the ACTIVE run's file at the STABLE path --
+  // the permanent, cached URL every later reader is served -- and then mark
+  // that run's row ready. Nothing would report a problem: the reader simply
+  // gets a different run's audio, of possibly different prose, under a row
+  // that says it succeeded.
+  const ownedAtUpload = row.provider_job_id
+    ? await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
+    : true;
+  if (!ownedAtUpload) return await pending();
+
+  const audioUrl = await uploadAudio(
+    serviceClient,
+    storagePath,
+    assembled.bytes,
+  );
+  // And the publish itself is a compare-and-swap on the parent row, the same
+  // shape the per-chunk writes use, because the window above is narrow but not
+  // closed. A poll that lost the row between the two cannot flip somebody
+  // else's run to `ready`.
+  const published = await markChapterAudioReadyIfOwner(
+    serviceClient,
+    row.id!,
+    row.provider_job_id ?? null,
+    storagePath,
+    assembled.durationSeconds,
+  );
+  // Lost it. Discard quietly: the run that holds the row now is doing this
+  // same work, and failing the row would take a narration away from a reader
+  // it does not belong to.
+  if (!published) return await pending();
+  // **The staged parts are NOT deleted here any more.** They used to be, the
+  // moment the stitched file existed, because they were dead weight. They are
+  // not dead weight now: a reader who started on chunk 0 is still playing
+  // those exact URLs at this instant, and deleting them would cut off the
+  // person this whole change exists to serve. They die with the
+  // `chapter_audio` row instead -- see the follow-up on
+  // `record_orphaned_audio_object()` in `backend/build-log.md`.
+  return respond({
+    status: "COMPLETED",
+    ...ids,
+    audio_url: audioUrl,
+    cached: false,
+    chunks: chunkRows.length,
+    chunk_manifest: await chunkManifest(serviceClient, chunkRows),
+  });
+}
+
 export async function handleRequest(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -223,6 +660,14 @@ export async function handleRequest(req: Request): Promise<Response> {
       );
     }
 
+    // Does this narration have chunk rows? That single question decides which
+    // of the two pipelines below finishes it, and it is asked of the database
+    // rather than of the chapter's length, because the answer must be "the
+    // function that STARTED this run", not "what a function would do with this
+    // chapter today". A run started by the pre-00095 deploy has no chunk rows
+    // and must keep finishing on the path it started on.
+    const chunkRows = await listChapterAudioChunks(serviceClient, row.id!);
+
     if (row.status === "ready" && row.storage_path) {
       return respond({
         status: "COMPLETED",
@@ -231,6 +676,21 @@ export async function handleRequest(req: Request): Promise<Response> {
         voice_id: voiceId,
         audio_url: await publicAudioUrl(serviceClient, row.storage_path),
         cached: true,
+        // A replay gets the manifest for free, because the parts survive the
+        // stitch now. **Today's client does not use it**: a playthrough
+        // commits to its source, and a `COMPLETED` answer is the stitched
+        // file, so the reducer's `ready` case keeps `manifest: null` and the
+        // transcript falls back to the whole-chapter estimate (see the header
+        // of `lib/narration.ts`, which says the same). It is sent because it
+        // costs one query on a path that is already reading the rows, and
+        // because a client that wants per-chunk durations for a replay should
+        // not have to have been present for the original generation.
+        ...(chunkRows.length
+          ? {
+            chunks: chunkRows.length,
+            chunk_manifest: await chunkManifest(serviceClient, chunkRows),
+          }
+          : {}),
       });
     }
 
@@ -244,7 +704,42 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    // `pending`. Nothing to poll until the request that claimed this row has
+    // `pending`, with chunk rows: every chunk was started at once, so this
+    // poll reconciles all of them and answers with a manifest the client can
+    // start playing from.
+    if (chunkRows.length) {
+      return await reconcileChunkedNarration({
+        serviceClient,
+        userId: user.id,
+        row,
+        chunkRows,
+        storyId,
+        chapterId,
+        voiceId,
+        chapterText: chapter.content ?? "",
+        respond,
+      });
+    }
+
+    // =========================================================================
+    // LEGACY: one chunk per poll.
+    //
+    // Reached only by a `chapter_audio` row with NO chunk rows, which is one
+    // of exactly two things: a single-chunk chapter (the ordinary short
+    // narration, which never needed chunk rows and still does not), or a
+    // multi-chunk job started by the deploy before migration 00095, still in
+    // flight while this version was rolling out. The second is what makes the
+    // deploy window safe, and it is why `audio-status` must be deployed
+    // BEFORE `generate-audio`: this function has to understand chunk rows
+    // before anything starts writing them.
+    //
+    // **The multi-chunk part of this branch is deletable** once no pre-00095
+    // run can still be in flight -- a `pending` row goes stale in ten minutes
+    // (`NARRATION_JOB_STALE_MS`), so an hour after the deploy there are none.
+    // The single-chunk path below it stays.
+    // =========================================================================
+
+    // Nothing to poll until the request that claimed this row has
     // recorded the provider job id -- unless it never did, and the claim
     // itself is now stale (the isolate that claimed it never came back).
     if (!row.provider_job_id) {
@@ -481,6 +976,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     // a chapter that repeats its opening. Checked atomically, and if we have
     // lost the row we change nothing at all -- the run that owns it now is
     // already doing the work.
+    //
+    // This check is the LAST thing before the upload on purpose, and it is the
+    // strongest guard this branch can carry. The other candidate -- moving
+    // `advanceNarrationJob` ahead of the upload so the advance is claimed
+    // first -- would be strictly worse here, because this branch's resume
+    // state is the PART COUNT ON DISK and nothing else (`finishedIndex =
+    // staged.length`). Advancing the row before the part existed would leave a
+    // crashed poll with the row pointing at chunk N+1 and only N parts staged,
+    // so the next poll writes chunk N+1's audio at index N: a chapter missing
+    // a scene, still perfectly contiguous, and therefore invisible to the gap
+    // check below. What remains after this check is the millisecond between a
+    // read and a write against a REST API, which no ordering closes -- the
+    // same residual window documented on the stitched path in
+    // `backend/build-log.md`, and closable only by the per-run token on
+    // `chapter_audio` that this PR deliberately does not open.
     if (
       !await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
     ) {
@@ -634,17 +1144,58 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
+    // Still ours -- asked again, HERE, at the write.
+    //
+    // The check above happened before the last part was uploaded, the earlier
+    // parts downloaded and the whole chapter joined, which is the slowest
+    // stretch of this branch. That is exactly the gap the chunked path was
+    // just fixed for, and this branch has it too: a re-claim (after
+    // `NARRATION_JOB_STALE_MS`) landing inside it left this poll free to
+    // overwrite the ACTIVE run's file at the STABLE path -- the permanent,
+    // cached URL every later reader is served -- and then flip that run's row
+    // to `ready` with a plain write. Nothing would report a problem; the
+    // reader would simply get a superseded run's audio, of possibly different
+    // prose, under a row that says it succeeded.
+    if (
+      !await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
+    ) {
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
+      });
+    }
+
     const audioUrl = await uploadAudio(
       serviceClient,
       storagePath,
       assembled.bytes,
     );
-    await markChapterAudioReady(
+    // And the publish is a compare-and-swap on the row, for the same reason it
+    // is on the chunked path: the window above is narrow but not closed, and a
+    // poll that lost the row between the two must not flip somebody else's run
+    // to `ready`.
+    const published = await markChapterAudioReadyIfOwner(
       serviceClient,
       row.id!,
+      row.provider_job_id,
       storagePath,
       assembled.durationSeconds,
     );
+    if (!published) {
+      // Lost it. Discard quietly -- and in particular do NOT clear the parts
+      // below: they belong to the run that holds the row now, which is still
+      // assembling from them.
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
+      });
+    }
     // Only now: the parts are dead weight the moment the finished file is
     // readable, and not one moment before. Deleting them before the upload
     // would mean an upload failure could not be retried from anything.

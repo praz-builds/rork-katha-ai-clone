@@ -35,6 +35,16 @@ import { colors, fonts, radius, spacing } from "@/theme";
 export const MESSAGE_ROTATE_MS = 4000;
 
 export type NarrationLoaderProps = {
+  /**
+   * What this wait is a continuation of, when it is one.
+   *
+   * A wait the reader walked into by pressing Listen needs no framing. A wait
+   * that arrived on its own, because the previous chapter ended and the next
+   * one has never been narrated, reads as the player having stopped working
+   * unless it says whose chapter is being prepared. `Next: <title>` is the
+   * difference between a continuation and an apparent restart.
+   */
+  contextLabel?: string;
   /** The honest status line. Changes with the real stage. */
   status: string;
   /** The honest expectation under it. */
@@ -77,6 +87,7 @@ export function NarrationLoaderPlaceholderArt() {
 }
 
 export function NarrationLoader({
+  contextLabel,
   status,
   detail,
   art,
@@ -109,6 +120,13 @@ export function NarrationLoader({
     <View style={styles.root} testID="narration-loader">
       <View style={styles.art}>{art ?? <NarrationLoaderPlaceholderArt />}</View>
       <View style={styles.lines}>
+        {contextLabel
+          ? (
+            <Text style={styles.context} testID="narration-loader-context">
+              {contextLabel}
+            </Text>
+          )
+          : null}
         <Text
           accessibilityRole="header"
           accessibilityLiveRegion="polite"
@@ -184,6 +202,15 @@ const styles = StyleSheet.create({
   lines: {
     alignItems: "center",
     gap: spacing.related,
+  },
+  context: {
+    fontFamily: fonts.ui,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    color: colors.tertiary,
+    textAlign: "center",
   },
   status: {
     fontFamily: fonts.display,

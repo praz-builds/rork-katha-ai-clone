@@ -4,6 +4,7 @@ import {
   List,
   Pause,
   Play,
+  Repeat,
   RotateCcw,
   RotateCw,
   SkipForward,
@@ -47,13 +48,34 @@ export type PlayerBarProps = {
   positionMs: number;
   /** Measured total, or 0 while the sound has not reported one yet. */
   durationMs: number;
+  /**
+   * True while `durationMs` is partly an estimate.
+   *
+   * A chapter still being synthesized does not have a knowable total: the parts
+   * that exist are measured and the tail is estimated from its character count.
+   * Rendering that as a definite time would mean revising it upward under a
+   * reader who is watching it, so it is marked as approximate instead.
+   */
+  durationIsProvisional?: boolean;
+  /**
+   * Playback has run out of chapter and is holding at a boundary.
+   *
+   * A chunked narration is played while it is still being made, so reaching
+   * the end of what exists is an ordinary event, not a failure -- but a
+   * transport that has silently stopped looks exactly like a broken one. This
+   * is the difference, said in words.
+   */
+  waitingForChunk?: boolean;
   rate: PlaybackRate;
   hasNextChapter: boolean;
+  /** Whether finishing this chapter starts the next. Omit to hide the control. */
+  autoAdvance?: boolean;
   onTogglePlay: () => void;
   onSeek: (positionMs: number) => void;
   onRateChange: (rate: PlaybackRate) => void;
   onChapters: () => void;
   onNextChapter: () => void;
+  onToggleAutoAdvance?: () => void;
 };
 
 function clampPosition(ms: number, durationMs: number): number {
@@ -67,19 +89,27 @@ export function PlayerBar({
   isPlaying,
   positionMs,
   durationMs,
+  durationIsProvisional = false,
+  waitingForChunk = false,
   rate,
   hasNextChapter,
+  autoAdvance,
   onTogglePlay,
   onSeek,
   onRateChange,
   onChapters,
   onNextChapter,
+  onToggleAutoAdvance,
 }: PlayerBarProps) {
   const [speedOpen, setSpeedOpen] = useState(false);
   // Measured, never assumed. Until layout reports a width, a touch cannot be
   // mapped to a time and the handler no-ops rather than seeking to zero.
   const [trackWidth, setTrackWidth] = useState(0);
 
+  // "about 9 minutes" rather than "9:04": the total is still being measured.
+  const totalClock = durationMs > 0
+    ? `${durationIsProvisional ? "~" : ""}${formatClock(durationMs)}`
+    : "--:--";
   const percent = durationMs > 0
     ? Math.min(1, Math.max(0, positionMs / durationMs))
     : 0;
@@ -108,7 +138,9 @@ export function PlayerBar({
         accessibilityLabel="Playback position"
         accessibilityValue={{
           text: durationMs > 0
-            ? `${formatClock(positionMs)} of ${formatClock(durationMs)}`
+            ? `${formatClock(positionMs)} of ${
+              durationIsProvisional ? "about " : ""
+            }${formatClock(durationMs)}`
             : "Unknown",
         }}
         accessibilityActions={ADJUSTABLE_ACTIONS}
@@ -133,10 +165,16 @@ export function PlayerBar({
 
       <View style={styles.clockRow}>
         <Text style={styles.clock}>{formatClock(positionMs)}</Text>
-        <Text style={styles.clock}>
-          {durationMs > 0 ? formatClock(durationMs) : "--:--"}
-        </Text>
+        <Text style={styles.clock}>{totalClock}</Text>
       </View>
+
+      {waitingForChunk
+        ? (
+          <Text style={styles.waitingNote} testID="listen-waiting-for-chunk">
+            Still being read aloud — this picks up on its own.
+          </Text>
+        )
+        : null}
 
       <View style={styles.transportRow}>
         <Pressable
@@ -229,6 +267,29 @@ export function PlayerBar({
           <Text style={styles.secondaryText}>Speed</Text>
         </Pressable>
 
+        {typeof autoAdvance === "boolean" && onToggleAutoAdvance
+          ? (
+            <Pressable
+              testID="listen-autoplay-toggle"
+              accessibilityRole="switch"
+              accessibilityLabel="Autoplay next chapter"
+              accessibilityState={{ checked: autoAdvance }}
+              onPress={onToggleAutoAdvance}
+              style={({ pressed }) => [
+                styles.secondary,
+                !autoAdvance && styles.secondaryDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Repeat
+                size={19}
+                color={autoAdvance ? colors.accent : colors.chromeMuted}
+              />
+              <Text style={styles.secondaryText}>Autoplay</Text>
+            </Pressable>
+          )
+          : null}
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Next chapter"
@@ -270,6 +331,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   chapterTitle: {
+    fontFamily: fonts.ui,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.chromeMuted,
+    textAlign: "center",
+  },
+  waitingNote: {
     fontFamily: fonts.ui,
     fontSize: 12,
     lineHeight: 16,

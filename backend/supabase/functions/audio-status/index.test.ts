@@ -54,6 +54,18 @@ interface ChapterAudioFixture {
   updated_at?: string | null;
 }
 
+interface ChunkFixture {
+  id: string;
+  chapter_audio_id: string;
+  chunk_index: number;
+  provider_job_id: string | null;
+  storage_path: string | null;
+  status: "pending" | "ready" | "failed";
+  duration_seconds?: number | null;
+  char_count?: number | null;
+  error_code?: string | null;
+}
+
 interface ServerState {
   userId: string;
   story: { author_id: string; is_public: boolean; is_curated: boolean } | null;
@@ -66,6 +78,22 @@ interface ServerState {
     is_published: boolean;
   } | null;
   row: ChapterAudioFixture | null;
+  /**
+   * `chapter_audio_chunks` (migration 00095), in playback order.
+   *
+   * Their presence is what tells `audio-status` which pipeline it is
+   * finishing: rows mean every chunk was started at once and this poll
+   * reconciles them all; no rows means a single-chunk chapter or a job
+   * started by the deploy before 00095, and the legacy one-chunk-per-poll
+   * branch must handle it exactly as it always did.
+   */
+  chunkRows: ChunkFixture[];
+  /** Provider status per job id; falls back to `runpodStatusResponse`. */
+  runpodStatusByJob: Record<string, {
+    status: string;
+    output?: Record<string, unknown>;
+    error?: string;
+  }>;
   runpodStatusResponse: () => {
     status: string;
     output?: Record<string, unknown>;
@@ -117,6 +145,18 @@ interface ServerState {
    * downloaded vanishes and the row is already `ready` when it is looked at.
    */
   publishRaceWinner: boolean;
+  /**
+   * A fresh run takes this (chapter, voice) over while the stitch is being
+   * assembled -- the ten-minute re-claim of 00054, or an `edit-story` -- by
+   * moving the parent row's `provider_job_id` to a job this poll never
+   * started.
+   *
+   * `"download"` fires it while the parts are being read, so the ownership
+   * check at the write is what catches it. `"after-check"` fires it in the
+   * millisecond AFTER that check passes, which only the compare-and-swap on
+   * the publish itself can catch.
+   */
+  reclaimDuringStitch: "download" | "after-check" | null;
 }
 
 function newState(overrides: Partial<ServerState> = {}): ServerState {
@@ -132,6 +172,8 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
       is_published: false,
     },
     row: null,
+    chunkRows: [],
+    runpodStatusByJob: {},
     runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
     patches: [],
     staleCountAtPatch: [],
@@ -149,6 +191,7 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     failPartsList: false,
     ownershipLost: false,
     publishRaceWinner: false,
+    reclaimDuringStitch: null,
     ...overrides,
   };
 }
@@ -221,6 +264,15 @@ function makeFetchStub(state: ServerState): typeof fetch {
         if (state.ownershipLost && Object.keys(body).join() === "updated_at") {
           return json([]);
         }
+        if (
+          state.reclaimDuringStitch === "after-check" &&
+          Object.keys(body).join() === "updated_at" && state.row
+        ) {
+          // The check passes -- and the row changes hands immediately after,
+          // which is the window a check made before the write cannot close.
+          state.row = { ...state.row, provider_job_id: "job-99" };
+          return json([{ id: state.row.id }]);
+        }
         // `advanceNarrationJob` is a compare-and-swap: it filters on the job
         // id it expects to still be there and reads the returned rows to find
         // out whether it won. A fixture that always answered `[]` would make
@@ -254,12 +306,57 @@ function makeFetchStub(state: ServerState): typeof fetch {
       return state.row ? json([state.row]) : json([]);
     }
 
+    // `chapter_audio_chunks`: one row per provider request (migration 00095).
+    if (url.pathname === "/rest/v1/chapter_audio_chunks") {
+      if (request.method === "PATCH") {
+        state.patchQueries.push(url.search);
+        const body = await request.json() as Record<string, unknown>;
+        state.patches.push({ table: "chapter_audio_chunks", ...body });
+        const id = url.searchParams.get("id")?.replace(/^eq\./, "");
+        const row = state.chunkRows.find((chunk) => chunk.id === id);
+        if (!row) return json([]);
+        // Both writers are compare-and-swaps, so the filters are honoured: a
+        // fixture that always answered with a row would make every caller
+        // believe it won, and two overlapping polls would both advance.
+        const expectedJob = url.searchParams.get("provider_job_id");
+        if (expectedJob === "is.null" && row.provider_job_id !== null) {
+          return json([]);
+        }
+        if (
+          expectedJob && expectedJob !== "is.null" &&
+          row.provider_job_id !== expectedJob.replace(/^eq\./, "")
+        ) {
+          return json([]);
+        }
+        const expectedStatus = url.searchParams.get("status")?.replace(
+          /^eq\./,
+          "",
+        );
+        if (expectedStatus && row.status !== expectedStatus) return json([]);
+        Object.assign(row, body);
+        return json([{ id: row.id }]);
+      }
+      const parent = url.searchParams.get("chapter_audio_id")?.replace(
+        /^eq\./,
+        "",
+      );
+      return json(
+        state.chunkRows
+          .filter((chunk) => !parent || chunk.chapter_audio_id === parent)
+          .slice()
+          .sort((a, b) => a.chunk_index - b.chunk_index),
+      );
+    }
+
     if (
       url.href.startsWith(
         "https://api.runpod.ai/v2/minimax-speech-02-hd/status/",
       )
     ) {
-      return json(state.runpodStatusResponse());
+      const jobId = url.href.split("/status/")[1];
+      return json(
+        state.runpodStatusByJob[jobId] ?? state.runpodStatusResponse(),
+      );
     }
 
     if (
@@ -316,6 +413,9 @@ function makeFetchStub(state: ServerState): typeof fetch {
         return json({ Key: `audio/${objectPath}` });
       }
       if (request.method === "GET") {
+        if (state.reclaimDuringStitch === "download" && state.row) {
+          state.row = { ...state.row, provider_job_id: "job-99" };
+        }
         if (state.publishRaceWinner) {
           // The other poll assembled, published and deleted the staged parts
           // while this one was downloading them.
@@ -1264,6 +1364,558 @@ Deno.test("losing the assembly race reports the narration that exists, rather th
     // The row is left as the winner published it.
     assertEquals(state.row!.status, "ready");
     assertFalse(state.patches.some((patch) => patch.status === "failed"));
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+// --- Continuous narration: every chunk at once, a manifest on every poll -----
+//
+// The measured problem: a two-chunk chapter took 101.6s to its first second of
+// audio on production (2026-09-19) and a three-chunk one ~135s, because chunks
+// were synthesised one per poll and nothing was playable until the stitch.
+// Every chunk now starts in the same `generate-audio` request and this
+// function publishes each part as it lands, so the reader starts on chunk 0
+// after roughly one chunk's ~45s whatever the chapter's length.
+
+/** A chapter that splits into exactly three chunks. */
+function threeChunkChapter() {
+  return {
+    id: CHAPTER_ID,
+    story_id: STORY_ID,
+    content: longChapter(22_000),
+    word_count: 3_800,
+    audio_url: null,
+    is_published: false,
+  };
+}
+
+function chunkFixture(
+  index: number,
+  opts: {
+    jobId?: string | null;
+    ready?: boolean;
+    durationSeconds?: number | null;
+    charCount?: number | null;
+  } = {},
+): ChunkFixture {
+  return {
+    id: `chunk-${index}`,
+    chapter_audio_id: "audio-1",
+    chunk_index: index,
+    provider_job_id: opts.jobId ?? null,
+    storage_path: opts.ready ? `${PARTS_PREFIX}/aria.0${index}.mp3` : null,
+    status: opts.ready ? "ready" : "pending",
+    duration_seconds: opts.durationSeconds ?? null,
+    char_count: opts.charCount ?? 8_610,
+  };
+}
+
+Deno.test("chunk 0 ready and the rest pending answers PENDING with a playable url for chunk 0", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1" }),
+        chunkFixture(1, { jobId: "job-11" }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusByJob: {
+        "job-1": {
+          status: "COMPLETED",
+          output: { audio_base64: base64(providerMp3(10, 0x10)) },
+        },
+        "job-11": { status: "IN_PROGRESS" },
+        "job-12": { status: "IN_PROGRESS" },
+      },
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "PENDING");
+    assertEquals(result.json.chunks, 3);
+
+    // The whole point: the reader is handed something to play while chunks 1
+    // and 2 are still at the provider.
+    const manifest = result.json.chunk_manifest as Array<
+      Record<string, unknown>
+    >;
+    assertEquals(manifest.length, 3);
+    assertEquals(manifest[0].index, 0);
+    assertEquals(manifest[0].ready, true);
+    assert(String(manifest[0].url).includes(`${PARTS_PREFIX}/aria.00.mp3`));
+    // 10 audio frames at 1,152 samples / 32 kHz, measured from the file's own
+    // frames -- RunPod returns no duration at all.
+    assertEquals(
+      manifest[0].duration_ms,
+      Math.round((10 * 1152 / 32000) * 1000),
+    );
+    assertEquals(manifest[0].char_count, 8_610);
+    // A chunk that is not ready is null, never omitted and never a
+    // placeholder, so index `i` is always chunk `i`.
+    assertEquals(manifest[1].url, null);
+    assertEquals(manifest[1].ready, false);
+    assertEquals(manifest[2].url, null);
+
+    // Part 0 is staged; the stitched file does not exist yet.
+    assertEquals([...state.storage.keys()], [`${PARTS_PREFIX}/aria.00.mp3`]);
+    assertFalse(state.storage.has(FINAL_PATH));
+    // Nothing was started: all three jobs were already running.
+    assertEquals(state.runpodRuns.length, 0);
+    // The chunk row moved to ready under a compare-and-swap, so two
+    // overlapping polls cannot both advance it.
+    assertEquals(state.chunkRows[0].status, "ready");
+    const chunkPatch = state.patchQueries.find((query) =>
+      query.includes("provider_job_id=eq.job-1") &&
+      query.includes("id=eq.chunk-0")
+    );
+    assert(
+      chunkPatch,
+      "the chunk update must be a compare-and-swap on its job",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("the last chunk landing stitches once, publishes, and keeps the parts", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusByJob: {
+        "job-12": {
+          status: "COMPLETED",
+          output: { audio_base64: base64(providerMp3(7, 0x40)) },
+        },
+      },
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+    state.storage.set(`${PARTS_PREFIX}/aria.01.mp3`, providerMp3(5, 0x20));
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "COMPLETED");
+    assert(String(result.json.audio_url).includes(FINAL_PATH));
+    assertEquals(result.json.chunks, 3);
+
+    // One audio stream, not three files glued together: 10 + 5 + 7 audio
+    // frames plus the single `Info` header frame written for the joined
+    // stream. `concatenateMp3`'s frame count check is the only thing that
+    // catches a lost seam, so it stays even though the reader is already
+    // listening by now.
+    const finished = state.storage.get(FINAL_PATH)!;
+    assertEquals(finished.length, (22 + 1) * 576);
+    const ready = state.patches.find((patch) =>
+      patch.status === "ready" && patch.storage_path === FINAL_PATH
+    )!;
+    assertEquals(ready.duration_seconds, (22 * 1152) / 32000);
+
+    // **The parts survive.** A reader who started on chunk 0 is still playing
+    // those exact URLs at this instant; deleting them here would cut off the
+    // person this whole change exists to serve.
+    assert(state.storage.has(`${PARTS_PREFIX}/aria.00.mp3`));
+    assert(state.storage.has(`${PARTS_PREFIX}/aria.01.mp3`));
+    assert(state.storage.has(`${PARTS_PREFIX}/aria.02.mp3`));
+
+    // ...and the completed answer still carries the manifest, so a client that
+    // is mid-playthrough is not forced to switch sources on the same poll.
+    const manifest = result.json.chunk_manifest as Array<
+      Record<string, unknown>
+    >;
+    assertEquals(manifest.map((entry) => entry.ready), [true, true, true]);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a cached ready row with chunk rows replays with its manifest and no provider call", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: {
+        id: "audio-1",
+        chapter_id: CHAPTER_ID,
+        voice_id: "aria",
+        storage_path: FINAL_PATH,
+        provider_job_id: null,
+        status: "ready",
+      },
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+      ],
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "COMPLETED");
+    assertEquals(result.json.cached, true);
+    assertEquals(state.uploads, 0);
+    assertEquals(state.patches.length, 0);
+    assertEquals(state.runpodRuns.length, 0);
+    // The per-chunk durations come back for free on a replay, which is what
+    // lets a client bound transcript drift without having been present for
+    // the original generation.
+    const manifest = result.json.chunk_manifest as Array<
+      Record<string, unknown>
+    >;
+    assertEquals(manifest.length, 2);
+    assertEquals(manifest[0].duration_ms, 360);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunk left pending with no job id is started once, here", async () => {
+  const env = setTestEnv();
+  try {
+    // `generate-audio` got a transient 503 on this chunk and deliberately did
+    // NOT fail the chapter over it: chunk 0 is the only one the reader needs
+    // in the first 45 seconds.
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1" }),
+        chunkFixture(1, { jobId: null }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusByJob: {
+        "job-1": { status: "IN_PROGRESS" },
+        "job-12": { status: "IN_PROGRESS" },
+      },
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "PENDING");
+    assertEquals(state.runpodRuns.length, 1);
+    // It carries chunk 1's own text, re-derived from the stored chapter.
+    assert(state.chapter!.content.includes(state.runpodRuns[0].prompt));
+    assertEquals(state.chunkRows[1].provider_job_id, "job-2");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunk that cannot be started even on the retry fails the narration", async () => {
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  resetSentryForTests();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1" }),
+        chunkFixture(1, { jobId: null }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      failNextRun: true,
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "FAILED");
+    assertEquals(result.json.error_code, "narration_chunk_start_failed");
+    // Every sibling still running is spend nothing will collect now.
+    assertEquals(state.runpodCancels.slice().sort(), ["job-1", "job-12"]);
+    // The staged parts go on the failure path, as they always have: a retry
+    // rebuilds from chunk 0 rather than resuming onto a different revision of
+    // the prose.
+    assertEquals([...state.storage.keys()], []);
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.error_code, "narration_chunk_start_failed");
+  } finally {
+    resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+Deno.test("one chunk's provider failure fails the chapter and cancels its siblings", async () => {
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  resetSentryForTests();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, { jobId: "job-11" }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusByJob: {
+        "job-11": { status: "FAILED", error: "gpu_oom" },
+        "job-12": { status: "IN_PROGRESS" },
+      },
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "FAILED");
+    assertEquals(result.json.error_code, "gpu_oom");
+    assertEquals(state.row!.status, "failed");
+    assertEquals(state.runpodCancels, ["job-12"]);
+    assertFalse(state.storage.has(FINAL_PATH));
+    const tags = state.sentryEvents[0].tags as Record<string, unknown>;
+    assertEquals(tags.error_code, "gpu_oom");
+  } finally {
+    resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunked run that goes stale cancels its siblings and clears its parts, like any other failure", async () => {
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  resetSentryForTests();
+  try {
+    // A timeout IS a failure, and on this path it has the same two things to
+    // clean up as `failNarration` does: up to three paid jobs still at the
+    // provider, and a staging prefix a retry must not resume onto. The legacy
+    // single-chunk path had neither, which is why marking the row failed used
+    // to be the whole of it.
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: {
+        ...pendingRow("job-1"),
+        updated_at: isoMsAgo(NARRATION_JOB_STALE_MS + 60_000),
+      },
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, { jobId: "job-11" }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusResponse: () => ({ status: "IN_PROGRESS" }),
+      stalePendingCount: 1,
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "FAILED");
+    assertEquals(result.json.error_code, "generation_timed_out");
+    assertEquals(
+      state.runpodCancels.slice().sort(),
+      ["job-11", "job-12"],
+      "two jobs are still running and nothing will ever collect them",
+    );
+    assertEquals([...state.storage.keys()], []);
+  } finally {
+    resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunk set that no longer matches the chapter's text is refused, not assembled", async () => {
+  const env = setTestEnv({ SENTRY_DSN: FAKE_SENTRY_DSN });
+  resetSentryForTests();
+  try {
+    // Two chunk rows, a three-chunk chapter: the prose changed under a
+    // narration that was already running, which `edit-story`'s delete of the
+    // `chapter_audio` row is supposed to make impossible. Assembling anyway
+    // would publish a file spliced from two revisions.
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true }),
+        chunkFixture(1, { jobId: "job-11" }),
+      ],
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "FAILED");
+    assertEquals(result.json.error_code, "narration_text_changed");
+    assertEquals(state.runpodRuns.length, 0);
+  } finally {
+    resetSentryForTests();
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunked poll that has lost its row to a fresh run writes nothing", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1" }),
+        chunkFixture(1, { jobId: "job-11" }),
+        chunkFixture(2, { jobId: "job-12" }),
+      ],
+      runpodStatusByJob: {
+        "job-1": {
+          status: "COMPLETED",
+          output: { audio_base64: base64(providerMp3(10, 0x10)) },
+        },
+      },
+      ownershipLost: true,
+    });
+
+    const result = await run(state, QUERY);
+
+    assertEquals(result.json.status, "PENDING");
+    assertEquals([...state.storage.keys()], [], "nothing may be staged");
+    assertEquals(state.chunkRows[0].status, "pending");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a poll that lost the run while stitching does not overwrite the live run's file", async () => {
+  const env = setTestEnv();
+  try {
+    // Every chunk is already `ready`, so this poll does nothing but assemble
+    // and publish -- which is precisely the path where the ownership check
+    // used to be skipped entirely: it lived behind "did anything finish this
+    // time", and nothing did.
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+        chunkFixture(2, {
+          jobId: "job-12",
+          ready: true,
+          durationSeconds: 0.25,
+        }),
+      ],
+      reclaimDuringStitch: "download",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+    state.storage.set(`${PARTS_PREFIX}/aria.01.mp3`, providerMp3(5, 0x20));
+    state.storage.set(`${PARTS_PREFIX}/aria.02.mp3`, providerMp3(7, 0x40));
+
+    const result = await run(state, QUERY);
+
+    // **Nothing was published.** The stable path is the permanent, cached URL
+    // every later reader is served; writing this run's stitch there would hand
+    // a reader audio from a superseded attempt, of possibly different prose,
+    // under a row that says it succeeded.
+    assertFalse(state.storage.has(FINAL_PATH), "the stable path is untouched");
+    assertEquals(state.row!.status, "pending");
+
+    // And it fails nothing: the row belongs to the run that took it over, and
+    // that run is doing this same work.
+    assertEquals(result.json.status, "PENDING");
+    assertEquals(state.row!.error_code ?? null, null);
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("losing the run between the ownership check and the write cannot mark somebody else's row ready", async () => {
+  const env = setTestEnv();
+  try {
+    const state = newState({
+      chapter: threeChunkChapter(),
+      row: pendingRow("job-1"),
+      chunkRows: [
+        chunkFixture(0, { jobId: "job-1", ready: true, durationSeconds: 0.36 }),
+        chunkFixture(1, {
+          jobId: "job-11",
+          ready: true,
+          durationSeconds: 0.18,
+        }),
+        chunkFixture(2, {
+          jobId: "job-12",
+          ready: true,
+          durationSeconds: 0.25,
+        }),
+      ],
+      // The takeover lands in the instant after the check passes. Only a
+      // compare-and-swap on the publish itself sees it.
+      reclaimDuringStitch: "after-check",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+    state.storage.set(`${PARTS_PREFIX}/aria.01.mp3`, providerMp3(5, 0x20));
+    state.storage.set(`${PARTS_PREFIX}/aria.02.mp3`, providerMp3(7, 0x40));
+
+    const result = await run(state, QUERY);
+
+    // The row stays pending and stays the other run's. A `ready` here is the
+    // damaging half of this: a reader would be sent to the stable URL by a row
+    // claiming a narration this poll no longer owns.
+    assertEquals(state.row!.status, "pending");
+    assertEquals(state.row!.provider_job_id, "job-99");
+    assertEquals(result.json.status, "PENDING");
+    // The stitched bytes did get written -- a check and a write cannot be one
+    // instruction against a REST API, and closing that last millisecond would
+    // need a per-run token on the row, which is a migration this change does
+    // without. What the compare-and-swap guarantees is that no ROW ever
+    // points a reader at them: the run that owns the claim publishes its own
+    // stitch to the same path on its next poll.
+    assertEquals(
+      state.row!.storage_path,
+      FINAL_PATH,
+      "unchanged from the claim",
+    );
+    assertEquals(state.row!.status, "pending", "never published");
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("the legacy branch cannot publish its stitch over a run that took the row", async () => {
+  const env = setTestEnv();
+  try {
+    // The same defect that was just fixed on the chunked path, in the branch
+    // that still finishes pre-00095 runs. The ownership check this branch has
+    // always made happens BEFORE the last part is uploaded, the earlier parts
+    // downloaded and the chapter joined -- so a re-claim landing inside that
+    // stretch left this poll free to write its stitch to the STABLE path, the
+    // permanent cached URL every later reader is served, and to mark the new
+    // run's row `ready` with a plain write.
+    const state = newState({
+      chapter: p90Chapter(),
+      row: pendingRow("job-2"),
+      runpodStatusResponse: () => ({
+        status: "COMPLETED",
+        output: { audio_base64: base64(providerMp3(7, 0x40)) },
+      }),
+      // The takeover lands while the earlier parts are being read.
+      reclaimDuringStitch: "download",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    // Nothing published. A reader following the stable URL would otherwise get
+    // a superseded run's audio, of possibly different prose, cached forever.
+    assertFalse(state.storage.has(FINAL_PATH), "the stable path is untouched");
+    assertEquals(state.row!.status, "pending");
+    assertEquals(state.row!.provider_job_id, "job-99");
+    assertEquals(state.row!.error_code ?? null, null);
+    assertEquals(result.json.status, "PENDING");
+
+    // And the staging is left alone: those parts belong to the run holding the
+    // row now, which is still assembling from them.
+    assert(state.storage.has(`${PARTS_PREFIX}/aria.00.mp3`));
   } finally {
     restoreEnv(env);
   }

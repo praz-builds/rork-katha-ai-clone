@@ -48,8 +48,27 @@ export interface NarrationEntitlementContext {
   storyId?: string | null;
   chapterId?: string | null;
   voiceId?: string | null;
-  purpose?: "chapter" | "preview";
+  /**
+   * What the narration is FOR, which is now a gate and not a label.
+   *
+   * - `chapter` -- a reader pressed Listen. Governed by
+   *   `NARRATION_GENERATION_ENABLED`, as it always has been.
+   * - `preview` -- voice-picker sample seeding.
+   * - `prefetch` -- nobody has pressed anything; the client is synthesising a
+   *   chapter ahead of time so it starts instantly if they do. See
+   *   `NARRATION_PREFETCH_ENABLED`.
+   */
+  purpose?: "chapter" | "preview" | "prefetch";
   env?: Pick<typeof Deno.env, "get">;
+}
+
+/** The documented truthy spellings, shared by both flags. */
+function flagIsOn(
+  env: Pick<typeof Deno.env, "get">,
+  name: string,
+): boolean {
+  const value = (env.get(name) ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "on", "enabled"].includes(value);
 }
 
 export interface NarrationEntitlement {
@@ -61,11 +80,27 @@ export function canGenerateNarration(
   ctx: NarrationEntitlementContext = {},
 ): NarrationEntitlement {
   const env = ctx.env ?? Deno.env;
-  const enabled = (env.get("NARRATION_GENERATION_ENABLED") ?? "")
-    .trim()
-    .toLowerCase();
 
-  if (["1", "true", "yes", "on", "enabled"].includes(enabled)) {
+  // Prefetch is refused FIRST, and refused by default.
+  //
+  // A prefetch is paid synthesis nobody asked for: the client decides, on its
+  // own, to narrate a chapter in case the reader wants it. If that decision is
+  // ever wrong -- a loop, a screen that mounts twice, a list that prefetches
+  // every card -- the cost is real provider spend against a reader who never
+  // pressed Listen, and the only way to stop it would be a client release.
+  // Behind its own flag it ships dark: the feature can be built, deployed and
+  // exercised by a client that asks for it, and turning it on (or off again,
+  // mid-incident) is an env change with no deploy and no app store.
+  //
+  // Checked before `NARRATION_GENERATION_ENABLED` on purpose, so opening
+  // narration to readers never silently opens prefetch too.
+  if (
+    ctx.purpose === "prefetch" && !flagIsOn(env, "NARRATION_PREFETCH_ENABLED")
+  ) {
+    return { allowed: false, reason: "narration_prefetch_disabled" };
+  }
+
+  if (flagIsOn(env, "NARRATION_GENERATION_ENABLED")) {
     return { allowed: true, reason: "enabled_by_env" };
   }
 

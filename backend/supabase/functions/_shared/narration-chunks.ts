@@ -50,14 +50,18 @@ export const NARRATION_CHUNK_CHARS = 9_000;
 /**
  * How many provider requests one chapter may be split into.
  *
- * Two independent limits, and three is under both:
+ * **The reason this used to be three is no longer one of the reasons it is
+ * three.** The old argument led with the reader's patience: chunks ran
+ * *sequentially*, one per `audio-status` poll at a measured ~45 seconds each,
+ * so three chunks was ~135 seconds and the constant was the thing keeping a
+ * working narration inside `NARRATION_OVERDUE_MS` (180s) in
+ * `expo/src/lib/listen-machine.ts`. Every chunk is now started in the same
+ * `generate-audio` request (`NARRATION_MAX_CONCURRENT_CHUNKS` below), so
+ * wall-clock time to the FIRST audio is one chunk -- ~45 seconds -- whether
+ * the chapter is one chunk or three, and a fourth chunk would not move it.
+ * Latency no longer constrains this number at all.
  *
- * **The reader's patience.** Chunks run *sequentially*, one per
- * `audio-status` poll, at a measured ~45 seconds each. Three chunks is ~135
- * seconds, which is inside `NARRATION_OVERDUE_MS` (180s) in
- * `expo/src/lib/listen-machine.ts` -- the point at which the screen stops
- * reassuring the reader and starts offering them a way out. A narration that
- * is working correctly must never cross that line, or the copy is lying.
+ * What still does, and what the number is therefore derived from alone:
  *
  * **The Edge Function's memory.** Assembling the finished file holds the
  * earlier parts and the joined copy in the isolate at the same time. At the
@@ -68,8 +72,42 @@ export const NARRATION_CHUNK_CHARS = 9_000;
  * larger audio than measured would turn a working narration into an OOM --
  * and an OOM mid-assembly is the worst failure available here, because the
  * chapter has already been paid for chunk by chunk.
+ *
+ * So: **do not raise this because narration got faster.** The stitch is off
+ * the critical path for the reader, who is already listening by the time it
+ * runs, but it still happens in an isolate with a ceiling, and that ceiling
+ * has not moved. Raising this number needs its own memory measurement, not
+ * this comment.
  */
 export const NARRATION_MAX_CHUNKS = 3;
+
+/**
+ * How many of a chapter's chunks may be at the provider at the same moment.
+ *
+ * **Today this is a documented no-op**, because it equals
+ * `NARRATION_MAX_CHUNKS`: a chapter can never have more chunks than this, so
+ * the bound never actually holds anything back. It exists so that the day
+ * `NARRATION_MAX_CHUNKS` rises (see the memory argument above), starting
+ * every chunk of every concurrent narration at once is a decision somebody
+ * makes deliberately rather than one that happens by default -- RunPod's
+ * public endpoint queues per account, and a burst from several readers at
+ * once is how a fast narration becomes a slow one for everybody.
+ *
+ * The **projected** consequence of starting them together rather than one per
+ * poll -- projected, because none of this is deployed and the only number
+ * underneath it is a single production job on 2026-09-19 that took ~45s: a
+ * 2-chunk chapter measured 101.6s to its first second of audio and should now
+ * take roughly one chunk; a 3-chunk chapter measured ~135s and should now take
+ * the same. Treat "roughly one chunk" as the shape of the win and not as a
+ * duration: three requests arriving together on a shared public endpoint queue
+ * against each other and against every other reader's, so each one need not
+ * get the ~45s a lone job got. Re-measure once this is live, here and in the
+ * build log, before anything else is reasoned from these numbers. The stitch
+ * still runs, and `concatenateMp3` still verifies it, but it happens behind a
+ * reader who is already listening to chunk 0 rather than in front of one who
+ * is not listening to anything.
+ */
+export const NARRATION_MAX_CONCURRENT_CHUNKS = 3;
 
 /**
  * The longest chapter this product will narrate at all.

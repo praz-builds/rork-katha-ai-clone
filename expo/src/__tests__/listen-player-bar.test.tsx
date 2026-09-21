@@ -145,3 +145,65 @@ describe("chapters", () => {
     expect(onNextChapter).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("autoplay", () => {
+  it("is a switch, and says whether it is on", async () => {
+    const onToggleAutoAdvance = jest.fn();
+    const { view } = await renderBar({ autoAdvance: true, onToggleAutoAdvance });
+    const control = view.getByLabelText("Autoplay next chapter");
+    expect(control.props.accessibilityRole).toBe("switch");
+    expect(control.props.accessibilityState.checked).toBe(true);
+
+    await fireEvent.press(control);
+    expect(onToggleAutoAdvance).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads as off when it is off", async () => {
+    const { view } = await renderBar({
+      autoAdvance: false,
+      onToggleAutoAdvance: jest.fn(),
+    });
+    expect(
+      view.getByLabelText("Autoplay next chapter").props.accessibilityState
+        .checked,
+    ).toBe(false);
+  });
+
+  it("is absent for a caller that does not offer the choice", async () => {
+    const { view } = await renderBar();
+    expect(view.queryByTestId("listen-autoplay-toggle")).toBeNull();
+  });
+});
+
+describe("a total that is still being measured", () => {
+  it("marks it as approximate rather than revising it upward later", async () => {
+    // A chapter still being synthesized has measured pieces and an estimated
+    // tail. Rendering that as a definite 5:00 would mean changing it under a
+    // reader who is watching the number.
+    const { view } = await renderBar({ durationIsProvisional: true });
+    expect(view.getByText("~5:00")).toBeTruthy();
+    expect(view.queryByText("5:00")).toBeNull();
+    expect(view.getByTestId("listen-scrubber").props.accessibilityValue.text)
+      .toBe("1:00 of about 5:00");
+  });
+
+  it("says nothing extra once every piece is measured", async () => {
+    const { view } = await renderBar();
+    expect(view.getByText("5:00")).toBeTruthy();
+  });
+});
+
+describe("playback that has run out of chapter", () => {
+  it("says it is waiting, rather than looking like a transport that broke", async () => {
+    // A chunked narration is played while it is still being made, so reaching
+    // the end of what exists is ordinary. Stopping and saying nothing is what
+    // makes it read as a hang.
+    const { view } = await renderBar({ waitingForChunk: true });
+    expect(view.getByTestId("listen-waiting-for-chunk")).toBeTruthy();
+  });
+
+  it("says nothing while playback is running", async () => {
+    const { view } = await renderBar();
+    expect(view.queryByTestId("listen-waiting-for-chunk")).toBeNull();
+  });
+});

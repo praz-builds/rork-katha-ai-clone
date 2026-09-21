@@ -143,11 +143,17 @@ export function narrationPartsPrefix(
  * Where one completed chunk of a multi-request narration is staged.
  *
  * A chapter over the provider's per-request character limit is narrated as
- * several sequential provider jobs, one per `audio-status` poll, and the
- * isolate that uploads chunk 2 is not the isolate that uploaded chunk 1 --
- * Edge Functions keep nothing between requests. So the finished chunks have to
- * live somewhere durable, and the `audio` bucket is already the durable place
- * this system puts narration audio.
+ * several provider jobs started together, and the isolate that uploads chunk 2
+ * is not the isolate that uploaded chunk 1 -- Edge Functions keep nothing
+ * between requests. So the finished chunks have to live somewhere durable, and
+ * the `audio` bucket is already the durable place this system puts narration
+ * audio.
+ *
+ * These objects are also what the reader actually plays first: `audio-status`
+ * hands back a manifest of chunk URLs as each one lands, so playback starts on
+ * chunk 0 while later chunks are still synthesising. That is why they now
+ * SURVIVE the stitch (see `removeNarrationParts`) -- a client mid-playthrough
+ * is holding these URLs.
  *
  * The index is zero-padded so a plain lexicographic listing is also the
  * playback order; getting the order wrong would produce a chapter whose scenes
@@ -269,11 +275,26 @@ export async function uploadNarrationPart(
 /**
  * Delete every staged part for this (chapter, voice). Never throws.
  *
- * Called on success (the parts have been merged into the finished file and are
- * now dead weight in a bucket that is billed by the gigabyte) and on failure
- * and on a fresh claim (a retry must rebuild from chunk 0, never resume onto
- * the debris of an abandoned attempt -- if the chapter text changed in between,
- * resuming would splice two different revisions of the prose together).
+ * **Not called on the success path any more.** The parts used to be deleted
+ * the moment the stitched file was published, because they were pure dead
+ * weight in a bucket billed by the gigabyte. They are no longer dead weight:
+ * `audio-status` publishes each part's URL in its manifest as it lands, so a
+ * reader who started on chunk 0 is still playing these objects at the instant
+ * the stitch finishes. Deleting them there would cut off the person the whole
+ * change exists to serve.
+ *
+ * Still called on failure and on a fresh claim, where the reason was never
+ * about storage cost: a retry must rebuild from chunk 0 and never resume onto
+ * the debris of an abandoned attempt, because if the chapter text changed in
+ * between, resuming would splice two different revisions of the prose
+ * together.
+ *
+ * The lifetime of a successful run's parts is therefore now the lifetime of
+ * its `chapter_audio` row. `record_orphaned_audio_object()` (migration 00062)
+ * records only the parent row's `storage_path` when that row is deleted, so
+ * the parts prefix wants adding to the sweep -- noted as a follow-up in
+ * `backend/build-log.md`.
+ *
  * Failing to clean up costs storage; failing the request over it costs the
  * reader their chapter, so this swallows.
  */
@@ -501,12 +522,69 @@ export async function claimChapterAudioGeneration(
   };
 }
 
+/**
+ * The row's `updated_at`, read straight after a claim as the fence a later
+ * conditional write compares against.
+ *
+ * `claim_chapter_audio_generation` (00054) re-claims a `pending` row that has
+ * sat untouched for ten minutes, and a re-claim keeps the SAME row id while
+ * resetting `provider_job_id` to null -- so "is this still my claim?" cannot be
+ * answered from the id or from the job id, both of which look exactly as they
+ * did. `updated_at` is what the claim itself moves, so the value this reads is
+ * the one thing that identifies WHICH claim is on the row.
+ *
+ * Read immediately after a successful claim, where a re-claim needs ten
+ * minutes of staleness to be possible at all, so what comes back is this
+ * caller's own claim and not a race.
+ *
+ * A read that fails answers null rather than throwing: the caller then falls
+ * back to the weaker "still pending, still has no job" condition, which is
+ * never worse than the unconditional write this replaced.
+ */
+export async function chapterAudioClaimFence(
+  supabase: SupabaseClient,
+  audioId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("chapter_audio")
+      .select("updated_at")
+      .eq("id", audioId)
+      .limit(1);
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{ updated_at?: string | null }>;
+    return rows.length ? rows[0].updated_at ?? null : null;
+  } catch (error) {
+    console.error("narration: could not read the claim fence", error);
+    return null;
+  }
+}
+
+/**
+ * Record chunk 0's provider job id on the parent row, and report whether this
+ * caller was still the claim it belongs to.
+ *
+ * A compare-and-swap, not a plain write. Starting the jobs takes seconds and a
+ * claim can be re-claimed out from under this request while they are being
+ * started; an unconditional write then put the OLD attempt's chunk 0 job id
+ * onto the NEW attempt's row, and everything downstream that asks "do I still
+ * own this run" -- `stillOwnsNarrationJob`, the ten-minute staleness clock,
+ * 00054's re-claim -- would be comparing against a job the new attempt never
+ * started. The row would be tracking a job whose audio belongs to a different
+ * run of possibly different prose.
+ *
+ * `fence` is the `updated_at` this caller's claim wrote (see
+ * `chapterAudioClaimFence`). Without it the condition falls back to "still
+ * pending, still has no job", which catches the case where the replacing
+ * attempt has already recorded its own id.
+ */
 export async function markChapterAudioJobStarted(
   supabase: SupabaseClient,
   audioId: string,
   jobId: string,
-): Promise<void> {
-  const { error } = await supabase
+  fence?: string | null,
+): Promise<boolean> {
+  let query = supabase
     .from("chapter_audio")
     // `updated_at` is written explicitly: there is no trigger on
     // `chapter_audio`, and `claim_chapter_audio_generation` (00054) treats a
@@ -518,7 +596,208 @@ export async function markChapterAudioJobStarted(
       status: "pending",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", audioId);
+    .eq("id", audioId)
+    .eq("status", "pending")
+    .is("provider_job_id", null);
+  if (fence) query = query.eq("updated_at", fence);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Chunk rows (migration 00095)
+// ---------------------------------------------------------------------------
+//
+// One row per provider request of a multi-request narration. The parent
+// `chapter_audio` row keeps CHUNK 0's job id, exactly as it always held the
+// single in-flight job id, so `stillOwnsNarrationJob`, `isNarrationJobStale`
+// and 00054's re-claim path all keep working with no change at all. These rows
+// carry every other chunk's id, plus the one thing the old design could not
+// record: which index a given part belongs to. That used to be derived by
+// counting staged objects, which is only correct while chunks finish in order,
+// and they no longer do.
+
+export interface ChapterAudioChunkRow {
+  id: string;
+  chapter_audio_id?: string;
+  chunk_index: number;
+  provider_job_id: string | null;
+  storage_path: string | null;
+  status: "pending" | "ready" | "failed";
+  duration_seconds?: number | null;
+  char_count?: number | null;
+  error_code?: string | null;
+}
+
+const CHAPTER_AUDIO_CHUNK_COLUMNS =
+  "id, chapter_audio_id, chunk_index, provider_job_id, storage_path, status, duration_seconds, char_count, error_code";
+
+/**
+ * Replace this narration's chunk set with `charCounts.length` fresh pending
+ * rows. Atomic, advisory-locked on the same (chapter, voice) key the
+ * generation claim uses, and always restarting at chunk 0 -- the atomicity
+ * lives in the migration, not here.
+ */
+export async function claimChapterAudioChunks(
+  supabase: SupabaseClient,
+  audioId: string,
+  charCounts: number[],
+): Promise<ChapterAudioChunkRow[]> {
+  const { data, error } = await supabase.rpc("claim_chapter_audio_chunks", {
+    p_audio_id: audioId,
+    p_count: charCounts.length,
+    p_char_counts: charCounts,
+  });
+  if (error) throw error;
+  const rows = (Array.isArray(data) ? data : []) as Array<{
+    chunk_id: string;
+    chunk_index: number;
+    char_count: number | null;
+    status: ChapterAudioChunkRow["status"];
+  }>;
+  return rows
+    .map((row) => ({
+      id: row.chunk_id,
+      chapter_audio_id: audioId,
+      chunk_index: Number(row.chunk_index),
+      provider_job_id: null,
+      storage_path: null,
+      status: row.status,
+      char_count: row.char_count === null ? null : Number(row.char_count),
+    }))
+    .sort((a, b) => a.chunk_index - b.chunk_index);
+}
+
+/**
+ * This narration's chunk rows, in playback order.
+ *
+ * An empty array is a meaningful answer and not a missing one: it is how
+ * `audio-status` recognises a job started by the pre-00095 function, which
+ * must keep finishing on the old one-chunk-per-poll path. A failed read throws
+ * rather than answering `[]`, because collapsing those two would send a
+ * chunked narration down the legacy path and restart it from a part count.
+ */
+export async function listChapterAudioChunks(
+  supabase: SupabaseClient,
+  audioId: string,
+): Promise<ChapterAudioChunkRow[]> {
+  const { data, error } = await supabase
+    .from("chapter_audio_chunks")
+    .select(CHAPTER_AUDIO_CHUNK_COLUMNS)
+    .eq("chapter_audio_id", audioId)
+    .order("chunk_index", { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as ChapterAudioChunkRow[]).map((row) => ({
+    ...row,
+    chunk_index: Number(row.chunk_index),
+    duration_seconds: row.duration_seconds === null ||
+        row.duration_seconds === undefined
+      ? null
+      : Number(row.duration_seconds),
+    char_count: row.char_count === null || row.char_count === undefined
+      ? null
+      : Number(row.char_count),
+  }));
+}
+
+/**
+ * The provider job a chunk row currently points at, or null if it has none.
+ *
+ * Read only after a lost compare-and-swap, to answer the one question the
+ * boolean cannot: did somebody else record a DIFFERENT job for this chunk (so
+ * ours is spend nothing will collect), or did somebody else record OURS? The
+ * second happens on chunk 0, whose id also lives on the parent row and which
+ * `audio-status` adopts onto the chunk row the moment it sees the row has no
+ * id of its own. Cancelling on that answer kills the job the narration is
+ * built on.
+ */
+export async function chapterAudioChunkJobId(
+  supabase: SupabaseClient,
+  chunkId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("chapter_audio_chunks")
+    .select("provider_job_id")
+    .eq("id", chunkId)
+    .limit(1);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{ provider_job_id: string | null }>;
+  return rows.length ? rows[0].provider_job_id ?? null : null;
+}
+
+/**
+ * Record the provider job a chunk was just started on, and report whether this
+ * caller was the one that recorded it.
+ *
+ * A compare-and-swap on "still pending, still has no job", not a plain write.
+ * `audio-status` retries the start of a chunk whose row never got a job id, so
+ * two overlapping polls can both start one; whoever's condition still matches
+ * wins, and the loser cancels the job it started rather than leaving provider
+ * spend with nothing in the database pointing at it.
+ */
+export async function markChapterAudioChunkStarted(
+  supabase: SupabaseClient,
+  chunkId: string,
+  jobId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("chapter_audio_chunks")
+    .update({ provider_job_id: jobId, updated_at: new Date().toISOString() })
+    .eq("id", chunkId)
+    .eq("status", "pending")
+    .is("provider_job_id", null)
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Publish one chunk: its staged part exists, so the row moves to `ready`.
+ *
+ * Also a compare-and-swap, on `(id, provider_job_id, status = 'pending')`.
+ * Polling is driven by the reader's client and two polls can overlap; both can
+ * see the same chunk finish, and without the condition both would advance it.
+ * The loser simply reports what the winner wrote.
+ */
+export async function markChapterAudioChunkReady(
+  supabase: SupabaseClient,
+  chunkId: string,
+  jobId: string,
+  storagePath: string,
+  durationSeconds: number | null,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("chapter_audio_chunks")
+    .update({
+      status: "ready",
+      storage_path: storagePath,
+      duration_seconds: durationSeconds,
+      error_code: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chunkId)
+    .eq("provider_job_id", jobId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/** Record a chunk's own failure. The parent row carries the reader-facing one. */
+export async function markChapterAudioChunkFailed(
+  supabase: SupabaseClient,
+  chunkId: string,
+  errorCode: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("chapter_audio_chunks")
+    .update({
+      status: "failed",
+      error_code: errorCode,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chunkId);
   if (error) throw error;
 }
 
@@ -556,6 +835,50 @@ export async function markChapterAudioReady(
     })
     .eq("id", audioId);
   if (error) throw error;
+}
+
+/**
+ * Publish the finished narration, but only if this run still owns it.
+ *
+ * The same compare-and-swap the per-chunk writes use -- `(id, job, still
+ * pending)` -- applied to the write that matters most. `markChapterAudioReady`
+ * above is unconditional, and on the chunked path the ownership check happened
+ * before the parts were downloaded, joined and uploaded: a re-claim (or an
+ * `edit-story`) landing in that window let a superseded poll overwrite the
+ * ACTIVE run's stitched file at the stable path and then mark the row ready.
+ * Nothing failed; a reader simply got audio from a different run of possibly
+ * different prose, cached under the permanent URL, with the row claiming
+ * success.
+ *
+ * Returning false is not an error. The row belongs to somebody else now, and
+ * the run that owns it is already doing this work -- so the loser discards
+ * what it made and says nothing, exactly as the per-chunk loser does.
+ */
+export async function markChapterAudioReadyIfOwner(
+  supabase: SupabaseClient,
+  audioId: string,
+  jobId: string | null,
+  storagePath: string,
+  durationSeconds?: number | null,
+): Promise<boolean> {
+  let query = supabase
+    .from("chapter_audio")
+    .update({
+      status: "ready",
+      storage_path: storagePath,
+      duration_seconds: durationSeconds ?? null,
+      generated_at: new Date().toISOString(),
+      error_code: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", audioId)
+    .eq("status", "pending");
+  query = jobId
+    ? query.eq("provider_job_id", jobId)
+    : query.is("provider_job_id", null);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
 }
 
 export async function publicAudioUrl(

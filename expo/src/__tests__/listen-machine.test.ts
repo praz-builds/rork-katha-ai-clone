@@ -2,6 +2,7 @@ import {
   canRetry,
   initialListenState,
   isWaiting,
+  type ListenManifest,
   type ListenState,
   listenCopy,
   listenReducer,
@@ -257,5 +258,183 @@ describe("which phases are a wait", () => {
     expect(shouldPoll("checking")).toBe(false);
     expect(shouldPoll("requesting")).toBe(false);
     expect(shouldPoll("generating")).toBe(true);
+  });
+});
+
+describe("a chapter that can be listened to while it is still being made", () => {
+  const manifest = (ready: number, total: number): ListenManifest => ({
+    chunks: total,
+    entries: Array.from({ length: ready }, (_, index) => ({
+      index,
+      url: `https://audio/c${index}.mp3`,
+      durationMs: 45_000,
+      charCount: 9_000,
+    })),
+  });
+
+  it("plays the first chunk the moment it exists, without waiting for the rest", () => {
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    expect(playing.phase).toBe("ready");
+    expect(playing.audioUrl).toBe("https://audio/c0.mp3");
+    expect(playing.manifest?.chunks).toBe(13);
+  });
+
+  it("KEEPS POLLING once it is playing, or the later chunks never arrive", () => {
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    // The whole mechanism depends on this: chunk urls only ever come from a
+    // poll, and a player stopped at chunk 0 is a chapter that plays 45 seconds
+    // and stops.
+    expect(shouldPoll(playing.phase, playing.manifest)).toBe(true);
+
+    const complete = listenReducer(playing, {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(13, 13) },
+      at: T0 + 101_000,
+    });
+    expect(shouldPoll(complete.phase, complete.manifest)).toBe(false);
+  });
+
+  it("stays on a waiting phase while no chunk is playable yet", () => {
+    const stillWaiting = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(0, 13) },
+      at: T0 + 5_000,
+    });
+    expect(stillWaiting.phase).toBe("generating");
+    expect(stillWaiting.manifest).toBeNull();
+  });
+
+  it("takes on the chunks a later poll brings, and never gives any back", () => {
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    const grown = listenReducer(playing, {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(4, 13) },
+      at: T0 + 60_000,
+    });
+    expect(grown.manifest?.entries).toHaveLength(4);
+
+    // A poll that answers with less than we are already playing is stale, not
+    // a retraction.
+    const stale = listenReducer(grown, {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(2, 13) },
+      at: T0 + 61_000,
+    });
+    expect(stale).toBe(grown);
+  });
+
+  it("does not swap to the stitched file halfway through playing the pieces", () => {
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    const completed = listenReducer(playing, {
+      type: "outcome",
+      outcome: {
+        kind: "ready",
+        audioUrl: "https://audio/whole-chapter.mp3",
+        manifest: manifest(13, 13),
+      },
+      at: T0 + 101_000,
+    });
+    // A playthrough commits to its source. The stitched file is the permanent
+    // cache for the NEXT listen.
+    expect(completed.audioUrl).toBe("https://audio/c0.mp3");
+    expect(completed.manifest?.entries).toHaveLength(13);
+  });
+
+  it("ends the playthrough when the row goes terminally failed, rather than polling a dead chapter forever", () => {
+    // Chunk 1 failed at the provider. Nothing will ever arrive, the parts have
+    // been deleted, and "never fail backwards out of playback" would leave the
+    // reader listening to chunk 0, then to silence, with the playhead parked
+    // at the end and a poll running every 2.5 seconds for as long as the
+    // screen is open.
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    const dead = listenReducer(playing, {
+      type: "outcome",
+      outcome: { kind: "failed", errorCode: "narration_chunk_start_failed" },
+      at: T0 + 70_000,
+    });
+    expect(dead.phase).toBe("failed");
+    expect(dead.errorCode).toBe("narration_chunk_start_failed");
+    expect(shouldPoll(dead.phase, dead.manifest)).toBe(false);
+  });
+
+  it("ends the playthrough when the row has gone (edit-story rewrote the chapter)", () => {
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(1, 13) },
+      at: T0 + 45_000,
+    });
+    const gone = listenReducer(playing, {
+      type: "outcome",
+      outcome: { kind: "missing" },
+      at: T0 + 70_000,
+    });
+    expect(gone.phase).toBe("failed");
+    expect(gone.errorCode).toBe("narration_job_missing");
+    expect(shouldPoll(gone.phase, gone.manifest)).toBe(false);
+  });
+
+  it("keeps playing through a dropped poll: offline and unavailable are not terminal here", () => {
+    // The opposite defect. A network blip or the entitlement gate says nothing
+    // about the chunks already in hand, and dropping a reader out of playback
+    // for one is the same mistake in the other direction.
+    const playing = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "pending", manifest: manifest(2, 13) },
+      at: T0 + 45_000,
+    });
+    expect(
+      listenReducer(playing, {
+        type: "outcome",
+        outcome: { kind: "offline" },
+        at: T0 + 50_000,
+      }),
+    ).toBe(playing);
+    expect(
+      listenReducer(playing, {
+        type: "outcome",
+        outcome: { kind: "unavailable", message: "not yet" },
+        at: T0 + 50_000,
+      }),
+    ).toBe(playing);
+  });
+
+  it("plays the stitched file for a narration that was already finished", () => {
+    const cached = listenReducer(open(), {
+      type: "cached",
+      audioUrl: "https://audio/cached.mp3",
+    });
+    expect(cached.manifest).toBeNull();
+    expect(shouldPoll(cached.phase, cached.manifest)).toBe(false);
+  });
+
+  it("plays the stitched file when the server sends no manifest at all", () => {
+    const landed = listenReducer(generating(), {
+      type: "outcome",
+      outcome: { kind: "ready", audioUrl: "https://audio/legacy.mp3" },
+      at: T0 + 101_000,
+    });
+    expect(landed.audioUrl).toBe("https://audio/legacy.mp3");
+    expect(landed.manifest).toBeNull();
+    expect(shouldPoll(landed.phase, landed.manifest)).toBe(false);
   });
 });

@@ -23,7 +23,18 @@ jest.mock("react-native-reanimated", () => {
       createAnimatedComponent: (component: unknown) => component,
     },
     cancelAnimation: jest.fn(),
-    Easing: { bezier: () => passthrough, linear: passthrough },
+    // `in`/`out`/`inOut` are curve *wrappers*, so they hand back whatever they
+    // were given. The Listen screen's loader draws the Katha mark, which uses
+    // them; without these the whole suite fails to load rather than any test
+    // failing.
+    Easing: {
+      bezier: () => passthrough,
+      linear: passthrough,
+      quad: passthrough,
+      in: passthrough,
+      out: passthrough,
+      inOut: passthrough,
+    },
     ReduceMotion: { Never: "never", System: "system" },
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useReducedMotion: () => mockReduceMotion,
@@ -76,6 +87,7 @@ jest.mock("react-native-svg", () => {
   };
 });
 
+import { NarrationLoader as ListenNarrationLoader } from "@/components/listen/NarrationLoader";
 import {
   NARRATION_LOADER_VARIANTS,
   NARRATION_STAGES,
@@ -137,6 +149,39 @@ describe("NarrationLoader", () => {
     expect(narrationMessageFor("generating")).toBe(
       "The voice is reading it now",
     );
+  });
+
+  /**
+   * The Listen screen's own loader is a different component (the full-screen
+   * one, `components/listen/NarrationLoader`). It is tested here beside its
+   * namesake so the two cannot drift apart unnoticed.
+   */
+  describe("the Listen screen's loader", () => {
+    it("says whose chapter is being prepared when the reader did not ask", async () => {
+      const { getByText } = await render(
+        <ListenNarrationLoader
+          art={<></>}
+          contextLabel="Next: The Crossing"
+          status="Reading the chapter aloud"
+          detail="First listen only."
+        />,
+      );
+      // Without this the wait reads as the player having restarted, rather
+      // than as the story continuing into its next chapter.
+      expect(getByText("Next: The Crossing")).toBeTruthy();
+      expect(getByText("Reading the chapter aloud")).toBeTruthy();
+    });
+
+    it("shows no context line for a wait the reader walked into", async () => {
+      const { queryByTestId } = await render(
+        <ListenNarrationLoader
+          art={<></>}
+          status="Finding your narrator"
+          detail=""
+        />,
+      );
+      expect(queryByTestId("narration-loader-context")).toBeNull();
+    });
   });
 
   it("never promises a duration", () => {

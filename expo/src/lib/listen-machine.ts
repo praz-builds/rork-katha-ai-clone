@@ -64,6 +64,21 @@ export const NARRATION_OVERDUE_MS = 180_000;
  */
 export const MAX_NARRATION_RECOVERIES = 2;
 
+/**
+ * Whether a narration being generated may start playing from its first chunk.
+ *
+ * On by default, and the cheap way out if progressive playback misbehaves in
+ * the field: turned off, this client only ever plays the single stitched file,
+ * exactly as it did before chunks existed. The server-side win -- synthesizing
+ * a chapter's pieces in parallel instead of end to end -- is untouched by this
+ * flag, so switching it off costs the reader the early start and nothing else.
+ *
+ * Deliberately a constant rather than a remote flag: it is a rollback lever for
+ * a build, not a per-reader experiment, and a remote one would need a fetch on
+ * the critical path of a screen whose whole point is starting sooner.
+ */
+export const PROGRESSIVE_PLAYBACK_ENABLED = true;
+
 export type ListenPhase =
   | "checking"
   | "requesting"
@@ -75,10 +90,56 @@ export type ListenPhase =
   | "unavailable"
   | "offline";
 
+/** A playable piece of a chapter, restated structurally like `ListenOutcome`. */
+export type ListenChunk = {
+  index: number;
+  url: string;
+  durationMs: number | null;
+  charCount: number;
+};
+
+/** A piece that is not playable yet, restated structurally like the rest. */
+export type ListenChunkEstimate = {
+  index: number;
+  charCount: number;
+};
+
+export type ListenManifest = {
+  /** How many pieces the chapter has in total. */
+  chunks: number;
+  /** The pieces that can be played right now, in index order. */
+  entries: ListenChunk[];
+  /** What is known about the pieces that are not playable yet. */
+  pending?: ListenChunkEstimate[];
+};
+
+/** Is every piece of this chapter synthesized and playable? */
+export function isManifestComplete(manifest: ListenManifest | null): boolean {
+  if (!manifest) return true;
+  return manifest.entries.length >= manifest.chunks;
+}
+
+/** Can this manifest be played from right now? */
+function isManifestPlayable(manifest: ListenManifest | undefined): boolean {
+  if (!manifest) return false;
+  return manifest.entries.length > 0 && manifest.entries[0].index === 0;
+}
+
 export type ListenState = {
   phase: ListenPhase;
   /** Playable URL, once there is one. */
   audioUrl: string | null;
+  /**
+   * The chunks this playthrough is committed to, or null for the ordinary
+   * single-file playthrough.
+   *
+   * **A playthrough commits to its source.** A narration that was already on
+   * the chapter when the screen opened -- the cached case, and every replay --
+   * plays the one stitched file and never looks at a manifest, so the permanent
+   * cache and older clients behave exactly as they always have. Only a
+   * narration the reader is watching being made plays piece by piece.
+   */
+  manifest: ListenManifest | null;
   /** Server-supplied failure code, for the report and for support. */
   errorCode: string | null;
   /** Server-supplied refusal wording, when the server had one. */
@@ -101,8 +162,8 @@ export type ListenState = {
 
 /** Outcome shape from `@/lib/narration`, restated structurally so this module stays dependency-free. */
 export type ListenOutcome =
-  | { kind: "ready"; audioUrl: string; cached?: boolean }
-  | { kind: "pending" }
+  | { kind: "ready"; audioUrl: string; cached?: boolean; manifest?: ListenManifest }
+  | { kind: "pending"; manifest?: ListenManifest }
   | { kind: "failed"; errorCode: string | null }
   | { kind: "unavailable"; message: string }
   | { kind: "missing" }
@@ -125,6 +186,7 @@ export type ListenEvent =
 export const initialListenState: ListenState = {
   phase: "checking",
   audioUrl: null,
+  manifest: null,
   errorCode: null,
   message: null,
   startedAt: null,
@@ -153,9 +215,24 @@ export function isWaiting(phase: ListenPhase): boolean {
  * poll. `overdue` is included -- the reader has been offered a way out, but a
  * job that finishes at 200 seconds should still start playing for whoever
  * decided to wait.
+ *
+ * **`ready` is not the end of polling any more.** A progressive playthrough
+ * reaches `ready` on chunk 0 while the rest of the chapter is still being
+ * synthesized, and the poll is the only thing that ever learns the later
+ * chunks' urls -- stop it here and playback stops dead at the first boundary.
+ * A manifest that is complete, or no manifest at all, ends the poll as before.
  */
-export function shouldPoll(phase: ListenPhase): boolean {
-  return phase === "generating" || phase === "slow" || phase === "overdue";
+export function shouldPoll(
+  phase: ListenPhase,
+  manifest: ListenManifest | null = null,
+): boolean {
+  // `failed` is terminal for a progressive playthrough too -- see the
+  // `outcome` reducer -- so nothing here has to special-case it.
+
+  if (phase === "generating" || phase === "slow" || phase === "overdue") {
+    return true;
+  }
+  return phase === "ready" && !isManifestComplete(manifest);
 }
 
 /**
@@ -224,6 +301,51 @@ export function listenReducer(
       };
 
     case "outcome": {
+      // A progressive playthrough is `ready` and still being polled, so it is
+      // the one non-waiting phase that must keep listening to the server. It
+      // never re-enters a wait and never swaps to the stitched file it is
+      // already halfway through: the playthrough is committed. What it does
+      // listen for is more chunks -- and the two answers that mean no more are
+      // coming.
+      if (state.phase === "ready" && state.manifest) {
+        // ...but a row that has gone TERMINAL is not a transient gap, and
+        // treating it as one is what left a reader listening to chunk 0, then
+        // to silence, with the playhead parked at the end and the poll running
+        // every 2.5 seconds forever. `failed` means nothing further will ever
+        // be synthesized for this chapter; `missing` means the row is gone
+        // (`edit-story` deletes it on a rewrite). Neither has a later chunk
+        // coming, so the screen stops polling (`shouldPoll` is false for
+        // `failed`) and says which chapter could not finish.
+        if (event.outcome.kind === "failed") {
+          return {
+            ...state,
+            phase: "failed",
+            errorCode: event.outcome.errorCode,
+          };
+        }
+        if (event.outcome.kind === "missing") {
+          return {
+            ...state,
+            phase: "failed",
+            errorCode: "narration_job_missing",
+          };
+        }
+        // `unavailable` and `offline` are NOT terminal here: the entitlement
+        // gate and the network say nothing about the chunks already in hand,
+        // and dropping a reader out of playback for a dropped poll would be
+        // the same defect in the other direction.
+        const arriving = event.outcome.kind === "pending" ||
+            event.outcome.kind === "ready"
+          ? event.outcome.manifest
+          : undefined;
+        if (!arriving) return state;
+        // Only ever grows. A poll that answers with fewer entries than we have
+        // already started playing is a stale or partial read, not a retraction.
+        if (arriving.entries.length <= state.manifest.entries.length) {
+          return state;
+        }
+        return { ...state, manifest: arriving };
+      }
       // A terminal screen ignores late answers for the same reason.
       if (!isWaiting(state.phase)) return state;
       const elapsedMs = state.startedAt === null
@@ -239,7 +361,25 @@ export function listenReducer(
             message: null,
             elapsedMs,
           };
-        case "pending":
+        case "pending": {
+          // The whole point of chunking: the job is still running, and the
+          // reader can already listen. The screen goes to `ready` on the first
+          // playable piece and keeps polling for the rest (`shouldPoll`).
+          if (
+            PROGRESSIVE_PLAYBACK_ENABLED &&
+            isManifestPlayable(event.outcome.manifest)
+          ) {
+            const manifest = event.outcome.manifest as ListenManifest;
+            return {
+              ...state,
+              phase: "ready",
+              audioUrl: manifest.entries[0].url,
+              manifest,
+              errorCode: null,
+              message: null,
+              elapsedMs,
+            };
+          }
           return {
             ...state,
             phase: byElapsed(
@@ -251,6 +391,7 @@ export function listenReducer(
             ),
             elapsedMs,
           };
+        }
         case "missing": {
           // The job being polled does not exist. Go back to `checking` AND
           // bump `attempt`, because `attempt` is the only thing the screen's
