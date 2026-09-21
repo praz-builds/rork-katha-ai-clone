@@ -1880,3 +1880,43 @@ Deno.test("losing the run between the ownership check and the write cannot mark 
     restoreEnv(env);
   }
 });
+
+Deno.test("the legacy branch cannot publish its stitch over a run that took the row", async () => {
+  const env = setTestEnv();
+  try {
+    // The same defect that was just fixed on the chunked path, in the branch
+    // that still finishes pre-00095 runs. The ownership check this branch has
+    // always made happens BEFORE the last part is uploaded, the earlier parts
+    // downloaded and the chapter joined -- so a re-claim landing inside that
+    // stretch left this poll free to write its stitch to the STABLE path, the
+    // permanent cached URL every later reader is served, and to mark the new
+    // run's row `ready` with a plain write.
+    const state = newState({
+      chapter: p90Chapter(),
+      row: pendingRow("job-2"),
+      runpodStatusResponse: () => ({
+        status: "COMPLETED",
+        output: { audio_base64: base64(providerMp3(7, 0x40)) },
+      }),
+      // The takeover lands while the earlier parts are being read.
+      reclaimDuringStitch: "download",
+    });
+    state.storage.set(`${PARTS_PREFIX}/aria.00.mp3`, providerMp3(10, 0x10));
+
+    const result = await run(state, QUERY);
+
+    // Nothing published. A reader following the stable URL would otherwise get
+    // a superseded run's audio, of possibly different prose, cached forever.
+    assertFalse(state.storage.has(FINAL_PATH), "the stable path is untouched");
+    assertEquals(state.row!.status, "pending");
+    assertEquals(state.row!.provider_job_id, "job-99");
+    assertEquals(state.row!.error_code ?? null, null);
+    assertEquals(result.json.status, "PENDING");
+
+    // And the staging is left alone: those parts belong to the run holding the
+    // row now, which is still assembling from them.
+    assert(state.storage.has(`${PARTS_PREFIX}/aria.00.mp3`));
+  } finally {
+    restoreEnv(env);
+  }
+});

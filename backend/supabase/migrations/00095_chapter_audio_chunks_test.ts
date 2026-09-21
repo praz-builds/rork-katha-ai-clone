@@ -44,12 +44,28 @@ async function migrationFiles(): Promise<string[]> {
   return migrations;
 }
 
+/**
+ * Every caller wraps this in `try { ... } finally { db.close() }`, which only
+ * protects what this function RETURNS. A migration that fails to apply -- the
+ * ordinary way this harness reports a broken .sql file -- threw out of here
+ * with the PGlite instance already open and nothing holding a reference to it,
+ * so each failing run leaked a process handle. In CI, where a broken migration
+ * fails every test in the file, that is one leak per test.
+ *
+ * So the acquire is inside the guard: whatever goes wrong after `new PGlite`,
+ * the instance it opened is closed before the error leaves.
+ */
 async function createDatabase(): Promise<PGlite> {
   const db = new PGlite({ extensions: { pg_trgm } });
-  await bootstrapAuthSchema(db);
-  for (const migration of await migrationFiles()) {
-    const sql = await Deno.readTextFile(new URL(migration, import.meta.url));
-    await db.exec(sql.replace(/create index concurrently/gi, "create index"));
+  try {
+    await bootstrapAuthSchema(db);
+    for (const migration of await migrationFiles()) {
+      const sql = await Deno.readTextFile(new URL(migration, import.meta.url));
+      await db.exec(sql.replace(/create index concurrently/gi, "create index"));
+    }
+  } catch (error) {
+    await db.close();
+    throw error;
   }
   return db;
 }

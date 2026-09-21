@@ -131,6 +131,17 @@ interface ServerState {
    * one particular request.
    */
   failRunsAt: number[];
+  /**
+   * An overlapping `audio-status` poll ends one chunk while this request is
+   * still starting the others.
+   *
+   * Set to the zero-based `/run` call it lands on; the chunk row of the same
+   * index goes to `failed` with its `provider_job_id` still null -- which is
+   * precisely the state `audio-status`'s own retry path leaves behind when the
+   * start it attempted throws. The row still has no job, so only the STATUS
+   * half of the compare-and-swap can refuse the write that follows.
+   */
+  endChunkAtRun: number | null;
   calls: {
     rpc: number;
     chunkRpc: number;
@@ -168,6 +179,7 @@ function newState(overrides: Partial<ServerState> = {}): ServerState {
     stagedParts: [],
     chunkRows: new Map(),
     failRunsAt: [],
+    endChunkAtRun: null,
     calls: {
       rpc: 0,
       chunkRpc: 0,
@@ -416,14 +428,29 @@ function makeFetchStub(state: ServerState): typeof fetch {
         const row = idFilter ? state.chunkRows.get(idFilter) : undefined;
         if (!row) return json([]);
         // `markChapterAudioChunkStarted` is a compare-and-swap on "still
-        // pending, still has no job". A fixture that always answered with a
-        // row would make every caller believe it won.
+        // pending, still has no job" -- BOTH halves. A fixture that answered
+        // with a row would make every caller believe it won.
+        //
+        // The status half used to be dropped here, and dropping it is not a
+        // cosmetic gap: a chunk row that an overlapping `audio-status` poll
+        // has already moved to `failed` (or to `ready`) still carries a null
+        // `provider_job_id`, so the job-id half alone accepts it. This fixture
+        // would then report a WIN for a swap Postgres refuses -- the caller
+        // skips the cancel, and the provider job it started becomes billed
+        // work nothing will ever collect. A duplicate start is exactly what
+        // this predicate exists to catch, so the fixture has to be as strict
+        // as the column list.
         if (
           url.searchParams.get("provider_job_id") === "is.null" &&
           row.provider_job_id !== null
         ) {
           return json([]);
         }
+        const wantsStatus = url.searchParams.get("status")?.replace(
+          /^eq\./,
+          "",
+        );
+        if (wantsStatus && row.status !== wantsStatus) return json([]);
         state.chunkRows.set(idFilter!, { ...row, ...body } as typeof row);
         return json([{ id: row.id }]);
       }
@@ -531,6 +558,12 @@ function makeFetchStub(state: ServerState): typeof fetch {
           });
         }
         state.claims += 1;
+      }
+      if (state.endChunkAtRun === at) {
+        for (const [id, chunk] of state.chunkRows) {
+          if (chunk.chunk_index !== at) continue;
+          state.chunkRows.set(id, { ...chunk, status: "failed" });
+        }
       }
       if (state.failRunsAt.includes(at)) {
         return json({ error: "no capacity" }, 503);
@@ -1280,6 +1313,55 @@ Deno.test("a concurrent poll adopting chunk 0's job id must not get that job can
       state.chapterAudio.get(`${CHAPTER_ID}:aria`)!.status,
       "pending",
       "the narration survives",
+    );
+  } finally {
+    restoreEnv(env);
+  }
+});
+
+Deno.test("a chunk row that stopped being pending refuses this request's job id", async () => {
+  // The other half of the chunk compare-and-swap, and the half a row with no
+  // job id is the only way to reach: `provider_job_id is null` still matches a
+  // chunk an overlapping `audio-status` poll has already moved OFF `pending`.
+  // If the swap accepted that row it would record a job id onto a chunk the
+  // narration has finished with, and -- because the caller reads the boolean
+  // to decide -- skip the cancel, leaving a RunPod job running that nothing in
+  // the database points at. That is a billed duplicate start, which is the
+  // whole reason this predicate names the status as well as the job.
+  const env = setTestEnv({
+    NARRATION_GENERATION_ENABLED: "true",
+    RUNPOD_API_KEY: "test-runpod-key",
+  });
+  try {
+    const state = newState({ chapter: chapterOf(longChapter(13_382)) });
+    // Chunk 1's row is failed by somebody else while chunk 1's job is being
+    // started here. Its `provider_job_id` stays null, so the job-id half of
+    // the swap still matches it.
+    state.endChunkAtRun = 1;
+
+    const { status, json: body } = await run(state, {
+      story_id: STORY_ID,
+      chapter_id: CHAPTER_ID,
+      voice_id: "aria",
+    });
+
+    assertEquals(status, 202);
+    assertEquals(body.status, "PENDING");
+
+    const rows = [...state.chunkRows.values()].sort((a, b) =>
+      a.chunk_index - b.chunk_index
+    );
+    // Chunk 0 is untouched by any of this and still holds its own job.
+    assertEquals(rows[0].provider_job_id, "job-xyz");
+    // The refused write: the row keeps the state the other writer left it in.
+    assertEquals(rows[1].status, "failed");
+    assertEquals(rows[1].provider_job_id, null);
+    // And the job that could not be recorded is cancelled rather than left
+    // running with nothing pointing at it.
+    assertEquals(
+      state.calls.runpodCancel,
+      ["job-2"],
+      "a start that lost its row must not stay billed",
     );
   } finally {
     restoreEnv(env);

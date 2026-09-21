@@ -7399,3 +7399,84 @@ at them — the run that owns the claim publishes its own stitch to the same pat
 on its next poll. Closing it completely needs a per-run token on
 `chapter_audio`, which is the migration the note above already wants for the
 parts prefix; they belong in the same change.
+
+---
+
+## 2026-09-21 UTC — The legacy branch had the same hole, one step further along
+
+**Session:** narration review round 3 (PR #125). CodeAnt raised three findings.
+One was real but pointed at the wrong line, one was real but in the test double
+rather than the code it doubles, and one was exactly as described.
+
+### The stitched publish in the legacy branch was unguarded
+
+CodeAnt reported that the one-chunk-per-poll branch uploads a finished chunk to
+`parts/{voice}.NN.mp3` *before* the row compare-and-swap that claims the
+advance, and asked for the CAS to be moved ahead of the upload.
+
+Traced, and the ordering is not the defect. `stillOwnsNarrationJob` — a
+conditional update on `(id, provider_job_id, status = 'pending')`, the same
+shape the chunked path uses — already sits immediately before
+`uploadNarrationPart`, with nothing between them. The CAS the finding means is
+`advanceNarrationJob`, and that one *cannot* be moved ahead of the upload,
+because this branch's entire resume state is the number of part objects on disk
+(`finishedIndex = staged.length`). Advancing the row before the part exists
+would leave a crashed poll pointing at chunk N+1 with N parts staged, so the
+next poll writes chunk N+1's audio at index N: a chapter with a scene missing,
+still perfectly contiguous and therefore invisible to the gap check. The
+proposed reorder trades a narrow race for a silent corruption. The reasoning is
+now a comment at the check rather than something the next reader has to rederive.
+
+What the finding did surface is the same hole one step further along, which it
+did not name: **the last chunk's publish.** Between the ownership check and the
+final write this branch uploads the last part, downloads every earlier part and
+joins the whole chapter — the slowest stretch there is — and then wrote the
+stitch to the STABLE path and flipped the row with a plain
+`markChapterAudioReady`. A re-claim landing anywhere in that stretch meant a
+superseded run overwrote the permanent cached URL of the live one and marked
+its row `ready`. That is precisely the defect fixed on the chunked path last
+round; the legacy branch is where it survived. Ownership is now re-asked at the
+write, the publish is `markChapterAudioReadyIfOwner`, and a loser returns
+`PENDING` without clearing the staging — those parts belong to the run holding
+the row now.
+
+The branch is still scheduled for deletion once no pre-00095 row can be in
+flight. Until it is deleted it is deployed, so it is fixed.
+
+### A chunk compare-and-swap that only the fixture had loosened
+
+CodeAnt reported the per-chunk CAS accepting a row with no job regardless of
+status. `markChapterAudioChunkStarted` filters on
+`status = 'pending' AND provider_job_id IS NULL`, and
+`markChapterAudioChunkReady` on `(id, provider_job_id, status = 'pending')`;
+both halves are there and always were. The loose predicate was in
+`generate-audio/index.test.ts`'s `chapter_audio_chunks` PATCH handler, which
+honoured the job-id filter and dropped the status one — and that is not
+cosmetic, because a chunk an overlapping `audio-status` poll has already moved
+to `failed` still carries a null job id. The fixture reported a WIN for a swap
+Postgres refuses, so the caller skipped its cancel and the test suite could not
+see a RunPod job left running with nothing pointing at it. CodeAnt's own note
+("tests can miss a duplicate start") is the accurate half of the finding. The
+fixture is now as strict as the column list, and a new test drives exactly that
+interleaving and asserts the job is cancelled.
+
+### `createDatabase()` leaked a PGlite handle per failed run
+
+Every caller wraps it in `try/finally`, which only protects what it returns. A
+migration that fails to apply — the ordinary way this harness reports a broken
+`.sql` — threw with the instance already open, one leaked process handle per
+failing test, which in CI is every test in the file. The acquire is now inside
+the guard.
+
+**No test for this one.** The failure it fixes is a leaked handle on a path the
+test file cannot induce without faking the migration directory, and Deno's
+resource sanitiser does not see PGlite's handles. A test here would pass before
+and after, which is worth less than saying so.
+
+### Gates
+
+Backend `deno test --allow-all supabase/functions/` 1067 passed (+2),
+`deno check` and `deno fmt --check` clean on every touched file, migration
+suite green. Client `pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci`
+1360 passed across 129 suites. Both new behavioural tests were run against the
+reverted fix and fail there.

@@ -976,6 +976,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     // a chapter that repeats its opening. Checked atomically, and if we have
     // lost the row we change nothing at all -- the run that owns it now is
     // already doing the work.
+    //
+    // This check is the LAST thing before the upload on purpose, and it is the
+    // strongest guard this branch can carry. The other candidate -- moving
+    // `advanceNarrationJob` ahead of the upload so the advance is claimed
+    // first -- would be strictly worse here, because this branch's resume
+    // state is the PART COUNT ON DISK and nothing else (`finishedIndex =
+    // staged.length`). Advancing the row before the part existed would leave a
+    // crashed poll with the row pointing at chunk N+1 and only N parts staged,
+    // so the next poll writes chunk N+1's audio at index N: a chapter missing
+    // a scene, still perfectly contiguous, and therefore invisible to the gap
+    // check below. What remains after this check is the millisecond between a
+    // read and a write against a REST API, which no ordering closes -- the
+    // same residual window documented on the stitched path in
+    // `backend/build-log.md`, and closable only by the per-run token on
+    // `chapter_audio` that this PR deliberately does not open.
     if (
       !await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
     ) {
@@ -1129,17 +1144,58 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
+    // Still ours -- asked again, HERE, at the write.
+    //
+    // The check above happened before the last part was uploaded, the earlier
+    // parts downloaded and the whole chapter joined, which is the slowest
+    // stretch of this branch. That is exactly the gap the chunked path was
+    // just fixed for, and this branch has it too: a re-claim (after
+    // `NARRATION_JOB_STALE_MS`) landing inside it left this poll free to
+    // overwrite the ACTIVE run's file at the STABLE path -- the permanent,
+    // cached URL every later reader is served -- and then flip that run's row
+    // to `ready` with a plain write. Nothing would report a problem; the
+    // reader would simply get a superseded run's audio, of possibly different
+    // prose, under a row that says it succeeded.
+    if (
+      !await stillOwnsNarrationJob(serviceClient, row.id!, row.provider_job_id)
+    ) {
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
+      });
+    }
+
     const audioUrl = await uploadAudio(
       serviceClient,
       storagePath,
       assembled.bytes,
     );
-    await markChapterAudioReady(
+    // And the publish is a compare-and-swap on the row, for the same reason it
+    // is on the chunked path: the window above is narrow but not closed, and a
+    // poll that lost the row between the two must not flip somebody else's run
+    // to `ready`.
+    const published = await markChapterAudioReadyIfOwner(
       serviceClient,
       row.id!,
+      row.provider_job_id,
       storagePath,
       assembled.durationSeconds,
     );
+    if (!published) {
+      // Lost it. Discard quietly -- and in particular do NOT clear the parts
+      // below: they belong to the run that holds the row now, which is still
+      // assembling from them.
+      return respond({
+        status: "PENDING",
+        story_id: storyId,
+        chapter_id: chapterId,
+        voice_id: voiceId,
+        chunks: chunks.length,
+      });
+    }
     // Only now: the parts are dead weight the moment the finished file is
     // readable, and not one moment before. Deleting them before the upload
     // would mean an upload failure could not be retried from anything.
