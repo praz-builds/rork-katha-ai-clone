@@ -76,6 +76,22 @@ async function pollStatus(
     },
   });
   const text = await res.text();
+
+  // AN HTTP FAILURE IS NOT A POLL RESULT.
+  //
+  // Reading only the body meant a 401, a 404 or a 500 came back as an object
+  // with no `status` field, which the loop below treats exactly like "still
+  // pending" -- so a deploy that was refusing every request looked identical
+  // to one that was working, for the full four minutes until the window ran
+  // out. This script exists to tell those two apart, so it has to look.
+  if (!res.ok) {
+    return {
+      status: "HTTP_ERROR",
+      http_status: res.status,
+      raw: text.slice(0, 300),
+    };
+  }
+
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
@@ -183,6 +199,22 @@ while (Date.now() - started < GIVE_UP_MS) {
       }`,
     );
     break;
+  }
+  if (body.status === "HTTP_ERROR" || body.status === "UNPARSEABLE") {
+    // Stop on the first one. A poll that cannot be read is not going to start
+    // being readable, and waiting out the window turns a clear signal into a
+    // timeout that says nothing about why.
+    await logFailure("narration_status_unreadable", {
+      chapter_id: chapter.id,
+      http_status: body.http_status ?? null,
+      elapsed_ms: elapsed,
+    });
+    console.error(
+      `audio-status unreadable at ${(elapsed / 1000).toFixed(1)}s: ${
+        JSON.stringify(body).slice(0, 220)
+      }`,
+    );
+    Deno.exit(1);
   }
   if (body.status === "FAILED") {
     await logFailure("narration_verify_failed", {
