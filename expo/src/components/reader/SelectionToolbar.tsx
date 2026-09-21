@@ -18,6 +18,17 @@ export type SelectionToolbarProps = {
   saving?: boolean;
   /** True once this exact selection is saved, so Save reads back as done. */
   saved?: boolean;
+  /**
+   * The line under the word count, replacing "keep dragging to adjust".
+   *
+   * That default describes the drag gesture, and the drag gesture does not
+   * exist on web (react-native-web drops `Text.onLongPress`, so nothing ever
+   * anchors a range to drag) nor in the explicit tap-first-then-last mode the
+   * "Save a phrase" control opens. Telling a reader to keep dragging when
+   * dragging does nothing is the discoverability bug in miniature, so the
+   * caller that knows which path raised this menu supplies the line.
+   */
+  hint?: string;
   onAction: (action: SelectionAction) => void;
 };
 
@@ -51,6 +62,7 @@ export function SelectionToolbar({
   wordCount,
   saving = false,
   saved = false,
+  hint,
   onAction,
 }: SelectionToolbarProps) {
   const reducedMotion = useReducedMotion();
@@ -71,7 +83,7 @@ export function SelectionToolbar({
       style={styles.bar}
     >
       <Text style={styles.hint} testID="selection-toolbar-hint">
-        {wordCount} {wordCount === 1 ? "word" : "words"} · keep dragging to adjust
+        {wordCount} {wordCount === 1 ? "word" : "words"} · {hint ?? "keep dragging to adjust"}
       </Text>
       <View style={styles.row}>
         {items.map((item) => {
@@ -109,6 +121,24 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     bottom: spacing.huge,
     zIndex: 30,
+    /*
+      THE TOOLBAR MUST NOT BE SELECTABLE, OR IT CANNOT BE PRESSED.
+
+      On web this toolbar acts on the browser's own text selection: the page
+      body is `selectable`, and `handleSelectionAction` reads whatever is
+      selected at the moment it runs. A browser collapses that selection on
+      the MOUSEDOWN of any element that is itself selectable -- and a React
+      Native `View` compiles to a plain `div`, which is. The `Text` labels
+      inside already default to `user-select: none`, so the only part of a
+      48pt-tall button that survived a press was the ~13pt of glyph: click the
+      icon, or the padding around the label, and the selection was gone before
+      mouseup, leaving nothing to save and no toast to say so.
+
+      `userSelect: "none"` here makes the whole control inert to selection,
+      which is what every native text toolbar does and what a reader assumes.
+      react-native-web honours the style; native ignores it.
+    */
+    userSelect: "none",
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,

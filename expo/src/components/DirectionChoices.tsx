@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
+import { Check, Circle, PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
 import { MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { colors, fonts, radius, spacing, type } from "@/theme";
 
@@ -65,7 +65,43 @@ function nonEmpty(value: string | undefined | null): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-export type DirectionChoicesProps = {
+/**
+ * The same cards, after the fact: the paths a chapter was offered and the one
+ * it took, with nothing left to press.
+ *
+ * A second component would have been easier and wrong. The whole claim this
+ * surface makes -- "these were the options" -- only holds if the frozen chips
+ * are the live chips, and two implementations of a card are two chances for
+ * the record to stop looking like the decision it records.
+ */
+export type ReadOnlyDirectionChoicesProps = {
+  readOnly: true;
+  /** What this block is, e.g. "The paths from here". */
+  heading: string;
+  /** Every direction that was offered, in offer order. */
+  options: ContinuationOption[];
+  /**
+   * The prompt of the direction the story actually took, matched by prose.
+   *
+   * Undefined marks nothing, which is the honest rendering of a chapter that
+   * was written with no direction at all.
+   */
+  chosen?: string;
+  /**
+   * One short line saying who decided, shown under the taken card.
+   *
+   * Undefined says nothing. `direction_chosen_by` is null for rows where
+   * nobody recorded a chooser, and a reader must never be told they picked a
+   * path the model picked -- so the caller passes a sentence only when the
+   * column supports one.
+   */
+  attribution?: string;
+  testIDPrefix: string;
+};
+
+export type InteractiveDirectionChoicesProps = {
+  /** Live surface: the reader is being asked, and a tap spends a credit. */
+  readOnly?: false;
   /** The question this surface is asking, e.g. "What's next?". */
   heading: string;
   /** What choosing costs. Every path out of here costs the same, so it sits above them all. */
@@ -108,22 +144,11 @@ export type DirectionChoicesProps = {
   onChoose: (direction?: string) => void;
 };
 
-export default function DirectionChoices({
-  heading,
-  priceNote,
-  status,
-  options,
-  unavailableReason,
-  loadingLabel,
-  loadingMessage,
-  chooseHint,
-  submitLabel,
-  writeOwnLabel,
-  composerPlaceholder,
-  testIDPrefix,
-  onChoose,
-  charLimit = MAX_NEXT_INSTRUCTION_CHARS,
-}: DirectionChoicesProps) {
+export type DirectionChoicesProps =
+  | InteractiveDirectionChoicesProps
+  | ReadOnlyDirectionChoicesProps;
+
+export default function DirectionChoices(props: DirectionChoicesProps) {
   const reduceMotion = useReducedMotion();
   // The composer starts closed on purpose. Suggested directions are the
   // primary surface; typing your own is the escape hatch, and an escape hatch
@@ -131,12 +156,90 @@ export default function DirectionChoices({
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState("");
 
+  // A frozen record is never loading and never unavailable: it is a list of
+  // things that already happened. Derived rather than branched around so the
+  // hook below keeps running in both modes.
+  const status = props.readOnly === true ? "ready" : props.status;
+
   // With nothing derived, the writer's own words are the only way on, so the
   // composer opens rather than hiding behind one more tap. Only ever opens it:
   // a later status change must not close a composer somebody is typing into.
   useEffect(() => {
     if (status === "unavailable") setComposerOpen(true);
   }, [status]);
+
+  if (props.readOnly === true) {
+    const { heading, options, chosen, attribution, testIDPrefix } = props;
+    // Nothing recorded, nothing rendered -- not a heading, not an empty state.
+    // A chapter written before the columns existed has an unknown answer, and
+    // an empty block in its place would read as a known one.
+    if (options.length === 0) return null;
+    return (
+      <View style={styles.wrap} testID={`${testIDPrefix}-paths`}>
+        <Text style={styles.heading}>{heading}</Text>
+        {options.map((option, index) => {
+          // Matched on the prose, because that is what was sent to the model
+          // and what is stored in `direction_chosen` -- the ids are generated
+          // per offer and do not survive the round trip.
+          const taken = chosen !== undefined && option.prompt === chosen;
+          return (
+            <View
+              key={option.id}
+              /* One accessible node per path, spoken as a fact rather than as
+                 something to activate. No `button` role, no `onPress`, no
+                 hint: there is nothing here to do, and announcing a control
+                 that cannot be operated is worse than announcing nothing. */
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={taken
+                ? `Taken: ${option.prompt}${attribution ? `. ${attribution}` : ""}`
+                : `Not taken: ${option.prompt}`}
+              style={[
+                styles.optionCard,
+                styles.pathCard,
+                taken && styles.pathCardTaken,
+              ]}
+              testID={`${testIDPrefix}-path-${index}`}
+            >
+              {taken
+                ? <Check size={16} color={colors.accent} />
+                : <Circle size={16} color={colors.tertiary} />}
+              <View style={styles.pathBody}>
+                <Text
+                  style={[styles.optionText, !taken && styles.pathTextUntaken]}
+                >
+                  {option.prompt}
+                </Text>
+                {taken && attribution
+                  ? (
+                    <Text style={styles.pathAttribution}>
+                      {attribution}
+                    </Text>
+                  )
+                  : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
+  const {
+    heading,
+    priceNote,
+    options,
+    unavailableReason,
+    loadingLabel,
+    loadingMessage,
+    chooseHint,
+    submitLabel,
+    writeOwnLabel,
+    composerPlaceholder,
+    testIDPrefix,
+    onChoose,
+    charLimit = MAX_NEXT_INSTRUCTION_CHARS,
+  } = props;
 
   return (
     <View style={styles.wrap}>
@@ -324,6 +427,32 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: colors.muted,
     marginTop: -spacing.related,
+  },
+  // A path that was on the table, read back later. Same card as the live one,
+  // with its interactive weight taken off: no fill and no pressed state,
+  // because nothing here moves when it is touched.
+  pathCard: {
+    alignItems: "flex-start",
+    backgroundColor: "transparent",
+  },
+  // The one the story took. The accent edge is the only marking, and it is the
+  // same accent a chosen card takes while it is being pressed, so the record
+  // looks like the decision it records.
+  pathCardTaken: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  pathBody: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  // The roads not taken stay legible but stop competing with the one that was.
+  pathTextUntaken: {
+    color: colors.muted,
+  },
+  pathAttribution: {
+    ...type.caption,
+    color: colors.muted,
   },
   // The third card. Same shape as a derived direction so the row reads as
   // three peers, with a dashed edge as the one signal that this one is the
