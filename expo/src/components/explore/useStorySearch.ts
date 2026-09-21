@@ -128,6 +128,8 @@ async function warmCovers(
   stories: readonly Story[],
   prefetch: (uri: string) => Promise<unknown>,
   timeoutMs: number,
+  /** Whether this run is still the newest. See the note below the filter. */
+  isCurrent: () => boolean,
 ): Promise<void> {
   // Anything already asked for is dropped here rather than re-requested. The
   // screenful is taken FIRST and filtered second, so a query whose top rows
@@ -137,12 +139,31 @@ async function warmCovers(
   // No remote covers is the common case in tests and offline: return on the
   // same tick rather than arming a timer nothing is waiting for.
   if (uris.length === 0) return;
+  // THE REQUEST IS THE COST, SO A SUPERSEDED RUN MUST NOT MAKE ONE -- and
+  // there is less room here than it looks, which is worth writing down.
+  //
+  // A review asked for this on the grounds that a newer search starting
+  // "during warm-up" leaves the obsolete one's covers competing for bandwidth
+  // with the covers now on screen. The guard is cheap and correct, so it is
+  // here. But it cannot currently fire: every uri below is launched in ONE
+  // synchronous tick, so nothing can land between the caller's check and the
+  // last launch. By the time the reader could type, the requests are already
+  // on the wire, and `Image.prefetch` cannot be cancelled.
+  //
+  // So this is insurance against the launches ever becoming staggered (a
+  // concurrency cap, a per-cover delay), not a fix for a reachable bug today.
+  // It has no test, deliberately: a test could only assert something that
+  // cannot happen, which is worse than no test. The thing that actually
+  // bounds the spend is the `warmedCovers` filter above.
+  if (!isCurrent()) return;
   for (const uri of uris) rememberCover(uri);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.all(uris.map((uri) => prefetch(uri).catch(() => undefined))),
+      Promise.all(uris.map((uri) =>
+        isCurrent() ? prefetch(uri).catch(() => undefined) : Promise.resolve()
+      )),
       new Promise<void>((resolve) => {
         timer = setTimeout(resolve, timeoutMs);
       }),
@@ -232,7 +253,12 @@ export function useStorySearch(
           // Warm the first screenful's covers, then hand the rows over. The
           // wait is bounded by `prefetchTimeoutMs` and by nothing else.
           if (prefetchTimeoutMs > 0) {
-            await warmCovers(outcome.stories, prefetch, prefetchTimeoutMs);
+            await warmCovers(
+              outcome.stories,
+              prefetch,
+              prefetchTimeoutMs,
+              () => sequence === latestRun.current,
+            );
             // The reader may have typed through the warm-up, so the sequence
             // is checked AGAIN on the other side of it. Checking only before
             // the await would reintroduce exactly the stale-answer bug the

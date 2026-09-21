@@ -113,7 +113,15 @@ export function Button({
    */
   icon?: ReactNode;
   disabled?: boolean;
-  /** Swaps the label for a spinner and blocks the press. Still announced as disabled. */
+  /**
+   * The button is doing the thing you already pressed it for.
+   *
+   * Puts a spinner in the ICON's place and keeps the label, so a caller
+   * passing `label={busy ? "Saving" : "Save"}` still shows the word — a
+   * spinner alone says "wait" without saying what for. Blocks the press, and
+   * is announced as `busy` rather than as `disabled`: unavailable and working
+   * are different states, and only one of them is worth waiting through.
+   */
   loading?: boolean;
   fullWidth?: boolean;
   testID?: string;
