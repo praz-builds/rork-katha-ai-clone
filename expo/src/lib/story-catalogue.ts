@@ -94,13 +94,19 @@ export function needsChapters(story: Story, ownIds: ReadonlySet<string>): boolea
 }
 
 /**
- * A series gets a landing page; a standalone opens straight into its prose.
+ * Is this story a series, or a standalone?
  *
- * The landing page earns its extra tap only when there is something to land
- * ON - a chapter list to choose from, a series premise to read before
- * committing. For a single-chapter story that page would be a wall between
- * the reader and the one thing they tapped for, so the tap goes where the
- * intent went.
+ * NOT a navigation question any more -- every finished story opens its story
+ * page, see `openTarget`. What is left is copy: whether a page says
+ * "Standalone" or counts chapters, whether the end of a chapter offers the
+ * next one or closes the book.
+ *
+ * Nothing in the app calls this today. `StoryDetailScreen.storyProgressLabel`
+ * and `ChapterEnd` each ask the question inline, and they ask it differently
+ * -- the detail screen counts `plannedChapterCount` and the chapter list, the
+ * chapter end trusts `storyMode` alone -- so folding them into this one would
+ * change what both of those screens say, which is a product decision and not
+ * a tidy-up. It stays as the definition the two should converge on.
  *
  * Call it on a HYDRATED story. A metadata-only copy has no chapters to count,
  * so the answer would rest on `storyMode` alone.
@@ -109,9 +115,48 @@ export function isSeries(story: Story): boolean {
   return story.storyMode === "series" || story.chapters.length > 1;
 }
 
-/** Where a tap on this story lands. */
-export function openTarget(story: Story): "story" | "reader" {
-  return isSeries(story) ? "story" : "reader";
+/**
+ * Is a generation session writing this story RIGHT NOW?
+ *
+ * `liveStoryIds` is every story held by a session in its `writing` phase, by
+ * BOTH of the names such a session has: its `storyId` and its session id.
+ * Both are needed and the reason is not obvious -- `storyId` is filled from
+ * the first `meta` event, well before the writing ends, while the provisional
+ * row in the catalogue keeps its session-id key for its whole life. Carrying
+ * only one of them means that from the moment `meta` lands, the session's own
+ * story stops matching itself and opens its story page mid-generation.
+ */
+export function isBeingWritten(
+  story: Story,
+  liveStoryIds: ReadonlySet<string>,
+): boolean {
+  return liveStoryIds.has(story.id);
+}
+
+/**
+ * Where a tap on this story lands: the story page, always -- with exactly one
+ * exception.
+ *
+ * The story page is the front door, and it is the same door whether the story
+ * has one chapter or thirty: the cover, the blurb, the chapter list, the Read
+ * button. The fork this replaced sent a one-chapter story straight into its
+ * prose on the theory that a landing page with nothing to choose from is a
+ * wall between the reader and what they tapped for. What it actually did was
+ * hide the cover, the description and the author of most of the catalogue,
+ * and make the same tap behave two different ways depending on a fact the
+ * card the reader tapped does not show.
+ *
+ * THE EXCEPTION: a story a generation session is writing right now opens
+ * straight into the reader. A story being written is not something you
+ * preview -- you watch it appear, and the reader is the screen that shows
+ * prose arriving page by page. Its story page would count zero chapters and
+ * offer a Read button with nothing behind it.
+ */
+export function openTarget(
+  story: Story,
+  liveStoryIds: ReadonlySet<string> = new Set<string>(),
+): "story" | "reader" {
+  return isBeingWritten(story, liveStoryIds) ? "reader" : "story";
 }
 
 /**
