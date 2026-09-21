@@ -20,6 +20,8 @@ import {
   needsChapters,
   openTarget,
 } from "@/lib/story-catalogue";
+import { mapSearchRow } from "@/lib/search";
+import { storyProgressLabel } from "@/screens/StoryDetailScreen";
 import type { Chapter, Story } from "@/types/domain";
 
 function chapter(storyId: string, n: number): Chapter {
@@ -165,7 +167,7 @@ describe("opening a story that arrived without chapters", () => {
     expect(needsChapters(story("session-1"), new Set(["session-1"]))).toBe(false);
   });
 
-  it("opens the hydrated copy, and routes a series to its landing page", async () => {
+  it("opens the hydrated copy, and routes it to the story page", async () => {
     const original = story("orig-1", { storyMode: "series" });
     const load = jest.fn(async (s: Story) => ({
       ok: true,
@@ -178,10 +180,14 @@ describe("opening a story that arrived without chapters", () => {
     expect(opened.kind).toBe("open");
     if (opened.kind !== "open") return;
     expect(opened.story.chapters).toHaveLength(1);
+    // Routed on the HYDRATED copy, which is the one that has chapters to
+    // show on the page being opened.
     expect(openTarget(opened.story)).toBe("story");
   });
 
-  it("routes a standalone straight into the reader", async () => {
+  it("sends a one-chapter standalone to the story page too", async () => {
+    // The old fork dropped this tap straight into the prose, so most of the
+    // catalogue was read without its cover, blurb or author ever being seen.
     const opened = await hydrateForOpen(story("orig-2"), async (s) => ({
       ok: true,
       story: { ...s, chapters: [chapter(s.id, 1)] },
@@ -189,21 +195,63 @@ describe("opening a story that arrived without chapters", () => {
 
     expect(opened.kind).toBe("open");
     if (opened.kind !== "open") return;
-    expect(openTarget(opened.story)).toBe("reader");
+    expect(openTarget(opened.story)).toBe("story");
   });
 
-  it("decides series-or-standalone on the hydrated copy's chapters", async () => {
-    // The metadata-only copy has nothing to count. A multi-chapter story whose
-    // row says nothing about its mode is a series once its chapters are in.
+  it("still distinguishes a series from a standalone, for the copy that needs it", () => {
+    // `isSeries` no longer routes anything; it is the definition of the
+    // question two screens currently ask inline. The metadata-only copy has
+    // nothing to count: a multi-chapter story whose row says nothing about
+    // its mode is a series only once its chapters are in.
     const bare = story("orig-3");
     expect(isSeries(bare)).toBe(false);
+    expect(isSeries({ ...bare, chapters: [chapter(bare.id, 1), chapter(bare.id, 2)] }))
+      .toBe(true);
+    expect(isSeries({ ...bare, storyMode: "series" })).toBe(true);
+  });
 
-    const opened = await hydrateForOpen(bare, async (s) => ({
+  it("sends a story being written right now to the reader, not its story page", () => {
+    // A story mid-generation has no chapters on the server and no story page
+    // worth showing: it is watched, page by page, in the reader.
+    const live = story("session-1");
+    expect(openTarget(live, new Set(["session-1"]))).toBe("reader");
+    expect(openTarget(live, new Set(["some-other-session"]))).toBe("story");
+    // And once the session finishes it is an ordinary finished story again.
+    expect(openTarget({ ...live, chapters: [chapter(live.id, 1)] }, new Set()))
+      .toBe("story");
+  });
+
+  it("gives a search result its real chapter count before the story page reads it", async () => {
+    // `mapSearchRow` always returns `chapters: []` -- the search query selects
+    // metadata only. The story page counts chapters for its progress line, so
+    // a tap that reached it on the unhydrated copy would say "0 chapters"
+    // about a story with three. Every route into it goes through
+    // `needsChapters` -> `hydrateForOpen` first, and this pins that the page
+    // is handed the hydrated copy rather than the one the list held.
+    const row = mapSearchRow({
+      id: "found-1",
+      title: "The Ferry",
+      author_id: "a1",
+      genre: "adventure",
+      story_mode: "series",
+      is_public: true,
+    })!;
+    expect(row.chapters).toHaveLength(0);
+    expect(needsChapters(row, new Set())).toBe(true);
+    expect(storyProgressLabel(row)).toBe("0 chapters");
+
+    const opened = await hydrateForOpen(row, async (s) => ({
       ok: true,
-      story: { ...s, chapters: [chapter(s.id, 1), chapter(s.id, 2)] },
+      story: {
+        ...s,
+        chapters: [chapter(s.id, 1), chapter(s.id, 2), chapter(s.id, 3)],
+      },
     }));
 
-    expect(opened.kind === "open" && openTarget(opened.story)).toBe("story");
+    expect(opened.kind).toBe("open");
+    if (opened.kind !== "open") return;
+    expect(openTarget(opened.story)).toBe("story");
+    expect(storyProgressLabel(opened.story)).toBe("3 chapters");
   });
 
   it("does not open anything when the chapter fetch fails", async () => {

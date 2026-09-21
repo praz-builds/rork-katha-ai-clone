@@ -160,6 +160,27 @@ export type Author = {
   avatarPaletteIndex: number;
 };
 
+/**
+ * Who picked the direction a chapter was written from
+ * (`chapters.direction_chosen_by`, migration 00078).
+ *
+ * `reader` is a person: a chip tapped or a direction typed. `model` is the
+ * direction model choosing in auto mode. `ranking` is auto mode where that
+ * choosing call was not made or failed, so the highest-ranked option was
+ * taken. The last two stay distinct on purpose -- collapsing them would let a
+ * surfaced chip claim a decision that was really a fallback.
+ *
+ * Absent means nothing was recorded: either no direction was derivable, or the
+ * chapter predates the column. Neither is a licence to guess.
+ */
+export type DirectionChooser = "reader" | "model" | "ranking";
+
+/** One direction that was on the table when a chapter was written. */
+export type OfferedDirection = {
+  id: string;
+  prompt: string;
+};
+
 export type Chapter = {
   id: string;
   storyId: string;
@@ -187,6 +208,29 @@ export type Chapter = {
   imageUrl?: string;
   audioUrl?: string;
   audioUrls?: { female?: string; male?: string };
+  /**
+   * The directions that were on the table when THIS chapter was written, in
+   * offer order (`chapters.directions_offered`).
+   *
+   * They belong to the boundary this chapter came out of -- the end of the
+   * chapter before it -- which is where the reader is shown them.
+   *
+   * Absent for every chapter written before migration 00078, and that absence
+   * is rendered as nothing at all rather than an empty state: "no directions
+   * were offered" and "nobody recorded what was offered" are different facts,
+   * and only the second one is true of those chapters.
+   */
+  directionsOffered?: OfferedDirection[];
+  /**
+   * The direction this chapter was actually written from
+   * (`chapters.direction_chosen`).
+   *
+   * Usually one of `directionsOffered`, but not always: a reader who typed
+   * their own direction chose something that was never on a card.
+   */
+  directionChosen?: string;
+  /** Who decided. See `DirectionChooser` -- never inferred, only read. */
+  directionChosenBy?: DirectionChooser;
 };
 
 export type SeriesState = {

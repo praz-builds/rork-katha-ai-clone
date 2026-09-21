@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This file is the definitive design contract for the Katha Expo app. It describes the implementation in `src/components/BrandWordmark.tsx`, `src/screens/KathaOnboarding.jsx`, `src/screens/KathaOnboardingFlowV2.jsx`, `src/screens/WriterOnboarding.tsx`, and `src/theme/theme.ts` as of 2026-09-07.
+This file is the definitive design contract for the Katha Expo app. It describes the implementation in `src/components/BrandWordmark.tsx`, `src/screens/KathaOnboarding.jsx`, `src/screens/KathaOnboardingFlowV2.tsx`, `src/screens/CharacterOnboarding.tsx`, and `src/theme/theme.ts` as of 2026-09-21. (`WriterOnboarding.tsx` was deleted in #92 -- the writer branch is `CharacterOnboarding.tsx` now.)
 
 Use this document before changing onboarding, paywall, or shared visual components. The reference viewport is **390 x 844 points**. Local screenshots and the historical handoff are supporting evidence, not permission to fork the system.
 
@@ -186,7 +186,6 @@ The design rule is zero letter spacing for visible text. The only currently tole
 
 - Inputs and option rows: 1.5 points; selected border `#FF6B1A`, unselected `#E7DCC9`.
 - OTP cells and plan cards: 2 points.
-- One-time-offer card and CTA: 2.5 points in ink.
 - Review cards: 1 point `#F3EADB`.
 - Alert dividers: `StyleSheet.hairlineWidth`, `#D9D9DD`.
 - Intro internal separators: 1 point `#F0E7D6`.
@@ -394,7 +393,7 @@ The implemented order is:
 
 1. Animated Create, Publish, and Read introduction.
 2. First name.
-3. At least three genre interests (`MIN_GENRE_SELECTIONS` in `KathaOnboardingFlowV2.jsx`), with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
+3. At least three genre interests (`MIN_GENRE_SELECTIONS` in `KathaOnboardingFlowV2.tsx`), with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
 4. Purpose: Reading, Writing, or A bit of both.
 5. Adaptive persona question one.
 6. Adaptive persona question two. For Writing this opens the dedicated writer story flow; for Reading or Both the CTA is `Build my profile`.
@@ -407,7 +406,7 @@ The implemented order is:
 13. Personalized success screen.
 14. Home handoff.
 
-Email comes after the offer action so the user first sees Katha's value, invests in a personalized profile, and understands the relevant paid outcome before account friction. Both acceptance and decline paths still lead to profile saving. Do not move email ahead of purpose or personalization without an explicit product decision and a measured experiment.
+**Email comes before the drawing, not after it.** `ONBOARDING_FLOW.md` is the record: **W5 Save** asks for the address while the portrait is still a dashed placeholder, so the portrait has an owner before it exists. Amended 2026-09-12: the image call fires one screen earlier still, on **W4**'s CTA, and W5's CTA only validates the address and sends the code -- the email and six-digit code screens exist to cover that wait. **W6 Meet** opens ready if the portrait landed while the code was being typed, loading if it has not. Auth never gates the aha; it runs beside it. The order is `w3 -> w4 -> w5 -> code -> w6 -> paywall -> welcome` (`Step` in `src/screens/CharacterOnboarding.tsx`). Both acceptance and decline paths still lead to profile saving. This ordering is a product decision of 2026-09-11 (#92) and 2026-09-12; do not reverse it without another.
 
 ### Persona Branches
 
@@ -477,7 +476,7 @@ Closing the paywall shows a confirmation sheet, and that is where the close flow
 
 ### Reduced Motion
 
-The intro, marquee, loading, paywall entry, offer entry, offer pulse, and success pulse paths read the operating-system reduced-motion preference. Reduced motion renders the completed prompt and final `warning` edit, publish stats at 246, static representative cover rows, and final paywall/offer states without looping or entry motion.
+The intro, marquee, loading, paywall entry, and success pulse paths read the operating-system reduced-motion preference. Reduced motion renders the completed prompt and final `warning` edit, publish stats at 246, static representative cover rows, and final paywall/offer states without looping or entry motion.
 
 When motion is touched:
 
@@ -502,8 +501,8 @@ After onboarding or paywall changes:
 1. Run `pnpm typecheck`.
 2. Run `pnpm exec expo-doctor`.
 3. Confirm the Expo web bundle compiles.
-4. Start the preview with `scripts/preview.sh`. It serves `main` on port 8090 from its own worktree -- so run this pass **after** the change has merged. Do not start a server on 8090 from your lane worktree to shortcut it; that silently replaces the reviewed state with your branch (see *The preview shows main, and only main* in AGENTS.md). For a pre-merge look, use port 8091 and expect edge calls to fail CORS.
-5. Open `http://localhost:8090/` automatically in the in-app browser, and confirm the commit the script printed is the one you expect.
+4. Start the preview with `scripts/preview.sh` and open the URL it prints (8090 unless `KATHA_PREVIEW_PORT` overrides it; only 8090 is in `ALLOWED_ORIGINS`, so any other port fails every edge call). It serves `main` from its own worktree -- so run this pass **after** the change has merged. Do not start a server on 8090 from your lane worktree to shortcut it; that silently replaces the reviewed state with your branch (see *The preview shows main, and only main* in AGENTS.md). For a pre-merge look, use port 8091 and expect edge calls to fail CORS.
+5. Open that URL in the in-app browser, and confirm the commit the script printed is the one you expect.
 6. Set the viewport to 390 x 844.
 7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
 8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.
@@ -520,7 +519,8 @@ After onboarding or paywall changes:
 | `src/components/BrandWordmark.tsx` | Only approved Katha AI wordmark implementation |
 | `src/theme/theme.ts` | App-wide baseline colors, spacing, radii, and font-family names |
 | `src/screens/KathaOnboarding.jsx` | Intro geometry, assets, copy, and animation timelines |
-| `src/screens/KathaOnboardingFlowV2.jsx` | Question sequence, branches, notification education, paywall, offer, and success UI |
+| `src/screens/KathaOnboardingFlowV2.tsx` | Question sequence and branches only -- purpose, name, genres, refine, mood |
+| `src/screens/CharacterOnboarding.tsx` | W3-W6, email/OTP, the single paywall and the welcome hand-off (#92, 2026-09-11) |
 | `src/screens/KathaOnboardingComplete.jsx` | Production intro-to-flow composition |
 | `App.tsx` | Font loading and app-level onboarding entry |
 | `assets/fonts` | Approved bundled type assets |

@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Ellipsis,
   Pause,
@@ -32,9 +31,11 @@ import GeneratingOverlay from "@/components/GeneratingOverlay";
 import { RepromptSheet } from "@/components/reader/RepromptSheet";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import type { StoryReportReason } from "@/components/comments/types";
+// `RepromptRequest` is main's rename of `ReimagineRequest` (#121). `FocalImage`
+// and `imageAssets` came with it for the opener's cover, which this change
+// removes: the cover belongs to the story page and the reader's first page is
+// a title page, so neither import has a use here any more.
 import { startReimagine, type RepromptRequest, type ReimagineRun } from "@/lib/reimagine-client";
-import { FocalImage } from "@/components/KathaPrimitives";
-import { imageAssets } from "@/data/images";
 import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { captureError } from "@/lib/analytics";
@@ -74,7 +75,10 @@ import {
   setPreferredVoiceGender,
   type VoiceGender,
 } from "@/lib/voices";
-import { colors, fonts, genreGradients, genreLabels, motion, radius, shadows, spacing, type } from "@/theme";
+// `genreGradients` and `genreLabels` went with the opener's cover in #122 --
+// the reader's first page is a title page now, so there is no genre line and
+// no gradient to fall back to. `Button` is this branch's addition.
+import { colors, fonts, motion, radius, shadows, spacing, type } from "@/theme";
 import { Button } from "@/components/Button";
 import type { Chapter, Story } from "@/types/domain";
 
@@ -177,6 +181,23 @@ export type ReaderScreenProps = {
    */
   onListen?: (chapterIndex: number) => void;
   /**
+   * Open an explicit, gesture-free way to save a phrase.
+   *
+   * Supplied by `PhraseCaptureReader`, which owns phrase capture and wraps
+   * this screen; the chrome is drawn here, so the control it draws has to be
+   * handed down. `ReaderChrome` renders nothing for this when it is absent,
+   * so a reader mounted without the wrapper is unchanged.
+   *
+   * IT IS NOT A SHORTCUT, IT IS THE ONLY DOOR FOR SOME READERS. The gesture
+   * routes are a long-press on native and a text selection on web, and
+   * neither is available to somebody using a screen reader -- the page
+   * deliberately serves them fluent prose with no per-word stops, so there
+   * are no words to press. This control is how they reach the same feature,
+   * and it is why the prop exists rather than the gesture simply being
+   * documented somewhere.
+   */
+  onSavePhrase?: () => void;
+  /**
    * The viewer has no account, so anything that writes to somebody else's
    * story is gated.
    *
@@ -223,10 +244,22 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
 
 const PAGE_RENDER_WINDOW = 2;
 /**
- * Roughly how tall the chapter opener is: the cover thumbnail (94 wide at 3:4,
- * so ~125), the genre line, the story title, the byline, the "Chapter N"
- * eyebrow, the chapter title, its rule, and the `spacing.sm` gaps the shell
- * puts between all of them.
+ * The opener every chapter has: the story's title and the rule under the
+ * block. Measured off the styles below, at the reader's default type.
+ *
+ *   story title      lineHeight 32          32
+ *   shell gap        spacing.sm              8
+ *   rule + its gap   height 2 + marginBottom spacing.lg 16   18
+ *   shell gap        spacing.sm              8
+ *                                          ----
+ *                                            66
+ *
+ * THE SECOND GAP IS EASY TO LOSE AND WAS. `styles.shell` sets
+ * `gap: spacing.sm`, and the rule and the page frame are BOTH its flex
+ * children -- the fragment around them flattens -- so the shell puts 8pt
+ * between the rule and the first line of prose just as it does between the
+ * title and the rule. Counting the gaps above the rule and not the one below
+ * it left this 8pt short.
  *
  * It is an estimate on purpose -- the real height depends on how many lines a
  * particular title wraps to, which is not known until layout. Handing it to
@@ -235,7 +268,19 @@ const PAGE_RENDER_WINDOW = 2;
  * the one page the reader has to scroll. The per-page vertical scroller
  * absorbs whatever this estimate gets wrong.
  */
-const CHAPTER_OPENER_HEIGHT = 300;
+const OPENER_BASE_HEIGHT = 66;
+/**
+ * The chapter title a series adds to that opener. A standalone has none (the
+ * story IS the chapter), and the 67px difference is far too big to average
+ * across both on an 844pt page -- it is most of a paragraph.
+ *
+ *   shell gap        spacing.sm                               8
+ *   chapter title    marginTop spacing.xl 20 + lineHeight 31
+ *                    + marginBottom spacing.sm 8             59
+ *                                                          ----
+ *                                                            67
+ */
+const CHAPTER_TITLE_BLOCK_HEIGHT = 67;
 /**
  * The space a chapter's own illustration takes at the top of its opener,
  * `spacing.sm` gap included.
@@ -416,6 +461,7 @@ export default function ReaderScreen({
   onReimagineStory,
   onReimagineStarted,
   onListen,
+  onSavePhrase,
   onRequireSignIn,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
@@ -487,8 +533,6 @@ export default function ReaderScreen({
    */
   const chapterComplete = !isWritingHere && !hasFailedHere
     && chapterText(chapter).trim().length > 0;
-  /** A bare title page: your own story, or one being written right now. */
-  const bareOpener = Boolean(session) || isAuthor;
   const [editOpen, setEditOpen] = useState(false);
   // Reimagine (spec §4): the sheet, the prompt to restore after a failure,
   // the failure itself, and the "Saved to Your stories" toast for a reader
@@ -528,11 +572,13 @@ export default function ReaderScreen({
    * This chapter's own picture, and whether the opener is holding space for
    * one.
    *
-   * Chapter 1's art IS the cover, and the opener already shows the cover above
-   * the title for somebody else's story -- so a plate carrying the same image
-   * again is the same picture twice on one page. Comparing the URLs is what
-   * catches that without having to special-case chapter numbers, since the two
-   * columns genuinely hold the same URL for chapter 1.
+   * Chapter 1's art IS the cover, and the cover belongs to the story page.
+   * The reader's first page is a title page and shows no image of the story
+   * at all, so drawing a plate here that happens to hold the cover's URL
+   * would put the cover on page one by the back door -- past the one rule
+   * that page has. Comparing the URLs catches it without special-casing
+   * chapter numbers, since the two columns genuinely hold the same URL for
+   * chapter 1.
    *
    * The SLOT is reserved from the story's setting, not from the URL: the URL
    * arrives on a background task, and a slot that appears when it does would
@@ -546,9 +592,13 @@ export default function ReaderScreen({
   const pageViewport = useMemo(() => ({
     width: Math.min(width, 680) - spacing.xl * 2,
     height: Math.max(260, height - (isDesktop ? 190 : 230)),
-    firstPageOffset: CHAPTER_OPENER_HEIGHT
+    // `isStandalone` is a property of the story, not of anything that moves
+    // under a reader, so adding it here cannot re-paginate a chapter somebody
+    // is in the middle of.
+    firstPageOffset: OPENER_BASE_HEIGHT
+      + (isStandalone ? 0 : CHAPTER_TITLE_BLOCK_HEIGHT)
       + (showsChapterArt ? CHAPTER_ART_BLOCK_HEIGHT : 0),
-  }), [height, isDesktop, showsChapterArt, width]);
+  }), [height, isDesktop, isStandalone, showsChapterArt, width]);
   const allPages = useMemo(
     () => paginateChapter(fullText, pageViewport, {
       fontSize: preferences.typeSize,
@@ -594,19 +644,6 @@ export default function ReaderScreen({
     return fixed.length > 0 ? fixed : [{ text: "", start: 0, end: 0 }];
   }, [allPages, isWritingHere]);
   const searchMatches = useMemo(() => findMatches(fullText, searchQuery), [fullText, searchQuery]);
-  // The generated cover first, the bundled seed asset second.
-  //
-  // Both screens read only `story.coverImage`, which names a bundled asset and
-  // by its own documentation "only ever belongs to a seed story". So every
-  // story a user actually generated fell through to the genre gradient here and
-  // on the story page, while the create studio -- which does read
-  // `coverImageUrl` -- showed the real art. The cover appeared during creation
-  // and then vanished the moment the writer opened their own story.
-  const coverSource = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
-    : story.coverImage
-    ? imageAssets[story.coverImage]
-    : undefined;
   const storyLang = story.language === "Spanish" ? "es" : "en";
   const voicePair = getDefaultVoices(storyLang);
   const femaleVoice = getVoice(voicePair[0] ?? "aria");
@@ -1426,20 +1463,24 @@ export default function ReaderScreen({
                   <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
                     {index === 0 ? (
                       /*
-                        Two openers, and the difference is whose story it is.
+                        One opener, for everybody's story: the story's title,
+                        and under it the chapter's.
 
-                        Your own story opens on a bare title page: the story's
-                        title, and under it the chapter's. You already know the
-                        genre, you already know who wrote it, and you have just
-                        watched the cover being made - repeating all three is
-                        the app talking about itself on the page where the
-                        writing is supposed to start. Somebody ELSE's story is
-                        a thing you are deciding to read, so it keeps the
-                        cover, the genre and the byline.
+                        There used to be two, and the difference was whose
+                        story it was -- somebody else's kept a cover
+                        thumbnail, a genre line and a byline, on the theory
+                        that a story you have not chosen yet needs
+                        introducing. It does, and that introduction is the
+                        story page, which every tap now lands on first
+                        (`openTarget`). By the time the reader opens, the
+                        cover has been seen, the author has been read and the
+                        decision has been made; printing all three again is
+                        the app re-introducing a story the reader has already
+                        started.
 
-                        The "Chapter N" eyebrow is gone from both. The number
-                        lives in the chrome and the Chapters sheet, where it is
-                        a way to navigate rather than a label on prose.
+                        The "Chapter N" eyebrow is gone too. The number lives
+                        in the chrome and the Chapters sheet, where it is a
+                        way to navigate rather than a label on prose.
                       */
                       <>
                         {/*
@@ -1469,22 +1510,7 @@ export default function ReaderScreen({
                             ) : null}
                           </View>
                         ) : null}
-                        {bareOpener ? null : (
-                          <>
-                            <View style={styles.coverWrap}>
-                              {coverSource ? (
-                                <FocalImage source={coverSource} focalX={story.focalX ?? 0.5} focalY={story.focalY ?? 0.5} style={styles.coverImage} />
-                              ) : (
-                                <LinearGradient colors={genreGradients[story.genre]} style={StyleSheet.absoluteFill} />
-                              )}
-                            </View>
-                            <Text style={[styles.genre, { color: theme.muted }]}>{genreLabels[story.genre]}</Text>
-                          </>
-                        )}
                         <Text style={[styles.title, { color: theme.text }]}>{story.title}</Text>
-                        {bareOpener ? null : (
-                          <Text style={[styles.author, { color: theme.muted }]}>by <Text style={{ color: theme.text }}>{author.displayName}</Text></Text>
-                        )}
                         {/* One title for a standalone: the story IS the
                             chapter, and printing its name twice reads as a
                             mistake. */}
@@ -1716,6 +1742,7 @@ export default function ReaderScreen({
           : () => setListenOpen(true)}
         onMusic={handleMusicMuteToggle}
         musicMuted={musicMuted}
+        onSavePhrase={onSavePhrase}
       />
       {/*
         Mounted only while open. The sheet reads the safe-area inset, and a
@@ -2038,15 +2065,6 @@ const styles = StyleSheet.create({
   shellDesktop: {
     paddingTop: spacing.xl,
   },
-  coverWrap: {
-    width: 94,
-    aspectRatio: 3 / 4,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    alignSelf: "center",
-    backgroundColor: colors.surface2,
-  },
-  coverImage: { width: "100%", height: "100%" },
   chapterArtWrap: {
     // Height fixed rather than derived from the image, and the same whether or
     // not there is one -- see CHAPTER_ART_HEIGHT. A frame that sizes itself to
@@ -2059,24 +2077,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface2,
   },
   chapterArt: { width: "100%", height: "100%" },
-  genre: {
-    marginTop: spacing.sm,
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    fontWeight: "800",
-    textAlign: "center",
-    letterSpacing: 0,
-  },
   title: {
     fontFamily: fonts.display,
     fontSize: 28,
     lineHeight: 32,
-    textAlign: "center",
-    letterSpacing: 0,
-  },
-  author: {
-    fontFamily: fonts.ui,
-    fontSize: 14,
     textAlign: "center",
     letterSpacing: 0,
   },

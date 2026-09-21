@@ -149,7 +149,10 @@ it("a story with no chapter illustrations gives page one the space back", async 
   expect(withFrame.length).toBeLessThan(withoutFrame.length);
 });
 
-it("chapter one's art is the cover and is not shown twice on one page", async () => {
+it("chapter one's art is the cover, and the cover never reaches the reader's first page", async () => {
+  // The reader's first page is a title page: no cover, no genre, no byline
+  // (see the opener). Chapter one's illustration IS the story cover, so a
+  // plate drawn here would put the cover back on page one by the back door.
   const coverUrl = "https://example.test/covers/story/cover.png";
   const story: Story = {
     ...seed,

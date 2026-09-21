@@ -54,8 +54,9 @@ import React from "react";
 import { AccessibilityInfo, Alert, BackHandler, Platform, StyleSheet } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
-import { stories } from "@/data/seed";
-import { colors } from "@/theme";
+import { authorFor, stories } from "@/data/seed";
+import { setViewerId } from "@/lib/ownership";
+import { colors, genreLabels } from "@/theme";
 import type { Story } from "@/types/domain";
 import ReaderScreen from "@/screens/ReaderScreen";
 /* eslint-enable import/first */
@@ -203,6 +204,48 @@ it("opens the chapter with its title, once, on the first page only", async () =>
   // chrome and the Chapters sheet, where it is a way to navigate rather than a
   // label printed over prose.
   expect(view.queryByText(`Chapter ${story.chapters[0].chapterNumber}`)).toBeNull();
+});
+
+/**
+ * The reader's first page is a title page, and it is the same title page for
+ * everybody's story.
+ *
+ * It used to fork on ownership: somebody ELSE's story opened with a cover
+ * thumbnail, a genre line and a byline above the title, on the theory that a
+ * story you have not chosen yet needs introducing. It does -- on the story
+ * page, which every tap now lands on first. By the time the reader opens, the
+ * cover has been seen and the decision has been made.
+ */
+describe("the reader's first page carries no cover, genre or byline", () => {
+  const COVER = "https://example.test/covers/opener/cover.png";
+  const author = authorFor(story.authorId);
+
+  afterEach(() => setViewerId(null));
+
+  async function openerOf(theirs: Story) {
+    const view = await render(<ReaderScreen story={theirs} onBack={jest.fn()} />);
+    await waitFor(() => view.getByTestId("reader-page-body-0"));
+    return view;
+  }
+
+  it("for somebody else's story", async () => {
+    // The case the old fork existed for: not the viewer's story, no live
+    // generation session. This is what used to draw all three.
+    const view = await openerOf({ ...pagedStory, coverImageUrl: COVER });
+
+    expect(JSON.stringify(view.toJSON())).not.toContain(COVER);
+    expect(view.queryByText(genreLabels[pagedStory.genre])).toBeNull();
+    expect(view.queryByText(`by ${author.displayName}`)).toBeNull();
+  });
+
+  it("for your own story", async () => {
+    setViewerId(pagedStory.authorId);
+    const view = await openerOf({ ...pagedStory, coverImageUrl: COVER });
+
+    expect(JSON.stringify(view.toJSON())).not.toContain(COVER);
+    expect(view.queryByText(genreLabels[pagedStory.genre])).toBeNull();
+    expect(view.queryByText(`by ${author.displayName}`)).toBeNull();
+  });
 });
 
 it("opens on the warm reading surface rather than a near-white page", async () => {

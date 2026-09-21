@@ -140,6 +140,85 @@ cover URLs reaching `Image.prefetch` are written only by `_shared/media.ts` and
 
 ---
 
+## 2026-09-20 UTC — Phrase capture could not be found, and on web it could not be done
+
+**Session:** reader lane, `codex/reader-truth`. Client only; no schema, no
+functions, nothing deployed.
+
+### The diagnosis, which is the whole point of the change
+
+The owner asked for "a way to long-press a sentence and add it as a phrase"
+for a feature that merged weeks ago, works on a device, has ten test files and
+a live backend. It was not missing. It was unreachable from where they were
+looking.
+
+**react-native-web drops `Text.onLongPress`.** In
+`react-native-web/dist/exports/Text/index.js` the prop is neither destructured
+nor handled, and `modules/forwardedProps` — the allowlist `pickProps` filters
+through — has no entry for it. `onPress` survives (it becomes `onClick`), so a
+word still saves in a browser; nothing else does. `beginSelection` is the only
+caller that sets `selectingShared`, and the pan handler returns unless that is
+true, so with no anchor there is no drag, no toolbar and no way to keep a
+sentence. The owner tests at `localhost:8090` in a browser, so for them the
+feature genuinely did not exist.
+
+Saving itself was never broken: `lib/phrases.ts` writes local storage first, so
+even with the edge function unreachable the phrase reaches Library › Notes. It
+is the reader who was never told that.
+
+### What shipped
+
+- **Web has a selection path**, and it is the browser's own — the page body was
+  already `selectable`. `selectionchange` clears, `mouseup`/`keyup`/`touchend`
+  raise, and the text goes into the SAME `SelectionToolbar` and the SAME
+  `toggleSave`. The native gesture is untouched.
+- **A one-time coach mark**, keyed `katha.reader.phraseCoach.v1` beside the
+  other reader preferences. Never during a live generation, and not burned
+  then either, so the writer still gets their one showing later.
+- **An explicit, gesture-free selection mode**: tap the first word, tap the
+  last. `ReaderChrome` takes an optional `onSavePhrase` and draws the control,
+  threaded `PhraseCaptureReader` → `ReaderScreen` → `ReaderChrome`. While a
+  screen reader is running `PhraseCaptureReader` ALSO mounts its own persistent
+  entry, and that is not a duplicate: the chrome is a transient overlay that
+  fades to `pointerEvents: "none"` while the reader reads and returns on a tap
+  on the page. For somebody who cannot see that it went away, "tap a blank area
+  to get the control back" is not a route. This is the only way in a VoiceOver
+  user has ever had — the reader serves them fluent prose with no per-word
+  stops by design, so every gesture route is closed to them.
+- **The toast names the destination**: "Saved to Notes", not `Saved "x"`. A
+  reader has no way to know a Notes segment exists.
+- A selection longer than `MAX_PHRASE_LENGTH` (160, migration 00047) is refused
+  with a line that says so, instead of being written and silently rolled back.
+
+**The prop chain is the fragile part, and it has its own test.** The control
+reaches the chrome through three files owned by three different lanes of this
+round. `ReaderChrome` renders nothing when `onSavePhrase` is absent, so a link
+dropped anywhere along that chain fails SILENTLY: every gesture test still
+passes and the feature is exactly as undiscoverable as it was before.
+`phrase-capture-discovery.test.tsx` drives the chain end to end and was
+confirmed to fail with the prop removed from `ReaderScreen`.
+
+**Two controls were announced identically.** The chrome's entry and the
+selection toolbar's COMMIT button were both "Save phrase", and on native a
+long-press raises the toolbar without dismissing the chrome, so both can be on
+screen at once — a coin flip between opening a mode and writing a phrase for
+anybody listening rather than looking. `ChromeAction` gained an optional
+`a11yLabel`; the chrome says "Save a phrase" and keeps its short visible label.
+
+**The web toolbar had to be made unselectable.** A `View` compiles to a `div`,
+which is selectable, and a browser collapses the page selection on MOUSEDOWN —
+so pressing anywhere on the 48pt button except its ~13pt of label text destroyed
+the selection before mouseup and saved nothing, with no error. `userSelect:
+"none"` on the bar. This is the bug that would have made the whole feature look
+broken on the one platform it was just fixed for.
+
+**Gates:** `pnpm typecheck` clean, `pnpm lint` 0 errors, `pnpm exec jest --ci`
+129 suites green. The new tests guarding the live-generation gate, the selection
+mode and the prop chain were each run against the reverted fix and each failed,
+per the rule in AGENTS.md.
+
+---
+
 ## 2026-09-20 UTC — CI stopped for everyone, and what it cost to run migrations on every PR
 
 **Session:** the coordinating session.

@@ -102,3 +102,46 @@ export function textForRange(
 export function rangeLength(range: SelectionRange | null): number {
   return range ? range.end - range.start + 1 : 0;
 }
+
+/**
+ * Just enough of the DOM's `Selection` to read a phrase out of it.
+ *
+ * Structural rather than `lib.dom`'s `Selection` so this can be called with a
+ * plain object in a test, and so nothing in this module depends on a DOM
+ * existing.
+ */
+export type SelectionLike = {
+  isCollapsed?: boolean;
+  toString: () => string;
+};
+
+/**
+ * The browser's own selection as one line of prose, or `""` when there is none.
+ *
+ * WHY THIS IS THE WEB GESTURE. `TappableWord` is a nested `<Text>` with an
+ * `onLongPress`, and react-native-web does not forward that prop -- it is
+ * absent from the destructured props and from the forwarded-props allowlist in
+ * `react-native-web/dist/modules/forwardedProps`, so it is dropped silently and
+ * the long-press that anchors a selection never fires in a browser. The page
+ * body is already `selectable`, so the browser has a perfectly good selection
+ * of its own; this turns it into the same string the word-range path produces.
+ *
+ * Whitespace is collapsed because a selection that crosses a line break or a
+ * paragraph carries the newlines with it, and a saved phrase is a line of
+ * prose rather than a fragment of layout.
+ */
+export function selectionTextFrom(
+  selection: SelectionLike | null | undefined,
+): string {
+  if (!selection || selection.isCollapsed) return "";
+  try {
+    return selection.toString().replace(/\s+/g, " ").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** How many words a plain selected string covers, for the toolbar's readout. */
+export function wordCountOf(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
