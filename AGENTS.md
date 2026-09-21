@@ -37,13 +37,29 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-20)
+## Production state (2026-09-21)
 
-**Production is current with main.** Verified on 2026-09-20 rather than
-assumed: the migration ledger matches main exactly through `00094` (no
-local-only, no remote-only), `stories.story_bible_rev` exists, and the deployed
-bundles for `continue-story`, `generate-story-stream` and `audio-status` were
-read back and contain the #113 and #115 changes.
+**Production is current with main.** Verified on 2026-09-21 rather than
+assumed: the migration ledger matches main exactly through `00095` (no
+local-only, no remote-only), and `audio-status` and `generate-audio` were
+deployed in that order after `00095_chapter_audio_chunks` was applied.
+
+Measured on production immediately after, not inferred from a green suite: a
+2-chunk chapter returned a `chunk_manifest`, its **first playable chunk arrived
+at 45.8s** and the whole chapter completed at 67.3s -- against the 101.6s the
+2026-09-19 entry measured for a 2-chunk chapter before any audio existed at
+all. `purpose: "prefetch"` answered **503**, because
+`NARRATION_PREFETCH_ENABLED` is deliberately unset. Re-run
+`backend/originals/verify-narration-deploy.ts` to check any of that again.
+
+**The client is not deployed and cannot be.** `expo/app.json` still carries the
+literal `u.expo.dev/UPDATE_PROJECT_ID` and an empty EAS `projectId`, so there is
+no OTA channel and no build to update. Client changes merged to main are live
+on nothing; `scripts/preview.sh` is the only way to see them.
+
+The 2026-09-20 verification, still true: `stories.story_bible_rev` exists, and
+the deployed bundles for `continue-story`, `generate-story-stream` and
+`audio-status` were read back and contain the #113 and #115 changes.
 
 All 37 functions are listed ACTIVE, which is not the same claim: that is the
 platform saying a deployment exists, not that its code matches main. Only the
