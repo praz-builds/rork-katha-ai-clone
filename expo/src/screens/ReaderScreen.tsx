@@ -444,8 +444,7 @@ const NO_MATCHES: readonly SearchMatch[] = [];
  * prose does not rebuild it.
  *
  * WHY THIS IS THE HOT PATH. A page is several hundred words, and each word is
- * its own `<Text>` -- two when phrase capture wraps it -- plus one per run of
- * whitespace. The pager keeps up to five pages mounted around the one on
+ * its own `<Text>`, plus one per run of whitespace. The pager keeps up to five pages mounted around the one on
  * screen, so a single `ReaderScreen` render used to rebuild roughly 2,000
  * word elements. Every tap on the page (showing the chrome), every mute,
  * every step of the Pages slider and every page crossed mid-swipe is a

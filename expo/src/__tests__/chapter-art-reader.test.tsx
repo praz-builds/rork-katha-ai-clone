@@ -71,13 +71,6 @@ function storyWith(
 }
 
 /**
- * Page one's prose, flattened out of the word-level nodes it is rendered as.
- *
- * The page body is a Text whose children are the word-level nodes `renderWord`
- * returns, so the text has to be walked out of the tree rather than read off a
- * single string.
- */
-/**
  * The text a host element actually rendered.
  *
  * Walks the rendered host tree, not the element's `props.children`: the page
