@@ -57,7 +57,9 @@ reader rebuilt 1,120-3,395 words per interaction too. `PageWords` is the fix.
 Tests: `reader-responsiveness.test.tsx`. The "no words rebuilt" test and the
 "pause from the tap" test both fail with `ReaderScreen` reverted.
 
+---
 
+## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no
 `backend/` file, no migration, no function. **Nothing to deploy.**

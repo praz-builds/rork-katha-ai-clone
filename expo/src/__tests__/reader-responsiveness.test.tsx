@@ -154,12 +154,16 @@ it("drops a track that finished loading after the reader had already muted", asy
   const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
   await waitFor(() => expect(createAsyncMock).toHaveBeenCalledTimes(1), LOAD);
   await openChrome(view);
+  // The load lands INSIDE the press's act, before React has committed the
+  // mute and re-run the music effect. At that moment the effect's `cancelled`
+  // is still false; only `musicMutedRef`, flipped by the handler itself, can
+  // tell the load it arrived too late. Resolving it after the act would let
+  // `cancelled` catch it and the test would prove nothing about the ref.
   await act(async () => {
-    await fireEvent.press(view.getByLabelText("Music"));
-  });
-
-  await act(async () => {
+    const pressed = fireEvent.press(view.getByLabelText("Music"));
     finishLoad();
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await pressed;
   });
   await waitFor(() => expect(late.unloadAsync).toHaveBeenCalled(), LOAD);
   // Never faded up: a muted reader hears nothing, not a blip.
