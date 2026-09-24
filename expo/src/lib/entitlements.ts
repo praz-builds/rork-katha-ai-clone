@@ -145,7 +145,7 @@ export function reimagineQuote({
  *
  * `subscribed` is deliberately not a parameter any more. A plan used to buy
  * unlimited portraits, and the server enforced no such thing; since 00088 it
- * enforces six for everybody, so quoting "Included in your plan" to a
+ * enforces three for everybody, so quoting "Included in your plan" to a
  * subscriber would be the client promising something the server will refuse --
  * which is the exact failure this module exists to prevent.
  */

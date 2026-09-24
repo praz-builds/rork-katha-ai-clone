@@ -237,7 +237,13 @@ Deno.test("the redefined functions are still service-role only", async () => {
         "select claim_guest_portrait_request($1)",
       ]
     ) {
-      await assertRejects(() => db.query(statement, [FRESH]));
+      // The specific refusal, so a function that merely failed some other way
+      // (a typo, a missing table) cannot pass as "refused".
+      await assertRejects(
+        () => db.query(statement, [FRESH]),
+        Error,
+        "permission denied",
+      );
     }
     await db.exec("reset role");
     assertEquals(await freeUsed(db, FRESH), 0);

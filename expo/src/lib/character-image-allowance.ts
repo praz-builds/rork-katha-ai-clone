@@ -34,7 +34,7 @@ function notify() {
  *
  * Two image requests in flight can finish out of order, and the older response
  * then overwrote the newer count -- so the next portrait could read as free
- * when it is not, or quote a balance that has already moved. The six only ever
+ * when it is not, or quote a balance that has already moved. The free three only ever
  * go DOWN while a session is spending them, so the lower answer is the later
  * one; anything that genuinely raises the count (a sign-in, a top-up) comes
  * through `setCharacterImagesRemaining` from bootstrap instead.

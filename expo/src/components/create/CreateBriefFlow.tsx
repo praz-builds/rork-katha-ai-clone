@@ -458,6 +458,17 @@ function truncateForDisplay(text: string, max: number) {
  * attached reference photo: backing out of a sheet whose only change is the
  * photo used to discard it without asking.
  */
+/**
+ * Identifies an attached photo without hashing megabytes of base64 on every
+ * back press. Not the file name: on web every photo is `photo.jpg`, so a swap
+ * would read as no change. Length plus the tail of the encoding differs for
+ * any two real photos.
+ */
+function referenceFingerprint(dataUrl: string | undefined): string {
+  if (!dataUrl) return "";
+  return `${dataUrl.length}:${dataUrl.slice(-48)}`;
+}
+
 function characterFingerprint(character: CharacterDraft) {
   return JSON.stringify({
     name: character.name.trim(),
@@ -465,11 +476,7 @@ function characterFingerprint(character: CharacterDraft) {
     background: (character.background ?? "").trim(),
     isHero: character.isHero,
     portraitUrl: character.portraitUrl ?? "",
-    // The name stands in for the bytes: a different photo is a different
-    // name, and a fingerprint is not the place to hash megabytes of base64.
-    reference: character.referenceImage
-      ? character.referenceImageName ?? "attached"
-      : "",
+    reference: referenceFingerprint(character.referenceImage),
   });
 }
 
@@ -757,7 +764,7 @@ export default function CreateBriefFlow({
    * Every failure used to land on `portraitStatus: "failed"` and nothing else,
    * so "you are out of credits", "you have made a lot of these just now" and
    * "the provider could not draw it" were one silent empty card. Only the
-   * server knows which of those it was -- the six and the price are its
+   * server knows which of those it was -- the free three and the price are its
    * counters, not ours -- so its sentence is what is shown.
    */
   const [portraitNotice, setPortraitNotice] = useState<string | null>(null);
@@ -909,7 +916,12 @@ export default function CreateBriefFlow({
           )}
         </Animated.View>
       </KeyboardAvoidingView>
-      <Modal animationType="slide" presentationStyle="fullScreen" visible={isCharacter} onRequestClose={requestCloseCharacter}>
+      {/*
+        Android's hardware back while "Save this character?" is up means "not
+        now" -- it closes the prompt, the same as tapping outside it, rather
+        than asking the same question again underneath itself.
+      */}
+      <Modal animationType="slide" presentationStyle="fullScreen" visible={isCharacter} onRequestClose={unsavedPromptOpen ? () => setUnsavedPromptOpen(false) : requestCloseCharacter}>
         <CharacterCraftScreen
           character={characterBuffer}
           onChange={setCharacterBuffer}
@@ -1457,7 +1469,24 @@ export function CharacterCraftScreen({
           <View style={styles.topBar}>
             <Pressable accessibilityRole="button" accessibilityLabel="Back to review and start" onPress={onBack} style={styles.iconButton}><ArrowLeft size={20} color={colors.ink} /></Pressable>
             <Text style={styles.topTitle}>Craft character</Text>
-            <View style={styles.topSpacer} />
+            {/*
+              Delete lives in the header, as a compact text action, rather than
+              as a row under the form: that row pushed an existing character's
+              sheet ~37pt past one screen. Same colour and label as before.
+            */}
+            {onDelete
+              ? (
+                <Pressable
+                  onPress={onDelete}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete character"
+                  hitSlop={8}
+                  style={styles.headerDelete}
+                >
+                  <Text style={styles.deleteText} maxFontSizeMultiplier={1.3}>Delete</Text>
+                </Pressable>
+              )
+              : <View style={styles.topSpacer} />}
           </View>
           {/*
             ONE SCREEN, NO SCROLL, WITH THE FIELDS EMPTY (2026-09-24).
@@ -1470,7 +1499,7 @@ export function CharacterCraftScreen({
             scrolls once the writer types a lot or attaches a photo; that is
             growth, not the empty sheet.
           */}
-          <Text style={styles.characterIntro} numberOfLines={1}>A little detail makes a stronger cast.</Text>
+          <Text style={styles.characterIntro} numberOfLines={1} maxFontSizeMultiplier={1.3}>A little detail makes a stronger cast.</Text>
           <Field label="Name"><TextInput accessibilityLabel="Name" value={character.name} onChangeText={(value) => set("name", value)} placeholder="e.g. Naina Mistry" placeholderTextColor={colors.tertiary} style={styles.characterInput} /></Field>
           <Field label="Background"><TextInput accessibilityLabel="Background" value={character.background ?? ""} onChangeText={(value) => set("background", value)} placeholder="Personality, relationships, backstory, traits. e.g. Keeps her late father's recipes but never uses them." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
           <Field label="Appearance"><TextInput accessibilityLabel="Appearance" value={character.appearance} onChangeText={(value) => set("appearance", value)} placeholder="Who they are and what they look like. e.g. A 29-year-old baker with a practical streak, curly hair, flour on her sleeves." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
@@ -1565,17 +1594,34 @@ export function CharacterCraftScreen({
                 ? (
                   <View style={styles.referenceAttached}>
                     <ImagePlus size={15} color={colors.accent} />
-                    <Text style={styles.referenceName} numberOfLines={1} ellipsizeMode="middle">
+                    <Text
+                      style={styles.referenceName}
+                      numberOfLines={1}
+                      ellipsizeMode="middle"
+                      maxFontSizeMultiplier={1.3}
+                      accessibilityLabel={`Reference photo: ${character.referenceImageName || "attached"}`}
+                    >
                       {character.referenceImageName || "Reference photo"}
                     </Text>
-                    <Text style={styles.referenceSeparator}>·</Text>
+                    {/* Visual separator only; a screen reader must not say "dot". */}
+                    <Text
+                      style={styles.referenceSeparator}
+                      maxFontSizeMultiplier={1.3}
+                      accessible={false}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                      aria-hidden
+                    >
+                      ·
+                    </Text>
                     <Pressable
                       onPress={onClearReference}
                       accessibilityRole="button"
                       accessibilityLabel="Remove the reference photo"
-                      hitSlop={8}
+                      hitSlop={12}
+                      style={styles.referenceRemove}
                     >
-                      <Text style={styles.referenceButtonText}>Remove</Text>
+                      <Text style={styles.referenceButtonText} maxFontSizeMultiplier={1.3}>Remove</Text>
                     </Pressable>
                   </View>
                 )
@@ -1587,7 +1633,7 @@ export function CharacterCraftScreen({
                     style={styles.referenceButton}
                   >
                     <ImagePlus size={15} color={colors.accent} />
-                    <Text style={styles.referenceButtonText}>Attach a reference photo</Text>
+                    <Text style={styles.referenceButtonText} maxFontSizeMultiplier={1.3}>Attach a reference photo</Text>
                   </Pressable>
                 )}
               {character.referenceImage
@@ -1602,7 +1648,6 @@ export function CharacterCraftScreen({
             </View>
           </View>
           <Text style={styles.optionHint}>No real people or characters you do not have rights to.</Text>
-          {onDelete ? <Pressable onPress={onDelete} accessibilityRole="button" style={styles.deleteButton}><Text style={styles.deleteText}>Delete character</Text></Pressable> : null}
         </ScrollView>
         <View style={[styles.stickyFooter, { paddingBottom: Math.max(bottomInset, spacing.md) }]}>
           <Button label="Save" onPress={onSave} disabled={!character.name.trim() || imageBusy} icon={<Check size={20} color={colors.surface} />} style={styles.primaryCta} />
@@ -1796,10 +1841,11 @@ const styles = StyleSheet.create({
   referenceAttached: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, alignSelf: "stretch" },
   referenceName: { flexShrink: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.ink, letterSpacing: 0 },
   referenceSeparator: { fontFamily: fonts.ui, fontSize: 13, color: colors.tertiary },
+  referenceRemove: { minHeight: 44, justifyContent: "center" },
   referenceButtonText: { fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", color: colors.accent, letterSpacing: 0 },
   referenceHint: { fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.tertiary, letterSpacing: 0 },
   portraitError: { color: colors.heart, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
-  deleteButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  headerDelete: { minWidth: 40, minHeight: 44, alignItems: "flex-end", justifyContent: "center" },
   deleteText: { color: colors.heart, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
   dialogRoot: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
   dialogBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink, opacity: 0.5 },

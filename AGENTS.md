@@ -860,7 +860,7 @@ order, and neither replaces the other:
    paywall still sells "unlimited" on a plan.
 
 One call can become six paid provider requests (two models x three safety
-rungs), which is why the endpoint is bounded twice. Past the six the credit is
+rungs), which is why the endpoint is bounded twice. Past the free three the credit is
 **reserved and refunded**, not deducted: `release_character_image_request` gives
 back the credit — or the free slot — on every path that does not deliver an
 image, including a 400 and the catch-all. A replayed `request_id` returns the

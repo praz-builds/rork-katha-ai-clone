@@ -1879,20 +1879,22 @@ both refuse rather than degrade — a broken limiter is never a free pass.
 The hourly window bounds a burst inside one session; it does not bound anything
 at all when a fresh anonymous session is one `signInAnonymously` call away, which
 is the gap migration 00055 recorded against itself. 00084 closes it by giving an
-**anonymous identity** six character images for the life of that identity,
+**anonymous identity** a lifetime allowance of character images (four then;
+six under 00088; **three** since 2026-09-24, migration 00096),
 reimagines and retries included, keyed on `auth.users.id`. **Never on a device
 identifier** — Katha collects none, and starting to would be a privacy and
 store-disclosure decision rather than a rate-limit detail (§17).
 
-**The six are per ACCOUNT, and they survive verification** (migration 00088).
+**The free three are per ACCOUNT, and they survive verification** (migration
+00088; the number is 00096's).
 The counter was anonymous-only when this section was written, and a named user
 was not bounded by it at all. It now bounds everyone — free tier and paid plan
 alike — and because it is keyed on `auth.users.id` while email verification
 converts the anonymous user *in place*, the count does not reset when somebody
-signs up. Someone who spent four getting a face they liked during onboarding has
-two left, not six.
+signs up. Someone who spent two getting a face they liked during onboarding has
+one left, not three.
 
-Past the six, each image costs **1 credit** — except for an anonymous identity,
+Past the free three, each image costs **1 credit** — except for an anonymous identity,
 which is refused rather than charged: its credits are the three from
 `bootstrap_user` and those exist to get it a story, the thing that converts it.
 

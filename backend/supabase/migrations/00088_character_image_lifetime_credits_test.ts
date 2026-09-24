@@ -409,7 +409,7 @@ Deno.test("the counter is per user", async () => {
       const claimed = await claim(db, WRITER, `w-${i}`);
       await complete(db, claimed.operation_id, WRITER);
     }
-    const writerPaid = await claim(db, WRITER, "w-7");
+    const writerPaid = await claim(db, WRITER, "w-paid");
     assertEquals(writerPaid.credits, 1);
 
     // Spending one person's allowance must not touch anybody else's.

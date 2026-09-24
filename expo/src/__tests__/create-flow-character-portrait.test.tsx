@@ -572,6 +572,21 @@ describe("the reference photo", () => {
     expect(await screen.findByText("Save this character?")).toBeTruthy();
   });
 
+  it("gives Remove a full-size target", async () => {
+    mockLaunchImageLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ base64: "AAAA", mimeType: "image/jpeg", fileName: "IMG_2231.jpg" }],
+    });
+    await render(<Harness />);
+    await openCharacterSheet();
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("Attach a reference photo"));
+    });
+    const remove = await screen.findByLabelText("Remove the reference photo");
+    expect(remove.props.hitSlop).toBe(12);
+    expect(screen.getByLabelText("Reference photo: IMG_2231.jpg")).toBeTruthy();
+  });
+
   it("sends the photo to the image call but never its name", async () => {
     mockLaunchImageLibrary.mockResolvedValue({
       canceled: false,

@@ -34,7 +34,7 @@ export const PRICE_ROWS: readonly { label: string; detail?: string; cost: string
   { label: "Regenerate a cover", detail: "There is no free retry", cost: "1" },
   {
     label: "Create or edit a character image",
-    detail: "6 free per account, ever",
+    detail: "3 free per account, ever",
     cost: "then 1 each",
   },
   {

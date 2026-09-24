@@ -244,7 +244,7 @@ export function SavedCharactersPicker({
         </View>
       </View>
 
-      <Modal animationType="slide" presentationStyle="fullScreen" visible={craftOpen} onRequestClose={requestCloseCraft}>
+      <Modal animationType="slide" presentationStyle="fullScreen" visible={craftOpen} onRequestClose={unsavedPromptOpen ? () => setUnsavedPromptOpen(false) : requestCloseCraft}>
         <CharacterCraftScreen
           character={buffer}
           onChange={setBuffer}

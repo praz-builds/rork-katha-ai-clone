@@ -572,8 +572,10 @@ export type CreateDraft = {
     referenceImage?: string;
     /**
      * The attached photo's file name, shown back to the writer under the
-     * portrait ("IMG_2231.jpg · Remove"). Display only; never sent anywhere,
-     * and cleared together with `referenceImage`.
+     * portrait ("IMG_2231.jpg · Remove"). Display only, and cleared together
+     * with `referenceImage`. Neither the portrait call nor `shape-story`
+     * sends it: `generateCharacterImage` takes the photo alone, and
+     * `inferStoryBrief` maps the cast to name/background/appearance/isHero.
      */
     referenceImageName?: string;
     /**

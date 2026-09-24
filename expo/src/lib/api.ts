@@ -127,6 +127,16 @@ export type StoryShapeBrief = {
   plannedChapterCount?: CreateDraft["plannedChapterCount"];
 };
 
+/** The fields of a draft character that `shape-story` actually reads. */
+function shapeCharacterFields(character: CreateDraft["characters"][number]) {
+  return {
+    name: character.name,
+    background: character.background,
+    appearance: character.appearance,
+    isHero: character.isHero,
+  };
+}
+
 /**
  * Free scaffolding for Screen 2. The server deliberately exposes no error
  * surface here: an unavailable convenience must never block story creation.
@@ -178,7 +188,10 @@ export async function inferStoryBrief(
       idea,
       variant,
       genre,
-      characters: brief?.characters,
+      // Only the four fields shaping reads. The draft cast also carries the
+      // attached reference photo (megabytes of base64) and its file name,
+      // which are for the portrait call alone and must not travel here.
+      characters: brief?.characters?.map(shapeCharacterFields),
       moments: brief?.moments,
       writing_style: brief?.writingStyle,
       avoid: brief?.avoid,
@@ -412,7 +425,7 @@ export type CharacterImageInput = {
 /** What one character image cost, and what the account has left. */
 export type CharacterImageResult = {
   url: string;
-  /** 0 for one of the six, 1 once they are spent. Absent on an old deploy. */
+  /** 0 for one of the free three, 1 once they are spent. Absent on an old deploy. */
   creditsCharged?: number;
   /** Free images left AFTER this one. Absent on an old deploy. */
   freeRemaining?: number;
@@ -616,7 +629,7 @@ export async function generateCharacterImage(
 
   return {
     url,
-    // What the server actually charged and what is left of the six, so the
+    // What the server actually charged and what is left of the free three, so the
     // next quote comes from the ledger rather than from the client counting
     // its own taps. Absent on any deploy older than 00088.
     creditsCharged: typeof data?.credits_charged === "number"

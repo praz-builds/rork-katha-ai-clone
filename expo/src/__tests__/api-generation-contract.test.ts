@@ -559,6 +559,34 @@ describe("the story plan", () => {
     expect(shape?.opening).toContain("clocks");
   });
 
+  it("sends shaping only the cast fields it reads, never the reference photo", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      data: { shape: { genres: ["mystery"], characters: [] } },
+      error: null,
+    });
+    await inferStoryBrief("A quiet mystery.", "create", undefined, {
+      characters: [{
+        name: "Naina",
+        background: "Keeps recipes.",
+        appearance: "Flour on her sleeves.",
+        isHero: true,
+        portraitUrl: "https://cdn.example.test/naina.png",
+        referenceImage: "data:image/jpeg;base64,AAAA",
+        referenceImageName: "IMG_2231.jpg",
+      }],
+    });
+    const sent = bodyOf(mockInvoke.mock.calls[0]);
+    expect(sent.characters).toEqual([{
+      name: "Naina",
+      background: "Keeps recipes.",
+      appearance: "Flour on her sleeves.",
+      isHero: true,
+    }]);
+    const raw = JSON.stringify(sent);
+    expect(raw).not.toContain("base64");
+    expect(raw).not.toContain("IMG_2231.jpg");
+  });
+
   it("defaults to the create variant", async () => {
     mockInvoke.mockResolvedValueOnce({
       data: { shape: { genres: ["mystery"], characters: [] } },
@@ -635,7 +663,7 @@ describe("generateCharacterImage", () => {
   });
 
   it("records what the server says is left, so the next quote is the server's", async () => {
-    // Six free images per account (migration 00088). The count that prices the
+    // Three free images per account (migration 00096; six under 00088). The count that prices the
     // NEXT button has to come from the response that just moved it -- a client
     // counting its own taps disagrees the moment two surfaces are used in one
     // session, and the disagreement is a free-looking button that charges.
@@ -680,7 +708,7 @@ describe("generateCharacterImage", () => {
   });
 
   it("tells an out-of-credits refusal apart from a failure to draw", async () => {
-    // 402 is the six being spent and the balance being short. The screens route
+    // 402 is the free three being spent and the balance being short. The screens route
     // on the type: a "Try again" offered on this refusal cannot succeed.
     mockInvoke.mockResolvedValueOnce({
       data: null,
