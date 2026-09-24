@@ -7,7 +7,57 @@
 
 ---
 
-## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
+## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
+
+**Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
+function. **Nothing to deploy.**
+
+**What the founder felt.** Swipes and the Pages slider lagged the finger, and
+muting the music took a visible moment before the icon struck through and a
+longer one before the sound stopped.
+
+**The cause is older than Save phrase.** Every `ReaderScreen` render rebuilt
+every word of every mounted page (up to five pages around the one on screen).
+Showing the chrome, muting, a slider step and crossing a page mid-swipe are
+all `ReaderScreen` renders, and none of them changes a word. This was already
+true of the plain reader: its default `renderWord` was an inline arrow, and
+`renderPageBody` was called straight from render. Phrase capture made each
+rebuild heavier: about 50% more host `Text` nodes (3,381 against 2,258 on a
+2,400-word chapter), and a `TappableWord` for every word with fresh
+`onPress`/`onLongPress` closures, so its `memo` never held.
+
+**Measured** with a scratch jest benchmark using React Profiler plus a count
+of words rebuilt, on a 2,400-word chapter. The word counts are
+deterministic. The milliseconds were taken with the machine at a load
+average of 600-1,000, so read them as ratios only.
+
+| Interaction | Words rebuilt before -> after (phrase reader) | Words rebuilt before -> after (plain reader) |
+| --- | --- | --- |
+| Show chrome | 1,120 -> 0 | 2,240 -> 0 |
+| Mute music | 1,680 -> 0 | 1,120 -> 0 |
+| Pages slider step | 1,698 -> 385 (only the page entering the window) | 3,395 -> 385 |
+
+**Fixes.**
+- `PageWords` (memo) renders a page's words. Its inputs are all stable:
+  `matchesByPage` is memoised per query, `NO_MATCHES` is shared, and
+  `plainWord` is module-level.
+- Mute is optimistic. The state flips first, then the playing sound is taken
+  out of the ref and paused, then unloaded, all from the handler. The
+  `musicMuted` effect used to do this after the commit, and it awaited
+  `unloadAsync` before anything went quiet. A load that lands after a mute is
+  now dropped by checking `musicMutedRef`.
+- Home rails: `StoryFeedCard` is memoised. `FeedRail` gives each card a stable
+  handler through `RailCard` and a ref to `onStory`, because App recreates
+  `openStory` on every render.
+
+**Does deleting Save phrase alone fix it? No.** Deleting it removes a third of
+the reader's text nodes and the pan detector around the pager. But the plain
+reader rebuilt 1,120-3,395 words per interaction too. `PageWords` is the fix.
+
+Tests: `reader-responsiveness.test.tsx`. The "no words rebuilt" test and the
+"pause from the tap" test both fail with `ReaderScreen` reverted.
+
+
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no
 `backend/` file, no migration, no function. **Nothing to deploy.**
