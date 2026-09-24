@@ -16,8 +16,8 @@ opening screen could go unnoticed. See backend/MONITORING.md.
 
 COST: this suite is not free to run. shape-story makes 2 paid OpenRouter calls
 (the shape and the entity classification, run together), on top of the paid
-calls the rest of the suite already made: generate-story, edit-story and the
-cover image publish-story triggers.
+calls the rest of the suite already made: generate-story (which also starts the
+cover in the background) and edit-story.
 
 Reads SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
 environment. Never prints key material, story prose, or seeds.
@@ -72,7 +72,7 @@ def req(method, path, body=None, token=None, key=None, timeout=240):
             except ValueError:
                 return resp.status, {"raw": raw[:300]}
     except urllib.error.HTTPError as e:
-        raw = e.read().decode()
+        raw = e.read().decode(errors="replace")
         try:
             return e.code, json.loads(raw)
         except Exception:
@@ -111,8 +111,7 @@ try:
                  {"id": uid, "username": f"smoke_{uid.replace('-', '')[:12]}"}, key=SVC)
     if ps not in (200, 201):
         print("  cannot create profile:", ps, json.dumps(pd)[:200])
-        req("DELETE", f"/auth/v1/admin/users/{uid}", key=SVC)
-        sys.exit(1)
+        sys.exit(1)  # the cleanup below still runs and removes the auth user
     s, d = req("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": pw})
     if s != 200:
         print("  cannot sign in:", s, json.dumps(d)[:200])
@@ -247,7 +246,7 @@ try:
               bool((ed or {}).get("model")), str((ed or {}).get("model")))
 
     # ------------------------------------------------------ 6 publish-story
-    print("\n[6] publish-story (generates a cover - real spend)")
+    print("\n[6] publish-story (and the cover generate-story started)")
     # A body without `visibility` publishes privately on purpose (a missing
     # field must never make a story public), so the public path is asked for.
     st, pb = req("POST", "/functions/v1/publish-story",
@@ -325,8 +324,8 @@ finally:
         targets.append((f"/rest/v1/chapters?story_id=eq.{story_id}", "chapters"))
         targets.append((f"/rest/v1/stories?id=eq.{story_id}", "story"))
     if uid:
-        # Order matters: these reference profiles(id), which references the
-        # auth user. Deleting the user first returns 500 and strands the row.
+        # Order matters: these rows reference profiles(id) with no cascade, so
+        # they go before the profile, and the profile before the auth user.
         targets += [
             (f"/rest/v1/generation_operations?user_id=eq.{uid}", "operations"),
             (f"/rest/v1/credit_ledger?user_id=eq.{uid}", "credit ledger"),
@@ -335,8 +334,8 @@ finally:
             # is deleted, so its rows cannot block the delete below. Only
             # INSERT and SELECT are granted to service_role (00019), so a
             # delete here would be refused with 403 on every run.
-            # The profile call in [1b] records a streak row, and streaks
-            # reference profiles with no cascade.
+            # publish-story records a writing day (touch_streak, 00089), and
+            # streaks reference profiles with no cascade.
             (f"/rest/v1/streaks?user_id=eq.{uid}", "streaks"),
             (f"/rest/v1/profiles?id=eq.{uid}", "profile"),
             (f"/auth/v1/admin/users/{uid}", "auth user"),

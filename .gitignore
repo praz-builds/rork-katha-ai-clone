@@ -43,3 +43,7 @@ backend/originals/bench/after/
 
 # Preview worktree lock (scripts/preview.sh)
 .preview-lock/
+
+# Python bytecode
+__pycache__/
+*.pyc
