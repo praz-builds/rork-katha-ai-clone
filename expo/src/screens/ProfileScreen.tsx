@@ -34,7 +34,7 @@ import IdentityEditor, { type IdentityEdits } from "@/components/profile/Identit
 import MemberSheet from "@/components/profile/MemberSheet";
 import { creatureSource } from "@/lib/creatures";
 import { useIsSubscribed } from "@/lib/entitlements";
-import { type OwnProfile, streakState } from "@/lib/profile";
+import { streakState } from "@/lib/profile";
 import {
   FRESH_FOR_MS,
   patchOwnProfile,
@@ -91,7 +91,7 @@ export default function ProfileScreen({
   credits: number;
   onCredits: () => void;
   onPaywall: () => void;
-  onJourney: (profile: OwnProfile | null) => void;
+  onJourney: () => void;
   onPublicProfile: (authorId: string) => void;
   onVoices: () => void;
   onSignedOut: () => void;
@@ -298,7 +298,7 @@ export default function ProfileScreen({
             two-line summary of them here would be a second, worse version of
             the same thing. */}
         <Pressable
-          onPress={() => onJourney(profile)}
+          onPress={onJourney}
           accessibilityRole="button"
           accessibilityLabel="Your journey"
           testID="profile-journey"

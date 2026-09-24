@@ -483,15 +483,16 @@ describe("the reader's own profile", () => {
     expect(view.queryByText("Profile")).toBeNull();
   });
 
-  it("opens the journey page with the profile it already loaded", async () => {
-    const profile = ownProfileFixture();
-    mockFetchOwnProfile.mockResolvedValue(profile);
+  // Journey reads the app-wide copy this screen just filled, so the row only
+  // has to navigate.
+  it("opens the journey page", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
     const props = profileProps();
 
     const view = await render(<ProfileScreen {...props} />);
-    await waitFor(() => view.getByTestId("profile-journey"));
+    await waitFor(() => view.getByText("Ada Lovelace"));
     fireEvent.press(view.getByTestId("profile-journey"));
-    expect(props.onJourney).toHaveBeenCalledWith(profile);
+    expect(props.onJourney).toHaveBeenCalled();
   });
 
   it("gives a signed-in reader both a way out and a way to delete", async () => {

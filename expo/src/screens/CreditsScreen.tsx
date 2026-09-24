@@ -58,8 +58,8 @@ export default function CreditsScreen({
   credits: number;
   onBack: () => void;
   onPaywall: () => void;
-  /** Handed the profile this screen loaded, so Journey opens with it filled in. */
-  onJourney: (profile: OwnProfile | null) => void;
+  /** Opens Your journey, which reads the app-wide profile copy. */
+  onJourney: () => void;
   /** The server said the balance is now this. */
   onBalance: (balance: number) => void;
 }) {
@@ -157,7 +157,7 @@ export default function CreditsScreen({
 
         <Text style={styles.section}>Free credits</Text>
         <View style={styles.stack}>
-          <StreakEarnCard profile={profile} onJourney={() => onJourney(profile)} />
+          <StreakEarnCard profile={profile} onJourney={onJourney} />
           <FeedbackClaimsCard
             claims={claims}
             onChanged={(balance) => {

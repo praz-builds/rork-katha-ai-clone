@@ -162,11 +162,7 @@ function daysKey(days: string[] | null): string | null {
   return days ? days.join(",") : null;
 }
 
-function ActivityGrid({
-  days,
-  now,
-  loading = false,
-}: {
+type GridProps = {
   /** Active days as `YYYY-MM-DD`. Empty is a year with nothing in it; null is "unknown". */
   days: string[] | null;
   /** Injectable so the grid's day boundaries can be tested rather than assumed. */
@@ -177,10 +173,21 @@ function ActivityGrid({
    * request that has actually come back empty-handed.
    */
   loading?: boolean;
-}) {
+};
+
+/**
+ * The day each props object was last drawn for. With no `now`, "today" is
+ * read at render time, so the memo has to remember which day that was to
+ * notice midnight -- comparing two fresh `new Date()`s would always agree.
+ */
+const drawnForDay = new WeakMap<GridProps, number>();
+
+function ActivityGrid(props: GridProps) {
+  const { days, now, loading = false } = props;
   // A number, not a Date: two renders on the same day share it, and the memo
   // below only recomputes when the day or the active days actually change.
   const today = utcDay(now ?? new Date());
+  drawnForDay.set(props, today);
   const key = daysKey(days);
   // `days` is read through `key`: equal lists are the same grid.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,8 +249,6 @@ function ActivityGrid({
   );
 }
 
-type GridProps = Parameters<typeof ActivityGrid>[0];
-
 /**
  * Equal when the grid would draw the same thing: the same days (whatever the
  * array's identity), the same loading state, and the same calendar day for
@@ -253,8 +258,10 @@ type GridProps = Parameters<typeof ActivityGrid>[0];
 export function sameGridProps(previous: GridProps, next: GridProps): boolean {
   return daysKey(previous.days) === daysKey(next.days) &&
     (previous.loading ?? false) === (next.loading ?? false) &&
-    (previous.now ? utcDay(previous.now) : null) ===
-      (next.now ? utcDay(next.now) : null);
+    // An omitted `now` means "today when drawn": a grid left mounted across
+    // midnight must move its last column on the next render.
+    (drawnForDay.get(previous) ?? utcDay(previous.now ?? new Date())) ===
+      utcDay(next.now ?? new Date());
 }
 
 /**

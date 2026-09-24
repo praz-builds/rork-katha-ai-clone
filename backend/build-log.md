@@ -53,6 +53,24 @@ already fetched the profile and thrown it away.
   `settle_referrals` writes -- so running them together could show a referral
   as unpaid right after it was paid.
 
+### Review round (Fable)
+
+- The device copy is now `katha.ownProfile.v2`: a projection (name, handle,
+  avatar, bio, streaks, follow counts, ladder) with its `userId`. It never
+  holds the referral code, the entitlement override or `phrasesSaved`. v1 is
+  deleted on read.
+- It is removed together with `katha.displayName.v1` in `signOutToSignIn` and
+  in the dead-session guest restart. Hydrate ignores a record whose user is
+  not the viewer. App clears the store at boot and at `completeSignIn` when
+  the session's user differs from it. A failed refresh drops a held copy that
+  belongs to somebody else.
+- A profile for a different user bumps the store epoch, so a calendar request
+  made for the previous account lands nowhere.
+- A story charge calls `invalidateBootstrap()`, so the character-image sheet
+  does not re-seed from the balance it had before the charge.
+- `src/__tests__/profile-store.test.ts` has one test per guard. I removed each
+  guard in turn and confirmed its test fails.
+
 ---
 
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived

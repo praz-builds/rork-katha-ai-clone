@@ -6,6 +6,10 @@ import {
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
 import { setViewerId } from "@/lib/ownership";
+import {
+  LEGACY_OWN_PROFILE_CACHE_KEYS,
+  OWN_PROFILE_CACHE_KEY,
+} from "@/lib/profile-cache-key";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export type BootstrappedUser = {
@@ -136,12 +140,37 @@ async function currentSession(): Promise<UsableSession> {
   return restartGuestSession();
 }
 
+/**
+ * The device copies of who the last account was: the cached greeting name and
+ * the cached profile. Removed wherever a session leaves the device, BEFORE the
+ * next identity exists, so no later account can ever be drawn from them.
+ */
+async function forgetDeviceIdentityCopies(): Promise<void> {
+  const keys = [
+    "katha.displayName.v1",
+    OWN_PROFILE_CACHE_KEY,
+    ...LEGACY_OWN_PROFILE_CACHE_KEYS,
+  ];
+  // One at a time and each allowed to fail alone: a cache that will not clear
+  // is guarded again on read (profile-store checks the user id), and must not
+  // block sign-out or recovery -- nor stop the other keys going.
+  await Promise.all(
+    keys.map((key) =>
+      Promise.resolve()
+        .then(() => AsyncStorage.removeItem(key))
+        .catch(() => {})
+    ),
+  );
+}
+
 /** Discard whatever is stored and sign in as a brand-new guest. */
 async function restartGuestSession(): Promise<UsableSession> {
   // `scope: "local"` clears this device's stored session without trying to
   // revoke server-side. Revocation needs the very token that is not being
   // accepted, so asking for it would fail and take the recovery with it.
   await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  // Whoever the discarded session was, the guest replacing it is not them.
+  await forgetDeviceIdentityCopies();
 
   const { data, error } = await supabase.auth.signInAnonymously();
   if (error) throw error;
@@ -619,11 +648,7 @@ export async function signOutToSignIn(): Promise<void> {
   // short. The next bootstrap fills them in.
   clearCharacterImagesRemaining();
 
-  try {
-    await AsyncStorage.removeItem("katha.displayName.v1");
-  } catch {
-    // A stale cached name is a cosmetic problem; it must not block sign-out.
-  }
+  await forgetDeviceIdentityCopies();
 
   // Signed out, and NOT replaced with a guest (D1).
   //

@@ -6,7 +6,11 @@ import { captureError, initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
-import { bootstrapUser, signOutToSignIn } from "@/lib/session";
+import {
+  bootstrapUser,
+  invalidateBootstrap,
+  signOutToSignIn,
+} from "@/lib/session";
 import { setEntitlementOverride } from "@/lib/entitlements";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { resolveBootstrappedCredits, resolveInitialCredits } from "@/lib/dev-credits";
@@ -55,11 +59,11 @@ import {
 import {
   cachedDisplayName,
   cacheDisplayName,
-  type OwnProfile,
   saveDisplayName,
 } from "@/lib/profile";
 import {
   clearOwnProfile,
+  getOwnProfile,
   hydrateOwnProfileCache,
   refreshOwnProfile,
 } from "@/lib/profile-store";
@@ -252,14 +256,6 @@ export default function App() {
    * app that is about the person has never been able to name them.
    */
   const [displayName, setDisplayName] = useState<string | null>(null);
-  /**
-   * The profile handed to "Your journey" when it opens.
-   *
-   * The profile tab has already loaded these rows; passing them across means
-   * the journey page draws its streak and its join date immediately instead of
-   * showing zeros while it re-fetches the same thing.
-   */
-  const [journeyProfile, setJourneyProfile] = useState<OwnProfile | null>(null);
   /**
    * What the five onboarding questions collected, kept for the session.
    *
@@ -458,6 +454,11 @@ export default function App() {
     // Last session's profile, so Profile has real rows on its first frame.
     void hydrateOwnProfileCache();
     bootstrapUser().then((user) => {
+      // A profile copy (from disk, or still in memory) that belongs to a
+      // different account than the one this session is must not be shown.
+      if (user && getOwnProfile() && getOwnProfile()?.userId !== user.userId) {
+        clearOwnProfile();
+      }
       if (active && user) {
         setCredits(
           resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
@@ -734,6 +735,9 @@ export default function App() {
     */
     availableCreditsRef.current = Math.max(0, availableCreditsRef.current - total);
     setCredits((value) => Math.max(0, value - total));
+    // The kept bootstrap answer's balance is from before this charge, and the
+    // character-image sheet re-seeds from it; the next caller asks again.
+    invalidateBootstrap();
   }, [generations]);
 
   const allStories = useMemo(
@@ -1088,6 +1092,10 @@ export default function App() {
    */
   const completeSignIn = async () => {
     const user = await bootstrapUser({ fresh: true }).catch(() => null);
+    // Signed into a different account than the profile copy on screen.
+    if (user && getOwnProfile() && getOwnProfile()?.userId !== user.userId) {
+      clearOwnProfile();
+    }
     if (user) {
       setCredits(
         resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
@@ -1102,7 +1110,6 @@ export default function App() {
     if (profile) {
       setDisplayName(profile.displayName);
       void cacheDisplayName(profile.displayName);
-      setJourneyProfile(profile);
       setEntitlementOverride(profile.entitlementOverride);
     }
   };
@@ -1121,7 +1128,6 @@ export default function App() {
     setGeneratedStories([]);
     setCredits(0);
     setStreakDays(null);
-    setJourneyProfile(null);
     clearOwnProfile();
     setEntitlementOverride(null);
     setTab("home");
@@ -1213,13 +1219,8 @@ export default function App() {
         return (
           <ProfileScreen
             credits={credits}
-            onJourney={(loaded) => {
-              // Handed the profile the tab already loaded, so the journey page
-              // opens with the numbers filled in instead of flashing zeros
-              // while it fetches the same rows a second time.
-              setJourneyProfile(loaded);
-              setScreen({ name: "journey" });
-            }}
+            // Journey reads the app-wide profile copy, so nothing is handed over.
+            onJourney={() => setScreen({ name: "journey" })}
             onPublicProfile={(authorId) =>
               setScreen({ name: "author", authorId })}
             onVoices={() => setScreen({ name: "voices" })}
@@ -1522,7 +1523,6 @@ export default function App() {
         : screen.name === "journey"
         ? (
           <JourneyScreen
-            profile={journeyProfile}
             onBack={() => goTabs("profile")}
           />
         )
@@ -1534,10 +1534,7 @@ export default function App() {
             credits={credits}
             onBack={() => goTabs(tab)}
             onPaywall={() => setScreen({ name: "paywall" })}
-            onJourney={(loaded) => {
-              setJourneyProfile(loaded);
-              setScreen({ name: "journey" });
-            }}
+            onJourney={() => setScreen({ name: "journey" })}
             onBalance={(balance) =>
               setCredits(
                 resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, balance),
