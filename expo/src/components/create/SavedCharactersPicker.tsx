@@ -149,8 +149,14 @@ export function SavedCharactersPicker({
   }, [buffer, imageStyle]);
 
   const pickReference = useCallback(async () => {
-    const referenceImage = await pickReferenceImage();
-    if (referenceImage) setBuffer((previous) => ({ ...previous, referenceImage }));
+    const picked = await pickReferenceImage();
+    if (picked) {
+      setBuffer((previous) => ({
+        ...previous,
+        referenceImage: picked.dataUrl,
+        referenceImageName: picked.fileName,
+      }));
+    }
   }, []);
 
   const saveNew = useCallback(async () => {
@@ -246,7 +252,7 @@ export function SavedCharactersPicker({
           onCreateImage={createImage}
           portraitNotice={portraitNotice}
           onPickReference={pickReference}
-          onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined }))}
+          onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined, referenceImageName: undefined }))}
           unsavedPromptOpen={unsavedPromptOpen}
           onKeepEditing={() => setUnsavedPromptOpen(false)}
           onDiscard={closeCraft}

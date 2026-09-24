@@ -48,9 +48,10 @@ describe("reimagineQuote", () => {
 });
 
 describe("portraitQuote", () => {
-  it("charges a subscriber the same as everyone else past the six", () => {
+  it("charges a subscriber the same as everyone else past the free three", () => {
     // The plan used to buy unlimited portraits and the server enforced no such
-    // thing. Since migration 00088 it enforces six for every account, so a
+    // thing. Since migration 00088 it enforces a cap for every account (three
+    // since 00096), so a
     // quote of "Included in your plan" would be this module promising what the
     // server is about to refuse.
     expect(portraitQuote({ usedOnAccount: 40 })).toEqual({
@@ -60,11 +61,11 @@ describe("portraitQuote", () => {
   });
 
   it("counts down the free images rather than repeating 'free'", () => {
-    expect(portraitQuote({ usedOnAccount: 0 }).label).toBe("6 free");
-    expect(portraitQuote({ usedOnAccount: 5 }).label).toBe("1 free");
+    expect(portraitQuote({ usedOnAccount: 0 }).label).toBe("3 free");
+    expect(portraitQuote({ usedOnAccount: 2 }).label).toBe("1 free");
   });
 
-  it("charges from the seventh image on", () => {
+  it("charges from the fourth image on", () => {
     expect(
       portraitQuote({ usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT }),
     ).toEqual({ free: false, label: "1 credit" });
@@ -73,10 +74,10 @@ describe("portraitQuote", () => {
 
 // A guest holds the three bootstrap credits, so an affordability check alone
 // says "yes" — and the server then refuses, because an anonymous identity may
-// use its six and buy none. Quoting a price there hands somebody an enabled
+// use its three and buy none. Quoting a price there hands somebody an enabled
 // button that cannot work, which is the exact failure this quote exists for.
 describe("portraitQuote for an anonymous identity", () => {
-  it("offers no price once the six are gone, and says it cannot be bought", () => {
+  it("offers no price once the three are gone, and says it cannot be bought", () => {
     const quote = portraitQuote({
       usedOnAccount: FREE_PORTRAITS_PER_ACCOUNT,
       isAnonymous: true,
@@ -86,10 +87,10 @@ describe("portraitQuote for an anonymous identity", () => {
     expect(quote.label).toMatch(/sign in/i);
   });
 
-  it("still counts their free six the same way", () => {
-    const quote = portraitQuote({ usedOnAccount: 4, isAnonymous: true });
+  it("still counts their free three the same way", () => {
+    const quote = portraitQuote({ usedOnAccount: 1, isAnonymous: true });
     expect(quote.free).toBe(true);
-    // Two left of six — a guest is not on a smaller allowance, only a
+    // Two left of three — a guest is not on a smaller allowance, only a
     // different wall at the end of it.
     expect(quote.label).toContain("2");
   });

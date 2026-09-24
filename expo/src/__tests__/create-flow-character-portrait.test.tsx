@@ -11,7 +11,7 @@
  * shipped the same bug again.
  *
  * Also covered here: the busy state on the card (not only on the button), the
- * removal of the "Edit" button, Reimagine re-reading the CURRENT form fields
+ * removal of the "Edit" button, Regenerate re-reading the CURRENT form fields
  * rather than a stale closure, the unsaved-changes friction dialog, "@" on the
  * moment composer's cast chips, Chapter plan leaving More options, and the
  * direction step that replaced the review screen.
@@ -30,6 +30,13 @@ jest.mock("@/lib/api", () => {
     createGenerationRequestId: () => "portrait-test-request",
   };
 });
+
+const mockLaunchImageLibrary = jest.fn();
+
+jest.mock("expo-image-picker", () => ({
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchImageLibraryAsync: (...args: unknown[]) => mockLaunchImageLibrary(...args),
+}));
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
@@ -58,7 +65,7 @@ import {
   setCharacterImageBalance,
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
-import CreateBriefFlow from "@/components/create/CreateBriefFlow";
+import CreateBriefFlow, { referenceFileName } from "@/components/create/CreateBriefFlow";
 import type { StudioCreateDraft } from "@/components/create/CreateBriefFlow";
 /* eslint-enable import/first */
 
@@ -131,22 +138,23 @@ beforeEach(() => {
 /**
  * What the price line says, and whether the button that spends it is offered.
  *
- * Six free character images per account, then 1 credit each (migration 00088).
+ * Three free character images per account, then 1 credit each (migration
+ * 00096; six under 00088).
  * The panel used to quote from a prop nobody passed, so it always read "4
  * free" -- including for the account that had spent all four and was about to
  * be charged.
  */
 describe("what the next character image costs", () => {
-  it("counts down the free six from the server's own number", async () => {
-    setCharacterImagesRemaining(6);
+  it("counts down the free three from the server's own number", async () => {
+    setCharacterImagesRemaining(3);
     await render(<Harness />);
     await openCharacterSheet();
     await fillCharacter("Priya", "A baker.");
 
-    expect(screen.getByText("6 free")).toBeTruthy();
+    expect(screen.getByText("3 free")).toBeTruthy();
   });
 
-  it("quotes a credit once the six are spent", async () => {
+  it("quotes a credit once the three are spent", async () => {
     setCharacterImagesRemaining(0);
     setCharacterImageBalance(4);
     await render(<Harness credits={4} />);
@@ -160,13 +168,13 @@ describe("what the next character image costs", () => {
   });
 
   it("quotes nothing at all until the server has said", async () => {
-    // A guess here is an affordance that lies: "6 free" shown to an account
+    // A guess here is an affordance that lies: "3 free" shown to an account
     // with none left is a button that takes a credit without warning.
     await render(<Harness />);
     await openCharacterSheet();
     await fillCharacter("Priya", "A baker.");
 
-    expect(screen.queryByText("6 free")).toBeNull();
+    expect(screen.queryByText("3 free")).toBeNull();
     expect(screen.queryByText("1 credit")).toBeNull();
   });
 
@@ -246,7 +254,7 @@ describe("character portrait", () => {
     const press = fireEvent.press(screen.getByText("Create image"));
 
     // Generation takes about twelve seconds. The button already said
-    // "Creating..."; the card is what looked idle and got read as broken.
+    // "Creating…"; the card is what looked idle and got read as broken.
     await screen.findByText("Creating image…");
 
     await act(async () => {
@@ -276,7 +284,7 @@ describe("character portrait", () => {
     expect(rowPortrait.props.source).toEqual({ uri: PORTRAIT_URL });
   });
 
-  it("offers Reimagine and no Edit button once an image exists", async () => {
+  it("offers Regenerate and no Edit button once an image exists", async () => {
     mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT_URL });
     await render(<Harness />);
     await openCharacterSheet();
@@ -286,12 +294,15 @@ describe("character portrait", () => {
       await fireEvent.press(screen.getByText("Create image"));
     });
 
-    await screen.findByText("Reimagine");
+    await screen.findByText("Regenerate");
+    // Reimagine is the reader's word for rewriting a chapter; here the button
+    // draws the picture again, and says so.
+    expect(screen.queryByText("Reimagine")).toBeNull();
     // "Edit" only ever deleted portraitUrl to get back to an empty card.
     expect(screen.queryByText("Edit")).toBeNull();
   });
 
-  it("re-reads the current form fields on every Reimagine", async () => {
+  it("re-reads the current form fields on every Regenerate", async () => {
     mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT_URL });
     await render(<Harness />);
     await openCharacterSheet();
@@ -301,16 +312,16 @@ describe("character portrait", () => {
     await act(async () => {
       await fireEvent.press(screen.getByText("Create image"));
     });
-    await screen.findByText("Reimagine");
+    await screen.findByText("Regenerate");
 
-    // Change every field the call sends, then Reimagine. A stale closure here
+    // Change every field the call sends, then Regenerate. A stale closure here
     // would resend the first appearance and look like the model ignoring the
     // user rather than like a client bug.
     await fireEvent.changeText(screen.getByLabelText("Name"), "Naina");
     await fireEvent.changeText(screen.getByLabelText("Appearance"), "Ink-stained cuffs.");
 
     await act(async () => {
-      await fireEvent.press(screen.getByText("Reimagine"));
+      await fireEvent.press(screen.getByText("Regenerate"));
     });
 
     expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(2);
@@ -508,5 +519,82 @@ describe("character portrait style", () => {
       appearance: "A baker with flour on her sleeves.",
       imageStyle: "watercolor",
     });
+  });
+});
+
+/**
+ * Founder feedback, 2026-09-24: after attaching a reference photo nothing on
+ * the sheet said WHICH photo was attached. The file name now stands in for the
+ * attach button, on one line with its own Remove.
+ */
+describe("the reference photo", () => {
+  beforeEach(() => mockLaunchImageLibrary.mockReset());
+
+  it("shows the attached photo's file name, and Remove clears it", async () => {
+    mockLaunchImageLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{
+        base64: "AAAA",
+        mimeType: "image/jpeg",
+        fileName: "IMG_2231.jpg",
+        uri: "file:///tmp/IMG_2231.jpg",
+      }],
+    });
+    await render(<Harness />);
+    await openCharacterSheet();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("Attach a reference photo"));
+    });
+
+    expect(await screen.findByText("IMG_2231.jpg")).toBeTruthy();
+    expect(screen.queryByLabelText("Attach a reference photo")).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText("Remove the reference photo"));
+    expect(screen.queryByText("IMG_2231.jpg")).toBeNull();
+    expect(screen.getByLabelText("Attach a reference photo")).toBeTruthy();
+  });
+
+  it("sends the photo to the image call but never its name", async () => {
+    mockLaunchImageLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ base64: "AAAA", mimeType: "image/png", fileName: "me.png" }],
+    });
+    mockGenerateCharacterImage.mockResolvedValue({ url: PORTRAIT_URL });
+    await render(<Harness />);
+    await openCharacterSheet();
+    await fillCharacter("Priya", "A baker.");
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("Attach a reference photo"));
+    });
+    await screen.findByText("me.png");
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Create image"));
+    });
+
+    const call = mockGenerateCharacterImage.mock.calls[0][0];
+    expect(call.referenceImage).toBe("data:image/png;base64,AAAA");
+    expect(JSON.stringify(call)).not.toContain("me.png");
+  });
+});
+
+describe("referenceFileName", () => {
+  it("prefers the name the picker gives", () => {
+    expect(referenceFileName({ fileName: "IMG_2231.HEIC.jpg" }, "image/jpeg"))
+      .toBe("IMG_2231.HEIC.jpg");
+  });
+
+  it("falls back to the last path segment of a file uri", () => {
+    expect(referenceFileName({ uri: "file:///a/b/My%20Photo.png?x=1" }, "image/png"))
+      .toBe("My Photo.png");
+  });
+
+  it("names a web blob or data url plainly from its type", () => {
+    expect(referenceFileName({ uri: "blob:http://localhost/1234" }, "image/webp"))
+      .toBe("photo.webp");
+    expect(referenceFileName({ uri: "data:image/jpeg;base64,AAAA" }, "image/jpeg"))
+      .toBe("photo.jpg");
+    expect(referenceFileName({}, "image/png")).toBe("photo.png");
   });
 });

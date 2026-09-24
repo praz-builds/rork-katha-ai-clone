@@ -48,7 +48,7 @@ Cost discipline changed shape rather than loosening. Onboarding makes **one imag
 call per portrait request, at most two per person** — the first attempt plus one
 reimagine — and **no story text call at all**. It spends no user credits and
 writes no ledger row. Behind the flow's own limit, an anonymous identity is
-capped server-side at six character images for the life of that identity (migration 00088; it was four while the cap was anonymous-only)
+capped server-side at three character images for the life of that identity (migration 00096; it was six under 00088, and four while the cap was anonymous-only)
 (migration 00084, §16). The 150-word preview this replaced cost one structured
 model call; this costs one or two flat-rate images, and it produces an artifact
 the person keeps rather than a truncated sample of one they cannot finish.

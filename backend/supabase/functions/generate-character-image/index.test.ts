@@ -80,7 +80,7 @@ Deno.test("an oversized reference is refused at the boundary, not at the model",
 // 00055's hourly window bounds neither: a fresh identity is one
 // `signInAnonymously` away, and a window that resets is not a total.
 //
-// So every caller now gets six character images for their lifetime and pays a
+// So every caller now gets three character images (00096; six under 00088) for their lifetime and pays a
 // credit each after that, and this is the proof that the endpoint actually
 // consults that ledger, that a caller who cannot pay is refused rather than
 // drawn for, and that anything which fails to deliver settles the reservation
@@ -92,8 +92,8 @@ Deno.test("an oversized reference is refused at the boundary, not at the model",
 // `fetch`: every request the handler makes leaves through it, so recording them
 // records exactly which limiter the endpoint consulted. An endpoint that never
 // issues `claim_character_image_request` has no cap and no price, whatever it
-// answers. The arithmetic of the six itself is exercised against real SQL in
-// `supabase/migrations/00088_character_image_lifetime_credits_test.ts`.
+// answers. The arithmetic of the allowance itself is exercised against real SQL in
+// `supabase/migrations/00088_character_image_lifetime_credits_test.ts` and `00096_character_images_three_free_test.ts`.
 import { handleRequest } from "./index.ts";
 
 const GUEST_ID = "33333333-3333-4333-8333-333333333333";
@@ -114,7 +114,7 @@ interface PortraitRun {
 /**
  * What `claim_character_image_request` answers.
  *
- * `credits` is what the reservation charged: 0 for one of the six, 1 past them.
+ * `credits` is what the reservation charged: 0 for one of the three free ones, 1 past them.
  * `errorCode` stands in for the PostgREST error the RPC raises -- 'KTH02' is
  * an empty balance, and an unrecognised one is the fail-closed case.
  */
@@ -204,7 +204,7 @@ async function runPortrait(options: {
           status: claim.status ?? "reserved",
           credits: claim.credits ?? 0,
           replayed: claim.replayed ?? false,
-          free_remaining: claim.freeRemaining ?? 5,
+          free_remaining: claim.freeRemaining ?? 2,
           balance: 3,
         });
       }
@@ -276,10 +276,10 @@ Deno.test("a caller with a free image left gets their portrait", async () => {
   // The price of the NEXT one comes from the server, not from the client's own
   // arithmetic over a number it guessed.
   assertEquals(run.json.credits_charged, 0);
-  assertEquals(run.json.free_remaining, 5);
+  assertEquals(run.json.free_remaining, 2);
 });
 
-Deno.test("a named caller past the six is charged, and told so", async () => {
+Deno.test("a named caller past the free three is charged, and told so", async () => {
   const run = await runPortrait({
     isAnonymous: false,
     claim: { credits: 1, freeRemaining: 0 },
@@ -373,7 +373,7 @@ Deno.test("the hourly window still answers 429, unchanged", async () => {
   assertEquals(run.status, 429);
   assertEquals(run.json.code, undefined);
   // Refused before the ledger was consulted, so a burst does not also eat one
-  // of the six or a credit.
+  // of the three free images or a credit.
   assertEquals(run.rpcs, ["claim_character_portrait_request"]);
 });
 
@@ -384,7 +384,7 @@ Deno.test("a failed generation settles the reservation", async () => {
   });
 
   assertEquals(run.status, 502);
-  // This release is the only thing between a provider failure and one of six
+  // This release is the only thing between a provider failure and one of three
   // lifetime images -- or a credit -- spent on nothing. Onboarding's "Try
   // again" promises exactly this.
   assertEquals(run.rpcs, [

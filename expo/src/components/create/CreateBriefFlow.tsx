@@ -120,6 +120,35 @@ export function emptyCharacterDraft(isHero: boolean): CharacterDraft {
   return { name: "", background: "", appearance: "", isHero };
 }
 
+export type PickedReferenceImage = { dataUrl: string; fileName: string };
+
+/**
+ * A name to show for a picked photo.
+ *
+ * iOS and Android usually give `fileName`. Web often does not, and its `uri`
+ * is a `blob:` or `data:` URL that says nothing a person would recognise, so
+ * the fallback is a plain `photo.<ext>` named from the type.
+ */
+export function referenceFileName(
+  asset: { fileName?: string | null; uri?: string | null },
+  mime: string,
+): string {
+  const given = asset.fileName?.trim();
+  if (given) return given;
+  const uri = asset.uri ?? "";
+  if (uri && !/^(data|blob):/i.test(uri)) {
+    let last = uri.split(/[?#]/)[0].split("/").pop() ?? "";
+    try {
+      last = decodeURIComponent(last);
+    } catch {
+      // A malformed escape is still a usable name as typed.
+    }
+    if (/\.[a-z0-9]{2,5}$/i.test(last)) return last;
+  }
+  const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+  return `photo.${extension}`;
+}
+
 /**
  * The reference cap, as `generate-character-image` enforces it.
  *
@@ -131,8 +160,13 @@ export function emptyCharacterDraft(isHero: boolean): CharacterDraft {
 const MAX_REFERENCE_IMAGE_CHARS = 6 * 1024 * 1024;
 
 /**
- * Attach a photo that steers a character's look. Returns the `data:` URL, or
- * null when the writer cancelled or the photo could not be read.
+ * Attach a photo that steers a character's look. Returns the `data:` URL and
+ * the photo's file name, or null when the writer cancelled or the photo could
+ * not be read.
+ *
+ * The name is only ever shown back to the writer ("IMG_2231.jpg · Remove"),
+ * so they can see WHICH photo is steering the portrait without a thumbnail
+ * competing with the portrait itself. It is never sent anywhere.
  *
  * Re-encoded at `quality: 0.8` and cropped to the portrait frame, then
  * MEASURED against the endpoint's cap. It is not resized: doing that needs
@@ -146,7 +180,7 @@ const MAX_REFERENCE_IMAGE_CHARS = 6 * 1024 * 1024;
  * touch our storage: the reference exists only for the length of one
  * portrait request and is dropped as soon as it has been used.
  */
-export async function pickReferenceImage(): Promise<string | null> {
+export async function pickReferenceImage(): Promise<PickedReferenceImage | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     Alert.alert(
@@ -188,7 +222,7 @@ export async function pickReferenceImage(): Promise<string | null> {
     );
     return null;
   }
-  return dataUrl;
+  return { dataUrl, fileName: referenceFileName(asset, mime) };
 }
 
 const VALUES = [
@@ -693,13 +727,21 @@ export default function CreateBriefFlow({
    * portrait request and is dropped as soon as it has been used.
    */
   const pickCharacterReference = useCallback(async () => {
-    const referenceImage = await pickReferenceImage();
-    if (!referenceImage) return;
-    setCharacterBuffer((previous) => ({ ...previous, referenceImage }));
+    const picked = await pickReferenceImage();
+    if (!picked) return;
+    setCharacterBuffer((previous) => ({
+      ...previous,
+      referenceImage: picked.dataUrl,
+      referenceImageName: picked.fileName,
+    }));
   }, []);
 
   const clearCharacterReference = useCallback(() => {
-    setCharacterBuffer((previous) => ({ ...previous, referenceImage: undefined }));
+    setCharacterBuffer((previous) => ({
+      ...previous,
+      referenceImage: undefined,
+      referenceImageName: undefined,
+    }));
   }, []);
 
   /**
@@ -1329,7 +1371,7 @@ export function CharacterCraftScreen({
   onCreateImage,
   credits,
   /**
-   * An anonymous identity may use its six free images and buy none, so the
+   * An anonymous identity may use its three free images and buy none, so the
    * sheet must refuse rather than quote a price its own server will decline.
    */
   isAnonymous = false,
@@ -1390,7 +1432,7 @@ export function CharacterCraftScreen({
   // Two ways a priced image is unreachable, and a guest hits the second while
   // holding enough credits for the first: `requiresAccount` means the server
   // will refuse whatever the balance says, because an anonymous identity may
-  // not buy a seventh at all.
+  // not buy one past its free three at all.
   const cannotAfford = portraitPrice !== null && !portraitPrice.free &&
     (portraitPrice.requiresAccount === true ||
       (affordable !== null && affordable < 1));
@@ -1404,16 +1446,28 @@ export function CharacterCraftScreen({
   return (
     <View style={styles.screen}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={[styles.characterScroll, { paddingTop: topInset + spacing.md, paddingBottom: 116 + bottomInset }]} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.characterScroll, { paddingTop: topInset + spacing.md, paddingBottom: spacing.xl }]} keyboardShouldPersistTaps="handled">
           <View style={styles.topBar}>
             <Pressable accessibilityRole="button" accessibilityLabel="Back to review and start" onPress={onBack} style={styles.iconButton}><ArrowLeft size={20} color={colors.ink} /></Pressable>
             <Text style={styles.topTitle}>Craft character</Text>
             <View style={styles.topSpacer} />
           </View>
-          <Text style={styles.characterIntro}>A little detail here gives the story a stronger voice and a more recognizable cast.</Text>
+          {/*
+            ONE SCREEN, NO SCROLL, WITH THE FIELDS EMPTY (2026-09-24).
+
+            At 390 x 844 the sheet used to run past the fold: a two-line intro,
+            108pt text boxes and a 128 x 192 portrait put Lead character below
+            Save. The intro is one line, the boxes 84, the portrait 104 x 156
+            and the gaps `spacing.md`, and Lead sits directly under Appearance
+            -- the order STORY_GENERATION_FLOW.md §4's wireframe draws. It still
+            scrolls once the writer types a lot or attaches a photo; that is
+            growth, not the empty sheet.
+          */}
+          <Text style={styles.characterIntro} numberOfLines={1}>A little detail makes a stronger cast.</Text>
           <Field label="Name"><TextInput accessibilityLabel="Name" value={character.name} onChangeText={(value) => set("name", value)} placeholder="e.g. Naina Mistry" placeholderTextColor={colors.tertiary} style={styles.characterInput} /></Field>
           <Field label="Background"><TextInput accessibilityLabel="Background" value={character.background ?? ""} onChangeText={(value) => set("background", value)} placeholder="Personality, relationships, backstory, traits. e.g. Keeps her late father's recipes but never uses them." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
           <Field label="Appearance"><TextInput accessibilityLabel="Appearance" value={character.appearance} onChangeText={(value) => set("appearance", value)} placeholder="Who they are and what they look like. e.g. A 29-year-old baker with a practical streak, curly hair, flour on her sleeves." placeholderTextColor={colors.tertiary} multiline textAlignVertical="top" style={[styles.textArea, styles.characterArea]} /></Field>
+          <View style={styles.switchRow}><View style={styles.switchCopy}><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Toggle value={character.isHero} onValueChange={(value) => set("isHero", value)} accessibilityLabel="Lead character" /></View>
           <View style={styles.portraitPanel}>
             <View style={[styles.portraitPreview, imageReady && styles.portraitPreviewReady]}>
               {/*
@@ -1457,21 +1511,30 @@ export function CharacterCraftScreen({
             </View>
             <View style={styles.portraitActions}>
               {/*
-                Reimagine is the only image action. The "Edit" button that used
-                to sit beside it simply deleted `portraitUrl` to get back to an
-                empty card, which is not an edit -- and Reimagine already
-                covers regenerating from the current fields.
+                One image action, and it says what it will do: "Create image"
+                on an empty card, "Regenerate" once there is a picture to
+                replace (it read "Reimagine", which is the reader's word for
+                rewriting a chapter, not for drawing again). The "Edit" button
+                that used to sit beside it only deleted `portraitUrl`.
+
+                The shared secondary Button, not a hand-rolled outline pill:
+                the label is `type.buttonSmall` in the UI face like every other
+                button, and `loading` puts the spinner in the icon slot.
               */}
-              <Pressable disabled={!canCreateImage} onPress={onCreateImage} accessibilityRole="button" accessibilityState={{ disabled: !canCreateImage, busy: imageBusy }} style={[styles.outlineButton, !canCreateImage && styles.outlineButtonDisabled]}>
-                <Text style={styles.outlineButtonText}>{imageBusy ? "Creating..." : imageReady ? "Reimagine" : "Create image"}</Text>
-              </Pressable>
+              <Button
+                label={imageBusy ? "Creating…" : imageReady ? "Regenerate" : "Create image"}
+                onPress={onCreateImage}
+                variant="secondary"
+                size="sm"
+                fullWidth={false}
+                disabled={!canCreateImage}
+                loading={imageBusy}
+              />
               {/*
                 What the next portrait costs, beside the button that spends it.
                 A price line rather than a suffix on the label, so the control
-                keeps one name for the whole of its life: the label is what
-                assistive technology announces and what every test presses by,
-                and a name that changes with the writer's balance is a
-                different control every time they open the sheet.
+                keeps one name whatever the writer's balance: the label is what
+                assistive technology announces and what every test presses by.
               */}
               {imageBusy || !portraitPrice ? null : (
                 <Text style={styles.portraitPrice}>
@@ -1486,20 +1549,40 @@ export function CharacterCraftScreen({
                 copy says so where the writer is deciding whether to attach one
                 -- not buried in a policy page. The backend states the same rule
                 to the model.
+
+                Once attached, the photo's own file name stands in for the
+                button, so the writer can see WHICH photo is steering the
+                portrait: "IMG_2231.jpg · Remove", on one truncated line.
               */}
-              <Pressable
-                onPress={character.referenceImage ? onClearReference : onPickReference}
-                accessibilityRole="button"
-                accessibilityLabel={character.referenceImage
-                  ? "Remove the reference photo"
-                  : "Attach a reference photo"}
-                style={styles.referenceButton}
-              >
-                <ImagePlus size={15} color={colors.accent} />
-                <Text style={styles.referenceButtonText}>
-                  {character.referenceImage ? "Remove reference photo" : "Attach a reference photo"}
-                </Text>
-              </Pressable>
+              {character.referenceImage
+                ? (
+                  <View style={styles.referenceAttached}>
+                    <ImagePlus size={15} color={colors.accent} />
+                    <Text style={styles.referenceName} numberOfLines={1} ellipsizeMode="middle">
+                      {character.referenceImageName || "Reference photo"}
+                    </Text>
+                    <Text style={styles.referenceSeparator}>·</Text>
+                    <Pressable
+                      onPress={onClearReference}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove the reference photo"
+                      hitSlop={8}
+                    >
+                      <Text style={styles.referenceButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                )
+                : (
+                  <Pressable
+                    onPress={onPickReference}
+                    accessibilityRole="button"
+                    accessibilityLabel="Attach a reference photo"
+                    style={styles.referenceButton}
+                  >
+                    <ImagePlus size={15} color={colors.accent} />
+                    <Text style={styles.referenceButtonText}>Attach a reference photo</Text>
+                  </Pressable>
+                )}
               {character.referenceImage
                 ? (
                   <Text style={styles.referenceHint}>
@@ -1512,7 +1595,6 @@ export function CharacterCraftScreen({
             </View>
           </View>
           <Text style={styles.optionHint}>No real people or characters you do not have rights to.</Text>
-          <View style={styles.switchRow}><View><Text style={styles.switchLabel}>Lead character</Text><Text style={styles.switchHint}>Katha follows this character most closely.</Text></View><Toggle value={character.isHero} onValueChange={(value) => set("isHero", value)} accessibilityLabel="Lead character" /></View>
           {onDelete ? <Pressable onPress={onDelete} accessibilityRole="button" style={styles.deleteButton}><Text style={styles.deleteText}>Delete character</Text></Pressable> : null}
         </ScrollView>
         <View style={[styles.stickyFooter, { paddingBottom: Math.max(bottomInset, spacing.md) }]}>
@@ -1678,6 +1760,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.xs },
   switchLabel: { color: colors.ink, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },
   switchHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2 },
+  switchCopy: { flex: 1 },
   optionInput: { minHeight: 46, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 14 },
   labelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   helpButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
@@ -1685,14 +1768,14 @@ const styles = StyleSheet.create({
   groupedFieldCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   groupedFieldDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   creditWarning: { color: colors.heart, fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", textAlign: "center" },
-  characterScroll: { flexGrow: 1, paddingHorizontal: spacing.xl, gap: spacing.lg },
-  characterIntro: { color: colors.muted, fontFamily: fonts.ui, fontSize: 15, lineHeight: 22 },
+  characterScroll: { flexGrow: 1, paddingHorizontal: spacing.xl, gap: spacing.md },
+  characterIntro: { color: colors.muted, fontFamily: fonts.ui, fontSize: 15, lineHeight: 20 },
   field: { gap: spacing.sm },
   fieldLabel: { color: colors.ink, fontFamily: fonts.ui, fontSize: 14, fontWeight: "800" },
-  characterInput: { minHeight: 50, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 16 },
-  characterArea: { minHeight: 108 },
-  portraitPanel: { flexDirection: "row", alignItems: "center", gap: spacing.lg, paddingVertical: spacing.sm },
-  portraitPreview: { width: 128, height: 192, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  characterInput: { minHeight: 46, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 16 },
+  characterArea: { minHeight: 84, paddingVertical: spacing.md },
+  portraitPanel: { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg },
+  portraitPreview: { width: 104, height: 156, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   portraitPreviewReady: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   portraitImage: { width: "100%", height: "100%" },
   // Sits over the card rather than replacing it, so a Reimagine keeps the
@@ -1700,14 +1783,14 @@ const styles = StyleSheet.create({
   portraitBusy: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.accentSoft, opacity: 0.94 },
   portraitBusyText: { color: colors.accent, fontFamily: fonts.ui, fontSize: 12, fontWeight: "800" },
   portraitHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, textAlign: "center", paddingHorizontal: spacing.md },
-  portraitActions: { flex: 1, gap: spacing.md, alignItems: "flex-start" },
+  portraitActions: { flex: 1, gap: spacing.md, alignItems: "flex-start", minWidth: 0 },
   portraitPrice: { fontFamily: fonts.ui, fontSize: 12, lineHeight: 16, color: colors.tertiary, letterSpacing: 0, marginTop: -spacing.sm },
   referenceButton: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 },
+  referenceAttached: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, alignSelf: "stretch" },
+  referenceName: { flexShrink: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.ink, letterSpacing: 0 },
+  referenceSeparator: { fontFamily: fonts.ui, fontSize: 13, color: colors.tertiary },
   referenceButtonText: { fontFamily: fonts.ui, fontSize: 13, fontWeight: "700", color: colors.accent, letterSpacing: 0 },
   referenceHint: { fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.tertiary, letterSpacing: 0 },
-  outlineButton: { minHeight: 46, borderRadius: radius.pill, borderWidth: 1.5, borderColor: colors.accent, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
-  outlineButtonDisabled: { opacity: 0.45 },
-  outlineButtonText: { color: colors.ink, fontFamily: fonts.ui, fontSize: 16, fontWeight: "800" },
   portraitError: { color: colors.heart, fontFamily: fonts.ui, fontSize: 12, lineHeight: 17 },
   deleteButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   deleteText: { color: colors.heart, fontFamily: fonts.ui, fontWeight: "800", fontSize: 14 },

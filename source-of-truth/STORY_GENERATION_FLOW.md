@@ -484,19 +484,26 @@ in the app's own voice.
 Placeholders are re-authored per mode (§3) and per genre where it helps. The
 **Lead character** control uses a labelled binary toggle, not a text field.
 
-### Portrait, Reimagine, Edit, Delete
+### Portrait, Regenerate, Edit, Delete
 
 - **Create image generates the portrait from the current fields before the
   story call.** The Craft character sheet is a two-state flow: first the fields,
   then the portrait review. The user can save the character without an image,
   but if they tap Create image, that image request is its own backend call and
   the paid story generation call does not start from inside the sheet.
-- **Reimagine** regenerates it from the current field values, and it costs
+- **Regenerate** draws it again from the current field values, and it costs
   exactly what a first generation costs: an image drawn from changed fields is a
-  fresh paid provider call, so it draws on the same allowance.
-- **Six character images per account, for the life of the account, then 1 credit
-  each** *(2026-09-14, migration 00088)* — for every user, free tier and paid
-  plan alike. `CREDITS_AND_PRICING.md` §3 (*Character images*) is canonical.
+  fresh paid provider call, so it draws on the same allowance. The button reads
+  **Create image** on an empty card and **Regenerate** once a picture exists
+  *(2026-09-24; it read "Reimagine", which is the reader's word for rewriting a
+  chapter)*.
+- **A reference photo** may be attached to steer the look (never the likeness).
+  Once attached, the photo's **file name** is shown under the portrait actions
+  on one truncated line with its own Remove — "IMG_2231.jpg · Remove" — so the
+  writer can see which photo is in play *(2026-09-24)*.
+- **Three character images per account, for the life of the account, then 1
+  credit each** *(2026-09-14 at six, migration 00088; three since 2026-09-24,
+  migration 00096)* — for every user, free tier and paid plan alike. `CREDITS_AND_PRICING.md` §3 (*Character images*) is canonical.
   **The sheet must quote the price before the button is pressed** and must not
   offer a priced image the balance cannot buy; the count comes from the server
   (`bootstrap-user`, and every image response), never from the client counting
@@ -513,7 +520,7 @@ Placeholders are re-authored per mode (§3) and per genre where it helps. The
 
 Maximum **3** characters — *amended 2026-09-02, was 4; see §14 item 1.* A story
 start's cast is **bundled into the 1-credit start**, not priced per character,
-and it does **not** draw on the six free standalone character images above —
+and it does **not** draw on the three free standalone character images above —
 that allowance is for the Craft sheet and the saved-character library. Images
 render at 1024×1024.
 

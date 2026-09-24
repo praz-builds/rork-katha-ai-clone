@@ -460,7 +460,7 @@ export class CharacterPortraitGuestCapError extends GenerationRequestError {
 }
 
 /**
- * The six free images are gone and the balance cannot buy the seventh.
+ * The three free images are gone and the balance cannot buy another.
  *
  * 402 `{ code: "insufficient_credits" }`, and it is the refusal a named account
  * gets where an anonymous one gets the guest cap above -- buying credits needs

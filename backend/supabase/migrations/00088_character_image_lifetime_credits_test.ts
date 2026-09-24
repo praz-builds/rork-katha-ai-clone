@@ -1,4 +1,4 @@
-// 00088: the six are exercised, the seventh is charged, and nothing is ever
+// 00088: the free images are exercised, the next one is charged, and nothing is ever
 // drawn for a user who cannot pay.
 //
 // Same lesson 00071 paid for and 00082, 00084 and 00085 restated -- a plpgsql
@@ -9,7 +9,7 @@
 //
 // What is asserted, in the order it matters:
 //
-//   1. The sixth image is free and the seventh costs exactly one credit.
+//   1. The last free image is free and the next costs exactly one credit.
 //   2. A user with no credits is REFUSED (KTH02), not drawn for -- and the
 //      refusal leaves no reservation behind, so the request id is still usable
 //      once they have a balance.
@@ -18,17 +18,28 @@
 //   4. A re-delivered request (the same request_id) replays the reservation
 //      and does NOT charge again, and a request_id that already completed or
 //      refunded cannot be spent a second time.
-//   5. The counter is per user: one person's six is not another's.
-//   6. An anonymous identity's existing 00084 count carries into the new six
+//   5. The counter is per user: one person's allowance is not another's.
+//   6. An anonymous identity's existing 00084 count carries into the allowance
 //      rather than starting over.
 //   7. Neither function is executable by `authenticated`. The user id is an
 //      argument taken on trust, so the caller must be the service role that
 //      verified the token.
+//
+// ## The number is three since 00096
+//
+// This harness applies every migration in order, so it runs against the
+// allowance 00096 set (three, product owner 2026-09-24), not the six 00088
+// shipped. The assertions are written against `FREE` rather than a literal so
+// the next time the number moves it moves here in one place; 00096's own test
+// asserts the three, and what happens to an account already past it.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/assert_rejects.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
+
+/** Free character images per account. 00096 moved it from 6 to 3. */
+const FREE = 3;
 
 async function createDatabase() {
   const db = new PGlite({ extensions: { pg_trgm } });
@@ -105,7 +116,7 @@ type Claim = {
 
 /**
  * `mayPurchase` defaults to TRUE here because most of these tests are about a
- * named user, who may buy past their six. The function's own default is the
+ * named user, who may buy past their free images. The function's own default is the
  * opposite -- false, so a caller that forgets the argument refuses to spend
  * rather than spending -- and the anonymous wall is tested explicitly below.
  */
@@ -145,41 +156,41 @@ async function freeUsed(db: PGlite, userId: string): Promise<number> {
   return result.rows.length ? result.rows[0].claimed_count : 0;
 }
 
-Deno.test("the sixth image is free and the seventh costs one credit", async () => {
+Deno.test("the last free image is free and the next costs one credit", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
     await fund(db, WRITER, 5);
 
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const claimed = await claim(db, WRITER, `req-${i}`);
       assertEquals(claimed.credits, 0, `image ${i} was charged`);
-      assertEquals(claimed.free_remaining, 6 - i);
+      assertEquals(claimed.free_remaining, FREE - i);
       assertEquals(claimed.balance, 5, `image ${i} moved the balance`);
       await complete(db, claimed.operation_id, WRITER);
     }
-    // Six generations, six free, and the counter says so rather than the test
+    // Every free one used, and the counter says so rather than the test
     // inferring it from the balance.
-    assertEquals(await freeUsed(db, WRITER), 6);
+    assertEquals(await freeUsed(db, WRITER), FREE);
     assertEquals(await balance(db, WRITER), 5);
 
-    const seventh = await claim(db, WRITER, "req-7");
-    assertEquals(seventh.credits, 1);
-    assertEquals(seventh.free_remaining, 0);
-    assertEquals(seventh.balance, 4);
+    const next = await claim(db, WRITER, "req-next");
+    assertEquals(next.credits, 1);
+    assertEquals(next.free_remaining, 0);
+    assertEquals(next.balance, 4);
     assertEquals(await balance(db, WRITER), 4);
 
-    // And the eighth, so the charge is the new steady state rather than a
+    // And one more, so the charge is the new steady state rather than a
     // one-off boundary effect.
-    const eighth = await claim(db, WRITER, "req-8");
-    assertEquals(eighth.credits, 1);
+    const after = await claim(db, WRITER, "req-after");
+    assertEquals(after.credits, 1);
     assertEquals(await balance(db, WRITER), 3);
   } finally {
     await db.close();
   }
 });
 
-Deno.test("editing counts against the same six, because editing costs", async () => {
+Deno.test("editing counts against the same allowance, because editing costs", async () => {
   // There is no separate "edit" call: the Craft sheet re-invokes the same
   // endpoint with changed fields and a new request id, which is a fresh paid
   // provider generation. This asserts the counter cannot tell them apart --
@@ -196,7 +207,7 @@ Deno.test("editing counts against the same six, because editing costs", async ()
     await complete(db, edited.operation_id, WRITER);
 
     assertEquals(await freeUsed(db, WRITER), 2);
-    assertEquals(edited.free_remaining, 4);
+    assertEquals(edited.free_remaining, FREE - 2);
   } finally {
     await db.close();
   }
@@ -206,9 +217,9 @@ Deno.test("a user with no credits is refused, not drawn for", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    // No funding at all: the six are free, so this account reaches the charge
+    // No funding at all: the free ones are free, so this account reaches the charge
     // with a zero balance, which is the ordinary free-tier shape.
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const claimed = await claim(db, BROKE, `free-${i}`);
       await complete(db, claimed.operation_id, BROKE);
     }
@@ -232,7 +243,7 @@ Deno.test("a user with no credits is refused, not drawn for", async () => {
 
     // Nothing was drawn and nothing was taken, so the counter did not move
     // either.
-    assertEquals(await freeUsed(db, BROKE), 6);
+    assertEquals(await freeUsed(db, BROKE), FREE);
     assertEquals(await balance(db, BROKE), 0);
 
     // Top up and the same id works, at the same price.
@@ -250,7 +261,7 @@ Deno.test("a failed charged image refunds the credit", async () => {
   try {
     await seed(db);
     await fund(db, WRITER, 2);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const free = await claim(db, WRITER, `free-${i}`);
       await complete(db, free.operation_id, WRITER);
     }
@@ -289,9 +300,9 @@ Deno.test("a failed free image gives the slot back, not a credit", async () => {
     assertEquals(released.credits, 0);
     // Onboarding promises the retry after "We couldn't find {Name} this time"
     // is free. Without the decrement the third failure in a row would end the
-    // flow having silently spent three of six.
+    // flow having silently spent the whole allowance.
     assertEquals(await freeUsed(db, WRITER), 0);
-    assertEquals(released.free_remaining, 6);
+    assertEquals(released.free_remaining, FREE);
     // And no credit was invented out of a free failure.
     assertEquals(await balance(db, WRITER), 2);
 
@@ -307,7 +318,7 @@ Deno.test("a completed image cannot be refunded afterwards", async () => {
   try {
     await seed(db);
     await fund(db, WRITER, 3);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const free = await claim(db, WRITER, `free-${i}`);
       await complete(db, free.operation_id, WRITER);
     }
@@ -330,7 +341,7 @@ Deno.test("a re-delivered request replays and is not charged twice", async () =>
   try {
     await seed(db);
     await fund(db, WRITER, 3);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const free = await claim(db, WRITER, `free-${i}`);
       await complete(db, free.operation_id, WRITER);
     }
@@ -394,52 +405,50 @@ Deno.test("the counter is per user", async () => {
     await fund(db, WRITER, 2);
     await fund(db, OTHER, 2);
 
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const claimed = await claim(db, WRITER, `w-${i}`);
       await complete(db, claimed.operation_id, WRITER);
     }
     const writerPaid = await claim(db, WRITER, "w-7");
     assertEquals(writerPaid.credits, 1);
 
-    // Spending one person's six must not touch anybody else's.
+    // Spending one person's allowance must not touch anybody else's.
     const otherFirst = await claim(db, OTHER, "o-1");
     assertEquals(otherFirst.credits, 0);
-    assertEquals(otherFirst.free_remaining, 5);
+    assertEquals(otherFirst.free_remaining, FREE - 1);
     assertEquals(await balance(db, OTHER), 2);
   } finally {
     await db.close();
   }
 });
 
-Deno.test("an anonymous identity's existing count carries into the six", async () => {
+Deno.test("an anonymous identity's existing count carries into the allowance", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    // Exactly the row 00084 left behind in production: three of four spent on
-    // an anonymous identity before this migration existed. Written through the
+    // The shape of a row 00084 left behind in production: an image already
+    // spent on an anonymous identity before 00088 existed. Written through the
     // superseded claim, because that is what put it there.
-    for (let i = 0; i < 3; i++) {
-      await db.query("select claim_guest_portrait_request($1)", [GUEST]);
-    }
-    assertEquals(await freeUsed(db, GUEST), 3);
+    await db.query("select claim_guest_portrait_request($1)", [GUEST]);
+    assertEquals(await freeUsed(db, GUEST), 1);
 
-    // Three carried, three left -- not a fresh six, and not orphaned at four.
+    // One carried -- not a fresh allowance, and not orphaned.
     const next = await claim(db, GUEST, "after-migration");
     assertEquals(next.credits, 0);
-    assertEquals(next.free_remaining, 2);
+    assertEquals(next.free_remaining, FREE - 2);
     await complete(db, next.operation_id, GUEST);
 
-    for (let i = 1; i <= 2; i++) {
+    for (let i = 1; i <= FREE - 2; i++) {
       const more = await claim(db, GUEST, `more-${i}`);
       assertEquals(more.credits, 0);
       await complete(db, more.operation_id, GUEST);
     }
 
-    // Seventh overall. The guest was funded 0, so it is a refusal rather than
-    // a charge -- which is the free tier's wall, and it is a wall you can pay
-    // past rather than one you sign in past.
+    // One past the allowance. The guest was funded 0, so it is a refusal
+    // rather than a charge -- which is the free tier's wall, and it is a wall
+    // you can pay past rather than one you sign in past.
     await assertRejects(
-      () => claim(db, GUEST, "seventh"),
+      () => claim(db, GUEST, "one-too-many"),
       Error,
       "Insufficient credits",
     );
@@ -456,11 +465,11 @@ Deno.test("the free allowance reader agrees with the counter", async () => {
       "select character_image_free_remaining($1) as remaining",
       [WRITER],
     );
-    // No row yet. A user who has never made one has all six, and the reader
+    // No row yet. A user who has never made one has all of them, and the reader
     // must say so rather than returning null for a missing row.
-    assertEquals(start.rows[0].remaining, 6);
+    assertEquals(start.rows[0].remaining, FREE);
 
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       const claimed = await claim(db, WRITER, `r-${i}`);
       await complete(db, claimed.operation_id, WRITER);
     }
@@ -566,34 +575,34 @@ Deno.test("only the service role may execute any of these", async () => {
   }
 });
 
-// An anonymous identity gets its six and no more, whatever its balance.
+// An anonymous identity gets its free images and no more, whatever its balance.
 //
 // Its credits are the three from `bootstrap_user`, and those exist to get it a
 // STORY — the thing that converts it. Spent on portraits instead, the user ends
 // up with no story, us with three provider bills, and nothing to convert them
 // with. The wall is there to be converted, not waited out, which is what its
 // copy has always said: "Sign in to keep making characters."
-Deno.test("an anonymous caller may use its six and never buy a seventh", async () => {
+Deno.test("an anonymous caller may use its free images and never buy one more", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
     const user = GUEST;
     await fund(db, user, 50);
-    for (let n = 1; n <= 6; n += 1) {
+    for (let n = 1; n <= FREE; n += 1) {
       const free = await claim(db, user, `anon-${n}`, false);
       assertEquals(free.credits, 0);
     }
-    // Six spent, fifty credits in hand, and still refused.
+    // All free ones spent, fifty credits in hand, and still refused.
     let refused = false;
     try {
-      await claim(db, user, "anon-7", false);
+      await claim(db, user, "anon-over", false);
     } catch (error) {
       refused = String(error).includes("Insufficient credits");
     }
     assertEquals(refused, true);
 
     // Nothing was reserved, so the id is still usable after they sign in.
-    const bought = await claim(db, user, "anon-7", true);
+    const bought = await claim(db, user, "anon-over", true);
     assertEquals(bought.credits, 1);
   } finally {
     await db.close();
@@ -608,7 +617,7 @@ Deno.test("the purchase flag defaults to refusing", async () => {
     await seed(db);
     const user = GUEST;
     await fund(db, user, 50);
-    for (let n = 1; n <= 6; n += 1) await claim(db, user, `d-${n}`, false);
+    for (let n = 1; n <= FREE; n += 1) await claim(db, user, `d-${n}`, false);
     const result = await db.query<{ ok: boolean }>(
       `select exists(
          select 1 from public.character_image_operations
