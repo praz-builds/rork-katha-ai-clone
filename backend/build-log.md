@@ -323,6 +323,91 @@ Tests: `reader-responsiveness.test.tsx`. The "no words rebuilt" test and the
 
 ---
 
+## 2026-09-21 UTC — Deployed: migration 00095 and the two narration functions, measured on production
+
+**Session:** the coordinating session. PRs #122 and #125 merged; migration
+applied and both functions deployed in the mandated order.
+
+### What shipped
+
+| Step | Result |
+|---|---|
+| `supabase migration list --linked` before | local and remote both ended at **00094**, no drift, `00095` local-only |
+| `supabase db push` | `Applying migration 00095_chapter_audio_chunks.sql` — the only one applied |
+| `supabase functions deploy audio-status` | deployed **first** |
+| `supabase functions deploy generate-audio` | deployed second |
+| `supabase secrets list` | **`NARRATION_PREFETCH_ENABLED` absent** — prefetch ships refused, as designed |
+
+The order is not a preference. `audio-status` goes first because it must
+understand chunk rows before anything writes them; the reverse leaves the old
+function counting staged parts and restarting a chunk as duplicate paid work.
+Functions before the migration would be a full narration outage, not a degraded
+window — every poll 500s on the missing relation.
+
+### Measured against production, not inferred
+
+`backend/originals/verify-narration-deploy.ts` (added here) signs in as the
+house account, picks a real published chapter over `NARRATION_CHUNK_CHARS` that
+is not already narrated, and asks production the three questions a green test
+suite cannot answer because all three are about code running somewhere else.
+
+Chapter 7 of `3a221461-c97f-4987-af50-d84194072407`, 9,001 characters, 2 chunks:
+
+| Check | Result |
+|---|---|
+| `chunk_manifest` returned at all | **yes** — absent would have meant the deploy did not take |
+| First playable chunk | **45.8s** (1 of 2 ready) |
+| Whole chapter `COMPLETED`, `audio_url` present | **67.3s** |
+| `purpose: "prefetch"` | **503, refused** |
+
+**The number that matters is 45.8 against 101.6.** The 2026-09-19 entry
+measured 101.6s for a 2-chunk chapter, and that was time before the reader
+heard *anything*, because the stitch was the critical path. First audio is now
+45.8s — one chunk's synthesis — and the whole chapter finishes at 67.3s rather
+than 101.6s because the chunks run in parallel instead of one per poll.
+
+### What this run does NOT prove
+
+It exercised a 2-chunk chapter. `NARRATION_MAX_CHUNKS` is 3 and the 3-chunk
+path is unmeasured on production; the projection is that first audio stays at
+roughly one chunk regardless of length, which is the whole point of the
+manifest, but it is still a projection. The ~45s per chunk also rests on a
+shared public RunPod endpoint, so three simultaneous jobs need not each get the
+single-job latency — `NARRATION_MAX_CONCURRENT_CHUNKS`' doc says so.
+
+No failures occurred, so nothing was written to `public.error_events`. The
+script writes there on every failure path rather than only printing, per the
+Observability Gate.
+
+### Still open, deliberately
+
+Carried from #125 and unchanged by this deploy:
+
+1. **Parts survive the stitch**, so deleting a `chapter_audio` row leaks them
+   until `record_orphaned_audio_object()` (migration 00062) is extended to the
+   parts prefix.
+2. **Stable part paths can splice two prose revisions** if a story is edited
+   mid-playthrough. The row id in the parts prefix fixes this and (1) together
+   and should be one change.
+3. **A check and a write are not one instruction** against PostgREST, so a
+   losing poll can still write bytes to the stable path. No row points a reader
+   at them and the owning run overwrites on its next poll; closing it properly
+   needs the same per-run token as (2).
+4. **The legacy single-chunk publish has no ownership check**, pre-existing and
+   on the most common path in the library.
+
+### The client is not deployed and cannot be
+
+`expo/app.json` still carries the literal `u.expo.dev/UPDATE_PROJECT_ID` and an
+empty EAS `projectId`, and `eas-cli` is not installed. There is no OTA channel
+and no build to update, so **every client change in #119 and #122 is live in
+`main` and on nothing else.** The narration improvements here are real for any
+client that talks to production; the buttons, the story page and phrase capture
+are visible only through `scripts/preview.sh`. Setting up EAS is its own piece
+of work and is the owner's call.
+
+---
+
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no
