@@ -849,9 +849,10 @@ order, and neither replaces the other:
 
 1. **12 requests/hour/user** via `claim_character_portrait_request` (migration
    00055). It bounds a burst, and it runs first so a refused burst does not also
-   cost one of the six below. Unchanged.
-2. **Six free character images per user, for the life of the account, then 1
-   credit each** via `claim_character_image_request` (migration 00088).
+   cost one of the free images below. Unchanged.
+2. **Three free character images per user, for the life of the account, then 1
+   credit each** via `claim_character_image_request` (migration 00088; the
+   number is 00096's, cut from six on 2026-09-24).
    Generations and edits both count. It applies to every user — anonymous,
    free-tier and subscriber alike — and it supersedes 00084's anonymous-only
    four, carrying existing counts forward. `source-of-truth/CREDITS_AND_PRICING.md`
@@ -859,7 +860,7 @@ order, and neither replaces the other:
    paywall still sells "unlimited" on a plan.
 
 One call can become six paid provider requests (two models x three safety
-rungs), which is why the endpoint is bounded twice. Past the six the credit is
+rungs), which is why the endpoint is bounded twice. Past the free three the credit is
 **reserved and refunded**, not deducted: `release_character_image_request` gives
 back the credit — or the free slot — on every path that does not deliver an
 image, including a 400 and the catch-all. A replayed `request_id` returns the
@@ -1178,7 +1179,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - Entry point: `expo/src/screens/KathaOnboardingComplete.jsx`, which composes the three-screen animated intro `KathaOnboarding.jsx` and the questionnaire `KathaOnboardingFlowV2.tsx`. It fires `onCharacterPath`, and `App.tsx` then mounts `expo/src/screens/CharacterOnboarding.tsx` (W3 pitch -> W4 Craft -> W5 email -> code -> W6 Meet -> paywall -> welcome).
 - Questionnaire: name, three genre interests, then Reading / Writing / A bit of both. A **reader** then answers three questions of their own (how they like their stories, what they are in the mood for tonight, when they usually read); a writer and "both" answer two. The reader's mood feeds the Tonight rail on Home.
 - **One progress row.** `expo/src/lib/onboarding-progress.ts` is the single table of steps per purpose (eight for a reader, seven for a writer or "both"); both the questionnaire and the character screens read it, and `OnboardingTopBar` draws it. W4, W5, the code screen and W6 share one pill. Do not reintroduce a second progress indicator.
-- W4's CTA saves the character row and starts the portrait on the anonymous session; email/OTP covers the wait. Auth never gates the aha. Six character images per identity, then a reserved credit (migration 00088, `CREDITS_AND_PRICING.md`).
+- W4's CTA saves the character row and starts the portrait on the anonymous session; email/OTP covers the wait. Auth never gates the aha. Three character images per identity, then a reserved credit (migrations 00088 and 00096, `CREDITS_AND_PRICING.md`).
 - **A name and a face are preassigned, not asked for** (2026-09-16). `ensure_identity` (migration 00089) writes a handle (`adjective_noun_NN`, checked against the reserved list) and one of the 36 creature avatars at bootstrap, so no account is ever a grey circle called "Your profile". The identity editor offers all 36 plus a photo upload; a photo clears the creature and a creature clears the photo.
 - 390 x 844 geometry, light theme only, shared wordmark, fixed intro slots.
 - Do not restore the prototype's "Replay the flow" action. The welcome screen hands off straight into the tabs: a writer lands on Create with the onboarding character pre-filled as the hero, a reader or "both" lands on Home (`finishCharacterOnboarding` in `App.tsx`).

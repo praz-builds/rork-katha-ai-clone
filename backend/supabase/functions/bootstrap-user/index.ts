@@ -113,7 +113,7 @@ serve(async (req) => {
         };
       },
       readBalance: () => getBalance(serviceClient, user.id),
-      // How many of the six free character images are left, so the client can
+      // How many of the three free character images are left, so the client can
       // price the button BEFORE the user taps it.
       //
       // It rides on bootstrap rather than on an endpoint of its own because

@@ -103,10 +103,10 @@ import portraitPriya from "../../assets/onboarding/portrait-priya.png";
  *
  * ## What this spends
  *
- * One portrait request plus at most one reimagine -- two of the six free
- * character images every account gets for its lifetime (migration 00088), on
- * top of the 12/hour window (00055). Two of six is deliberate headroom: a
- * first-run user leaves onboarding with four left, so the Craft sheet is not
+ * One portrait request plus at most one reimagine -- two of the three free
+ * character images every account gets for its lifetime (migration 00096; it
+ * was six under 00088), on top of the 12/hour window (00055). A first-run user
+ * who reimagines leaves onboarding with one left, so the Craft sheet is not
  * already priced the first time they open it. The first chapter is bought
  * afterwards, from Home or from the Create studio.
  */

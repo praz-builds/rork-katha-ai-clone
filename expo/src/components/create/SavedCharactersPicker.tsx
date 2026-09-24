@@ -106,7 +106,8 @@ export function SavedCharactersPicker({
   const requestCloseCraft = useCallback(() => {
     const dirty = Boolean(
       buffer.name.trim() || buffer.background?.trim() ||
-        buffer.appearance.trim() || buffer.portraitUrl,
+        buffer.appearance.trim() || buffer.portraitUrl ||
+        buffer.referenceImage,
     );
     if (dirty) {
       setUnsavedPromptOpen(true);
@@ -149,8 +150,14 @@ export function SavedCharactersPicker({
   }, [buffer, imageStyle]);
 
   const pickReference = useCallback(async () => {
-    const referenceImage = await pickReferenceImage();
-    if (referenceImage) setBuffer((previous) => ({ ...previous, referenceImage }));
+    const picked = await pickReferenceImage();
+    if (picked) {
+      setBuffer((previous) => ({
+        ...previous,
+        referenceImage: picked.dataUrl,
+        referenceImageName: picked.fileName,
+      }));
+    }
   }, []);
 
   const saveNew = useCallback(async () => {
@@ -237,7 +244,7 @@ export function SavedCharactersPicker({
         </View>
       </View>
 
-      <Modal animationType="slide" presentationStyle="fullScreen" visible={craftOpen} onRequestClose={requestCloseCraft}>
+      <Modal animationType="slide" presentationStyle="fullScreen" visible={craftOpen} onRequestClose={unsavedPromptOpen ? () => setUnsavedPromptOpen(false) : requestCloseCraft}>
         <CharacterCraftScreen
           character={buffer}
           onChange={setBuffer}
@@ -246,7 +253,7 @@ export function SavedCharactersPicker({
           onCreateImage={createImage}
           portraitNotice={portraitNotice}
           onPickReference={pickReference}
-          onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined }))}
+          onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined, referenceImageName: undefined }))}
           unsavedPromptOpen={unsavedPromptOpen}
           onKeepEditing={() => setUnsavedPromptOpen(false)}
           onDiscard={closeCraft}

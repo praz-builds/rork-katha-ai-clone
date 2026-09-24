@@ -1,18 +1,18 @@
 /**
- * How many of the six free character images this account has left, shared by
+ * How many of the three free character images this account has left, shared by
  * every screen that can spend one.
  *
  * Four surfaces call `generate-character-image` -- onboarding's W4, the Craft
  * character sheet, the saved-characters picker and the reimagine sheet -- and
  * a user moves between them inside one session. A count held per screen would
- * disagree the moment they did: the picker would still say "6 free" after
- * onboarding had spent three, and the button under that label charges a credit.
+ * disagree the moment they did: the picker would still say "3 free" after
+ * onboarding had spent two, and the button under that label charges a credit.
  *
  * So the number lives here, it is SERVER-SOURCED in both directions -- seeded
  * by `bootstrap-user` and corrected by every image response, both of which read
- * migration 00088's counter -- and no screen ever decrements it by counting its
+ * migration 00088's counter (at 00096's three) -- and no screen ever decrements it by counting its
  * own taps. `null` means the server has not said, which every quote treats as
- * "show no price" rather than as "six left".
+ * "show no price" rather than as "three left".
  *
  * THE CLIENT QUOTES, THE SERVER CHARGES. Nothing here is enforcement; it exists
  * so a user is never shown a free button that is about to take a credit, or a
@@ -34,7 +34,7 @@ function notify() {
  *
  * Two image requests in flight can finish out of order, and the older response
  * then overwrote the newer count -- so the next portrait could read as free
- * when it is not, or quote a balance that has already moved. The six only ever
+ * when it is not, or quote a balance that has already moved. The free three only ever
  * go DOWN while a session is spending them, so the lower answer is the later
  * one; anything that genuinely raises the count (a sign-in, a top-up) comes
  * through `setCharacterImagesRemaining` from bootstrap instead.

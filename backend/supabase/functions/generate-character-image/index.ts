@@ -90,7 +90,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   // Set only once a reservation actually exists, so the failure paths below can
   // settle it without having to re-derive what it cost. A release that runs
   // when nothing was reserved is impossible (this stays null); a release that
-  // never runs costs a real person one of six lifetime images, or a credit.
+  // never runs costs a real person one of three lifetime images, or a credit.
   let releaseReservation: (() => Promise<void>) | null = null;
 
   try {
@@ -117,7 +117,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     //
     // One call here can become six paid provider requests (two models across
     // three safety rungs). This is the BURST bound and it runs first: a request
-    // the window refuses must not also cost one of the six below. See migration
+    // the window refuses must not also cost one of the three free images below. See migration
     // 00055 for the numbers and for the anonymous-session gap it does not close
     // -- 00088 is what closes it, for every caller rather than only for guests.
     const serviceClient = createClient(
@@ -143,9 +143,10 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     // The second bound, and the only one that survives a new session.
     //
-    // Six character images per user, for their whole life -- generations and
-    // edits alike, anonymous and named, free tier and plan -- and one credit
-    // each after that (migration 00088, `CREDITS_AND_PRICING.md` §3). This is
+    // Three free character images per user, for their whole life --
+    // generations and edits alike, anonymous and named, free tier and plan --
+    // and one credit each after that (migration 00088, with the number set by
+    // 00096; `CREDITS_AND_PRICING.md` §3). This is
     // what replaces "charges nothing, counts nothing": character onboarding
     // makes its aha before the email is asked for, so the first thing an
     // unverified identity can do here is spend money at the image provider, and
@@ -158,8 +159,8 @@ export async function handleRequest(req: Request): Promise<Response> {
     } = await serviceClient.rpc("claim_character_image_request", {
       p_user_id: user.id,
       p_request_id: requestId,
-      // An anonymous identity may use its six and no more. Its credits are the
-      // three from `bootstrap_user`, and those are for a story -- the thing
+      // An anonymous identity may use its three free images and no more. Its
+      // credits are the three from `bootstrap_user`, and those are for a story -- the thing
       // that converts them -- not for portraits they would spend before ever
       // writing one.
       p_may_purchase: user.is_anonymous !== true,
@@ -258,7 +259,7 @@ export async function handleRequest(req: Request): Promise<Response> {
           p_error: "character image was not delivered",
         },
       );
-      // Best effort. Losing the release costs one of six, or leaves a credit
+      // Best effort. Losing the release costs one of three free images, or leaves a credit
       // outstanding against an operation id support can find; failing the
       // response because we could not give it back costs the user the error
       // message that tells them to try again.
@@ -271,7 +272,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     };
 
     // A refusal from here down happens AFTER the reservation exists, so it has
-    // to settle it before it answers. Six is a small number to spend on a
+    // to settle it before it answers. Three is a small number to spend on a
     // request that never reached a provider, and a credit is worse.
     const refuse = async (body: unknown, status: number) => {
       await releaseReservation?.();
@@ -335,7 +336,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       // The chain exhausted both models across all three safety rungs. The
       // reveal screen offers a free "Try again" on exactly this response, so
       // the reservation must be settled or the third failure in a row would end
-      // the onboarding flow with nothing made and three of six spent.
+      // the onboarding flow with nothing made and the whole free allowance spent.
       return await refuse(
         { error: "Character image could not be generated" },
         502,
@@ -378,7 +379,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     });
   } catch (error) {
     // Same reasoning as the 502: a throw means no portrait was delivered, so
-    // the caller must not be one of six -- or one credit -- poorer for it.
+    // the caller must not be one free image -- or one credit -- poorer for it.
     // `releaseReservation` is null unless a reservation exists and has not been
     // settled, and it swallows its own errors.
     await releaseReservation?.();

@@ -4,11 +4,11 @@
 // when it RUNS, so a mistake inside one deploys cleanly and passes any test
 // that only asserts the function exists. Every assertion below calls the
 // function and then calls it again, because the thing under test is whether the
-// seventh character image of an anonymous session is refused.
+// first character image past the free allowance of an anonymous session is refused.
 //
 // What is asserted, in the order it matters:
 //
-//   1. The first six claims pass and the seventh does not, ever, for that
+//   1. The free claims pass and the next does not, ever, for that
 //      identity -- there is no window to wait out.
 //   2. A release returns exactly one slot, so a failed generation does not
 //      burn one.
@@ -20,7 +20,7 @@
 //   6. Nothing here touches `claim_guest_characters` (00082): a guest who signs
 //      in keeps their characters and does NOT carry the count to the owner.
 //
-// ## Why this file now says six
+// ## Why this file counts to `FREE`
 //
 // 00088 widened this counter from "four per anonymous identity" to "six per
 // user, anonymous or named", and made anything past the six cost a credit
@@ -28,11 +28,15 @@
 // by that function and is kept only so an older deploy of
 // `generate-character-image` still bounds an anonymous caller at the CURRENT
 // number rather than the old one -- which is precisely what the counts below
-// pin. The credit half of the rule is tested in 00088's own file.
+// pin. The credit half of the rule is tested in 00088's own file. 00096
+// moved the number again, to three, which is why the counts are `FREE`.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/assert_rejects.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
+
+/** Free character images per account (00096: three). */
+const FREE = 3;
 
 async function createDatabase() {
   const db = new PGlite({ extensions: { pg_trgm } });
@@ -94,18 +98,18 @@ async function claimed(db: PGlite, userId: string): Promise<number> {
   return result.rows.length ? result.rows[0].claimed_count : 0;
 }
 
-Deno.test("six portraits, then no more, through the superseded pair", async () => {
+Deno.test("the free portraits, then no more, through the superseded pair", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       assertEquals(await claim(db, GUEST), true, `claim ${i} was refused`);
     }
     // A lifetime cap, not a window: there is nothing to wait out, so the
-    // seventh and the eighth are both refused with no clock involved.
+    // next two are both refused with no clock involved.
     assertEquals(await claim(db, GUEST), false);
     assertEquals(await claim(db, GUEST), false);
-    assertEquals(await claimed(db, GUEST), 6);
+    assertEquals(await claimed(db, GUEST), FREE);
   } finally {
     await db.close();
   }
@@ -115,14 +119,14 @@ Deno.test("a failed generation gives the slot back", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 6; i++) await claim(db, GUEST);
+    for (let i = 0; i < FREE; i++) await claim(db, GUEST);
     assertEquals(await claim(db, GUEST), false);
 
     // On this path there is no credit reservation to refund, so the release is
     // the only thing standing between a provider failure and a slot the user
     // paid for with nothing.
     await release(db, GUEST);
-    assertEquals(await claimed(db, GUEST), 5);
+    assertEquals(await claimed(db, GUEST), FREE - 1);
     assertEquals(await claim(db, GUEST), true);
     assertEquals(await claim(db, GUEST), false);
   } finally {
@@ -142,7 +146,7 @@ Deno.test("release floors at zero and cannot mint a slot", async () => {
     await release(db, GUEST);
     assertEquals(await claimed(db, GUEST), 0);
 
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= FREE; i++) {
       assertEquals(await claim(db, GUEST), true, `claim ${i} was refused`);
     }
     assertEquals(await claim(db, GUEST), false);
@@ -169,10 +173,10 @@ Deno.test("one identity's cap is not another's", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 6; i++) await claim(db, GUEST);
+    for (let i = 0; i < FREE; i++) await claim(db, GUEST);
     assertEquals(await claim(db, GUEST), false);
     assertEquals(await claim(db, OTHER_GUEST), true);
-    assertEquals(await claimed(db, GUEST), 6);
+    assertEquals(await claimed(db, GUEST), FREE);
     assertEquals(await claimed(db, OTHER_GUEST), 1);
   } finally {
     await db.close();
@@ -196,7 +200,7 @@ Deno.test("signing in does not carry the guest's count to the owner", async () =
   const db = await createDatabase();
   try {
     await seed(db);
-    for (let i = 0; i < 6; i++) await claim(db, GUEST);
+    for (let i = 0; i < FREE; i++) await claim(db, GUEST);
     await db.query(
       "insert into user_characters(owner_id, name, appearance) values ($1, $2, $3)",
       [GUEST, "Naina", "Paint on her hands, her grandmother's coat."],
@@ -206,11 +210,11 @@ Deno.test("signing in does not carry the guest's count to the owner", async () =
     // a count is not carried onto the claiming account. That was free of
     // consequence when only anonymous identities were capped; now that both are,
     // it means a guest who signs into an EXISTING account arrives with that
-    // account's own six intact. See 00088's report note -- it is bounded by the
+    // account's own allowance intact. See 00088's report note -- it is bounded by the
     // three-guest-bootstraps-per-network-per-day limit (00035), not by this.
     await db.query("select claim_guest_characters($1, $2)", [GUEST, OWNER]);
     assertEquals(await claimed(db, OWNER), 0);
-    assertEquals(await claimed(db, GUEST), 6);
+    assertEquals(await claimed(db, GUEST), FREE);
   } finally {
     await db.close();
   }

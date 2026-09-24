@@ -19,11 +19,11 @@ export type BootstrappedUser = {
   welcomeGranted: boolean;
   rateLimited: boolean;
   /**
-   * How many of the six free character images this account has left.
+   * How many of the three free character images this account has left.
    *
    * `null` when the server could not say. Every surface that quotes a portrait
-   * price treats that as "no quote" rather than falling back to six, because a
-   * button that says "6 free" to someone with none left is an affordance that
+   * price treats that as "no quote" rather than falling back to three, because
+   * a button that says "3 free" to someone with none left is an affordance that
    * lies -- they tap it and the server charges, or refuses.
    */
   characterImagesFreeRemaining: number | null;

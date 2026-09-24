@@ -7,6 +7,49 @@
 
 ---
 
+## 2026-09-24 UTC — Craft character fits one screen, names its photo, and gives three free images
+
+**Session:** lane `codex/craft-character-fit` (PR 3 of the staged plan).
+**Deploy:** migration `00096_character_images_three_free.sql`, then
+`generate-character-image` (comments and tests only; the enforcement is the
+migration).
+
+### Three free character images, not six
+
+Product owner, 2026-09-24. `00096` redefines `claim_character_image_request`
+(`v_free_max` 6 -> 3), `character_image_free_remaining` (`greatest(0, 3 - used)`)
+and the superseded `claim_guest_portrait_request` with CREATE OR REPLACE; 00088
+is not edited. Stored counts are **not** rewritten: an account that already used
+4-6 reads 0 left and is charged for the next one, with no retroactive charge and
+no slots handed back. `FREE_PORTRAITS_PER_ACCOUNT` is 3 on the client.
+`CREDITS_AND_PRICING.md` §3 carries a dated amendment; `STORY_GENERATION_FLOW.md`
+§4, `ONBOARDING_FLOW.md` and AGENTS.md follow.
+
+The 00084, 00086 and 00088 migration tests apply every migration, so they now run
+against three; each counts to a `FREE` constant instead of a literal 6. 00088's
+"carries into the six" test was rewritten, because a guest with three spent now
+has none left. `00096_character_images_three_free_test.ts` pins the number, the
+over-three carry and the wrapper.
+
+### The Craft character sheet
+
+- The image button reads **Regenerate** once a picture exists (was "Reimagine",
+  the reader's word for rewriting a chapter), and is the shared `Button`
+  (secondary, sm) instead of a hand-rolled outline pill; its spinner sits in the
+  icon slot while the card shows "Creating image…".
+- After attaching a reference photo the sheet shows its **file name** with a
+  Remove on one truncated line. `pickReferenceImage()` now returns
+  `{ dataUrl, fileName }`; `referenceFileName()` falls back to the URI's last
+  segment, then `photo.<ext>` on web. The name is display-only and never sent.
+- **Lead character sits directly under Appearance**, as §4's wireframe draws it.
+  One-line intro, 84pt text boxes, a 104 x 156 portrait, `spacing.md` gaps, and
+  the scroll's 116pt bottom padding (a leftover from an overlaid footer) is gone,
+  so the empty sheet fits 390 x 844 with Save visible.
+
+### Gates
+
+Migration tests for 00084/00086/00088/00096: 36 passed. Client typecheck clean;
+targeted jest suites green (full numbers in the PR).
 ## 2026-09-24 UTC — Profile, Your journey and the public page stop waiting on the network
 
 **Session:** PR 1 of the 2026-09-24 plan, worktree `codex/profile-speed`.

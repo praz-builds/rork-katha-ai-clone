@@ -174,8 +174,13 @@ export default function CharactersTab({
   }, [buffer]);
 
   const pickReference = useCallback(async () => {
-    const referenceImage = await pickReferenceImage();
-    if (referenceImage) setBuffer((previous) => ({ ...previous, referenceImage }));
+    const picked = await pickReferenceImage();
+    if (!picked) return;
+    setBuffer((previous) => ({
+      ...previous,
+      referenceImage: picked.dataUrl,
+      referenceImageName: picked.fileName,
+    }));
   }, []);
 
   const save = useCallback(async () => {
@@ -319,7 +324,9 @@ export default function CharactersTab({
         animationType="slide"
         presentationStyle="fullScreen"
         visible={craftOpen}
-        onRequestClose={requestCloseCraft}
+        // With the unsaved-changes dialog up, Android back dismisses it rather
+        // than re-running the dirty check and reopening the same dialog.
+        onRequestClose={unsavedPromptOpen ? () => setUnsavedPromptOpen(false) : requestCloseCraft}
       >
         <CharacterCraftScreen
           character={buffer}
@@ -330,7 +337,9 @@ export default function CharactersTab({
           onCreateImage={createImage}
           portraitNotice={portraitNotice}
           onPickReference={pickReference}
-          onClearReference={() => setBuffer((previous) => ({ ...previous, referenceImage: undefined }))}
+          onClearReference={() =>
+            setBuffer((previous) => ({ ...previous, referenceImage: undefined, referenceImageName: undefined }))
+          }
           unsavedPromptOpen={unsavedPromptOpen}
           onKeepEditing={() => setUnsavedPromptOpen(false)}
           onDiscard={closeCraft}
