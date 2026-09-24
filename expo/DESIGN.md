@@ -219,7 +219,7 @@ act, none of them reading the token that was supposed to govern them.
   `radius.pill`.
 - `colors.accent`, going to `colors.accentPressed` while held, with
   `shadows.primaryCta`.
-- Label `type.button`: white, **17 / 700**, `fonts.ui`. **A CTA never uses the display font**, and that includes a hand-rolled text link: `button-recipe.test.ts` fails on a `<Pressable>` whose only `<Text>` is set in `fonts.display`.
+- Label `type.button`: white, **17 / 700**, `fonts.ui`. **A CTA never uses the display font**, and that includes a hand-rolled text link: `button-recipe.test.ts` fails on a `<Pressable>` whose only `<Text>` is set in `fonts.display`. Home's write card (`WriteAnotherCTA`) is a button too, so its heading is Hanken 700, not Bricolage; the scan cannot see labels drawn by a child component, so that one is held by review.
 - Full available width inside the page gutter, unless `fullWidth={false}`.
 - `size="sm"` is `controls.buttonSmHeight` **44** with `type.buttonSmall`
   (15 / 700), for a control sitting in a row rather than under the content.

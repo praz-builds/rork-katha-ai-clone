@@ -23,7 +23,8 @@ import { dayOfYear } from "@/lib/greeting";
  * still gets a daily order; it simply is not personal until the id arrives.
  */
 export function dailyFeedSeed(readerId: string | null, date: Date = new Date()): string {
-  return `${readerId ?? "guest"}:${date.getFullYear()}-${dayOfYear(date)}`;
+  // `||`, not `??`: an empty id is no reader, not a reader called "".
+  return `${readerId || "guest"}:${date.getFullYear()}-${dayOfYear(date)}`;
 }
 
 /** FNV-1a, 32-bit. Enough to spread short strings; this is not cryptography. */

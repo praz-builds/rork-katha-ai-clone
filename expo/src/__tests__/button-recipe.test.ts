@@ -559,8 +559,24 @@ describe('a button label is never in the display face', () => {
   function isDisplayFace(body: string): boolean {
     if (/fontFamily\s*:\s*fonts\.display\b/.test(body)) return true;
     if (/fontFamily\s*:/.test(body)) return false;
-    const spread = /\.\.\.type\.(\w+)/.exec(body);
-    return spread !== null && DISPLAY_STEPS.has(spread[1]);
+    // The LAST spread wins, as it does at runtime:
+    // `{ ...type.title, ...type.body }` is set in the UI face.
+    const spreads = [...body.matchAll(/\.\.\.type\.(\w+)/g)];
+    const last = spreads[spreads.length - 1];
+    return last !== undefined && DISPLAY_STEPS.has(last[1]);
+  }
+
+  /** Index of the `>` that ends the tag opening at `start`, outside braces. */
+  function tagEnd(source: string, start: number): number {
+    let depth = 0;
+    let index = start;
+    for (; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === '{') depth += 1;
+      else if (char === '}') depth -= 1;
+      else if (char === '>' && depth === 0) break;
+    }
+    return index;
   }
 
   /** The children of every non-self-closing `<Pressable>`, with its line. */
@@ -570,14 +586,7 @@ describe('a button label is never in the display face', () => {
     let match: RegExpExecArray | null;
     while ((match = opener.exec(source)) !== null) {
       // The opening tag ends at the first `>` that is not inside braces.
-      let depth = 0;
-      let index = match.index;
-      for (; index < source.length; index += 1) {
-        const char = source[index];
-        if (char === '{') depth += 1;
-        else if (char === '}') depth -= 1;
-        else if (char === '>' && depth === 0) break;
-      }
+      const index = tagEnd(source, match.index);
       if (source[index - 1] === '/') continue;
       const tags = /<Pressable\b|<\/Pressable>/g;
       tags.lastIndex = index;
@@ -585,7 +594,15 @@ describe('a button label is never in the display face', () => {
       let end = source.length;
       let tag: RegExpExecArray | null;
       while ((tag = tags.exec(source)) !== null) {
-        open += tag[0] === '</Pressable>' ? -1 : 1;
+        if (tag[0] !== '</Pressable>') {
+          // A nested `<Pressable ... />` opens nothing; counting it as an
+          // opener ran the outer body to end of file.
+          const end = tagEnd(source, tag.index);
+          if (source[end - 1] !== '/') open += 1;
+          tags.lastIndex = end;
+          continue;
+        }
+        open -= 1;
         if (open === 0) {
           end = tag.index;
           break;
@@ -647,6 +664,32 @@ describe('a button label is never in the display face', () => {
     expect(displayLabels(sample, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#label']);
     const viaStep = sample.replace('styles.label', 'styles.viaStep');
     expect(displayLabels(viaStep, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#viaStep']);
+  });
+
+  it('still sees the label when a self-closing Pressable is nested inside', () => {
+    const sample = `
+      <Pressable onPress={go}>
+        <Pressable onPress={close} style={styles.dismiss} />
+        <Text style={styles.label}>Go</Text>
+      </Pressable>
+      <Text style={styles.elsewhere}>Not inside</Text>
+      const styles = StyleSheet.create({
+        dismiss: { width: 44 },
+        label: { fontFamily: fonts.display },
+        elsewhere: { fontFamily: fonts.ui },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#label']);
+  });
+
+  it('reads the last type spread, as the runtime does', () => {
+    const sample = `
+      <Pressable onPress={go}><Text style={styles.label}>Go</Text></Pressable>
+      const styles = StyleSheet.create({
+        label: { ...type.title, ...type.body },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx')).toEqual([]);
   });
 
   it('leaves a story card alone', () => {

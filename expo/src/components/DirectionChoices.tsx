@@ -252,7 +252,10 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={headingSize === "step" ? styles.stepHeading : styles.heading}>
+      <Text
+        style={headingSize === "step" ? styles.stepHeading : styles.heading}
+        accessibilityRole={headingSize === "step" ? "header" : undefined}
+      >
         {heading}
       </Text>
       {/* The price rides with the surface, not with one button, because every

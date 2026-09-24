@@ -146,31 +146,35 @@ export function buildFeedRows(
   mood: string | null = null,
   /**
    * Decides ties, per reader per day: `dailyFeedSeed(readerId, date)` from
-   * `lib/feed-shuffle.ts`. The empty default is a fixed order, which is what
-   * the tests want and what a caller with no reader gets.
+   * `lib/feed-shuffle.ts`. The empty default is deterministic (the same
+   * permutation on every call), not catalogue order; the tests rely on the
+   * determinism, not on any particular order.
    */
   seed = "",
 ): FeedRow[] {
   const rows: FeedRow[] = [];
 
-  // Every story a rail above has already shown. A story can still appear on
-  // two shelves -- a popular Original IS trending -- but it goes to the back
-  // of the later one, so no two rails open on the same card. Before this, all
-  // three fallback rails led with the same story whenever counts were level.
+  // Every story a rail above has already shown. It is a TIE-BREAK, not a
+  // filter: among stories with the same count, the unseen ones come first, so
+  // a level field never opens two rails on the same card (before this, all
+  // three fallback rails led with the same story). A real count still wins
+  // outright -- a house Original with the most reads leads Trending even
+  // though Originals already showed it.
   const used = new Set<string>();
   const claim = (shown: Story[]) => {
     for (const story of shown) used.add(story.id);
   };
-  const unseenFirst = (list: Story[]) => [
-    ...list.filter((story) => !used.has(story.id)),
-    ...list.filter((story) => used.has(story.id)),
-  ];
-  // Shuffle first, then a STABLE sort by the count: a real difference in
-  // reads or likes still wins, and only a tie falls to the day's shuffle.
+  // Shuffle first, then a STABLE sort by the count and then by "already
+  // shown": a real difference in reads or likes still wins, and only a tie
+  // falls to freshness and then to the day's shuffle.
   // The salt gives each rail its own tie-break, so Trending and Most loved
   // do not break a field of zeros the same way.
   const ranked = (list: Story[], salt: string, count: (story: Story) => number) =>
-    seededShuffle(list, seed, salt).sort((a, b) => count(b) - count(a));
+    seededShuffle(list, seed, salt).sort(
+      (a, b) =>
+        count(b) - count(a) ||
+        Number(used.has(a.id)) - Number(used.has(b.id)),
+    );
 
   // The writer's own work leads once there is any. A reader who has written
   // something opens the app to find it, not to be shown the house picks first;
@@ -226,12 +230,10 @@ export function buildFeedRows(
     // Deduplicated: onboarding stores display labels and two of them can map
     // to one `Genre`, which would otherwise render the same shelf twice.
     for (const genre of Array.from(new Set(preferredGenres))) {
-      const genreStories = unseenFirst(
-        ranked(
-          stories.filter((story) => story.genre === genre),
-          `genre-${genre}`,
-          (story) => story.views,
-        ),
+      const genreStories = ranked(
+        stories.filter((story) => story.genre === genre),
+        `genre-${genre}`,
+        (story) => story.views,
       ).slice(0, RAIL_LENGTH);
       // A row with nothing in it is worse than no row: it teaches the reader
       // that scrolling further sometimes wastes their time.
@@ -247,17 +249,15 @@ export function buildFeedRows(
     return rows;
   }
 
-  const trending = unseenFirst(
-    ranked(stories, "trending", (story) => story.views),
-  ).slice(0, RAIL_LENGTH);
+  const trending = ranked(stories, "trending", (story) => story.views)
+    .slice(0, RAIL_LENGTH);
   if (trending.length > 0) {
     rows.push({ key: "trending", title: "Trending now", stories: trending });
     claim(trending);
   }
 
-  const mostLoved = unseenFirst(
-    ranked(stories, "loved", (story) => story.likes),
-  ).slice(0, RAIL_LENGTH);
+  const mostLoved = ranked(stories, "loved", (story) => story.likes)
+    .slice(0, RAIL_LENGTH);
   if (mostLoved.length > 0) {
     rows.push({ key: "loved", title: "Most loved", stories: mostLoved });
   }
