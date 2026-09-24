@@ -114,9 +114,11 @@ export default function CharactersTab({
         || (buffer.background ?? "").trim() !== (editing.background ?? "")
         || buffer.appearance.trim() !== (editing.appearance ?? "")
         || (buffer.portraitUrl ?? "") !== (editing.portraitUrl ?? "")
+        || Boolean(buffer.referenceImage)
       : Boolean(
         buffer.name.trim() || buffer.background?.trim()
-          || buffer.appearance.trim() || buffer.portraitUrl,
+          || buffer.appearance.trim() || buffer.portraitUrl
+          || buffer.referenceImage,
       );
     if (dirty) {
       setUnsavedPromptOpen(true);
@@ -130,14 +132,27 @@ export default function CharactersTab({
     if (!name || buffer.portraitStatus === "generating") return;
     setPortraitNotice(null);
     setBuffer((previous) => ({ ...previous, portraitStatus: "generating" }));
+    const appearance = buffer.appearance;
+    const referenceImage = buffer.referenceImage;
     try {
       const { url } = await storyApi.generateCharacterImage({
         requestId: storyApi.createGenerationRequestId(),
         name,
-        appearance: buffer.appearance,
-        referenceImage: buffer.referenceImage,
+        appearance,
+        referenceImage,
       });
-      setBuffer((previous) => ({ ...previous, portraitUrl: url, portraitStatus: "ready" }));
+      // The picture was drawn from the name, appearance and reference photo as
+      // they stood when it was asked for. If any of them changed while it was
+      // being drawn, it no longer shows this character: drop it and let the
+      // writer ask again rather than save a portrait of somebody else.
+      setBuffer((previous) => {
+        const stale = previous.name.trim() !== name
+          || previous.appearance !== appearance
+          || previous.referenceImage !== referenceImage;
+        return stale
+          ? { ...previous, portraitStatus: previous.portraitUrl ? "ready" : "idle" }
+          : { ...previous, portraitUrl: url, portraitStatus: "ready" };
+      });
     } catch (error) {
       setPortraitNotice(
         error instanceof Error && error.message

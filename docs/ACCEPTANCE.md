@@ -81,7 +81,7 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 ## 9. Profiles
 
-- [ ] Your own leads with the streak, then best streak, stories, chapters, reads, likes, followers.
+- [ ] Your own leads with the streak and shows Followers and Following. There is no stat grid: reads, likes, chapter and story counts are gone.
 - [ ] You can change your handle and upload a picture.
 - [ ] No parental controls.
 - [ ] Another author's profile has follow, their public stories, and public counts. A private story never appears there.
