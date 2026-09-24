@@ -15,7 +15,6 @@ import {
   GENRE_VOICES,
   USER_FIELD_LABELS,
 } from "./story-prompts.ts";
-import { buildPhraseLayer, MAX_PHRASE_LAYER_PHRASES } from "./phrases.ts";
 import {
   EMPTY_SERIES_STATE,
   GENRE_MIGRATION_MAP,
@@ -578,59 +577,6 @@ Deno.test("banned words are in the prompt", () => {
   const prompt = buildStorySystemPrompt({ primaryGenre: "fantasy" });
   assert(prompt.includes("delve"));
   assert(prompt.includes("tapestry"));
-});
-
-Deno.test("empty phrase layer leaves buildUserPrompt byte-identical", () => {
-  const params = {
-    primaryGenre: "contemporary",
-    seed: "A commuter misses the last bus and has to ask a stranger for help.",
-  };
-  assertEquals(buildPhraseLayer([]), "");
-  assertEquals(
-    buildUserPrompt(params),
-    buildUserPrompt({ ...params, savedPhrases: [] }),
-  );
-});
-
-Deno.test("buildUserPrompt places phrase seeds after grounding", () => {
-  const prompt = buildUserPrompt({
-    primaryGenre: "contemporary",
-    seed: "A baker gets lost near Raigad Fort.",
-    grounding: [{
-      entityClass: "real_place",
-      canonicalName: "Raigad Fort",
-      source: "model_knowledge",
-      era: "Western India.",
-      role: "Hill fort.",
-      nameForms: "Raigad Fort.",
-      voice: "",
-      details: ["Stone steps."],
-      pitfalls: ["Do not place it in Delhi."],
-    }],
-    savedPhrases: ["on my way"],
-  });
-
-  assert(
-    prompt.indexOf("## Grounded facts") <
-      prompt.indexOf("## Reader phrase seeds"),
-  );
-  assertStringIncludes(prompt, '"on my way"');
-});
-
-Deno.test("buildUserPrompt phrase layer uses the documented cap", () => {
-  const prompt = buildUserPrompt({
-    primaryGenre: "contemporary",
-    seed: "Two friends plan a small dinner.",
-    savedPhrases: Array.from(
-      { length: MAX_PHRASE_LAYER_PHRASES + 2 },
-      (_, index) => `practice phrase ${index}`,
-    ),
-  });
-
-  assertEquals(
-    prompt.match(/^- "practice phrase/gm)?.length,
-    MAX_PHRASE_LAYER_PHRASES,
-  );
 });
 
 // ---------------------------------------------------------------------------

@@ -352,7 +352,6 @@ export type OwnProfile = {
   chaptersWritten: number;
   totalReads: number;
   totalLikes: number;
-  phrasesSaved: number;
   followers: number;
   following: number;
   /** The creature avatar, `k01`..`k36`, shown when there is no photo. */
@@ -472,7 +471,6 @@ export function parseOwnProfile(raw: unknown, userId: string): OwnProfile {
     chaptersWritten: num(row.chaptersWritten),
     totalReads: num(row.totalReads),
     totalLikes: num(row.totalLikes),
-    phrasesSaved: num(row.phrasesSaved),
     followers: num(row.followers),
     following: num(row.following),
     avatarId: CREATURE_ID_PATTERN.test(String(row.avatarId ?? "")) ? String(row.avatarId) : null,
@@ -763,7 +761,7 @@ export type DeleteAccountResult =
  * Delete this account.
  *
  * The policy, and what the confirmation screen promises: everything private
- * goes -- drafts, library, saved phrases, follows, handle, avatar -- and
+ * goes -- drafts, library, follows, handle, avatar -- and
  * published stories and comments stay under an anonymous byline, because a
  * reader who saved one of them should not lose it because the author left.
  * `storiesKept` is how many survive, so the last screen can say so plainly

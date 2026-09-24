@@ -1477,8 +1477,9 @@ export function splitProseParagraphs(prose: string): string[] {
 /**
  * The chapter a session is writing, as the reader can show it right now.
  *
- * The id is namespaced so nothing persistent - a phrase save, a comment - is
- * ever keyed against a chapter the server has not yet named.
+ * The id is namespaced (`live:<session>`) so it can never collide with a
+ * chapter id the server has named; it is replaced by the real chapter the
+ * moment the session completes.
  */
 export function liveChapterFor(session: GenerationSession): Chapter {
   const completed = session.chapter;

@@ -78,7 +78,6 @@ import {
   isStaleReservation,
   readJsonObject,
 } from "../_shared/operations.ts";
-import { fetchPhraseSeeds } from "../_shared/phrases.ts";
 import {
   enforceProseIntegrity,
   proseIntegrityBrief,
@@ -502,15 +501,6 @@ serve(async (req) => {
         // Whatever the brief itself carried, and nothing fetched here.
         const resolvedGrounding = grounding;
 
-        // The reader's saved phrases seed their next story. Best-effort: an
-        // empty list renders the prompt byte-identically, so a lookup failure
-        // costs the language layer and never the paid generation.
-        const savedPhrases = await fetchPhraseSeeds(
-          serviceClient,
-          user.id,
-          language,
-        );
-
         const systemPrompt = buildStoryProsePrompt(promptParams);
         // ASK FOR ONE THING.
         //
@@ -541,7 +531,6 @@ serve(async (req) => {
             storyValues,
             writingStyle,
             avoid,
-            savedPhrases,
             grounding: resolvedGrounding,
             omitClosingInstruction: true,
           })

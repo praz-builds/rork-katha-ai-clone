@@ -1,6 +1,6 @@
-// Shared anti-slop lists for generated story narration and phrase corpus entry.
-// Keep these arrays here so the story prompt and phrase-learning predicate
-// cannot drift apart.
+// Shared anti-slop lists for generated story narration.
+// Kept in their own module so every prompt that bans them reads one list and
+// they cannot drift apart.
 
 export const BANNED_WORDS = [
   "delve",

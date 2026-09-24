@@ -78,7 +78,7 @@ async function openChrome(view: Awaited<ReturnType<typeof render>>) {
 
 it("does not rebuild a single word when the chrome or the music toggles", async () => {
   let wordRenders = 0;
-  // Stable for the life of the test, as the phrase-capture host's is.
+  // Stable for the life of the test, as a host's renderWord must be.
   const renderWord = (word: string) => {
     wordRenders += 1;
     return word;

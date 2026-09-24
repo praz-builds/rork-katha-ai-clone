@@ -8,14 +8,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { PenLine, Star } from "lucide-react-native";
 
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
-import NotesTab from "@/components/library/NotesTab";
+import CharactersTab from "@/components/library/CharactersTab";
 import StoryShelf, { type ShelfState } from "@/components/library/StoryShelf";
 import { fetchCreatedShelf, fetchStarredShelf } from "@/lib/api";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, radius, spacing, type } from "@/theme";
 import type { Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
 
-type LibraryTab = "created" | "starred" | "notes";
+type LibraryTab = "created" | "starred" | "characters";
 
 /**
  * Library, rebuilt around what can actually be known.
@@ -31,7 +31,7 @@ type LibraryTab = "created" | "starred" | "notes";
  *
  * The three that remain each have a real source: the writer's own rows
  * (`fetchCreatedShelf`), the `bookmarks` table (`fetchStarredShelf`), and
- * saved phrases (`lib/phrases`). History is gone until something records
+ * saved characters (`lib/saved-characters`). History is gone until something records
  * reads; it will come back the day `record-read` has a list to answer with.
  */
 export default function LibraryScreen({
@@ -39,7 +39,6 @@ export default function LibraryScreen({
   onStory,
   onCreate,
   onExplore,
-  onPractice,
 }: {
   /**
    * Stories written in THIS session, which the shelf fetch has not
@@ -51,13 +50,6 @@ export default function LibraryScreen({
   onCreate: () => void;
   /** Somewhere to go from an empty Starred shelf. */
   onExplore?: () => void;
-  /**
-   * Opens the Practice surface. A dedicated screen rather than a fourth tab:
-   * it runs a session rather than showing a list, and the segmented control
-   * is three equal labels in a 342pt row on a 390pt phone with no space for
-   * a fourth.
-   */
-  onPractice: () => void;
 }) {
   const [tab, setTab] = useState<LibraryTab>("created");
 
@@ -131,7 +123,7 @@ export default function LibraryScreen({
   const tabs: { key: LibraryTab; label: string }[] = [
     { key: "created", label: "Created" },
     { key: "starred", label: "Starred" },
-    { key: "notes", label: "Notes" },
+    { key: "characters", label: "Characters" },
   ];
 
   return (
@@ -159,6 +151,7 @@ export default function LibraryScreen({
               style={[styles.segment, tab === key && styles.segmentSelected]}
             >
               <Text
+                numberOfLines={1}
                 style={[
                   styles.segmentText,
                   tab === key && styles.segmentTextSelected,
@@ -210,7 +203,7 @@ export default function LibraryScreen({
             />
           ) : null}
 
-          {tab === "notes" ? <NotesTab onPractice={onPractice} /> : null}
+          {tab === "characters" ? <CharactersTab /> : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -253,11 +246,14 @@ const styles = {
     },
     segmentSelected: { backgroundColor: colors.surface },
     segmentText: {
+      // `type.bodySmall` (15), the genre chips' label size
+      // (`KathaOnboardingFlowV2` `chipLabel`). 12 read as fine print for the
+      // three things this screen is organised by. Each label is one line
+      // (`numberOfLines={1}`), and "Characters", the longest, fits a third of
+      // the row at 360pt.
+      ...type.bodySmall,
       fontFamily: fonts.ui,
       color: colors.muted,
-      // 12 (`type.caption`). A fractional point size is a ramp step nobody can
-      // reuse and that rounds differently at each fontScale.
-      fontSize: 12,
       fontWeight: "800",
     },
     segmentTextSelected: { color: colors.ink },

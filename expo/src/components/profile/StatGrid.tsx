@@ -20,7 +20,7 @@ export type Stat = {
  * There is no "engagement score", no percentile and no week-over-week arrow,
  * because every one of those would have to be computed from data this app does
  * not keep and would read as authoritative anyway. What is here -- stories,
- * chapters, reads, likes, phrases, followers -- are all counts of rows, so
+ * chapters, reads, likes, followers -- are all counts of rows, so
  * each one is either right or absent.
  */
 export default function StatGrid({ stats }: { stats: Stat[] }) {
