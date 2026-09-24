@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Sparkles, X } from "lucide-react-native";
+import { RefreshCw, X } from "lucide-react-native";
 
 import { Button } from "@/components/Button";
 import { reimagineQuote, useIsSubscribed } from "@/lib/entitlements";
@@ -176,7 +176,7 @@ export function RepromptSheet({
               <Text style={styles.price}>Re-prompt · {quote.label}</Text>
               <Button
                 label={isStandalone ? "Re-prompt story" : "Re-prompt chapter"}
-                icon={<Sparkles size={18} color={colors.surface} />}
+                icon={<RefreshCw size={18} color={colors.surface} />}
                 onPress={submit}
                 disabled={!canSubmit}
               />
