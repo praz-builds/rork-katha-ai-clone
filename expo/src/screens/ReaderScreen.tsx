@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import {
+  ChevronLeft,
   Ellipsis,
   Pause,
   Play,
@@ -248,6 +249,20 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
 
 const PAGE_RENDER_WINDOW = 2;
 /**
+ * How long the web pager must sit still before its offset counts as a settled
+ * page turn.
+ *
+ * On web there is no `onMomentumScrollEnd`: react-native-web accepts the prop
+ * and never calls it, because the browser has no such event. A swipe there
+ * snaps by CSS scroll-snap and reports nothing but `onScroll`, so the reader
+ * turned pages and the Pages control kept saying "Page 1". Web instead
+ * commits the page once scrolling has been quiet for this long. The timer is
+ * restarted by react-native-web's own final scroll-end emit (100ms after the
+ * last DOM scroll), so the commit lands about 250ms after the swipe stops and
+ * reads the snapped offset; the exact value matters little.
+ */
+const WEB_PAGER_SETTLE_MS = 150;
+/**
  * The opener every chapter has: the story's title and the rule under the
  * block. Measured off the styles below, at the reader's default type.
  *
@@ -452,12 +467,91 @@ function renderPageWords(
   });
 }
 
+type SearchMatch = { start: number; end: number };
+
+/** Shared by every page with no search hit, so its identity never changes. */
+const NO_MATCHES: readonly SearchMatch[] = [];
+
+/**
+ * One page's words, memoised so a reader re-render that did not touch the
+ * prose does not rebuild it.
+ *
+ * WHY THIS IS THE HOT PATH. A page is several hundred words, and each word is
+ * its own `<Text>` -- two when phrase capture wraps it -- plus one per run of
+ * whitespace. The pager keeps up to five pages mounted around the one on
+ * screen, so a single `ReaderScreen` render used to rebuild roughly 2,000
+ * word elements. Every tap on the page (showing the chrome), every mute,
+ * every step of the Pages slider and every page crossed mid-swipe is a
+ * `ReaderScreen` render, and none of them changes a word -- which is why the
+ * music icon took a visible moment to strike through, and why the slider
+ * lagged the finger.
+ *
+ * Every prop here is either a primitive or a value `ReaderScreen` memoises
+ * (`renderWord` comes from the host already stable, `matches` is per-page
+ * from `matchesByPage`, `theme` is a constant from `READER_THEMES`), so the
+ * memo holds until the page's own text, its search hits or the word renderer
+ * genuinely change.
+ */
+const PageWords = React.memo(function PageWords({
+  text,
+  pageStart,
+  pageWordStart,
+  matches,
+  activeMatch,
+  renderWord,
+  theme,
+}: {
+  text: string;
+  pageStart: number;
+  pageWordStart: number;
+  matches: readonly SearchMatch[];
+  activeMatch: number;
+  renderWord: (word: string, index: number) => ReactNode;
+  theme: ReaderTheme;
+}) {
+  return (
+    <>
+      {renderPageWords(text, pageStart, pageWordStart, matches, activeMatch, renderWord, theme)}
+    </>
+  );
+});
+
+/**
+ * Stops a music track now and releases it after. Fire-and-forget: a failure to
+ * pause or unload leaves a track that is already out of the reader's hands,
+ * and neither may throw into the tap that muted it.
+ */
+function silenceMusic(sound: Audio.Sound): void {
+  void (async () => {
+    try {
+      await sound.pauseAsync();
+    } catch {
+      // A second, independent way to silence it. If the unload below also
+      // fails, the reader who pressed mute must still hear nothing, and the
+      // sound is already out of the ref, so nothing will retry.
+      try {
+        await sound.setStatusAsync({ shouldPlay: false, volume: 0 });
+      } catch {
+        // Unloading below is the last resort.
+      }
+    }
+    try {
+      await sound.unloadAsync();
+    } catch {
+      // Already gone.
+    }
+  })();
+}
+
+/** The default word renderer: the word itself. Module-level so it is stable. */
+const plainWord = (word: string): ReactNode => word;
+
 export default function ReaderScreen({
   story,
   onBack,
   initialChapterIndex = 0,
   renderChapterEnd,
-  renderWord = (word) => word,
+  renderWord = plainWord,
   onChapterChange,
   autoplay = false,
   liveSessionId = null,
@@ -645,6 +739,18 @@ export default function ReaderScreen({
    * fits one page reflowed under the reader, which is the whole thing this is
    * supposed to prevent.
    */
+  /**
+   * A Re-prompt that has not settled its first page yet.
+   *
+   * The old chapter is gone from the screen the moment the rewrite starts --
+   * the session's empty prose replaces it -- so without this the reader sat
+   * on a blank opener for the half-minute before page one of the new version
+   * existed. It gets the same crafting screen the create flow shows before
+   * its first pages instead, and the reader takes over as soon as one whole
+   * page has settled (`allPages` has a fixed page ahead of the growing one).
+   */
+  const awaitingRewritePages = isWritingHere && session?.rewrite === true
+    && allPages.length <= 1;
   const pages = useMemo(() => {
     if (!isWritingHere) return allPages;
     const fixed = allPages.slice(0, -1);
@@ -766,7 +872,6 @@ export default function ReaderScreen({
     setChapterIndex((current) => {
       if (current === at) return current;
       setPageIndex(0);
-    setVisiblePage(0);
       setVisiblePage(0);
       setAnchorOffset(0);
       return at;
@@ -835,7 +940,10 @@ export default function ReaderScreen({
           isLooping: true,
           volume: 0,
         });
-        if (cancelled) {
+        // `musicMutedRef` as well as `cancelled`: a mute pressed while this
+        // load was in flight flips the ref at once, but `cancelled` only
+        // flips when the effect re-runs after the next commit.
+        if (cancelled || musicMutedRef.current) {
           await sound.unloadAsync();
           return;
         }
@@ -930,24 +1038,31 @@ export default function ReaderScreen({
    */
   const [visiblePage, setVisiblePage] = useState(0);
 
-  const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
-    if (layoutWidth <= 0) return;
-    const next = clampIndex(
-      Math.round(event.nativeEvent.contentOffset.x / layoutWidth),
-      pages.length,
-    );
-    setVisiblePage((current) => (current === next ? current : next));
-  }, [pages.length, width]);
+  /**
+   * A re-prompt starts the new version on page 1, wherever the old one was
+   * being read. The reading anchor is a character offset into the OLD text;
+   * left alone, the effect that maps it onto `pages` would carry a reader who
+   * re-prompted from page 4 straight to page 4 of prose they have not read.
+   */
+  useEffect(() => {
+    if (!awaitingRewritePages) return;
+    setPageIndex(0);
+    setVisiblePage(0);
+    setAnchorOffset(0);
+  }, [awaitingRewritePages]);
 
-  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // The pager's own width, not the window's: they are the same on a phone,
-    // but reading the measured value means a rotation or a split-view resize
-    // mid-swipe still resolves to the right page instead of an offset
-    // divided by a stale width.
-    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+  /**
+   * A page turn has settled at this offset: make it the committed page.
+   *
+   * The pager's own width, not the window's: they are the same on a phone,
+   * but reading the measured value means a rotation or a split-view resize
+   * mid-swipe still resolves to the right page instead of an offset divided
+   * by a stale width.
+   */
+  const commitPagerOffset = useCallback((offsetX: number, measuredWidth: number | undefined) => {
+    const layoutWidth = measuredWidth || width;
     if (layoutWidth <= 0) return;
-    const next = clampIndex(Math.round(event.nativeEvent.contentOffset.x / layoutWidth), pages.length);
+    const next = clampIndex(Math.round(offsetX / layoutWidth), pages.length);
     pagerPageRef.current = next;
     setVisiblePage(next);
     if (next === pageIndex) return;
@@ -957,6 +1072,42 @@ export default function ReaderScreen({
     // the reader had actually reached rather than on page 0.
     setAnchorOffset(pages[next]?.start ?? 0);
   }, [pageIndex, pages, width]);
+  // The web settle timer fires after renders it did not see, so it reads the
+  // commit through a ref rather than closing over a stale `pageIndex`.
+  const commitPagerOffsetRef = useRef(commitPagerOffset);
+  commitPagerOffsetRef.current = commitPagerOffset;
+  const webSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A settle still pending when the chapter changes belongs to the old
+  // chapter's pages; letting it fire would commit that offset against the new
+  // chapter. Cleared on switch as well as on unmount.
+  useEffect(() => () => {
+    if (webSettleTimerRef.current) clearTimeout(webSettleTimerRef.current);
+    webSettleTimerRef.current = null;
+  }, [chapter.id]);
+
+  const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+    if (layoutWidth <= 0) return;
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const next = clampIndex(Math.round(offsetX / layoutWidth), pages.length);
+    setVisiblePage((current) => (current === next ? current : next));
+    // See WEB_PAGER_SETTLE_MS: web never fires the momentum end below, so
+    // the last offset before the pager goes quiet is the settled page.
+    if (Platform.OS === "web") {
+      if (webSettleTimerRef.current) clearTimeout(webSettleTimerRef.current);
+      webSettleTimerRef.current = setTimeout(() => {
+        webSettleTimerRef.current = null;
+        commitPagerOffsetRef.current(offsetX, layoutWidth);
+      }, WEB_PAGER_SETTLE_MS);
+    }
+  }, [pages.length, width]);
+
+  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    commitPagerOffset(
+      event.nativeEvent.contentOffset.x,
+      event.nativeEvent.layoutMeasurement?.width,
+    );
+  }, [commitPagerOffset]);
 
   /**
    * Android's hardware back dismisses the controls overlay before it leaves
@@ -1113,12 +1264,30 @@ export default function ReaderScreen({
   // story after it. The track choosing that used to live here moved to
   // Profile, beside the narration voice -- picking background music is a
   // setting, not something to do in the middle of a chapter.
+  //
+  // OPTIMISTIC, IN THIS ORDER: the icon, then the sound, then the disk.
+  //
+  // The sound used to stop only once the effect keyed on `musicMuted` ran,
+  // which is after React has re-rendered the whole reader and committed it --
+  // and that effect then awaited `unloadAsync` before anything went quiet. On
+  // a long page that was a visible pause between the tap and the strike, and a
+  // longer one before the music stopped. Now the state flips first, so the
+  // struck glyph is in the very next frame, and the playing sound is taken out
+  // of the ref and paused in the same handler; the effect finds nothing left
+  // to unload. Nothing here awaits.
   const handleMusicMuteToggle = useCallback(() => {
     const next = !musicMutedRef.current;
     // Marks the choice as the reader's, so a slower restore cannot undo it.
     mutedChosenByUserRef.current = true;
     musicMutedRef.current = next;
     setMusicMutedState(next);
+    if (next && musicSoundRef.current) {
+      const playing = musicSoundRef.current;
+      // Cleared before the calls go out, so the fade-in loop (which checks
+      // this ref every step) stops raising the volume of a muted track.
+      musicSoundRef.current = null;
+      silenceMusic(playing);
+    }
     void setMusicMuted(next);
   }, []);
   const closeEditor = useCallback((saved: SavedChapterEdit | null) => {
@@ -1148,7 +1317,6 @@ export default function ReaderScreen({
         setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
         setPageIndex(0);
         setVisiblePage(0);
-      setVisiblePage(0);
         if (result.forked) {
           setForkToast(true);
           setTimeout(() => setForkToast(false), 2500);
@@ -1269,20 +1437,32 @@ export default function ReaderScreen({
   const lastPageIndex = pages.length - 1;
   const isLastPage = pageIndex === lastPageIndex;
 
+  // Per-page search hits, computed once per query rather than once per page
+  // per render, and handed to `PageWords` as a stable array so its memo holds.
+  const matchesByPage = useMemo(
+    () => pages.map((slice) => {
+      const onPage = searchMatches.filter((match) => match.start < slice.end && match.end > slice.start);
+      return onPage.length > 0 ? onPage : NO_MATCHES;
+    }),
+    [pages, searchMatches],
+  );
+
   const renderPageBody = (index: number) => {
     const slice = pages[index];
-    const matchesOnPage = searchMatches.filter((match) => match.start < slice.end && match.end > slice.start);
+    const matchesOnPage = matchesByPage[index] ?? NO_MATCHES;
     const activeOnPage = activeGlobalMatch
       ? matchesOnPage.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
       : -1;
-    return renderPageWords(
-      slice.text,
-      slice.start,
-      pageWordStarts[index] ?? 0,
-      matchesOnPage,
-      activeOnPage,
-      renderWord,
-      theme,
+    return (
+      <PageWords
+        text={slice.text}
+        pageStart={slice.start}
+        pageWordStart={pageWordStarts[index] ?? 0}
+        matches={matchesOnPage}
+        activeMatch={activeOnPage}
+        renderWord={renderWord}
+        theme={theme}
+      />
     );
   };
 
@@ -1455,18 +1635,24 @@ export default function ReaderScreen({
                       {showsFailureTail ? (
                         <View style={styles.failureTail}>
                           <Text style={[styles.failureText, { color: theme.muted }]}>
-                            {REFUND_NOTICE}
+                            {/* A failed rewrite says why, because the reader is
+                                looking at an empty chapter they asked for. */}
+                            {session?.rewrite && session.error
+                              ? `${session.error} ${REFUND_NOTICE}`
+                              : REFUND_NOTICE}
                           </Text>
                           <Pressable
                             onPress={() => {
                               if (session) retryGeneration(session.id);
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel="Retry"
+                            accessibilityLabel={session?.rewrite ? "Try again" : "Retry"}
                             hitSlop={8}
                             style={styles.failureRetry}
                           >
-                            <Text style={styles.failureRetryText}>Retry</Text>
+                            <Text style={styles.failureRetryText}>
+                              {session?.rewrite ? "Try again" : "Retry"}
+                            </Text>
                           </Pressable>
                         </View>
                       ) : null}
@@ -1641,14 +1827,33 @@ export default function ReaderScreen({
         />
       ) : null}
       {/*
-        The rewrite takes about a minute and arrives whole. This covers the
-        reader for the whole of it - the same wait the create flow shows, so
-        "Katha is writing a chapter" looks the same wherever it happens - and
-        never implies measurable progress.
+        Without a host the rewrite takes about a minute and arrives whole, so
+        this covers the reader for the whole of it; with one, only until the
+        new version's first page has settled (`awaitingRewritePages`). It is
+        the same wait the create flow shows, so "Katha is writing a chapter"
+        looks the same wherever it happens, and never implies measurable
+        progress.
       */}
-      {repromptWaiting ? (
+      {repromptWaiting || awaitingRewritePages ? (
         <View style={StyleSheet.absoluteFill} accessibilityLabel="Writing this chapter again">
           <GeneratingOverlay genre={story.genre} mode="chapter" />
+          {/*
+            The way out. The overlay covers the whole reader and the reading
+            area's tap is inert while a chapter is being written, so without
+            this only Android's hardware back could leave. Leaving does not
+            cancel anything: the rewrite keeps running in the session store,
+            and reopening the story lands back on it.
+          */}
+          <Pressable
+            testID="rewrite-overlay-back"
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.overlayBack}
+          >
+            <ChevronLeft size={22} color={colors.ink} />
+          </Pressable>
         </View>
       ) : null}
       {forkToast ? (
@@ -2055,6 +2260,15 @@ const styles = StyleSheet.create({
     ...type.caption,
     letterSpacing: 0,
     flexShrink: 1,
+  },
+  overlayBack: {
+    position: "absolute",
+    top: spacing.lg,
+    left: spacing.lg,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   failureRetry: {
     minHeight: 44,

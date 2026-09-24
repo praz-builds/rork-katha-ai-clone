@@ -170,6 +170,74 @@ it("a settled swipe moves the reader forward and the Pages control follows it", 
   });
 });
 
+it("on web, where no momentum end ever fires, a swipe that comes to rest still moves the Pages control", async () => {
+  // react-native-web accepts `onMomentumScrollEnd` and never calls it: the
+  // browser has no such event, and a swipe snaps by CSS scroll-snap with only
+  // `scroll` events to show for it. The reader could turn to the last page
+  // and the Pages control still said "Page 1". So only `scroll` fires here.
+  jest.replaceProperty(Platform, "OS", "web");
+  const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
+  const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
+  const lastPage = pageCount - 1;
+
+  await act(async () => {
+    // Mid-swipe frames, then the snapped resting offset.
+    fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(0.6));
+    fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(lastPage));
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+
+  await waitFor(() => {
+    expect(view.getByLabelText("Pages").props.accessibilityValue).toMatchObject({
+      min: 1,
+      max: pageCount,
+      now: pageCount,
+    });
+  });
+});
+
+it("on web, a settle still pending when the chapter changes is dropped, not committed against the new chapter", async () => {
+  jest.useFakeTimers();
+  try {
+    jest.replaceProperty(Platform, "OS", "web");
+    // BOTH chapters paginate: a one-page chapter 2 would clamp the stale
+    // offset to page 0 and this could not fail without the fix.
+    const twoPaged: Story = {
+      ...story,
+      chapters: story.chapters.map((item) => ({ ...item, paragraphs: [LONG_BODY] })),
+    };
+    const view = await render(<ReaderScreen story={twoPaged} onBack={jest.fn()} />);
+    const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
+    expect(pageCount).toBeGreaterThan(2);
+
+    // A swipe comes to rest on the last page of chapter 1...
+    await act(async () => {
+      fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(pageCount - 1));
+    });
+    // ...and chapter 2 is opened before the settle window closes.
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+    });
+    await act(async () => {
+      await fireEvent.press(view.getByLabelText("Chapters"));
+    });
+    await act(async () => {
+      await fireEvent.press(
+        view.getByLabelText(`Open chapter ${twoPaged.chapters[1].chapterNumber}: ${twoPaged.chapters[1].title}`),
+      );
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(view.getByLabelText("Pages").props.accessibilityValue).toMatchObject({ now: 1 });
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it("the Pages control still drives the pager, so the sync runs both ways", async () => {
   const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
   const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
