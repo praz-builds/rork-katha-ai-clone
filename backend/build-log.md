@@ -56,6 +56,9 @@ because nothing recorded it. That gap is what this change fixes.
 - `smoke-app-surface.py` now covers `bootstrap-user`, `profile` (`me`,
   `ledger`) and `shape-story`: they must refuse anonymous callers, answer, and
   shape-story must return beats.
+
+---
+
 ## 2026-09-24 UTC — Craft character fits one screen, names its photo, and gives three free images
 
 **Session:** lane `codex/craft-character-fit` (PR 3 of the staged plan).
@@ -99,6 +102,9 @@ over-three carry and the wrapper.
 
 Migration tests for 00084/00086/00088/00096: 36 passed. Client typecheck clean;
 targeted jest suites green (full numbers in the PR).
+
+---
+
 ## 2026-09-24 UTC — Profile, Your journey and the public page stop waiting on the network
 
 **Session:** PR 1 of the 2026-09-24 plan, worktree `codex/profile-speed`.
@@ -162,6 +168,9 @@ already fetched the profile and thrown it away.
   does not re-seed from the balance it had before the charge.
 - `src/__tests__/profile-store.test.ts` has one test per guard. I removed each
   guard in turn and confirmed its test fails.
+
+---
+
 ## 2026-09-24 UTC — Save phrase leaves the app, and Library gets your characters
 
 **Session:** worktree `codex/drop-phrases-add-characters` (PR #135). Client, edge
@@ -195,6 +204,9 @@ practice tables stay, unread, until a post-launch drop.
 
 Tests: `characters-tab.test.tsx` (the name-clash refusal fails with the guard
 removed), `library-screen.test.tsx`, `reader-paging.test.tsx`.
+
+---
+
 ## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
 
 **Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
@@ -226,6 +238,9 @@ no migration and no function source changed. **Nothing to deploy.**
   on your own story, and Back from the author page returns to the chapter.
 - Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
   has the same fallback.
+
+---
+
 ## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
 
 **Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
@@ -253,6 +268,9 @@ next client build / web preview.
   `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
   its chapter from the run's request, so App no longer passes one. A pending
   web page-settle is dropped on chapter switch (tested with fake timers).
+
+---
+
 ## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
 
 **Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
