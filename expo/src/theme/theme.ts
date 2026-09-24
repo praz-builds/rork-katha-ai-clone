@@ -429,7 +429,15 @@ export const controls = {
   tabBarHeight: 64,
   tabBarActiveDisc: 44,
   tabBarCreate: 60,
-  tabBarMaxWidth: 480
+  tabBarMaxWidth: 480,
+  /**
+   * The intro carousel's widest frame (2026-09-25). Each slide is one frame
+   * wide, so on a desktop window the slides were 1440pt each: the middle
+   * marquee row ran out of covers half way across, and the reference 390pt
+   * composition floated in a sea of gradient. Wider than this, the intro is a
+   * centred phone-width column and the gradient band carries on behind it.
+   */
+  introMaxWidth: 430
 } as const;
 
 export const genreLabels: Record<Genre, string> = {

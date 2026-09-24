@@ -346,13 +346,14 @@ Animation-object geometry:
 - Continuation notification: width 270, radius 16, anchored 18 points above the stage bottom.
 - Read covers: 92 x 108, radius 12, three rows with 8 point gaps; title copy is capped at two lines.
 - Covers: 86 x 104, radius 12, gap 12. Three rows fit the same 360 point stage.
-- Carousel transition: 600 ms with cubic bezier `(0.45, 0, 0.2, 1)`.
+- Carousel transition: 600 ms, ease-in-out `(0.77, 0, 0.175, 1)` (the expo-animation skill's on-screen curve; was `(0.45, 0, 0.2, 1)`). A swipe follows the finger, rubber-bands past the first and last slide, and settles with a `{ duration: 400, dampingRatio: 0.8 }` spring carrying the release velocity; a quarter-width drag or a 500 pt/s flick turns the page.
+- Dots: each 6 point dot has a 44 point touch target; the active width change is a 200 ms ease-out transition. The headline, description and Get started crossfade in their fixed slots (opacity only, 220 ms).
 
 Do not size the hero or message sheet from child content. Long copy must be edited to fit the assigned slot.
 
 ## Intro Animation Storyboard
 
-The first two slides use a normalized progress value driven by `requestAnimationFrame`. Create lasts 10.5 seconds. Publish lasts 9.6 seconds. Read then holds while the cover rows continue looping.
+The first two slides use a normalized progress value: a Reanimated shared value on the UI thread, read by each element's `useAnimatedStyle`. React re-renders on a phase change, not per frame; only the typed prompt, the like counter and the draft/published label (text content) re-render themselves as their value changes. Create lasts 10.5 seconds. Publish lasts 9.6 seconds. Read then holds while the cover rows continue looping.
 
 ### Slide 1: Create and Rewrite, 10.5 Seconds
 
@@ -499,7 +500,8 @@ When motion is touched:
 ### Responsive Behavior
 
 - Validate first at exactly 390 x 844.
-- The carousel width follows `useWindowDimensions`, but hero height, stage height, and message-sheet height remain fixed.
+- The carousel width follows `useWindowDimensions` up to `controls.introMaxWidth` (430). Wider than that -- a desktop browser -- the intro is a centred phone-width column and the hero gradient band carries on behind it. Hero height, stage height, and message-sheet height remain fixed.
+- A window shorter than hero + sheet (478 + 322) scrolls. It used to clip, which put Get started on top of the description on a laptop window.
 - On narrower phones, preserve 24 to 30 point outer gutters where possible and reduce only content width, not type scale.
 - On taller phones, extra space belongs outside the fixed intro frame. Do not stretch gaps inside it.
 - Text must wrap without overlapping controls. Edit copy before reducing type below the approved scale.

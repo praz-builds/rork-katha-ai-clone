@@ -357,7 +357,7 @@ cd ~/Katha-AI-preview/expo && pnpm install
 cp <any working worktree>/expo/.env ~/Katha-AI-preview/expo/.env   # not in git
 ```
 
-Use a phone-sized viewport. At desktop width the intro carousel traps the flow before the app is reachable.
+Review at a phone-sized viewport (390 x 844), which is what the product is designed for. A desktop window no longer traps the intro: since 2026-09-25 it is a centred phone-width column that scrolls when the window is short.
 
 **Run the web app on port 8090, not 8081.** The deployed `ALLOWED_ORIGINS`
 secret contains `http://localhost:8090` and does **not** contain 8081, and the

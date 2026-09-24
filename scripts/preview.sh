@@ -136,8 +136,8 @@ echo "────────────────────────�
 echo " PREVIEW — main only"
 echo " commit:  $(git rev-parse --short HEAD)  $(git log -1 --format=%s)"
 echo " url:     http://localhost:$PORT"
-echo " note:    use a phone-sized viewport; the desktop-width"
-echo "          intro carousel traps the flow."
+echo " note:    review at a phone-sized viewport (390 x 844); the"
+echo "          product is designed for it. A desktop window works too."
 echo "────────────────────────────────────────────────"
 echo
 

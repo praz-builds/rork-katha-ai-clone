@@ -3,8 +3,10 @@
  * Katha — animated 3-screen onboarding intro (Create → Publish/Community → Read).
  *
  * Drop-in Expo component. Reference frame 390×844. Implements ONBOARDING SPEC §1–§10.
- * Pure Expo SDK — no Reanimated, no gesture-handler. Uses RN Animated + a rAF timeline
- * clock (matches the SwiftUI CADisplayLink / Compose withFrameMillis drivers exactly).
+ * Motion runs on the UI thread (Reanimated 4, per `.agents/skills/expo-animation`): one
+ * shared progress value per phase drives every element through `useAnimatedStyle`, so
+ * React renders when the phase changes, not on every frame. The carousel also follows a
+ * finger (Gesture Handler), and the whole intro honours the OS reduced-motion setting.
  *
  * Deps (all in the Expo managed workflow):
  *   npx expo install expo-font expo-linear-gradient
@@ -21,15 +23,22 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, useWindowDimensions, Animated, Image, Platform, Easing,
+  View, Text, Pressable, StyleSheet, useWindowDimensions, Image, Platform, ScrollView,
   AccessibilityInfo,
 } from 'react-native';
+import Animated, {
+  cancelAnimation, Easing, FadeIn, useAnimatedReaction, useAnimatedStyle, useDerivedValue,
+  useReducedMotion, useSharedValue, withRepeat, withSpring, withTiming,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import BrandWordmark from '../components/BrandWordmark';
 // The shared onboarding pill. A `.jsx` file importing a `.tsx` component is
 // already how `BrandWordmark` arrives above, so the intro draws the SAME
 // button as every screen after it rather than a look-alike copy that drifts.
 import { Primary } from '../components/onboarding/primitives';
+import { controls } from '../theme';
 
 // ── Color tokens (SPEC §2) ──────────────────────────────────────────────────
 const C = {
@@ -55,9 +64,10 @@ const F = {
 };
 
 // ── Timeline math (SPEC §5) ─────────────────────────────────────────────────
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-const win = (p, a, b) => clamp01((p - a) / (b - a));
-const smooth = (x) => { const c = clamp01(x); return c * c * (3 - 2 * c); };
+// Worklets: they run inside `useAnimatedStyle` on the UI thread.
+function clamp01(x) { 'worklet'; return Math.min(1, Math.max(0, x)); }
+function win(p, a, b) { 'worklet'; return clamp01((p - a) / (b - a)); }
+function smooth(x) { 'worklet'; const c = clamp01(x); return c * c * (3 - 2 * c); }
 
 const DUR = [10500, 9600]; // ms — phases 0,1; phase 2 holds
 
@@ -100,80 +110,167 @@ const HERO_H = 478;
 const STAGE_H = 340;
 const COVER_W = 76, COVER_H = 110, COVER_GAP = 9;
 
+// ── Motion (expo-animation SKILL) ───────────────────────────────────────────
+// On-screen movement between slides: the skill's ease-in-out. The slide keeps
+// the 0.6s the SPEC gave it; it is a page of the intro, not a chip.
+const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const SLIDE_MS = 600;
+// A finger let go of the carousel: the skill's reposition-after-a-drag spring.
+const SNAP = { duration: 400, dampingRatio: 0.8 };
+// A flick this fast turns the page even if it travelled less than a quarter.
+const FLICK_VELOCITY = 500;
+// The sheet's fixed slots (dots, headline, description, action) plus its
+// padding: DESIGN.md "Message sheet ... h 322". A window shorter than hero +
+// sheet scrolls instead of letting "Get started" slide under the copy.
+const SHEET_MIN_H = 322;
+
 // ── Root ────────────────────────────────────────────────────────────────────
 export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => {} }) {
-  const { width: W } = useWindowDimensions();
+  const { width: windowW, height: windowH } = useWindowDimensions();
+  // THE DESKTOP TRAP. Every slide is one frame wide and the frame used to be
+  // the whole window: on a 1440pt browser each slide was 1440pt, the middle
+  // marquee ran out of covers half way, and a window shorter than 800pt put
+  // "Get started" on top of the copy with nothing to scroll. The frame is a
+  // phone-width column now, and the page scrolls when the window is short.
+  const W = Math.min(windowW, controls.introMaxWidth);
   const [phase, setPhase] = useState(0);
-  const [p, setP] = useState(0);            // progress within phase (drives re-render)
   const reduceMotion = useReducedMotionPreference();
-  const slide = useRef(new Animated.Value(0)).current;
 
-  // carousel slide (0.6s, cubic-bezier(.45,0,.2,1) ≈ Easing via bezier)
+  // Progress through the CURRENT phase, 0..1, on the UI thread. It used to be
+  // React state set from requestAnimationFrame: a render of the whole intro on
+  // every frame for twenty seconds, the first thing anybody sees.
+  const progress = useSharedValue(reduceMotion ? 1 : 0);
+  const phaseSV = useSharedValue(0);
+  const slideX = useSharedValue(0);
+  const dragStart = useSharedValue(0);
+  // Set when a swipe already started the spring to the new page, so the phase
+  // effect does not replace a velocity-carrying spring with a fresh curve.
+  const settledByGesture = useRef(false);
+
+  const advanceFrom = useCallback((from) => {
+    setPhase((current) => (current === from ? Math.min(2, from + 1) : current));
+  }, []);
+
+  // Timeline: auto-advance 0 → 1 → 2, hold on 2.
   useEffect(() => {
-    if (reduceMotion) {
-      slide.setValue(phase);
+    phaseSV.set(phase);
+    cancelAnimation(progress);
+    if (reduceMotion || phase >= 2) {
+      progress.set(1);
+      return undefined;
+    }
+    progress.set(0);
+    progress.set(withTiming(1, { duration: DUR[phase], easing: Easing.linear }, (finished) => {
+      if (finished) scheduleOnRN(advanceFrom, phase);
+    }));
+    return () => cancelAnimation(progress);
+  }, [phase, reduceMotion, progress, phaseSV, advanceFrom]);
+
+  // Carousel position. A resize snaps (nothing to animate towards); a phase
+  // change slides, unless a swipe is already carrying it there.
+  const lastW = useRef(W);
+  useEffect(() => {
+    const target = -phase * W;
+    const resized = lastW.current !== W;
+    lastW.current = W;
+    if (settledByGesture.current) {
+      settledByGesture.current = false;
       return;
     }
-    Animated.timing(slide, {
-      toValue: phase, duration: 600, useNativeDriver: Platform.OS !== 'web',
-      easing: Easing.bezier(0.45, 0, 0.2, 1),
-    }).start();
-  }, [phase, reduceMotion, slide]);
-
-  // rAF timeline clock — auto-advance 0→1→2, hold on 2
-  useEffect(() => {
-    if (reduceMotion) { setP(1); return; }
-    if (phase >= 2) { setP(1); return; }
-    let raf, start;
-    const dur = DUR[phase];
-    const tick = (now) => {
-      if (start == null) start = now;
-      const e = now - start;
-      setP(clamp01(e / dur));
-      if (e >= dur) { setPhase((n) => n + 1); return; }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [phase, reduceMotion]);
+    if (reduceMotion || resized) {
+      cancelAnimation(slideX);
+      slideX.set(target);
+      return;
+    }
+    slideX.set(withTiming(target, { duration: SLIDE_MS, easing: EASE_IN_OUT }));
+  }, [phase, W, reduceMotion, slideX]);
 
   const goTo = useCallback((n) => setPhase(n), []);
-  const restart = useCallback(() => { onFinish(); }, [onFinish]);
+  const goToFromSwipe = useCallback((n) => {
+    settledByGesture.current = true;
+    setPhase(n);
+  }, []);
+
+  const pan = Gesture.Pan()
+    // Horizontal intent only: a vertical scroll of a short window must still
+    // scroll the page, not grab the carousel.
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-12, 12])
+    .onStart(() => {
+      cancelAnimation(slideX);
+      dragStart.set(slideX.get());
+    })
+    .onUpdate((e) => {
+      const min = -2 * W;
+      const x = dragStart.get() + e.translationX;
+      // Rubber-band past the first and last slide rather than a hard stop.
+      slideX.set(x > 0 ? x * 0.3 : x < min ? min + (x - min) * 0.3 : x);
+    })
+    .onEnd((e) => {
+      const current = phaseSV.get();
+      let next = current;
+      if (e.translationX < -W / 4 || e.velocityX < -FLICK_VELOCITY) next = Math.min(2, current + 1);
+      else if (e.translationX > W / 4 || e.velocityX > FLICK_VELOCITY) next = Math.max(0, current - 1);
+      slideX.set(reduceMotion
+        ? withTiming(-next * W, { duration: 0 })
+        : withSpring(-next * W, { ...SNAP, velocity: e.velocityX, overshootClamping: next === current }));
+      if (next !== current) scheduleOnRN(goToFromSwipe, next);
+    });
+
+  const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: slideX.get() }] }));
+
+  // Each slide's own clock: running while it is the current phase, finished
+  // once it has been passed, unstarted before.
+  const p0 = useDerivedValue(() => (phaseSV.get() === 0 ? progress.get() : phaseSV.get() > 0 ? 1 : 0));
+  const p1 = useDerivedValue(() => (phaseSV.get() === 1 ? progress.get() : phaseSV.get() > 1 ? 1 : 0));
 
   return (
-    <View style={styles.root}>
-      {/* Hero (fixed 522), clipped carousel + floating wordmark */}
-      <View style={styles.hero}>
+    <GestureHandlerRootView style={styles.root}>
+      <ScrollView
+        testID="intro-page"
+        style={styles.flex}
+        contentContainerStyle={[styles.page, { minHeight: windowH }]}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* The hero band runs the full window width behind the column. */}
         <LinearGradient
           colors={[C.heroA, C.heroB]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
+          style={styles.heroBand}
         />
-        <Animated.View style={{
-          flexDirection: 'row', width: W * 3, height: HERO_H,
-          transform: [{ translateX: slide.interpolate({ inputRange: [0, 2], outputRange: [0, -2 * W] }) }],
-        }}>
-          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={phase === 0 ? p : phase > 0 ? 1 : 0} /></View>
-          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={phase === 1 ? p : phase > 1 ? 1 : 0} /></View>
-          <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
-        </Animated.View>
+        <View testID="intro-column" style={[styles.column, { width: W }]}>
+          <GestureDetector gesture={pan}>
+            <View style={styles.hero}>
+              <Animated.View style={[{ flexDirection: 'row', width: W * 3, height: HERO_H }, rowStyle]}>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={p0} reduceMotion={reduceMotion} /></View>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={p1} reduceMotion={reduceMotion} /></View>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
+              </Animated.View>
 
-        <View style={[styles.wordmarkWrap, { pointerEvents: 'none' }]}>
-          <BrandWordmark size={28} />
+              <View style={[styles.wordmarkWrap, { pointerEvents: 'none' }]}>
+                <BrandWordmark size={28} />
+              </View>
+            </View>
+          </GestureDetector>
+
+          {/* Sign in link, top-right, persistent */}
+          <Pressable onPress={onSignIn} accessibilityRole="button" hitSlop={12} style={styles.signInTop}>
+            <Text style={styles.signInTopText}>Sign in</Text>
+          </Pressable>
+
+          <BottomSheet phase={phase} onDot={goTo} onFinish={onFinish} onSignIn={onSignIn} reduceMotion={reduceMotion} />
         </View>
-      </View>
-
-      {/* Sign in link, top-right, persistent */}
-      <Pressable onPress={onSignIn} style={styles.signInTop}>
-        <Text style={styles.signInTopText}>Sign in</Text>
-      </Pressable>
-
-      <BottomSheet phase={phase} onDot={goTo} onFinish={restart} onSignIn={onSignIn} />
-    </View>
+      </ScrollView>
+    </GestureHandlerRootView>
   );
 }
 
 function useReducedMotionPreference() {
-  const [reduceMotion, setReduceMotion] = useState(false);
+  // Seeded from Reanimated's synchronous read so the first frame is already
+  // right, then kept live by the OS event (Reanimated's hook does not update).
+  const initial = useReducedMotion();
+  const [reduceMotion, setReduceMotion] = useState(Boolean(initial));
 
   useEffect(() => {
     let mounted = true;
@@ -192,27 +289,43 @@ function useReducedMotionPreference() {
 }
 
 // ── Bottom sheet (SPEC §4) ──────────────────────────────────────────────────
-function BottomSheet({ phase, onDot, onFinish, onSignIn }) {
+function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
   const [h, s] = HEADLINES[phase];
+  // The copy crossfades in its fixed slots: opacity only, so nothing reflows
+  // and reduced motion keeps the same gentle change.
+  const enter = FadeIn.duration(reduceMotion ? 0 : 220).easing(EASE_OUT);
   return (
-    <View style={styles.sheet}>
+    <View testID="intro-sheet" style={styles.sheet}>
       <View style={styles.dots}>
         {[0, 1, 2].map((n) => (
-          <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Show ${['create', 'publish', 'read'][n]} intro`} onPress={() => onDot(n)}
-            style={{ width: n === phase ? 22 : 6, height: 6, borderRadius: 3,
-              backgroundColor: n === phase ? C.orange : C.dotIdle }} />
+          <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Show ${['create', 'publish', 'read'][n]} intro`}
+            accessibilityState={{ selected: n === phase }}
+            onPress={() => onDot(n)} style={styles.dotHit}>
+            {/* A 6pt dot needs a 44pt target; the hit box is negative-margined
+                so the row keeps the SPEC's 6pt height. The width change is a
+                200ms CSS transition on a childless dot. */}
+            <Animated.View style={{
+              width: n === phase ? 22 : 6, height: 6, borderRadius: 3,
+              backgroundColor: n === phase ? C.orange : C.dotIdle,
+              transitionProperty: ['width', 'backgroundColor'],
+              transitionDuration: reduceMotion ? 0 : 200,
+              transitionTimingFunction: 'ease-out',
+            }} />
+          </Pressable>
         ))}
       </View>
-      <Text style={styles.headline}>{h}</Text>
-      <Text style={styles.sub}>{s}</Text>
+      <Animated.View key={phase} entering={enter}>
+        <Text style={styles.headline}>{h}</Text>
+        <Text style={styles.sub}>{s}</Text>
+      </Animated.View>
       <View style={styles.actionSlot}>
         {phase === 2 && (
-          <>
+          <Animated.View entering={enter}>
             <Primary label="Get started" onPress={onFinish} />
             <Pressable onPress={onSignIn} style={{ marginTop: 14, alignItems: 'center' }}>
               <Text style={{ fontSize: 14, color: '#6B625A' }}>Already have an account? <Text style={{ color: '#FF6B1A', fontWeight: '700' }}>Sign in</Text></Text>
             </Pressable>
-          </>
+          </Animated.View>
         )}
       </View>
     </View>
@@ -220,24 +333,47 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn }) {
 }
 
 // ── Screen 0 : CREATE then EDIT (SPEC §5, §6) ───────────────────────────────
-function CreateScreen({ p }) {
-  const typed = smooth(win(p, 0.05, 0.22));
-  const genShow = smooth(win(p, 0.24, 0.30));
-  const genScale = (0.9 + 0.1 * genShow) * (1 - 0.12 * Math.sin(Math.PI * win(p, 0.31, 0.37)));
-  const writing = smooth(win(p, 0.37, 0.43)) * (1 - smooth(win(p, 0.56, 0.62)));
-  const hi = smooth(win(p, 0.60, 0.65)) * (1 - smooth(win(p, 0.90, 0.96)));
-  const swap = smooth(win(p, 0.65, 0.72));
-  const chip = smooth(win(p, 0.67, 0.72));
-  const cardIn = smooth(win(p, 0, 0.04));
-  const line = (k) => { const a = 0.44 + k * 0.06; return smooth(win(p, a, a + 0.10)); };
+const PROMPT = "Write a mystery-fantasy thriller about a teen who finds a hidden door in her family's old house.";
 
-  const prompt = "Write a mystery-fantasy thriller about a teen who finds a hidden door in her family's old house.";
-  const typedPrompt = prompt.slice(0, Math.floor(prompt.length * typed));
-  const cursorVisible = typed < 1 && Math.floor(p * 80) % 2 === 0;
+// Opacity + a small rise, the shape every line and chip on the stage enters with.
+function riseStyle(r, dy) {
+  'worklet';
+  return { opacity: r, transform: [{ translateY: (1 - r) * dy }] };
+}
+
+function CreateScreen({ p, reduceMotion }) {
+  const card = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0, 0.04)) }));
+  const gen = useAnimatedStyle(() => {
+    const v = p.get();
+    const show = smooth(win(v, 0.24, 0.30));
+    const scale = (0.9 + 0.1 * show) * (1 - 0.12 * Math.sin(Math.PI * win(v, 0.31, 0.37)));
+    return { opacity: show, transform: [{ scale }] };
+  });
+  const writing = useAnimatedStyle(() => {
+    const v = p.get();
+    return { opacity: smooth(win(v, 0.37, 0.43)) * (1 - smooth(win(v, 0.56, 0.62))) };
+  });
+  const line0 = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.44, 0.54)), 6));
+  const line1 = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.50, 0.60)), 6));
+  const lastLine = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.56, 0.66)) }));
+  const swapBg = useAnimatedStyle(() => {
+    const v = p.get();
+    const hi = smooth(win(v, 0.60, 0.65)) * (1 - smooth(win(v, 0.90, 0.96)));
+    return { backgroundColor: `rgba(255,107,26,${0.20 * hi})` };
+  });
+  const oldWord = useAnimatedStyle(() => {
+    const v = p.get();
+    return { opacity: 1 - smooth(win(v, 0.65, 0.67)), transform: [{ translateY: -3 * smooth(win(v, 0.65, 0.72)) }] };
+  });
+  const newWord = useAnimatedStyle(() => {
+    const v = p.get();
+    return { opacity: smooth(win(v, 0.69, 0.72)), transform: [{ translateY: 3 * (1 - smooth(win(v, 0.65, 0.72))) }] };
+  });
+  const chip = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.67, 0.72)), 6));
 
   return (
     <View style={styles.stage}>
-      <View style={[styles.createCard, warmShadow(0.40), { opacity: cardIn }]}>
+      <Animated.View style={[styles.createCard, warmShadow(0.40), card]}>
         <View style={styles.eyebrowRow}>
           <View style={styles.dot7} />
           <Text style={styles.eyebrow}>NEW STORY</Text>
@@ -245,58 +381,85 @@ function CreateScreen({ p }) {
 
         {/* Character-by-character typing keeps line wrapping stable. */}
         <View style={{ marginTop: 10, minHeight: 54 }}>
-          <Text style={styles.prompt} numberOfLines={3}>{typedPrompt}<Text style={{ color: C.orange, opacity: cursorVisible ? 1 : 0 }}>|</Text></Text>
+          <TypedPrompt p={p} reduceMotion={reduceMotion} />
         </View>
 
-        <View style={{ transform: [{ scale: genScale }], opacity: genShow, marginTop: 10, alignSelf: 'flex-start' }}>
+        <Animated.View style={[{ marginTop: 10, alignSelf: 'flex-start' }, gen]}>
           <View style={[styles.pillOrange, warmShadow(0.6, C.orange)]}>
             <Text style={styles.pillOrangeText}>✦ Generate story</Text>
           </View>
-        </View>
+        </Animated.View>
 
-        <Text style={[styles.writing, { opacity: writing }]}>✦ Katha is writing…</Text>
+        <Animated.Text style={[styles.writing, writing]}>✦ Katha is writing…</Animated.Text>
 
         <View style={styles.storyBlock}>
-          <Text style={[styles.storyLine, { opacity: line(0), transform: [{ translateY: (1 - line(0)) * 6 }] }]}>
+          <Animated.Text style={[styles.storyLine, line0]}>
             Tara pulled the old wallpaper back as everyone watched:
-          </Text>
-          <Text style={[styles.storyLine, { opacity: line(1), transform: [{ translateY: (1 - line(1)) * 6 }] }]}>
+          </Animated.Text>
+          <Animated.Text style={[styles.storyLine, line1]}>
             her brother, aunt, and neighbors crowding the stairs,
-          </Text>
-          <View style={[styles.storyLastLine, { opacity: smooth(win(p, 0.56, 0.66)) }]}>
+          </Animated.Text>
+          <Animated.View style={[styles.storyLastLine, lastLine]}>
             <Text style={styles.storyLine}>while the hidden door pulsed like a </Text>
-            <View style={[styles.wordSwap, { backgroundColor: `rgba(255,107,26,${0.20 * hi})` }]}>
-              <Text style={[styles.swapText, { opacity: 1 - smooth(win(p, 0.65, 0.67)), transform: [{ translateY: -3 * swap }] }]}>dream.</Text>
-              <Text style={[styles.swapText, styles.swapTextNew, { opacity: smooth(win(p, 0.69, 0.72)), transform: [{ translateY: 3 * (1 - swap) }] }]}>warning.</Text>
-            </View>
-          </View>
+            <Animated.View style={[styles.wordSwap, swapBg]}>
+              <Animated.Text style={[styles.swapText, oldWord]}>dream.</Animated.Text>
+              <Animated.Text style={[styles.swapText, styles.swapTextNew, newWord]}>warning.</Animated.Text>
+            </Animated.View>
+          </Animated.View>
         </View>
 
-        <View style={{ opacity: chip, transform: [{ translateY: (1 - chip) * 6 }], alignSelf: 'flex-start', marginTop: 7 }}>
+        <Animated.View style={[{ alignSelf: 'flex-start', marginTop: 7 }, chip]}>
           <View style={styles.pillPeach}><Text style={styles.pillPeachText}>✎ You rewrote this line</Text></View>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
     </View>
+  );
+}
+
+/**
+ * The one piece of the Create slide that has to be React: text content. It
+ * re-renders only when another character is due (about 95 times over 1.8s),
+ * and only itself, never the stage around it.
+ */
+function TypedPrompt({ p, reduceMotion }) {
+  const [count, setCount] = useState(reduceMotion ? PROMPT.length : 0);
+  useAnimatedReaction(
+    () => Math.floor(PROMPT.length * smooth(win(p.get(), 0.05, 0.22))),
+    (next, previous) => {
+      if (next !== previous) scheduleOnRN(setCount, next);
+    },
+  );
+  const cursor = useAnimatedStyle(() => {
+    const v = p.get();
+    const typing = smooth(win(v, 0.05, 0.22)) < 1;
+    return { opacity: typing && Math.floor(v * 80) % 2 === 0 ? 1 : 0 };
+  });
+  return (
+    <Text style={styles.prompt} numberOfLines={3}>
+      {PROMPT.slice(0, count)}
+      <Animated.Text style={[{ color: C.orange }, cursor]}>|</Animated.Text>
+    </Text>
   );
 }
 
 // ── Screen 1 : PUBLISH then COMMUNITY (SPEC §5, §7) ─────────────────────────
 function PublishScreen({ p }) {
-  const pubOut = smooth(win(p, 0.22, 0.30));
-  const pubScale = (1 - 0.12 * Math.sin(Math.PI * win(p, 0.16, 0.22))) * (1 - 0.06 * pubOut);
-  const stats = smooth(win(p, 0.26, 0.34));
-  const readers = smooth(win(p, 0.30, 0.40));
-  const hearts = 128 + Math.round(smooth(win(p, 0.30, 0.58)) * 118);
-  const note = smooth(win(p, 0.72, 0.82));
-  const chipR = (a) => smooth(win(p, a, a + 0.09));
-  const av = (i) => { const a = [0.34, 0.44, 0.54][i]; return smooth(win(p, a, a + 0.10)); };
+  const publishBtn = useAnimatedStyle(() => {
+    const v = p.get();
+    const out = smooth(win(v, 0.22, 0.30));
+    const scale = (1 - 0.12 * Math.sin(Math.PI * win(v, 0.16, 0.22))) * (1 - 0.06 * out);
+    return { opacity: 1 - out, transform: [{ scale }] };
+  });
+  const stats = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.26, 0.34)) }));
+  const readers = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.30, 0.40)) }));
+  const note = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.72, 0.82)), 22));
 
   return (
     <View style={styles.stage}>
       {/* reaction chips (absolute — SPEC §7) */}
-      <ReactionChip text="the door gave me chills" style={{ top: 54, left: 38 }} r={chipR(0.40)} />
-      <ReactionChip text="♥ liked" peach style={{ top: 132, right: 22 }} r={chipR(0.52)} />
-      <ReactionChip text="read it twice ✦" style={{ top: 258, left: 34 }} r={chipR(0.62)} />
+      <ReactionChip p={p} at={0.40} text="the door gave me chills" style={{ top: 54, left: 38 }} />
+      <ReactionChip p={p} at={0.52} text="♥ liked" peach style={{ top: 132, right: 22 }} />
+      <ReactionChip p={p} at={0.62} text="read it twice ✦" style={{ top: 258, left: 34 }} />
 
       <View style={styles.stageCenter}>
         <View style={[styles.publishCard, warmShadow(0.45)]}>
@@ -304,49 +467,79 @@ function PublishScreen({ p }) {
             <BookSpine />
             <View style={{ flex: 1, marginLeft: 14 }}>
               <Text style={styles.bookTitle}>The Forgotten Door</Text>
-              <Text style={styles.bookSub}>{p >= 0.26 ? 'by you · published' : 'Draft · ready to share'}</Text>
+              <BookStatus p={p} />
               <View style={{ height: 32, marginTop: 12 }}>
-                <View style={{ position: 'absolute', transform: [{ scale: pubScale }], opacity: 1 - pubOut }}>
+                <Animated.View style={[{ position: 'absolute' }, publishBtn]}>
                   <View style={[styles.pillOrangeSm, warmShadow(0.6, C.orange)]}>
                     <Text style={styles.pillOrangeText}>Publish story</Text>
                   </View>
-                </View>
-                <View style={{ position: 'absolute', top: 6, flexDirection: 'row', opacity: stats }}>
-                  <Text style={[styles.stat, { color: C.orangeDeep }]}>♥ {hearts}</Text>
+                </Animated.View>
+                <Animated.View style={[{ position: 'absolute', top: 6, flexDirection: 'row' }, stats]}>
+                  <Hearts p={p} />
                   <Text style={[styles.stat, { color: C.muted, marginLeft: 16 }]}>💬 24</Text>
-                </View>
+                </Animated.View>
               </View>
             </View>
           </View>
           <View style={styles.hairline} />
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
             <View style={{ flexDirection: 'row' }}>
-              {AVATARS.map((src, i) => (
-                <Image key={i} source={src}
-                  style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#fff',
-                    marginLeft: i === 0 ? 0 : -8, opacity: av(i), transform: [{ scale: 0.5 + 0.5 * av(i) }] }} />
-              ))}
+              {AVATARS.map((src, i) => <ReaderAvatar key={i} p={p} i={i} src={src} />)}
             </View>
-            <Text style={[styles.readers, { opacity: readers }]}>new readers today</Text>
+            <Animated.Text style={[styles.readers, readers]}>new readers today</Animated.Text>
           </View>
         </View>
       </View>
 
       {/* continuation notification, bottom 40 */}
-      <View style={{ position: 'absolute', bottom: 18, left: 0, right: 0, alignItems: 'center',
-        opacity: note, transform: [{ translateY: (1 - note) * 22 }] }}>
+      <Animated.View style={[{ position: 'absolute', bottom: 18, left: 0, right: 0, alignItems: 'center' }, note]}>
         <NotificationCard />
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
-function ReactionChip({ text, peach, style, r }) {
+function BookStatus({ p }) {
+  const [published, setPublished] = useState(false);
+  useAnimatedReaction(() => p.get() >= 0.26, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setPublished, next);
+  });
+  return <Text style={styles.bookSub}>{published ? 'by you · published' : 'Draft · ready to share'}</Text>;
+}
+
+/** Likes count up 128 → 246. Text, so React; re-renders only itself. */
+function Hearts({ p }) {
+  const [hearts, setHearts] = useState(128);
+  useAnimatedReaction(() => 128 + Math.round(smooth(win(p.get(), 0.30, 0.58)) * 118), (next, previous) => {
+    if (next !== previous) scheduleOnRN(setHearts, next);
+  });
+  return <Text style={[styles.stat, { color: C.orangeDeep }]}>♥ {hearts}</Text>;
+}
+
+function ReaderAvatar({ p, i, src }) {
+  const style = useAnimatedStyle(() => {
+    const a = [0.34, 0.44, 0.54][i];
+    const r = smooth(win(p.get(), a, a + 0.10));
+    // From 0.5, never from nothing (SKILL: no scale(0)).
+    return { opacity: r, transform: [{ scale: 0.5 + 0.5 * r }] };
+  });
   return (
-    <View style={[{ position: 'absolute', zIndex: 4, opacity: r, transform: [{ translateY: (1 - r) * 8 }, { scale: 0.92 + 0.08 * r }] },
-      peach ? [styles.chipOrange, warmShadow(0.5, C.orange)] : [styles.chipWhite, warmShadow(0.35)], style]}>
+    <Animated.Image source={src}
+      style={[{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#fff',
+        marginLeft: i === 0 ? 0 : -8 }, style]} />
+  );
+}
+
+function ReactionChip({ p, at, text, peach, style }) {
+  const motion = useAnimatedStyle(() => {
+    const r = smooth(win(p.get(), at, at + 0.09));
+    return { opacity: r, transform: [{ translateY: (1 - r) * 8 }, { scale: 0.92 + 0.08 * r }] };
+  });
+  return (
+    <Animated.View style={[{ position: 'absolute', zIndex: 4 },
+      peach ? [styles.chipOrange, warmShadow(0.5, C.orange)] : [styles.chipWhite, warmShadow(0.35)], style, motion]}>
       <Text style={peach ? styles.chipOrangeText : styles.chipWhiteText}>{text}</Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -395,25 +588,26 @@ function ReadScreen({ reduceMotion }) {
 function MarqueeRow({ reverse, dur, start, reduceMotion }) {
   const strip = Array.from({ length: 14 }, (_, i) => COVERS[(start + i) % COVERS.length]);
   const unitWidth = strip.length * (COVER_W + COVER_GAP);
-  const x = useRef(new Animated.Value(reverse ? 1 : 0)).current;
+  // Constant motion: linear, looping on the UI thread, stopped under reduced
+  // motion on the representative first covers (DESIGN.md "Reduced Motion").
+  const x = useSharedValue(0);
 
   useEffect(() => {
+    cancelAnimation(x);
     if (reduceMotion) {
-      x.setValue(0);
+      x.set(0);
       return undefined;
     }
-    const anim = Animated.loop(
-      Animated.timing(x, { toValue: reverse ? 0 : 1, duration: dur, easing: Easing.linear, useNativeDriver: Platform.OS !== 'web' })
-    );
-    anim.start();
-    return () => anim.stop();
+    x.set(reverse ? 1 : 0);
+    x.set(withRepeat(withTiming(reverse ? 0 : 1, { duration: dur, easing: Easing.linear }), -1, false));
+    return () => cancelAnimation(x);
   }, [dur, reduceMotion, reverse, x]);
 
-  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [0, -unitWidth] });
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: -unitWidth * x.get() }] }));
 
   return (
-    <MaskedFade width={unitWidth * 2}>
-      <Animated.View style={{ flexDirection: 'row', transform: [{ translateX }] }}>
+    <MaskedFade>
+      <Animated.View style={[{ flexDirection: 'row' }, style]}>
         {[...strip, ...strip].map((c, i) => <CoverCard key={i} c={c} last={i === strip.length * 2 - 1} />)}
       </Animated.View>
     </MaskedFade>
@@ -461,16 +655,22 @@ function warmShadow(opacity, color = C.shadowWarm) {
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.phoneBg },
+  root: { flex: 1, backgroundColor: C.sheet },
+  flex: { flex: 1 },
+  page: { alignItems: 'center' },
+  heroBand: { position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H },
+  column: { flexGrow: 1 },
   hero: { height: HERO_H, flexShrink: 0, overflow: 'hidden' },
   wordmarkWrap: { position: 'absolute', top: 54, left: 0, right: 0, alignItems: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   stage: { position: 'absolute', top: 88, left: 0, right: 0, height: STAGE_H, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   stageCenter: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   // sheet
-  sheet: { flex: 1, backgroundColor: C.sheet, paddingHorizontal: 28, paddingTop: 22, paddingBottom: 24 },
-  dots: { flexDirection: 'row', gap: 6, marginBottom: 16 },
+  sheet: { flexGrow: 1, minHeight: SHEET_MIN_H, backgroundColor: C.sheet, paddingHorizontal: 28, paddingTop: 22, paddingBottom: 24 },
+  dots: { flexDirection: 'row', alignItems: 'center', height: 6, marginBottom: 16, marginLeft: -3 },
+  // 44pt tall, 3pt either side of the dot: adjacent targets meet at the SPEC's
+  // 6pt gap, and the negative margin keeps the visible row at 6pt.
+  dotHit: { height: 44, marginVertical: -19, paddingHorizontal: 3, justifyContent: 'center' },
   headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink, height: 64 },
   sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 8 },
   actionSlot: { flex: 1, justifyContent: 'flex-end' },
