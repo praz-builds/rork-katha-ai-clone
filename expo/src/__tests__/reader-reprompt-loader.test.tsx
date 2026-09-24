@@ -12,7 +12,7 @@
 
 /* eslint-disable import/first */
 import React from "react";
-import { act, cleanup, render, waitFor } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockContinueStoryStreaming = jest.fn();
 
@@ -54,7 +54,10 @@ const LOADER = "Writing this chapter again";
 function fakeRun(chapterNumber: number) {
   const listeners = new Set<() => void>();
   const state = { text: "" };
-  const promise = new Promise<ReimagineResult>(() => {});
+  let resolve: (value: ReimagineResult) => void = () => {};
+  const promise = new Promise<ReimagineResult>((res) => {
+    resolve = res;
+  });
   const run = {
     request: { storyId: story.id, chapterNumber, prompt: "Again, but at night." },
     get text() {
@@ -72,6 +75,13 @@ function fakeRun(chapterNumber: number) {
   } as unknown as ReimagineRun;
   return {
     run,
+    async resolve(value: ReimagineResult) {
+      await act(async () => {
+        resolve(value);
+        await promise;
+        await Promise.resolve();
+      });
+    },
     /** Cumulative prose, as the real client reports it. */
     async emit(text: string) {
       await act(async () => {
@@ -138,4 +148,47 @@ it("does not put the crafting screen over a continuation, which opens on its own
 
   await waitFor(() => expect(view.getByLabelText("Still writing")).toBeTruthy());
   expect(view.queryByLabelText(LOADER)).toBeNull();
+});
+
+it("opens the new version on page 1 even when the old one was re-prompted from a later page", async () => {
+  // The reading anchor is an offset into the OLD text. Left in place, the new
+  // prose was mapped onto it and the reader landed mid-chapter.
+  const prose = longProse();
+  const paged = {
+    ...story,
+    chapters: [{ ...story.chapters[0], paragraphs: prose.trim().split("\n\n") }, ...story.chapters.slice(1)],
+  };
+  const view = await render(<ReaderScreen story={paged} onBack={jest.fn()} />);
+  const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
+  expect(pageCount).toBeGreaterThan(3);
+  await act(async () => {
+    fireEvent(view.getByTestId("reader-pager"), "momentumScrollEnd", {
+      nativeEvent: {
+        contentOffset: { x: 3 * 400, y: 0 },
+        layoutMeasurement: { width: 400, height: 800 },
+        contentSize: { width: 400 * pageCount, height: 800 },
+      },
+    });
+  });
+
+  const fake = fakeRun(1);
+  const session = adoptReimagineGeneration({ run: fake.run, story: paged, chapterNumber: 1 });
+  await view.rerender(<ReaderScreen story={paged} liveSessionId={session.id} onBack={jest.fn()} />);
+  expect(view.getByLabelText(LOADER)).toBeTruthy();
+
+  await fake.emit(prose);
+  await fake.resolve({
+    chapter: { ...paged.chapters[0], id: "rewritten-1", title: "Again" },
+    model: "test",
+    storyId: story.id,
+    forked: false,
+  });
+  await waitFor(() => expect(view.queryByLabelText(LOADER)).toBeNull());
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+  await waitFor(() => {
+    expect(view.getByLabelText("Pages").props.accessibilityValue).toMatchObject({ now: 1 });
+  });
 });

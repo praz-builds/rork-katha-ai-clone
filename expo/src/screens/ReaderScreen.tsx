@@ -953,6 +953,19 @@ export default function ReaderScreen({
   const [visiblePage, setVisiblePage] = useState(0);
 
   /**
+   * A re-prompt starts the new version on page 1, wherever the old one was
+   * being read. The reading anchor is a character offset into the OLD text;
+   * left alone, the effect that maps it onto `pages` would carry a reader who
+   * re-prompted from page 4 straight to page 4 of prose they have not read.
+   */
+  useEffect(() => {
+    if (!awaitingRewritePages) return;
+    setPageIndex(0);
+    setVisiblePage(0);
+    setAnchorOffset(0);
+  }, [awaitingRewritePages]);
+
+  /**
    * A page turn has settled at this offset: make it the committed page.
    *
    * The pager's own width, not the window's: they are the same on a phone,
@@ -978,9 +991,13 @@ export default function ReaderScreen({
   const commitPagerOffsetRef = useRef(commitPagerOffset);
   commitPagerOffsetRef.current = commitPagerOffset;
   const webSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A settle still pending when the chapter changes belongs to the old
+  // chapter's pages; letting it fire would commit that offset against the new
+  // chapter. Cleared on switch as well as on unmount.
   useEffect(() => () => {
     if (webSettleTimerRef.current) clearTimeout(webSettleTimerRef.current);
-  }, []);
+    webSettleTimerRef.current = null;
+  }, [chapter.id]);
 
   const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
