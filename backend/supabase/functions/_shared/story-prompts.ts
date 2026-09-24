@@ -17,7 +17,6 @@
 import { BANNED_NAMES, BANNED_PHRASES, BANNED_WORDS } from "./ban-lists.ts";
 import { buildGroundingBlock } from "./grounding-card.ts";
 import type { GroundingCard } from "./grounding-types.ts";
-import { buildPhraseLayer, type PhraseSeed } from "./phrases.ts";
 import { formatStoryBibleBlock, type StoryBible } from "./story-bible.ts";
 import type {
   AudienceMode,
@@ -1507,12 +1506,6 @@ export function buildUserPrompt(params: {
    * simply produces no cards and the story is written from model knowledge.
    */
   grounding?: GroundingCard[];
-  /**
-   * Everyday English the reader saved for practice. Optional and silent:
-   * `buildPhraseLayer` returns "" when there are no saved phrases, so an
-   * unseeded prompt stays byte-identical to the prompt before phrase learning.
-   */
-  savedPhrases?: PhraseSeed[];
 }): string;
 /** @deprecated Use the object-param overload. */
 export function buildUserPrompt(params: {
@@ -1561,7 +1554,6 @@ export function buildUserPrompt(params: {
   }[];
   language?: string;
   grounding?: GroundingCard[];
-  savedPhrases?: PhraseSeed[];
 }): string {
   const parts: string[] = [];
 
@@ -1743,19 +1735,6 @@ export function buildUserPrompt(params: {
   // layer existed - is byte-identical to what it was.
   const groundingBlock = buildGroundingBlock(params.grounding ?? []);
   if (groundingBlock) parts.push(groundingBlock);
-
-  // --- Phrase-learning layer ---
-  //
-  // Positioned after grounding so factual names and address forms remain next
-  // to the cast, and before moments so phrases cannot steer the plot checklist.
-  // The layer is dialogue-only by design: the existing ban lists still govern
-  // narration, and corpus entry is filtered by `isAllowedCorpusPhrase` in the
-  // shared phrase module before a phrase ever becomes reusable learning data.
-  //
-  // `buildPhraseLayer` returns "" for an empty list, preserving the same
-  // byte-identical no-op convention as `buildGroundingBlock`.
-  const phraseLayer = buildPhraseLayer(params.savedPhrases ?? []);
-  if (phraseLayer) parts.push(phraseLayer);
 
   // --- Beats layer (section 5, decision 52) ---
   //

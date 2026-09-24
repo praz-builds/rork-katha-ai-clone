@@ -24,6 +24,7 @@ import {
   type OwnProfile,
 } from "@/lib/profile";
 import { revenueCatService } from "@/lib/revenuecat";
+import { markOwnProfileStale } from "@/lib/profile-store";
 import { bootstrapUser } from "@/lib/session";
 import { colors, fonts, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
@@ -57,8 +58,8 @@ export default function CreditsScreen({
   credits: number;
   onBack: () => void;
   onPaywall: () => void;
-  /** Handed the profile this screen loaded, so Journey opens with it filled in. */
-  onJourney: (profile: OwnProfile | null) => void;
+  /** Opens Your journey, which reads the app-wide profile copy. */
+  onJourney: () => void;
   /** The server said the balance is now this. */
   onBalance: (balance: number) => void;
 }) {
@@ -79,7 +80,11 @@ export default function CreditsScreen({
     return fetchLedger().then(setLedger).catch(() => setLedger(null));
   }, []);
   const refreshBalance = useCallback(() => {
-    return bootstrapUser()
+    // `fresh`: this runs because credits just moved, and the kept bootstrap
+    // answer is from before they did.
+    // The profile's referral and streak-reward numbers can move with them.
+    markOwnProfileStale();
+    return bootstrapUser({ fresh: true })
       .then((user) => {
         if (user) onBalance(user.balance);
       })
@@ -152,7 +157,7 @@ export default function CreditsScreen({
 
         <Text style={styles.section}>Free credits</Text>
         <View style={styles.stack}>
-          <StreakEarnCard profile={profile} onJourney={() => onJourney(profile)} />
+          <StreakEarnCard profile={profile} onJourney={onJourney} />
           <FeedbackClaimsCard
             claims={claims}
             onChanged={(balance) => {

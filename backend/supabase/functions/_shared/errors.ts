@@ -30,7 +30,6 @@ export type ErrorBucket =
   | "payments"
   | "engagement"
   | "feedback"
-  | "phrase.learning"
   | "client.app"
   | "ci.test";
 
@@ -98,7 +97,6 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "models",
   "operation_id",
   "paragraph_index",
-  "phrase_id",
   "primary_genre",
   "provider",
   "renames",

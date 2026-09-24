@@ -505,12 +505,11 @@ describe('a busy label and a busy state', () => {
   });
 
   it('finds the sites it is meant to be watching', () => {
-    // A source-scanning guard that matches nothing passes forever. These four
+    // A source-scanning guard that matches nothing passes forever. These three
     // are the ones the sweep found; the assertion is that the scan still sees
     // them at all, not that they are the only ones allowed to exist.
     const watched = busyLabelledButtons().map((found) => found.file);
     expect(watched).toEqual(expect.arrayContaining([
-      'components/library/AddPhrasesSheet.tsx',
       'components/comments/CommentRow.tsx',
       'components/moderation/StoryActionsSheet.tsx',
       'components/profile/IdentityEditor.tsx',

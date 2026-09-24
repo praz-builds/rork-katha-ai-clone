@@ -458,7 +458,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00043-00044 (Comments + covers)** | Threaded comments/votes/moderation, cover regeneration counters |
 | **00045 (Entity grounding)** | `entity_grounding` (shared expiring fact-card cache, service-role only), `stories.grounding`, `stories.grounding_entities` |
 | **00050 (Entity visibility gate)** | `stories.entity_gate_reason` + the CHECK that made `is_public = true` with a reason set an invalid row. **Removed by 00091.** |
-| **00058 (Classification status)** | `stories.entity_classification_status` (`ok` / `unavailable` / null-for-legacy), plus `error_events.bucket` widened to accept `grounding`, `engagement` and `phrase.learning` |
+| **00058 (Classification status)** | `stories.entity_classification_status` (`ok` / `unavailable` / null-for-legacy), plus `error_events.bucket` widened to accept `grounding`, `engagement` and `phrase.learning` (nothing writes `phrase.learning` since Save phrase was removed on 2026-09-24; the constraint still admits it) |
 | **00087 (One-credit start + auto runs)** | `begin_story_generation` deducts 1; `stories.auto_run_through_chapter`; `generation_operations.auto_run_id` / `.claimed_at`; `reserve_auto_chapter_run` and `refund_auto_chapter_run` |
 | **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
 | **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
@@ -1169,7 +1169,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86).
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
-- **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Notes.
+- **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Characters. Characters lists `saved_characters` and creates or edits one on the brief's Craft character screen.
 - **You** (`expo/src/screens/ProfileScreen.tsx`): since 2026-09-16 the header is the avatar and the handle on one row with a pencil at the right, and the pencil is the only control that opens the identity editor. **There is no guest card.** The "Sign in to keep all of this" prompt is gone, because the product has no guests past the email step. **Sign out routes to the sign-in screen and leaves the device with no session** -- `signOutToSignIn` in `expo/src/lib/session.ts` clears the stored session (`scope: "local"`) and does *not* mint a replacement guest; the old `restartGuestSession` left a live anonymous identity behind the sign-in screen. Do not reintroduce it.
 
 ### Onboarding

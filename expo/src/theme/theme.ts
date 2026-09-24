@@ -344,7 +344,7 @@ export const controls = {
    *
    * 52 at `radius.pill`, and `src/components/Button.tsx` is the only thing
    * allowed to draw it. Everything else — Read and Listen on the story page,
-   * Continue with email, Add phrases, the Create brief's Create story — asks
+   * Continue with email, the Create brief's Create story — asks
    * `Button` for it.
    *
    * WHY IT CAME DOWN FROM 64. 64 was never on screen: it was documented in

@@ -34,11 +34,14 @@ import IdentityEditor, { type IdentityEdits } from "@/components/profile/Identit
 import MemberSheet from "@/components/profile/MemberSheet";
 import { creatureSource } from "@/lib/creatures";
 import { useIsSubscribed } from "@/lib/entitlements";
+import { streakState } from "@/lib/profile";
 import {
-  fetchOwnProfile,
-  type OwnProfile,
-  streakState,
-} from "@/lib/profile";
+  FRESH_FOR_MS,
+  patchOwnProfile,
+  refreshOwnCalendar,
+  refreshOwnProfile,
+  useOwnProfileStore,
+} from "@/lib/profile-store";
 import { revenueCatService } from "@/lib/revenuecat";
 import { signOutToSignIn } from "@/lib/session";
 import { colors, fonts, radius, spacing } from "@/theme";
@@ -88,37 +91,30 @@ export default function ProfileScreen({
   credits: number;
   onCredits: () => void;
   onPaywall: () => void;
-  onJourney: (profile: OwnProfile | null) => void;
+  onJourney: () => void;
   onPublicProfile: (authorId: string) => void;
   onVoices: () => void;
   onSignedOut: () => void;
   onDeleted: (storiesKept: number) => void;
 }) {
-  const [profile, setProfile] = useState<OwnProfile | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // The app's one copy of the profile, drawn at once and refreshed behind it.
+  // It used to be fetched from scratch on every visit to this tab, after the
+  // boot had already fetched it; see `src/lib/profile-store.ts`.
+  const { profile, profileStatus } = useOwnProfileStore();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [memberSheet, setMemberSheet] = useState(false);
   const subscribed = useIsSubscribed();
 
   useEffect(() => {
-    let alive = true;
-    fetchOwnProfile()
-      .then((next) => {
-        if (!alive) return;
-        setProfile(next);
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (alive) setLoaded(true);
-      });
-    return () => {
-      alive = false;
-    };
+    void refreshOwnProfile({ maxAgeMs: FRESH_FOR_MS });
+    // Journey is one tap away and its heatmap is the slow part. Asked for now,
+    // it is usually there by the time the row is tapped.
+    void refreshOwnCalendar({ maxAgeMs: FRESH_FOR_MS });
   }, []);
 
   const applyEdits = useCallback((next: IdentityEdits) => {
-    setProfile((current) => (current ? { ...current, ...next } : current));
+    patchOwnProfile(next);
   }, []);
 
   const openPlus = useCallback(() => {
@@ -204,12 +200,29 @@ export default function ProfileScreen({
               : <UserRound size={26} color={colors.tertiary} />}
           </View>
           <View style={styles.identityText}>
-            <Text style={styles.name} numberOfLines={1}>
-              {name ?? handle ?? "Your profile"}
-            </Text>
-            {name && handle
-              ? <Text style={styles.meta} numberOfLines={1}>{handle}</Text>
-              : null}
+            {profile || profileStatus === "error"
+              ? (
+                <>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {name ?? handle ?? "Your profile"}
+                  </Text>
+                  {name && handle
+                    ? <Text style={styles.meta} numberOfLines={1}>{handle}</Text>
+                    : null}
+                </>
+              )
+              : (
+                // Not "Your profile" while the name is on its way: that line
+                // then swapped for the real name, which read as a glitch. Two
+                // bars the size of the text hold the row still instead.
+                <View
+                  testID="profile-name-skeleton"
+                  accessibilityLabel="Loading your profile"
+                >
+                  <View style={styles.skeletonName} />
+                  <View style={styles.skeletonHandle} />
+                </View>
+              )}
           </View>
           <Pressable
             onPress={() => setEditing(true)}
@@ -285,7 +298,7 @@ export default function ProfileScreen({
             two-line summary of them here would be a second, worse version of
             the same thing. */}
         <Pressable
-          onPress={() => onJourney(profile)}
+          onPress={onJourney}
           accessibilityRole="button"
           accessibilityLabel="Your journey"
           testID="profile-journey"
@@ -328,8 +341,21 @@ export default function ProfileScreen({
             <ChevronRight size={16} color={colors.tertiary} />
           </Pressable>
         )}
+        {/* The same row's footprint while the profile loads, so the rows
+            below it do not jump down when it arrives. */}
+        {!profile && profileStatus !== "error" && (
+          <View style={styles.card} testID="profile-public-placeholder">
+            <View style={styles.rowIcon}>
+              <UserRound size={20} color={colors.accent} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>View public profile</Text>
+              <View style={styles.skeletonSubtitle} />
+            </View>
+          </View>
+        )}
 
-        {!profile && loaded && (
+        {!profile && profileStatus === "error" && (
           <Text style={styles.unavailable} testID="profile-unavailable">
             Your profile could not be loaded just now.
           </Text>
@@ -500,6 +526,27 @@ const styles = {
     },
     avatar: { width: "100%", height: "100%" },
     identityText: { flex: 1, minWidth: 0 },
+    // Sized to the 22pt name and the 13pt handle they stand in for.
+    skeletonName: {
+      width: 140,
+      height: 20,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surface2,
+    },
+    skeletonHandle: {
+      marginTop: spacing.sm,
+      width: 90,
+      height: 12,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surface2,
+    },
+    skeletonSubtitle: {
+      marginTop: spacing.xs,
+      width: 120,
+      height: 12,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surface2,
+    },
     name: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
     meta: {
       marginTop: spacing.tight,

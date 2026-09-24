@@ -22,6 +22,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-nati
  */
 
 const mockFetchActivityCalendar = jest.fn();
+const mockFetchOwnProfile = jest.fn();
 const mockDeleteAccount = jest.fn();
 const mockFetchNarrationVoices = jest.fn();
 const mockPreferredVoiceId = jest.fn();
@@ -32,6 +33,7 @@ jest.mock("@/lib/profile", () => ({
   ...jest.requireActual("@/lib/profile"),
   fetchActivityCalendar: (...args: unknown[]) =>
     mockFetchActivityCalendar(...args),
+  fetchOwnProfile: (...args: unknown[]) => mockFetchOwnProfile(...args),
   deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
 jest.mock("@/lib/voices", () => ({
@@ -43,7 +45,11 @@ jest.mock("@/lib/voices", () => ({
 }));
 
 /* eslint-disable import/first */
-import ActivityGrid from "@/components/profile/ActivityGrid";
+import ActivityGrid, {
+  buildActivityGrid,
+  sameGridProps,
+} from "@/components/profile/ActivityGrid";
+import { resetProfileStoreForTests } from "@/lib/profile-store";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import JourneyScreen from "@/screens/JourneyScreen";
 import VoicesScreen from "@/screens/VoicesScreen";
@@ -69,6 +75,10 @@ afterEach(cleanup);
 beforeEach(() => {
   mockFetchActivityCalendar.mockReset();
   mockFetchActivityCalendar.mockResolvedValue([]);
+  mockFetchOwnProfile.mockReset();
+  mockFetchOwnProfile.mockResolvedValue(null);
+  // The profile and calendar are held app-wide; each test is a cold boot.
+  resetProfileStoreForTests();
   mockDeleteAccount.mockReset();
   mockFetchNarrationVoices.mockReset();
   mockPreferredVoiceId.mockReset();
@@ -103,6 +113,57 @@ describe("the activity grid", () => {
     const view = await render(<ActivityGrid days={["not-a-date", today()]} />);
     await waitFor(() => view.getByTestId("activity-grid"));
     expect(view.getByText("1 active day")).toBeTruthy();
+  });
+
+  // Loading is not failing: "could not be loaded" during an ordinary load
+  // told people their calendar was broken every time they opened it.
+  it("draws a placeholder while loading, not the failure line", async () => {
+    const view = await render(<ActivityGrid days={null} loading />);
+    await waitFor(() => view.getByTestId("activity-grid-loading"));
+    expect(view.queryByTestId("activity-grid-unavailable")).toBeNull();
+    expect(view.queryByText(/could not be loaded/)).toBeNull();
+  });
+
+  // The memo used to key on a `new Date()` default, which is a new object on
+  // every render, so it never hit and 371 dots were rebuilt each time.
+  it("treats an equal list on the same day as the same grid", () => {
+    const morning = new Date("2026-09-24T08:00:00Z");
+    const evening = new Date("2026-09-24T20:00:00Z");
+    const tomorrow = new Date("2026-09-25T08:00:00Z");
+    const days = ["2026-09-01", "2026-09-24"];
+
+    expect(sameGridProps({ days }, { days: [...days] })).toBe(true);
+    expect(sameGridProps({ days, now: morning }, { days: [...days], now: evening }))
+      .toBe(true);
+    expect(sameGridProps({ days, now: morning }, { days, now: tomorrow })).toBe(false);
+    expect(sameGridProps({ days }, { days: [...days, "2026-09-02"] })).toBe(false);
+    expect(sameGridProps({ days: null }, { days: null, loading: true })).toBe(false);
+  });
+
+  it("does not redraw a single dot when the parent re-renders with the same days", async () => {
+    const days = ["2026-09-01", "2026-09-24"];
+    const view = await render(
+      <ActivityGrid days={days} now={new Date("2026-09-24T08:00:00Z")} />,
+    );
+    await waitFor(() => view.getByTestId("activity-grid"));
+    const before = view.getAllByTestId("activity-dot-active")[0].props;
+
+    // A new array and a new Date, as every parent render produces them.
+    await view.rerender(
+      <ActivityGrid days={[...days]} now={new Date("2026-09-24T09:00:00Z")} />,
+    );
+    const after = view.getAllByTestId("activity-dot-active")[0].props;
+    // The same props object: React bailed out rather than rendering it again.
+    expect(after).toBe(before);
+  });
+
+  it("ends the grid on the week containing today", () => {
+    const today = Math.floor(Date.UTC(2026, 8, 24) / 86_400_000); // a Thursday
+    const grid = buildActivityGrid(["2026-09-24"], today);
+    const lastWeek = grid.columns[grid.columns.length - 1];
+    expect(lastWeek.find((cell) => cell.day === today)?.active).toBe(true);
+    // Friday and Saturday have not happened yet.
+    expect(lastWeek.filter((cell) => cell.future)).toHaveLength(2);
   });
 });
 
@@ -245,6 +306,65 @@ describe("your journey", () => {
     await waitFor(() => view.getByTestId("journey-unavailable"));
     expect(view.queryByTestId("journey-current-streak")).toBeNull();
     expect(view.queryByTestId("milestone-2")).toBeNull();
+  });
+
+  // Opened with no profile, the page used to show "could not be loaded" at
+  // once, before any request had even been made, and offer no way out.
+  it("loads the profile itself and shows no error while it does", async () => {
+    let answer!: (value: unknown) => void;
+    mockFetchOwnProfile.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const view = await render(
+      <JourneyScreen profile={null} onBack={jest.fn()} />,
+    );
+
+    await waitFor(() => view.getByTestId("journey-loading"));
+    expect(view.queryByTestId("journey-unavailable")).toBeNull();
+    expect(view.queryByText(/could not be loaded/)).toBeNull();
+    expect(mockFetchOwnProfile).toHaveBeenCalledTimes(1);
+
+    answer(profile());
+    await waitFor(() => view.getByTestId("journey-current-streak"));
+    expect(view.queryByTestId("journey-loading")).toBeNull();
+  });
+
+  it("offers a retry when the profile really could not be read", async () => {
+    mockFetchOwnProfile.mockResolvedValueOnce(null);
+    const view = await render(
+      <JourneyScreen profile={null} onBack={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("journey-retry"));
+
+    mockFetchOwnProfile.mockResolvedValueOnce(profile());
+    fireEvent.press(view.getByTestId("journey-retry"));
+    await waitFor(() => view.getByTestId("journey-current-streak"));
+    expect(mockFetchOwnProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the calendar be retried on its own when only it failed", async () => {
+    mockFetchActivityCalendar.mockResolvedValueOnce(null);
+    const view = await render(
+      <JourneyScreen profile={profile()} onBack={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("journey-calendar-retry"));
+    expect(view.getByTestId("journey-current-streak")).toBeTruthy();
+
+    mockFetchActivityCalendar.mockResolvedValueOnce([today()]);
+    fireEvent.press(view.getByTestId("journey-calendar-retry"));
+    await waitFor(() => view.getByTestId("activity-grid"));
+    expect(view.queryByTestId("journey-calendar-retry")).toBeNull();
+  });
+
+  it("shows the calendar placeholder, not its failure line, while it loads", async () => {
+    mockFetchActivityCalendar.mockReturnValue(new Promise(() => {}));
+    const view = await render(
+      <JourneyScreen profile={profile()} onBack={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("activity-grid-loading"));
+    expect(view.queryByTestId("activity-grid-unavailable")).toBeNull();
   });
 
   // Reads, likes and chapter counts were on the old profile. They are a
