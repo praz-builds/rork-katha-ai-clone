@@ -224,7 +224,7 @@ export default function DeleteAccountSheet({
                   {[
                     "Your name, handle, picture and bio",
                     "Your unpublished drafts",
-                    "Your library, saved phrases and reading history",
+                    "Your library and reading history",
                     "Your streak, and everyone you follow",
                   ].map((line) => (
                     <Text key={line} style={styles.listItem}>

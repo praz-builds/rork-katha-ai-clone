@@ -113,13 +113,17 @@ export type ReaderScreenProps = {
     chapter: Chapter,
     actions: { reimagine: (() => void) | null; reimagineLabel: string },
   ) => ReactNode;
-  /** Extension point for phrase-level modules that need to replace individual words. */
+  /**
+   * Extension point for a module that needs to replace individual words.
+   * Nothing supplies it today, so every word renders as plain text inside the
+   * page's one `selectable` Text -- which is what gives the reader the system's
+   * own long-press Copy / Share on native and ordinary selection on web.
+   */
   renderWord?: (word: string, index: number) => ReactNode;
   /**
    * Fired with the chapter now on screen, on mount and again every time the
    * reader switches chapters from the Chapters sheet. `chapterIndex` is
-   * internal state a caller cannot otherwise observe, and phrase capture
-   * needs to know which chapter a save belongs to.
+   * internal state a caller cannot otherwise observe.
    */
   onChapterChange?: (chapter: Chapter, chapterIndex: number) => void;
   /**
@@ -181,28 +185,11 @@ export type ReaderScreenProps = {
    */
   onListen?: (chapterIndex: number) => void;
   /**
-   * Open an explicit, gesture-free way to save a phrase.
-   *
-   * Supplied by `PhraseCaptureReader`, which owns phrase capture and wraps
-   * this screen; the chrome is drawn here, so the control it draws has to be
-   * handed down. `ReaderChrome` renders nothing for this when it is absent,
-   * so a reader mounted without the wrapper is unchanged.
-   *
-   * IT IS NOT A SHORTCUT, IT IS THE ONLY DOOR FOR SOME READERS. The gesture
-   * routes are a long-press on native and a text selection on web, and
-   * neither is available to somebody using a screen reader -- the page
-   * deliberately serves them fluent prose with no per-word stops, so there
-   * are no words to press. This control is how they reach the same feature,
-   * and it is why the prop exists rather than the gesture simply being
-   * documented somewhere.
-   */
-  onSavePhrase?: () => void;
-  /**
    * The viewer has no account, so anything that writes to somebody else's
    * story is gated.
    *
    * READING IS NEVER GATED. Turning pages, preferences, search, narration and
-   * phrase capture all stay open to a guest, because none of them puts the
+   * text selection all stay open to a guest, because none of them puts the
    * guest's name on anything. Liking, saving, following and commenting do, and
    * a guest who taps one gets the sign-in prompt rather than a local state
    * change that will be silently lost -- or worse, a control that appears to
@@ -235,10 +222,9 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
  * How many pages either side of the current one are rendered with real text.
  *
  * Every page of the chapter is mounted so the pager's scroll offsets line up
- * with the page indices, but only this neighbourhood renders words. A word is
- * a `TappableWord` with its own press handlers (phrase capture), so mounting a
- * whole 12-page chapter's worth at once would put roughly a thousand live
- * touch targets on screen to make two of them visible. One page either side
+ * with the page indices, but only this neighbourhood renders words. Mounting a
+ * whole 12-page chapter's worth of text at once would lay out roughly ten
+ * times the prose needed to make two pages visible. One page either side
  * is enough for the next page to be drawn before the swipe lands on it.
  */
 
@@ -394,8 +380,8 @@ function renderPageWords(
    * How many words of the chapter precede this page.
    *
    * `renderWord` receives a CHAPTER-absolute index, not a page-local one. A
-   * page-local index cannot tell phrase capture which occurrence of a word was
-   * tapped, so a sentence spanning a page break was truncated at the boundary.
+   * page-local index cannot tell a word module which occurrence of a word it
+   * was handed.
    */
   pageWordStart: number,
   matches: readonly { start: number; end: number }[],
@@ -461,7 +447,6 @@ export default function ReaderScreen({
   onReimagineStory,
   onReimagineStarted,
   onListen,
-  onSavePhrase,
   onRequireSignIn,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
@@ -1346,8 +1331,7 @@ export default function ReaderScreen({
   //
   // This is an array rather than a single value because the pager mounts
   // several pages at once: a page-local index would make two simultaneously
-  // mounted pages both start their words at 0, and phrase capture keys its
-  // saved-word state on that index.
+  // mounted pages both start their words at 0.
   const pageWordStarts = useMemo(
     () => pages.map((slice) => splitWords(fullText.slice(0, slice.start)).length),
     [fullText, pages],
@@ -1742,7 +1726,6 @@ export default function ReaderScreen({
           : () => setListenOpen(true)}
         onMusic={handleMusicMuteToggle}
         musicMuted={musicMuted}
-        onSavePhrase={onSavePhrase}
       />
       {/*
         Mounted only while open. The sheet reads the safe-area inset, and a

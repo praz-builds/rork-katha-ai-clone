@@ -123,9 +123,9 @@ The runtime prompt builder should assemble layers in this order:
 9. Language module
 10. Output schema reminder
 
-The user prompt has its own optional brief layers. Grounding and phrase learning
-are both no-op layers when empty: omitting them or passing an empty array must
-produce a byte-identical prompt to the pre-layer path.
+The user prompt has its own optional brief layers. Grounding is a no-op layer
+when empty: omitting it or passing an empty array must produce a byte-identical
+prompt to the pre-layer path.
 
 Recommended builder signatures:
 
@@ -433,34 +433,16 @@ Continuation structure:
 
 The user prompt is assembled from the brief the writer approved, in this order:
 idea, setting, kids values, writing direction, reader direction, planned length,
-plan beats, series state, characters, grounded facts, reader phrase seeds,
-moments, exclusion, language, schema reminder. Every free-text value is fenced
+plan beats, series state, characters, grounded facts, moments, exclusion, language, schema reminder. Every free-text value is fenced
 as untrusted data (`<katha:...>`), and the fence delimiter is stripped from the
 value so it cannot be closed early.
 
 Three of those layers carry rules of their own.
 
-### Reader Phrase Seeds
-
-The phrase-learning layer injects saved everyday English phrases into the user
-prompt after grounded facts and before moments. It returns `""` for an empty
-list, so prompts without saved phrases stay byte-identical to the path before
-phrase learning.
-
-The layer is capped at **8 phrases**. That is enough to give the model a useful
-recurrence signal without turning the brief into a checklist or making the story
-read like a lesson.
-
-Phrase seeds are dialogue-only. The prompt must say to weave any that fit into
-dialogue naturally, never force one, never gloss or explain it in the prose, and
-never let a phrase drive a scene that would not otherwise happen. A story that
-reads like a lesson has failed.
-
-The existing anti-slop ban lists still govern narration. A phrase that appears
-on `BANNED_WORDS` or `BANNED_PHRASES` is refused before it can become a
-`phrase_corpus` row, using the shared phrase predicate in
-`backend/supabase/functions/_shared/phrases.ts`; generation does not weaken the
-ban lists to accommodate phrase learning.
+Reader phrase seeds were removed on 2026-09-24 with the reader's Save phrase
+feature: generation no longer reads a reader's saved phrases, and the layer and
+`_shared/phrases.ts` are deleted. The `saved_phrases`, `phrase_corpus` and
+practice tables are kept, unread, until they are dropped after launch.
 
 ### Moments and Their Delivery
 

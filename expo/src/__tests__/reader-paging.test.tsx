@@ -35,25 +35,10 @@ jest.mock("expo-av", () => ({
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 
-const mockSavePhrase = jest.fn();
-const mockUnsavePhrase = jest.fn();
-const mockListSavedPhrases = jest.fn();
-
-jest.mock("@/lib/phrases", () => {
-  const actual = jest.requireActual("@/lib/phrases");
-  return {
-    ...actual,
-    savePhrase: (...args: [unknown]) => mockSavePhrase(...args),
-    unsavePhrase: (...args: [string]) => mockUnsavePhrase(...args),
-    listSavedPhrases: () => mockListSavedPhrases(),
-  };
-});
-
 /* eslint-disable import/first */
 import React from "react";
 import { AccessibilityInfo, Alert, BackHandler, Platform, StyleSheet } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
-import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
 import { authorFor, stories } from "@/data/seed";
 import { setViewerId } from "@/lib/ownership";
 import { colors, genreLabels } from "@/theme";
@@ -112,7 +97,6 @@ function readerBackground(tree: unknown): string | undefined {
 beforeEach(() => {
   cleanup();
   jest.clearAllMocks();
-  mockListSavedPhrases.mockResolvedValue([]);
   jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(false);
   jest.spyOn(AccessibilityInfo, "addEventListener").mockReturnValue({ remove: jest.fn() } as never);
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
@@ -325,9 +309,10 @@ it("Android hardware back peels off overlays, then leaves the reader — never t
   expect(onBack).toHaveBeenCalledTimes(2);
 });
 
-it("a word is still tappable with the pager mounted, and each word keeps one index", async () => {
-  // Long enough to paginate into several pages, so the pager has real
-  // neighbours mounted around the page being tapped.
+it("the page body is natively selectable plain text, with no per-word targets", async () => {
+  // A reader who wants a passage long-presses it and gets the system's own
+  // Copy / Share, which needs the page to be one selectable Text holding plain
+  // prose rather than a run of pressable words.
   const body = Array.from(
     { length: 40 },
     (_, index) => `The lighthouse keeper counted lamp number ${index} and wrote the tally into the salt-stained ledger by the window.`,
@@ -336,30 +321,13 @@ it("a word is still tappable with the pager mounted, and each word keeps one ind
     ...story,
     chapters: [{ ...story.chapters[0], paragraphs: [body] }],
   };
-  mockSavePhrase.mockResolvedValue({
-    id: "saved-1",
-    phrase: "lighthouse",
-    sentence: body,
-    storyId: longStory.id,
-    storyTitle: longStory.title,
-    chapterId: longStory.chapters[0].id,
-    createdAt: new Date().toISOString(),
-    dueAt: new Date().toISOString(),
-    reviewCount: 0,
-  });
 
-  const view = await render(<PhraseCaptureReader story={longStory} onBack={jest.fn()} />);
+  const view = await render(<ReaderScreen story={longStory} onBack={jest.fn()} />);
 
-  // Chapter-absolute, not page-local: several pages are mounted at once, and
-  // a page-local index would give two of them a word numbered 1.
-  expect(view.getAllByTestId("reader-word-1")).toHaveLength(1);
-
-  await act(async () => {
-    await fireEvent.press(view.getByTestId("reader-word-1"));
-  });
-
-  await waitFor(() => expect(mockSavePhrase).toHaveBeenCalledTimes(1));
-  expect(mockSavePhrase.mock.calls[0][0]).toMatchObject({ phrase: "lighthouse" });
+  const page = view.getByTestId("reader-page-body-0");
+  expect(page.props.selectable).toBe(true);
+  expect(view.queryAllByTestId(/^reader-word-/)).toHaveLength(0);
+  expect(view.getAllByText(/lighthouse keeper/).length).toBeGreaterThan(0);
 });
 
 /**

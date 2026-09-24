@@ -1437,7 +1437,7 @@ export function splitProseParagraphs(prose: string): string[] {
 /**
  * The chapter a session is writing, as the reader can show it right now.
  *
- * The id is namespaced so nothing persistent - a phrase save, a comment - is
+ * The id is namespaced so nothing persistent - a comment, a like - is
  * ever keyed against a chapter the server has not yet named.
  */
 export function liveChapterFor(session: GenerationSession): Chapter {

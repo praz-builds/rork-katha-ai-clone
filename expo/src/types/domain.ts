@@ -90,13 +90,13 @@ export type IdentityLens = "queer";
  * New drafts may be created in these languages. Existing stories keep theirs.
  *
  * PORTUGUESE IS GONE from the offer. It was in every language picker in the
- * app -- the create brief, the add-phrases sheet -- and nothing behind it was
- * ever built for it: no narration voice, no phrase corpus, none of the prose
+ * app, and nothing behind it was ever built for it: no narration voice,
+ * none of the prose
  * rules tuned for it. Offering a language the product cannot actually write
  * or speak is a promise broken at the moment somebody takes it up.
  *
  * The TYPE deliberately still admits it, and `normalizeCreationLanguage` still
- * recognises it, because stories and saved phrases already carry it and those
+ * recognises it, because existing stories already carry it and those
  * rows must keep resolving. It simply cannot be chosen any more.
  */
 export type CreationLanguage = "English" | "Portuguese";
@@ -705,5 +705,4 @@ export type Screen =
   /** The narration voice picker, reached from the profile. */
   | { name: "voices" }
   | { name: "credits" }
-  | { name: "paywall" }
-  | { name: "practice" };
+  | { name: "paywall" };

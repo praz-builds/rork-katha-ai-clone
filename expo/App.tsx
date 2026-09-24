@@ -29,9 +29,8 @@ import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
 import ListenScreen from "@/screens/ListenScreen";
-import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
-import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
+import ReaderScreen from "@/screens/ReaderScreen";
 import ChapterEnd, {
   deriveContinuationOptions,
 } from "@/components/reader/ChapterEnd";
@@ -1197,7 +1196,6 @@ export default function App() {
             onStory={openStory}
             onCreate={() => goTabs("create")}
             onExplore={() => goTabs("explore")}
-            onPractice={() => setScreen({ name: "practice" })}
           />
         );
       case "profile":
@@ -1390,7 +1388,7 @@ export default function App() {
               && readerSession.revealedProse.length === 0
             ? <GeneratingOverlay genre={readerSession.genre} mode="story" />
             : (
-              <PhraseCaptureReader
+              <ReaderScreen
                 story={allStories.find((story) => story.id === screen.storyId)
                   ?? (readerSession ? provisionalStory(readerSession) : null)
                   ?? allStories[0]}
@@ -1491,13 +1489,6 @@ export default function App() {
                 }}
               />
             )
-        )
-        : screen.name === "practice"
-        ? (
-          <PracticeScreen
-            onBack={() => goTabs(tab)}
-            onStory={openStory}
-          />
         )
         : screen.name === "author"
         ? (

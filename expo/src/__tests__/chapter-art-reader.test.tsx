@@ -73,8 +73,9 @@ function storyWith(
 /**
  * Page one's prose, flattened out of the word-level nodes it is rendered as.
  *
- * Every word on a page is its own pressable node (phrase capture), so the text
- * has to be walked out of the tree rather than read off a single string.
+ * The page body is a Text whose children are the word-level nodes `renderWord`
+ * returns, so the text has to be walked out of the tree rather than read off a
+ * single string.
  */
 function textOf(node: unknown): string {
   if (typeof node === "string") return node;
