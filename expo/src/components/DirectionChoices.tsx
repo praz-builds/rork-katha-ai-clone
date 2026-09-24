@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { Check, Circle, PenLine, Shuffle, Sparkles, X } from "lucide-react-native";
+import { Check, Circle, PenLine, Shuffle, Signpost, X } from "lucide-react-native";
 import { MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { Button } from "@/components/Button";
 import { colors, fonts, radius, spacing, type } from "@/theme";
@@ -105,6 +105,13 @@ export type InteractiveDirectionChoicesProps = {
   readOnly?: false;
   /** The question this surface is asking, e.g. "What's next?". */
   heading: string;
+  /**
+   * How loud the heading is. `section` (the default) is a heading inside a
+   * page, as at a chapter end. `step` is the page's own heading, as on
+   * Create's "Where does it begin?", and takes `type.createTitle` so it
+   * matches every other create step.
+   */
+  headingSize?: "section" | "step";
   /** What choosing costs. Every path out of here costs the same, so it sits above them all. */
   priceNote: string;
   status: DirectionStatus;
@@ -228,6 +235,7 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
 
   const {
     heading,
+    headingSize = "section",
     priceNote,
     options,
     unavailableReason,
@@ -244,7 +252,12 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>{heading}</Text>
+      <Text
+        style={headingSize === "step" ? styles.stepHeading : styles.heading}
+        accessibilityRole={headingSize === "step" ? "header" : undefined}
+      >
+        {heading}
+      </Text>
       {/* The price rides with the surface, not with one button, because every
         * path out of here - a suggested direction, a typed one, or letting
         * Katha decide - does the same work and costs the same. Putting it only
@@ -281,7 +294,9 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
             onPress={() => onChoose(option.prompt)}
             testID={`${testIDPrefix}-option-${index}`}
           >
-            <Sparkles size={16} color={colors.accent} />
+            {/* A signpost: this card is a way the story could go. Not
+              * Sparkles, which in this app means credits and nothing else. */}
+            <Signpost size={16} color={colors.accent} />
             <Text style={styles.optionText}>{option.prompt}</Text>
           </Pressable>
         ))
@@ -382,7 +397,7 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
           testID={`${testIDPrefix}-write-own`}
         >
           <PenLine size={16} color={colors.accent} />
-          <Text style={styles.optionText}>{writeOwnLabel}</Text>
+          <Text style={[styles.optionText, styles.writeOwnText]}>{writeOwnLabel}</Text>
         </Pressable>
       )}
     </View>
@@ -395,6 +410,10 @@ const styles = StyleSheet.create({
   },
   heading: {
     ...type.headline,
+    color: colors.ink,
+  },
+  stepHeading: {
+    ...type.createTitle,
     color: colors.ink,
   },
   mutedBody: {
@@ -460,6 +479,12 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: colors.borderStrong,
     backgroundColor: "transparent",
+  },
+  // The label is an action, not a suggestion, so it takes the button label's
+  // weight in the UI face. Never the display face: CTAs are Hanken.
+  writeOwnText: {
+    fontFamily: type.button.fontFamily,
+    fontWeight: type.button.fontWeight,
   },
   composerCard: {
     gap: spacing.sm,

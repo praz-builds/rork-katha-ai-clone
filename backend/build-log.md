@@ -70,6 +70,146 @@ already fetched the profile and thrown it away.
   does not re-seed from the balance it had before the charge.
 - `src/__tests__/profile-store.test.ts` has one test per guard. I removed each
   guard in turn and confirmed its test fails.
+## 2026-09-24 UTC — Save phrase leaves the app, and Library gets your characters
+
+**Session:** worktree `codex/drop-phrases-add-characters` (PR #135). Client, edge
+functions and docs. **No migration.** The `saved_phrases`, `phrase_corpus` and
+practice tables stay, unread, until a post-launch drop.
+
+### What changed
+
+- The reader has no word-picker, toolbar, coach mark or Save phrase action. The
+  page body is one `selectable` Text, so a long-press gives the phone's own
+  Copy / Share / Look Up. The reader's tap-to-toggle `Pressable` has a no-op
+  `onLongPress`: without it RN fires `onPress` on release, and the controls would
+  flip just as the selection menu appears.
+- Library is Created / Starred / Characters. Characters lists the saved cast and
+  opens the brief's Craft character screen. Saving under a name another
+  character already has is refused. The library upserts by name, so that save
+  would overwrite the other character and then, on a rename, delete the one
+  being edited.
+- Generation no longer reads saved phrases: the phrase-seed layer is out of
+  `story-prompts.ts`, `generate-story` and `generate-story-stream`.
+
+### Deploy (merge deletes source only)
+
+1. `supabase functions deploy generate-story generate-story-stream profile`. Pull
+   each live bundle and confirm `fetchPhraseSeeds` is absent.
+2. Only after that: `supabase functions delete save-phrase unsave-phrase phrases record-practice`.
+   Until then the four stay ACTIVE on Supabase and keep answering.
+3. `continue-story` and `reimagine-chapter` bundle `story-prompts.ts` too. Their
+   live copies carry the dead layer but never called `fetchPhraseSeeds`, so they
+   are harmless until their next deploy.
+
+Tests: `characters-tab.test.tsx` (the name-clash refusal fails with the guard
+removed), `library-screen.test.tsx`, `reader-paging.test.tsx`.
+## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
+
+**Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
+no migration and no function source changed. **Nothing to deploy.**
+
+- **Comments were not filtered by viewer.** Checked against production
+  read-only: the live SELECT policy on `comments` lets any authenticated
+  caller read a public or curated story's thread, `handleReadThread` filters by
+  `story_id` and the caller's own block list, and the deployed `comments`
+  bundle matches main. `select count(*) from comments` in production is **0**:
+  no comment has ever been stored, so "Comments (0)" was true. What the client
+  got wrong: any failed read (no session, offline, 5xx) rendered as "Comments
+  (0) / No comments yet", and a post answered by something other than a comment
+  row left the optimistic "You" row on screen for its writer alone. Both fixed
+  in `ChapterSocial`; a deno test pins cross-viewer visibility on a curated
+  story with chapter-attached comments.
+- **The author card never navigated.** It was a plain `View`, and neither
+  `ReaderScreen` nor `PhraseCaptureReader` had an `onAuthor` prop. App now
+  passes `setScreen({ name: "author", authorId })`, the same call the story
+  page uses.
+- **The author card and comments are cards now**, lifted off the page in
+  `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
+  Night) with `shadows.card`, replacing the hairline dividers.
+- **The reader no longer signs every story "Katha AI".** `authorFor` falls
+  back to the house account for any unknown id; the reader now resolves the
+  author through `useStoryAuthor` (`src/lib/story-author.ts`): the public
+  profile for a real account, the seed only for a seed id, "You" on your own
+  story. Follow is saved (`setAuthorFollow`), starts from the server, is hidden
+  on your own story, and Back from the author page returns to the chapter.
+- Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
+  has the same fallback.
+## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
+
+**Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
+`backend/` code, no migration, no function. **Nothing to deploy** beyond the
+next client build / web preview.
+
+- **Page stuck on "Page 1".** The pager committed a page turn only in
+  `onMomentumScrollEnd`, which react-native-web accepts and never calls (the
+  browser has no such event). On web the reader swiped to the last page and
+  the Pages control never moved. `ReaderScreen` now commits on web once the
+  pager has been quiet for 150ms (`WEB_PAGER_SETTLE_MS`); native keeps the
+  momentum end. Test: `reader-paging.test.tsx`, fails with the web branch off.
+- **Re-prompt showed no loader.** `adoptReimagineGeneration` put the session
+  in the store without publishing it, so nothing re-rendered until the run's
+  first event: the old chapter stayed up, then a blank opener. It now publishes
+  at once and marks the session `rewrite: true`, and the reader holds
+  `GeneratingOverlay` (the create flow's pre-first-page screen) until one whole
+  page has settled. Continuations are unchanged. App also keyed the session to
+  the chapter the reader was OPENED at rather than the one re-prompted
+  (`run.request.chapterNumber` now). Tests: `reader-reprompt-loader.test.tsx`,
+  `reimagine-live-session.test.ts`; both fail with their fix reverted.
+- **After review:** the crafting screen over a rewrite has a Back control
+  (the only exit on iOS and web; the rewrite keeps running). A failed rewrite
+  shows why and its Try again starts a fresh run of the same request —
+  `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
+  its chapter from the run's request, so App no longer passes one. A pending
+  web page-settle is dropped on chapter switch (tested with fake timers).
+## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
+
+**Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
+function. **Nothing to deploy.**
+
+**What the founder felt.** Swipes and the Pages slider lagged the finger, and
+muting the music took a visible moment before the icon struck through and a
+longer one before the sound stopped.
+
+**The cause is older than Save phrase.** Every `ReaderScreen` render rebuilt
+every word of every mounted page (up to five pages around the one on screen).
+Showing the chrome, muting, a slider step and crossing a page mid-swipe are
+all `ReaderScreen` renders, and none of them changes a word. This was already
+true of the plain reader: its default `renderWord` was an inline arrow, and
+`renderPageBody` was called straight from render. Phrase capture made each
+rebuild heavier: about 50% more host `Text` nodes (3,381 against 2,258 on a
+2,400-word chapter), and a `TappableWord` for every word with fresh
+`onPress`/`onLongPress` closures, so its `memo` never held.
+
+**Measured** with a scratch jest benchmark using React Profiler plus a count
+of words rebuilt, on a 2,400-word chapter. The word counts are
+deterministic. The milliseconds were taken with the machine at a load
+average of 600-1,000, so read them as ratios only.
+
+| Interaction | Words rebuilt before -> after (phrase reader) | Words rebuilt before -> after (plain reader) |
+| --- | --- | --- |
+| Show chrome | 1,120 -> 0 | 2,240 -> 0 |
+| Mute music | 1,680 -> 0 | 1,120 -> 0 |
+| Pages slider step | 1,698 -> 385 (only the page entering the window) | 3,395 -> 385 |
+
+**Fixes.**
+- `PageWords` (memo) renders a page's words. Its inputs are all stable:
+  `matchesByPage` is memoised per query, `NO_MATCHES` is shared, and
+  `plainWord` is module-level.
+- Mute is optimistic. The state flips first, then the playing sound is taken
+  out of the ref and paused, then unloaded, all from the handler. The
+  `musicMuted` effect used to do this after the commit, and it awaited
+  `unloadAsync` before anything went quiet. A load that lands after a mute is
+  now dropped by checking `musicMutedRef`.
+- Home rails: `StoryFeedCard` is memoised. `FeedRail` gives each card a stable
+  handler through `RailCard` and a ref to `onStory`, because App recreates
+  `openStory` on every render.
+
+**Does deleting Save phrase alone fix it? No.** Deleting it removes a third of
+the reader's text nodes and the pan detector around the pager. But the plain
+reader rebuilt 1,120-3,395 words per interaction too. `PageWords` is the fix.
+
+Tests: `reader-responsiveness.test.tsx`. The "no words rebuilt" test and the
+"pause from the tap" test both fail with `ReaderScreen` reverted.
 
 ---
 

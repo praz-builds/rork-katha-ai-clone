@@ -1,5 +1,4 @@
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,16 +14,19 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import { Bell, ChevronRight, Flame, Sparkles } from "lucide-react-native";
+import { Bell, Flame, Sparkles } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
+import { Button } from "@/components/Button";
 import { FeedRail } from "@/components/feed/FeedRail";
 import WriteAnotherCTA from "@/components/feed/WriteAnotherCTA";
+import { dailyFeedSeed, seededShuffle } from "@/lib/feed-shuffle";
 import { greetingLine } from "@/lib/greeting";
+import { getViewerId } from "@/lib/ownership";
 import { greetingName } from "@/lib/profile";
 import { homeCtaCopy, resolveHomeCta } from "@/lib/home-cta";
 import { isMood, tonightStories, tonightTitle } from "@/lib/home-tonight";
 import { HeaderAction } from "@/components/HeaderAction";
-import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
+import { colors, fonts, genreLabels, spacing, type } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
 
 /**
@@ -142,8 +144,37 @@ export function buildFeedRows(
    * is not a known mood draws no row rather than a wrong one.
    */
   mood: string | null = null,
+  /**
+   * Decides ties, per reader per day: `dailyFeedSeed(readerId, date)` from
+   * `lib/feed-shuffle.ts`. The empty default is deterministic (the same
+   * permutation on every call), not catalogue order; the tests rely on the
+   * determinism, not on any particular order.
+   */
+  seed = "",
 ): FeedRow[] {
   const rows: FeedRow[] = [];
+
+  // Every story a rail above has already shown. It is a TIE-BREAK, not a
+  // filter: among stories with the same count, the unseen ones come first, so
+  // a level field never opens two rails on the same card (before this, all
+  // three fallback rails led with the same story). A real count still wins
+  // outright -- a house Original with the most reads leads Trending even
+  // though Originals already showed it.
+  const used = new Set<string>();
+  const claim = (shown: Story[]) => {
+    for (const story of shown) used.add(story.id);
+  };
+  // Shuffle first, then a STABLE sort by the count and then by "already
+  // shown": a real difference in reads or likes still wins, and only a tie
+  // falls to freshness and then to the day's shuffle.
+  // The salt gives each rail its own tie-break, so Trending and Most loved
+  // do not break a field of zeros the same way.
+  const ranked = (list: Story[], salt: string, count: (story: Story) => number) =>
+    seededShuffle(list, seed, salt).sort(
+      (a, b) =>
+        count(b) - count(a) ||
+        Number(used.has(a.id)) - Number(used.has(b.id)),
+    );
 
   // The writer's own work leads once there is any. A reader who has written
   // something opens the app to find it, not to be shown the house picks first;
@@ -151,16 +182,19 @@ export function buildFeedRows(
   const yours = yourStories(generatedStories);
   if (yours.length > 0) {
     rows.push({ key: "yours", title: "Your stories", stories: yours });
+    claim(yours);
   }
 
   const unfinished = inProgress;
   if (unfinished.length > 0) {
     rows.push({ key: "continue", title: "Continue reading", stories: unfinished });
+    claim(unfinished);
   }
 
-  // What Tonight shows, so the house shelf directly under it does not show
-  // the same card again one row down. A featured mystery a reader in a
-  // guessing mood is offered belongs on Tonight; Originals keeps the rest.
+  // What Tonight shows is claimed too, so the house shelf directly under it
+  // does not show the same card again one row down. A featured mystery a
+  // reader in a guessing mood is offered belongs on Tonight; Originals keeps
+  // the rest.
   const onTonight = new Set<string>();
   if (isMood(mood)) {
     const tonight = tonightStories(
@@ -172,31 +206,35 @@ export function buildFeedRows(
     if (tonight.length > 0) {
       rows.push({ key: "tonight", title: tonightTitle(mood), stories: tonight });
       for (const story of tonight) onTonight.add(story.id);
+      claim(tonight);
     }
   }
 
-  const originals = stories.filter((story) =>
-    story.isFeatured && !onTonight.has(story.id)
-  );
+  // Shuffled per reader per day. The house has no ranking of its own
+  // Originals, and catalogue order put the same eighty-odd stories in the
+  // same order in front of everyone, every day.
+  const originals = seededShuffle(
+    stories.filter((story) => story.isFeatured && !onTonight.has(story.id)),
+    seed,
+    "originals",
+  ).slice(0, RAIL_LENGTH);
   if (originals.length > 0) {
     // Capped like every other rail. Originals now come from the database -
     // eighty-odd of them - and an uncapped row is a scroll nobody finishes;
     // the rest stay reachable through the genre rails and Explore.
-    rows.push({
-      key: "originals",
-      title: "Katha Originals",
-      stories: originals.slice(0, RAIL_LENGTH),
-    });
+    rows.push({ key: "originals", title: "Katha Originals", stories: originals });
+    claim(originals);
   }
 
   if (preferredGenres.length > 0) {
     // Deduplicated: onboarding stores display labels and two of them can map
     // to one `Genre`, which would otherwise render the same shelf twice.
     for (const genre of Array.from(new Set(preferredGenres))) {
-      const genreStories = stories
-        .filter((story) => story.genre === genre)
-        .sort((a, b) => b.views - a.views)
-        .slice(0, RAIL_LENGTH);
+      const genreStories = ranked(
+        stories.filter((story) => story.genre === genre),
+        `genre-${genre}`,
+        (story) => story.views,
+      ).slice(0, RAIL_LENGTH);
       // A row with nothing in it is worse than no row: it teaches the reader
       // that scrolling further sometimes wastes their time.
       if (genreStories.length > 0) {
@@ -205,20 +243,20 @@ export function buildFeedRows(
           title: genreLabels[genre],
           stories: genreStories,
         });
+        claim(genreStories);
       }
     }
     return rows;
   }
 
-  const trending = [...stories]
-    .sort((a, b) => b.views - a.views)
+  const trending = ranked(stories, "trending", (story) => story.views)
     .slice(0, RAIL_LENGTH);
   if (trending.length > 0) {
     rows.push({ key: "trending", title: "Trending now", stories: trending });
+    claim(trending);
   }
 
-  const mostLoved = [...stories]
-    .sort((a, b) => b.likes - a.likes)
+  const mostLoved = ranked(stories, "loved", (story) => story.likes)
     .slice(0, RAIL_LENGTH);
   if (mostLoved.length > 0) {
     rows.push({ key: "loved", title: "Most loved", stories: mostLoved });
@@ -380,6 +418,10 @@ export default function HomeScreen({
     generatedStories,
     continueReading(stories),
     mood,
+    // The viewer id `bootstrap-user` reported, read synchronously. Null for
+    // the first render of a cold start; the order settles once it lands and
+    // then holds for the rest of the day.
+    dailyFeedSeed(getViewerId(), new Date()),
   );
 
   const ctaState = resolveHomeCta({
@@ -553,14 +595,12 @@ export default function HomeScreen({
         {/* Home's one exit into the full, filterable catalogue. Everything
             above this is curation; this is where curation ends and browsing
             begins. */}
-        <Pressable
+        <Button
+          label="See everything"
+          variant="secondary"
           onPress={onSeeAll}
-          style={styles.seeEverythingRow}
-          accessibilityRole="button"
-        >
-          <Text style={styles.seeEverythingText}>See everything</Text>
-          <ChevronRight size={18} color={colors.accent} />
-        </Pressable>
+          style={styles.seeEverything}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -621,21 +661,8 @@ const styles = StyleSheet.create({
   /* ── Write CTA (new user) ── */
 
   /* ── See everything (bottom exit into Explore) ── */
-  seeEverythingRow: {
+  seeEverything: {
     marginHorizontal: spacing.xl,
     marginTop: spacing.betweenGroups,
-    paddingVertical: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    boxShadow: shadows.card,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-  },
-  seeEverythingText: {
-    ...type.headline,
-    fontFamily: fonts.display,
-    color: colors.ink,
   },
 });

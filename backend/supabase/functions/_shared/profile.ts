@@ -4,7 +4,7 @@
  *
  * These are two different products sharing a file because they share exactly
  * one thing -- a `profiles` row -- and disagree about everything else. The
- * owner's view is allowed to know about drafts, saved phrases and streaks. The
+ * owner's view is allowed to know about drafts and streaks. The
  * public view is not allowed to know that any of those exist. Keeping the two
  * next to each other is how that boundary stays legible: `readOwnProfile`
  * calls `profile_overview`, `readPublicProfile` calls `public_profile`, and
@@ -289,7 +289,6 @@ export type OwnProfile = {
   chaptersWritten: number;
   totalReads: number;
   totalLikes: number;
-  phrasesSaved: number;
   followers: number;
   following: number;
 };
@@ -443,7 +442,6 @@ export async function readOwnProfile(
     chaptersWritten: count(row.chapters_written),
     totalReads: count(row.total_reads),
     totalLikes: count(row.total_likes),
-    phrasesSaved: count(row.phrases_saved),
     followers: count(row.followers),
     following: count(row.following),
   };

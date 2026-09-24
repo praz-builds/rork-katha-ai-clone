@@ -33,9 +33,8 @@ import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
 import ListenScreen from "@/screens/ListenScreen";
-import PracticeScreen from "@/screens/PracticeScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
-import PhraseCaptureReader from "@/components/reader/PhraseCaptureReader";
+import ReaderScreen from "@/screens/ReaderScreen";
 import ChapterEnd, {
   deriveContinuationOptions,
 } from "@/components/reader/ChapterEnd";
@@ -1212,7 +1211,6 @@ export default function App() {
             onStory={openStory}
             onCreate={() => goTabs("create")}
             onExplore={() => goTabs("explore")}
-            onPractice={() => setScreen({ name: "practice" })}
           />
         );
       case "profile":
@@ -1400,7 +1398,7 @@ export default function App() {
               && readerSession.revealedProse.length === 0
             ? <GeneratingOverlay genre={readerSession.genre} mode="story" />
             : (
-              <PhraseCaptureReader
+              <ReaderScreen
                 story={allStories.find((story) => story.id === screen.storyId)
                   ?? (readerSession ? provisionalStory(readerSession) : null)
                   ?? allStories[0]}
@@ -1422,6 +1420,14 @@ export default function App() {
                 // the comment box lands at sign-in instead of at a local
                 // state change nothing will ever persist.
                 onRequireSignIn={isAnonymous ? () => setScreen({ name: "onboarding" }) : undefined}
+                // The chapter-end author card opens the same profile the story
+                // page's author row does.
+                onAuthor={(authorId, chapterIndex) =>
+                  setScreen({
+                    name: "author",
+                    authorId,
+                    returnTo: { storyId: screen.storyId, chapterIndex },
+                  })}
                 // A rewrite becomes a live session like any other chapter, so
                 // it reveals page by page instead of waiting behind a cover.
                 // `findStoryGeneration` above then picks it up on the next
@@ -1439,11 +1445,9 @@ export default function App() {
                 onReimagineStarted={(run) => {
                   const target = allStories.find((item) => item.id === screen.storyId);
                   if (!target) return;
-                  adoptReimagineGeneration({
-                    run,
-                    story: target,
-                    chapterNumber: (screen.chapterIndex ?? 0) + 1,
-                  });
+                  // No chapter number: the session takes the one the run was
+                  // asked to rewrite, not the one this reader was opened at.
+                  adoptReimagineGeneration({ run, story: target });
                 }}
                 onBack={() => goTabs(tab)}
                 renderChapterEnd={(chapter, { reimagine, reimagineLabel }) => {
@@ -1502,13 +1506,6 @@ export default function App() {
               />
             )
         )
-        : screen.name === "practice"
-        ? (
-          <PracticeScreen
-            onBack={() => goTabs(tab)}
-            onStory={openStory}
-          />
-        )
         : screen.name === "author"
         ? (
           <AuthorScreen
@@ -1516,7 +1513,16 @@ export default function App() {
             stories={allStories}
             canEngage={!isAnonymous}
             onRequireSignIn={() => setScreen({ name: "onboarding" })}
-            onBack={() => goTabs(tab)}
+            onBack={() => {
+              const { returnTo } = screen;
+              if (returnTo) {
+                setScreen({
+                  name: "reader",
+                  storyId: returnTo.storyId,
+                  chapterIndex: returnTo.chapterIndex,
+                });
+              } else goTabs(tab);
+            }}
             onStory={openStory}
           />
         )

@@ -65,7 +65,6 @@ const ownProfileFixture = () =>
     chaptersWritten: 7,
     totalReads: 42,
     totalLikes: 8,
-    phrasesSaved: 12,
     followers: 3,
     following: 1,
   });
@@ -272,7 +271,6 @@ describe("somebody else's profile", () => {
     expect(view.getByText("@ada")).toBeTruthy();
     expect(view.getByText("Followers")).toBeTruthy();
     expect(view.getByText("Following")).toBeTruthy();
-    expect(view.queryByText("Phrases")).toBeNull();
     expect(view.queryByText("Best streak")).toBeNull();
     expect(view.queryByText("Credits")).toBeNull();
 
@@ -460,7 +458,7 @@ describe("the reader's own profile", () => {
     expect(view.getByText("3 followers · 1 following")).toBeTruthy();
   });
 
-  // Reads, likes, chapter and phrase counts were an eight-cell grid here. They
+  // Reads, likes and chapter counts were an eight-cell grid here. They
   // are a scoreboard, they belong to nobody but the writer, and the story
   // counts already exist in Library next to the stories they count.
   it("no longer shows reads, likes or story counts", async () => {
@@ -470,7 +468,7 @@ describe("the reader's own profile", () => {
 
     await waitFor(() => view.getByTestId("profile-journey"));
     expect(view.queryByTestId("stat-grid")).toBeNull();
-    for (const gone of ["Reads", "Likes", "Phrases", "Chapters", "Stories"]) {
+    for (const gone of ["Reads", "Likes", "Chapters", "Stories"]) {
       expect(view.queryByText(gone)).toBeNull();
     }
   });

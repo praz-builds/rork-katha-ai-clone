@@ -38,7 +38,7 @@ Reference geometry is 390 × 844. Every tap target is at least 44 × 44. Every a
 
 **Chrome gating.** `chromeVisible` cannot become true until `complete`. A tap during `writing-pages` does nothing. Hardware back / swipe back during `writing-pages` leaves the reader; the generation continues in `CreateStudioScreen` state and the story is in Library → Your stories the moment the first page existed (the row exists server-side from the first persisted paragraph).
 
-**Tap-to-toggle.** Unchanged mechanism (`Pressable` ancestor of the pager). Word taps (`TappableWord`) still win over the background tap.
+**Tap-to-toggle.** Unchanged mechanism (`Pressable` ancestor of the pager). The page text is natively selectable, and a long-press selection wins over the background tap.
 
 **Page transitions.** `pagingEnabled` horizontal `ScrollView` as today, snap per page, `motion.base`.
 

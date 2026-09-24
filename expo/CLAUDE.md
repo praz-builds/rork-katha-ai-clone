@@ -52,7 +52,7 @@ PR #97 (2026-09-14). What is actually there:
 - Every tab screen pads its scroll content by `TAB_BAR_CLEARANCE` (exported from `BottomTabs.tsx`), never a literal.
 - CreateStudioScreen (`src/screens/CreateStudioScreen.tsx`) has **one** step, not three. It is the brief and the handoff: generation ends in the reader (2026-09-09), editing is a notepad reached from the reader's chrome, and publishing is the "Make it public" toggle in the brief.
 - The Reader includes a Substack-style engagement bar, author card, and comments preview.
-- The Library has **3** segments: Created, Starred, Notes. The old four (Saved, History, My Stories, Comments) were three inventions and one real shelf.
+- The Library has **3** segments: Created, Starred, Characters. The old four (Saved, History, My Stories, Comments) were three inventions and one real shelf. Characters replaced Notes on 2026-09-24, when saving phrases was removed; the reader now uses the platform's own text selection.
 
 ## Production infrastructure (2026-08-23)
 

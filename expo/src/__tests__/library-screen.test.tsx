@@ -24,14 +24,14 @@ jest.mock("@/lib/api", () => ({
   fetchCreatedShelf: jest.fn(),
   fetchStarredShelf: jest.fn(),
 }));
-jest.mock("@/components/library/NotesTab", () => {
+jest.mock("@/components/library/CharactersTab", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactModule = require("react");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Text } = require("react-native");
   return {
     __esModule: true,
-    default: () => ReactModule.createElement(Text, { testID: "notes-tab" }, "Notes"),
+    default: () => ReactModule.createElement(Text, { testID: "characters-tab" }, "Characters"),
   };
 });
 
@@ -67,7 +67,6 @@ const renderLibrary = async (props: Partial<React.ComponentProps<typeof LibraryS
       onStory={jest.fn()}
       onCreate={jest.fn()}
       onExplore={jest.fn()}
-      onPractice={jest.fn()}
       {...props}
     />,
   );
@@ -162,17 +161,28 @@ it("has exactly three tabs, and none of the fabricated ones", async () => {
   await waitFor(() => expect(view.getByTestId("library-tab-created")).toBeTruthy());
 
   expect(view.getByTestId("library-tab-starred")).toBeTruthy();
-  expect(view.getByTestId("library-tab-notes")).toBeTruthy();
+  expect(view.getByTestId("library-tab-characters")).toBeTruthy();
+  expect(view.queryByText("Notes")).toBeNull();
   expect(view.queryByText("History")).toBeNull();
   expect(view.queryByText("Comments")).toBeNull();
   expect(view.queryByText("Saved")).toBeNull();
   expect(view.queryByText("My Stories")).toBeNull();
 });
 
-it("reaches Notes from the third tab", async () => {
+it("keeps every segment label on one line at the chip label size", async () => {
   const view = await renderLibrary();
-  await fireEvent.press(view.getByTestId("library-tab-notes"));
-  await waitFor(() => expect(view.getByTestId("notes-tab")).toBeTruthy());
+  for (const label of ["Created", "Starred", "Characters"]) {
+    const text = view.getByText(label);
+    expect(text.props.numberOfLines).toBe(1);
+    const style = Object.assign({}, ...[text.props.style].flat(Infinity).filter(Boolean));
+    expect(style.fontSize).toBe(15);
+  }
+});
+
+it("reaches Characters from the third tab", async () => {
+  const view = await renderLibrary();
+  await fireEvent.press(view.getByTestId("library-tab-characters"));
+  await waitFor(() => expect(view.getByTestId("characters-tab")).toBeTruthy());
 });
 
 it("says so when a refresh fails over a shelf that already has stories", async () => {

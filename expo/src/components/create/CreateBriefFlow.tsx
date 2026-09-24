@@ -60,7 +60,7 @@ import {
 } from "@/lib/saved-characters";
 import type { SavedCharacterInput } from "@/lib/saved-characters";
 import { Button } from "@/components/Button";
-import { colors, fonts, genreLabels, radius, shadows, spacing } from "@/theme";
+import { colors, fonts, genreLabels, radius, shadows, spacing, type } from "@/theme";
 import type {
   AudienceMode,
   CreateDraft,
@@ -960,10 +960,10 @@ function StorySetupScreen({
       <View style={styles.parentControls}>
         <View style={styles.kidsMode}>
           <Toggle value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} accessibilityLabel="Kids Mode" accessibilityHint="Keeps the story safe for children and limits the genres offered." />
-          {/* No icon. A sparkle next to "Kids Mode" said nothing about
-              children and everything about generation -- it is the glyph this
-              app uses for "the AI is doing something", which is not what this
-              switch is. The switch and the words are the whole control. */}
+          {/* No icon. Sparkles means credits in this app and nothing else
+              (DESIGN.md, "Icons"), and a switch that keeps a story safe for
+              children spends none. The switch and the words are the whole
+              control. */}
           <View style={styles.kidsModeLabel}>
             <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
           </View>
@@ -1577,18 +1577,19 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, padding: spacing.xl, paddingBottom: spacing.xxxl, gap: spacing.xl },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 40 },
-  topTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 20, flex: 1, textAlign: "center" },
+  // The create heading face at the top bar's size: 26 does not sit between two 40pt icon buttons.
+  topTitle: { ...type.createTitle, fontSize: 20, lineHeight: 26, color: colors.ink, flex: 1, textAlign: "center" },
   topSpacer: { width: 40 },
   parentControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, zIndex: 20 },
   genreControl: { alignSelf: "flex-start" },
   kidsMode: { flex: 1, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: spacing.xs },
   kidsModeLabel: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexShrink: 1 },
-  kidsModeText: { color: colors.muted, fontFamily: fonts.display, fontSize: 15 },
+  kidsModeText: { color: colors.muted, fontFamily: fonts.ui, fontWeight: "700", fontSize: 15 },
   kidsModeTextActive: { color: colors.accent },
   iconButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   ideaHero: { gap: spacing.sm, paddingTop: spacing.lg },
   eyebrow: { color: colors.accent, fontFamily: fonts.ui, fontWeight: "800", fontSize: 12, textTransform: "uppercase" },
-  title: { color: colors.ink, fontFamily: fonts.display, fontSize: 32, lineHeight: 38 },
+  title: { ...type.createTitle, color: colors.ink },
   subtitle: { color: colors.muted, fontFamily: fonts.ui, fontSize: 16, lineHeight: 23 },
   fieldGroup: { gap: spacing.xs },
   textArea: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, color: colors.ink, fontFamily: fonts.ui, fontSize: 16, lineHeight: 23, padding: spacing.lg },
@@ -1661,7 +1662,6 @@ const styles = StyleSheet.create({
   momentAddButton: { width: 44, alignItems: "center", justifyContent: "center", backgroundColor: colors.accent },
   optionsFamily: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface2 },
   optionsToggle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.xs },
-  optionsTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 17 },
   optionsHint: { color: colors.muted, fontFamily: fonts.ui, fontSize: 12, marginTop: 2 },
   optionsPanel: { gap: spacing.sm, paddingTop: spacing.xs },
   // Two per row, and they REFLOW. `flexBasis: "48%"` with `flexGrow` means the
@@ -1714,7 +1714,7 @@ const styles = StyleSheet.create({
   dialogRoot: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
   dialogBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink, opacity: 0.5 },
   dialogCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.related },
-  dialogTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 22 },
+  dialogTitle: { ...type.createTitle, color: colors.ink },
   dialogBody: { color: colors.muted, fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, marginBottom: spacing.sm },
 
   dialogDestructive: { minHeight: 52, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },

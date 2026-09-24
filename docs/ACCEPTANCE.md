@@ -28,7 +28,7 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 - [ ] Tap the page. Controls appear: Music, Edit, Reimagine, a page slider with **arrows at both ends**, Listen, Chapters, Preferences. No History.
 - [ ] The slider row has no "Pages" label and the icons are bigger.
 - [ ] Swipe between pages horizontally.
-- [ ] Long-press a word and drag. It selects by word with haptics, and offers Save phrase, Copy and Share quote.
+- [ ] Long-press the text. The phone's own selection appears (Copy, Share, Look Up); on web the browser's selection works. There is no word-picker and no Save phrase anywhere.
 - [ ] Tap Edit. Plain notepad, no orange frame. Change a word and save: it returns **instantly**, not after several seconds.
 - [ ] Tap Reimagine. Characters are listed for replacement, with a prompt box and an apply-to-all-chapters option.
 
@@ -64,10 +64,10 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 ## 7. Library
 
-- [ ] Three tabs: **Created**, **Starred**, **Notes**.
+- [ ] Three tabs: **Created**, **Starred**, **Characters**.
 - [ ] Created shows your own stories including private ones.
 - [ ] Starred shows only what you starred. It used to show strangers' popular stories.
-- [ ] Notes has the language-reinforcement toggle, the explanation, and **Add phrases** with a language picker, a 1000-character counter, and comma or newline separated input.
+- [ ] Characters lists your saved characters with their portraits. The person-plus button at the top creates a new one on the Craft character screen; tapping a character opens it for editing.
 
 ## 8. The story page
 
@@ -81,7 +81,7 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 ## 9. Profiles
 
-- [ ] Your own leads with the streak, then best streak, stories, chapters, reads, likes, phrases, followers.
+- [ ] Your own leads with the streak and shows Followers and Following. There is no stat grid: reads, likes, chapter and story counts are gone.
 - [ ] You can change your handle and upload a picture.
 - [ ] No parental controls.
 - [ ] Another author's profile has follow, their public stories, and public counts. A private story never appears there.
@@ -98,7 +98,5 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 - **Spanish narration** needs an edge-tts worker to be hosted. Microsoft refuses direct connections, so this needs infrastructure. English works.
 - **The audio sweeper** is not written. Deleted narrations record their storage path for cleanup but nothing removes the files yet.
 - **Transcript sync is an approximation.** Nothing in the pipeline returns word timings, so lines are apportioned by length across the measured duration. Expect about a line of drift over a long chapter.
-- **Manually typed phrases stay on the device.** The save endpoint requires a real story and chapter, so a phrase typed in Notes is not yet synced.
-- **The reinforcement toggle persists locally** but generation does not yet consult it.
 - **Haptics and animation timing are unverified on hardware.** A laptop browser cannot judge a 600ms loop.
 - **PDF export keeps a temporary filename** rather than the story title, which needs a native module and a device to verify.

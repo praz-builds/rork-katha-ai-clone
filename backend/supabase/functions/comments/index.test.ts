@@ -640,3 +640,74 @@ Deno.test("a non-numeric chapter number is refused rather than passed on", () =>
   assertEquals(chapterNumberOf({ chapters: { chapter_number: "4" } }), null);
   assertEquals(chapterNumberOf({ chapters: "nonsense" }), null);
 });
+
+// ---------------------------------------------------------------------------
+// Every reader sees every reader's comments
+//
+// Founder report (2026-09-24): the chapter-end comments looked like they only
+// ever showed the viewer's own. Traced end to end, nothing on the read path
+// narrows by viewer: `handleReadThread` filters by `story_id` and the viewer's
+// own block list, and the SELECT policy admits any authenticated caller on a
+// public or curated story. This pins that down against the real policies, on
+// the case production actually has -- a Katha Original (curated, not public)
+// with comments attached to a published chapter -- read by somebody who has
+// never commented at all.
+// ---------------------------------------------------------------------------
+
+Deno.test("every reader sees every reader's comments on a curated story, their own or not", async () => {
+  const db = await createDatabase();
+  const HOUSE = "00000000-0000-4000-8000-000000000511";
+  const FIRST = "00000000-0000-4000-8000-000000000512";
+  const SECOND = "00000000-0000-4000-8000-000000000513";
+  const LURKER = "00000000-0000-4000-8000-000000000514";
+  const ORIGINAL = "00000000-0000-4000-8000-000000000510";
+  const CHAPTER_ONE = "00000000-0000-4000-8000-000000000519";
+  try {
+    for (const id of [HOUSE, FIRST, SECOND, LURKER]) await createUser(db, id);
+    await db.query(
+      `insert into stories (id, author_id, title, genre, primary_genre, is_public, is_curated)
+       values ($1, $2, 'An Original', array['mystery'], 'mystery', false, true)`,
+      [ORIGINAL, HOUSE],
+    );
+    await db.query(
+      `insert into chapters (id, story_id, chapter_number, content, is_published)
+       values ($1, $2, 1, 'Chapter one.', true)`,
+      [CHAPTER_ONE, ORIGINAL],
+    );
+
+    for (const [userId, content] of [[FIRST, "first"], [SECOND, "second"]]) {
+      await asUser(db, userId);
+      await db.query(
+        `insert into comments (user_id, story_id, chapter_id, content)
+         values ($1, $2, $3, $4)`,
+        [userId, ORIGINAL, CHAPTER_ONE, content],
+      );
+      await asSuperuser(db);
+    }
+
+    // The same read `handleReadThread` makes (story filter, profile and
+    // chapter embeds), run as each viewer in turn under RLS.
+    for (const viewer of [FIRST, SECOND, LURKER, HOUSE]) {
+      await asUser(db, viewer);
+      const rows = await db.query<
+        { content: string; username: string; chapter_number: number }
+      >(
+        `select c.content, p.username, ch.chapter_number
+           from comments c
+           left join profiles p on p.id = c.user_id
+           left join chapters ch on ch.id = c.chapter_id
+          where c.story_id = $1
+          order by c.content asc`,
+        [ORIGINAL],
+      );
+      assertEquals(
+        rows.rows.map((row) => [row.content, row.username, row.chapter_number]),
+        [["first", "user_0512", 1], ["second", "user_0513", 1]],
+        `viewer ${viewer} should see both readers' comments`,
+      );
+      await asSuperuser(db);
+    }
+  } finally {
+    await db.close();
+  }
+});
