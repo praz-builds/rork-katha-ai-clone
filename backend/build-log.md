@@ -30,9 +30,14 @@ no migration and no function source changed. **Nothing to deploy.**
 - **The author card and comments are cards now**, lifted off the page in
   `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
   Night) with `shadows.card`, replacing the hairline dividers.
-- Still open: the author card names its author through `authorFor` from the
-  seed, which falls back to "Katha AI" for any id it does not know. The story
-  page has the same fallback.
+- **The reader no longer signs every story "Katha AI".** `authorFor` falls
+  back to the house account for any unknown id; the reader now resolves the
+  author through `useStoryAuthor` (`src/lib/story-author.ts`): the public
+  profile for a real account, the seed only for a seed id, "You" on your own
+  story. Follow is saved (`setAuthorFollow`), starts from the server, is hidden
+  on your own story, and Back from the author page returns to the chapter.
+- Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
+  has the same fallback.
 
 ---
 

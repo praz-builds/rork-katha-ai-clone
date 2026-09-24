@@ -35,7 +35,6 @@ import type { StoryReportReason } from "@/components/comments/types";
 // removes: the cover belongs to the story page and the reader's first page is
 // a title page, so neither import has a use here any more.
 import { startReimagine, type RepromptRequest, type ReimagineRun } from "@/lib/reimagine-client";
-import { authorFor } from "@/data/seed";
 import { getDefaultVoices, getVoice } from "@/data/voices";
 import { captureError } from "@/lib/analytics";
 import {
@@ -62,6 +61,7 @@ import {
   useGeneration,
 } from "@/lib/generation-session";
 import { isOwnStory } from "@/lib/ownership";
+import { useStoryAuthor } from "@/lib/story-author";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   READER_THEMES,
@@ -215,10 +215,11 @@ export type ReaderScreenProps = {
   onRequireSignIn?: () => void;
   /**
    * Opens the author's profile from the author card at the end of a chapter --
-   * the same `setScreen({ name: "author", authorId })` the story page's author
-   * row uses. Omitted and the author card is not a button.
+   * the same AuthorScreen the story page's author row opens. Handed the chapter
+   * being read so Back from the profile returns to it. Omitted and the author
+   * card is not a button.
    */
-  onAuthor?: (authorId: string) => void;
+  onAuthor?: (authorId: string, chapterIndex: number) => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -468,7 +469,9 @@ export default function ReaderScreen({
   onRequireSignIn,
   onAuthor,
 }: ReaderScreenProps) {
-  const author = authorFor(story.authorId);
+  // Not `authorFor`: that falls back to the house account for any id the seed
+  // does not know, so every real writer's story was signed "Katha AI".
+  const author = useStoryAuthor(story);
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 768;
   const session = useGeneration(liveSessionId);
@@ -1514,9 +1517,12 @@ export default function ReaderScreen({
                         chapterId={baseChapter.id}
                         author={author}
                         theme={theme}
-                        onAuthor={onAuthor}
+                        onAuthor={
+                          onAuthor
+                            ? (authorId: string) => onAuthor(authorId, chapterIndex)
+                            : undefined
+                        }
                         requireSignIn={requireSignIn}
-                        initialFollowing={story.viewerFollowsAuthor ?? false}
                       />
                       </View>
                     ) : null}

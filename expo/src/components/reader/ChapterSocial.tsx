@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Send } from "lucide-react-native";
+import { Button } from "@/components/Button";
 import { setAuthorFollow } from "@/lib/api";
-import { fetchThread, formatRelativeTime, postComment, type ServerComment } from "@/lib/comments";
+import { fetchThreadPage, formatRelativeTime, postComment, type ServerComment } from "@/lib/comments";
 import type { ReaderTheme } from "@/lib/reading-themes";
+import type { StoryAuthor } from "@/lib/story-author";
 import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
 
 /**
@@ -14,9 +16,11 @@ import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
  * author row and the comments read as more of the chapter. Each is now a card
  * lifted off the page in the app's own colours (`ReaderTheme.social`), with
  * the elevation drawing the edge rather than a border.
+ *
+ * Who the author IS comes resolved (`useStoryAuthor`): a real account from its
+ * public profile, a seed author only for a seed id, and "You" on your own
+ * story. This component only decides what to draw from that.
  */
-
-export type ChapterSocialAuthor = { displayName: string; bio?: string; followers?: number };
 
 type Row = { id: string; user: string; text: string; time: string; createdAt: number };
 
@@ -27,18 +31,18 @@ export type ChapterSocialProps = {
   authorId: string;
   /** The chapter a new comment is attached to. */
   chapterId: string;
-  author: ChapterSocialAuthor;
+  author: StoryAuthor;
   theme: ReaderTheme;
   /**
-   * Opens the author's profile. The same seam the story page uses
-   * (`onAuthor(story.authorId)`). Omitted and the author row is not a button.
+   * Opens the author's profile. Only ever called for a real account
+   * (`author.canOpen`), never for "", "me" or a seed id.
    */
   onAuthor?: (authorId: string) => void;
   /** True when the tap was swallowed by the sign-in prompt. */
   requireSignIn: () => boolean;
-  /** Whether the viewer already follows this author, as the story carries it. */
-  initialFollowing?: boolean;
 };
+
+const POST_FAILED = "Your comment was not posted. Check your connection and try again.";
 
 function toRow(comment: ServerComment, now: number): Row {
   const createdAt = Date.parse(comment.createdAt);
@@ -64,37 +68,58 @@ export default function ChapterSocial({
   theme,
   onAuthor,
   requireSignIn,
-  initialFollowing = false,
 }: ChapterSocialProps) {
   const social = theme.social;
   const [comments, setComments] = useState<Row[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [attempt, setAttempt] = useState(0);
   const [commentText, setCommentText] = useState("");
-  const [isFollowing, setIsFollowing] = useState(initialFollowing);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  /*
+    FOLLOW STARTS FROM THE SERVER, AND A TAP OUTRANKS IT. `author.isFollowing`
+    arrives from the public profile after this has mounted; applying it
+    unconditionally would undo a tap made in the meantime (AGENTS.md, "An async
+    restore must never overwrite a choice already made").
+  */
+  const [isFollowing, setIsFollowing] = useState(author.isFollowing ?? false);
+  const followChosenByUserRef = useRef(false);
   const followInFlight = useRef(false);
+  useEffect(() => {
+    followChosenByUserRef.current = false;
+  }, [authorId]);
+  useEffect(() => {
+    if (followChosenByUserRef.current || author.isFollowing === null) return;
+    setIsFollowing(author.isFollowing);
+  }, [author.isFollowing]);
 
   /*
     Every reader's comments on this story, from the same endpoint the story
     page reads. The server filters by story and by the viewer's own block list
     only; nothing here narrows it further.
 
-    A FAILED READ IS NOT AN EMPTY THREAD. This used to treat any failure as
-    "none yet", so a request that was refused -- no session, offline, a server
-    error -- rendered "Comments (0) / No comments yet" over a story that might
-    have forty. It now says the comments could not load, with a retry, and the
-    count is only shown once the server has actually answered.
+    A FAILED READ IS NOT AN EMPTY THREAD. Any failure used to render "Comments
+    (0) / No comments yet" over a story that might have forty. It now says the
+    comments could not load, with a retry. The number shown is the server's
+    exact total, or no number at all.
   */
   useEffect(() => {
     let alive = true;
+    // Another story's comments must never sit under this one while it loads.
+    setComments([]);
+    setTotal(null);
     setStatus("loading");
-    fetchThread(storyId).then(
-      (thread) => {
+    fetchThreadPage(storyId).then(
+      (page) => {
         if (!alive) return;
         const now = Date.now();
         setComments(
-          newestFirst(thread.filter((comment) => !comment.deleted).map((comment) => toRow(comment, now))),
+          newestFirst(
+            page.comments.filter((comment) => !comment.deleted).map((comment) => toRow(comment, now)),
+          ),
         );
+        setTotal(page.total);
         setStatus("ready");
       },
       () => {
@@ -108,18 +133,18 @@ export default function ChapterSocial({
 
   /*
     Follow is SAVED, the same way the story page saves it (`setAuthorFollow`):
-    optimistic, settled by the server's answer, rolled back on a refusal. It
-    used to flip local state only, so "Following" was gone on the next screen.
+    optimistic, settled by the server's answer, rolled back on a refusal. A
+    second tap while one is in flight is dropped rather than queued.
   */
   const handleToggleFollow = useCallback(() => {
     if (requireSignIn()) return;
     if (followInFlight.current) return;
     followInFlight.current = true;
+    followChosenByUserRef.current = true;
     const previousOn = isFollowing;
     const nextOn = !previousOn;
     setIsFollowing(nextOn);
-    const followers = author.followers ?? 0;
-    setAuthorFollow(authorId, nextOn, Math.max(0, followers + (nextOn ? 1 : -1)))
+    setAuthorFollow(authorId, nextOn, Math.max(0, author.followers + (nextOn ? 1 : -1)))
       .then((result) => setIsFollowing(result.on))
       .catch(() => setIsFollowing(previousOn))
       .finally(() => {
@@ -128,21 +153,23 @@ export default function ChapterSocial({
   }, [author.followers, authorId, isFollowing, requireSignIn]);
 
   const openAuthor = useCallback(() => {
-    onAuthor?.(authorId);
-  }, [authorId, onAuthor]);
+    if (author.canOpen) onAuthor?.(authorId);
+  }, [author.canOpen, authorId, onAuthor]);
 
   /*
     Posted, not just prepended. The row appears at once (keyed `local-`) and is
     replaced by the server's own row when it lands. Anything short of a real row
     coming back -- a refusal, or a reply that is not a comment -- takes the row
-    back out and says so: a comment left on screen that the server never kept
-    is visible to exactly one person, and that person is told it was posted.
+    back out and says so INLINE: `Alert.alert` does nothing on web, so the
+    failure used to be silent there. The words go back in the box only if the
+    reader has not started a new comment since.
   */
   const handleSubmitComment = useCallback(() => {
     if (requireSignIn()) return;
     const trimmed = commentText.trim();
     if (!trimmed) return;
     const localId = `local-${Date.now()}`;
+    setPostError(null);
     setComments((prev) => [
       { id: localId, user: "You", text: trimmed, time: "just now", createdAt: Date.now() },
       ...prev,
@@ -150,11 +177,8 @@ export default function ChapterSocial({
     setCommentText("");
     const fail = () => {
       setComments((prev) => prev.filter((comment) => comment.id !== localId));
-      setCommentText(trimmed);
-      Alert.alert(
-        "Comment not posted",
-        "Katha could not save your comment. Check your connection and try again.",
-      );
+      setCommentText((current) => (current.trim() ? current : trimmed));
+      setPostError(POST_FAILED);
     };
     postComment(storyId, trimmed, undefined, chapterId)
       .then((posted) => {
@@ -164,15 +188,15 @@ export default function ChapterSocial({
         }
         const row = toRow(posted, Date.now());
         setComments((prev) => prev.map((comment) => (comment.id === localId ? row : comment)));
+        setTotal((prev) => (prev === null ? null : prev + 1));
       })
       .catch(fail);
   }, [chapterId, commentText, requireSignIn, storyId]);
 
-  const initial = author.displayName.charAt(0);
   const authorIdentity = (
     <>
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initial}</Text>
+        <Text style={styles.avatarText}>{author.displayName.replace(/^@/, "").charAt(0).toUpperCase()}</Text>
       </View>
       <View style={styles.authorInfo}>
         <Text style={[styles.authorName, { color: social.text }]} numberOfLines={1}>
@@ -192,11 +216,11 @@ export default function ChapterSocial({
       <View style={[styles.card, styles.authorCard, { backgroundColor: social.surface }]} testID="reader-author-card">
         {/* Follow is a SIBLING of the tappable identity, not inside it, so one
           * tap can never both follow and navigate. */}
-        {onAuthor ? (
+        {onAuthor && author.canOpen ? (
           <Pressable
             onPress={openAuthor}
             accessibilityRole="button"
-            accessibilityLabel={`View ${author.displayName}'s profile`}
+            accessibilityLabel={author.isOwn ? "View your profile" : `View ${author.displayName}'s profile`}
             testID="reader-author"
             style={({ pressed }) => [styles.authorIdentity, pressed && styles.pressed]}
           >
@@ -205,22 +229,23 @@ export default function ChapterSocial({
         ) : (
           <View style={styles.authorIdentity}>{authorIdentity}</View>
         )}
-        <Pressable
-          onPress={handleToggleFollow}
-          accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"}
-          accessibilityRole="button"
-          testID="reader-follow"
-          style={[styles.followButton, { backgroundColor: social.text }]}
-        >
-          <Text style={[styles.followText, { color: social.surface }]}>
-            {isFollowing ? "Following" : "Follow"}
-          </Text>
-        </Pressable>
+        {author.canFollow ? (
+          <Button
+            label={isFollowing ? "Following" : "Follow"}
+            onPress={handleToggleFollow}
+            variant={isFollowing ? "secondary" : "primary"}
+            size="sm"
+            fullWidth={false}
+            selected={isFollowing}
+            accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"}
+            testID="reader-follow"
+          />
+        ) : null}
       </View>
 
       <View style={[styles.card, styles.commentsCard, { backgroundColor: social.surface }]} testID="reader-comments-card">
         <Text style={[styles.commentsTitle, { color: social.text }]}>
-          {status === "ready" ? `Comments (${comments.length})` : "Comments"}
+          {status === "ready" && total !== null ? `Comments (${total})` : "Comments"}
         </Text>
         <View style={styles.commentInputRow}>
           <TextInput
@@ -243,21 +268,29 @@ export default function ChapterSocial({
             <Send size={16} color={social.surface} />
           </Pressable>
         </View>
+        {postError ? (
+          <Text
+            style={[styles.commentsEmpty, { color: social.text }]}
+            accessibilityLiveRegion="polite"
+            testID="reader-comment-failed"
+          >
+            {postError}
+          </Text>
+        ) : null}
         {status === "failed" ? (
           <View style={styles.failedRow} testID="reader-comments-failed">
-            <Text style={[styles.commentsEmpty, { color: social.muted }]}>
+            <Text style={[styles.commentsEmpty, styles.failedText, { color: social.muted }]}>
               Comments could not load.
             </Text>
-            <Pressable
+            <Button
+              label="Retry"
               onPress={() => setAttempt((n) => n + 1)}
-              accessibilityRole="button"
+              variant="secondary"
+              size="sm"
+              fullWidth={false}
               accessibilityLabel="Retry loading comments"
               testID="reader-comments-retry"
-              hitSlop={8}
-              style={styles.retry}
-            >
-              <Text style={[styles.retryText, { color: social.text }]}>Retry</Text>
-            </Pressable>
+            />
           </View>
         ) : null}
         {status === "ready" && comments.length === 0 ? (
@@ -267,8 +300,8 @@ export default function ChapterSocial({
         ) : null}
         {comments.map((comment) => (
           <View key={comment.id} style={styles.commentItem}>
-            <View style={styles.commentAvatar}>
-              <Text style={styles.commentAvatarText}>{comment.user.charAt(0)}</Text>
+            <View style={[styles.avatar, styles.commentAvatar]}>
+              <Text style={styles.commentAvatarText}>{comment.user.charAt(0).toUpperCase()}</Text>
             </View>
             <View style={styles.commentBody}>
               <Text style={[styles.commentMeta, { color: social.muted }]}>
@@ -307,11 +340,15 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   pressed: { opacity: 0.7 },
+  /*
+    `colors.muted` behind white initials: 5.7:1. The `tertiary` fill it
+    replaces was 2.9:1, under AA for text this size.
+  */
   avatar: {
     width: 44,
     height: 44,
     borderRadius: radius.pill,
-    backgroundColor: colors.tertiary,
+    backgroundColor: colors.muted,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -330,18 +367,6 @@ const styles = StyleSheet.create({
   authorBio: {
     ...type.meta,
     lineHeight: 18,
-    letterSpacing: 0,
-  },
-  followButton: {
-    minHeight: 44,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  followText: {
-    ...type.meta,
-    fontWeight: "800",
     letterSpacing: 0,
   },
   commentsCard: {
@@ -384,16 +409,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  retry: {
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  retryText: {
-    ...type.subhead,
-    fontWeight: "800",
-    textDecorationLine: "underline",
-    letterSpacing: 0,
-  },
+  failedText: { flex: 1 },
   commentItem: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -403,10 +419,6 @@ const styles = StyleSheet.create({
   commentAvatar: {
     width: 28,
     height: 28,
-    borderRadius: radius.pill,
-    backgroundColor: colors.tertiary,
-    alignItems: "center",
-    justifyContent: "center",
   },
   commentAvatarText: {
     ...type.caption,

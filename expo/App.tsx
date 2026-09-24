@@ -1414,7 +1414,12 @@ export default function App() {
                 onRequireSignIn={isAnonymous ? () => setScreen({ name: "onboarding" }) : undefined}
                 // The chapter-end author card opens the same profile the story
                 // page's author row does.
-                onAuthor={(authorId) => setScreen({ name: "author", authorId })}
+                onAuthor={(authorId, chapterIndex) =>
+                  setScreen({
+                    name: "author",
+                    authorId,
+                    returnTo: { storyId: screen.storyId, chapterIndex },
+                  })}
                 // A rewrite becomes a live session like any other chapter, so
                 // it reveals page by page instead of waiting behind a cover.
                 // `findStoryGeneration` above then picks it up on the next
@@ -1509,7 +1514,16 @@ export default function App() {
             stories={allStories}
             canEngage={!isAnonymous}
             onRequireSignIn={() => setScreen({ name: "onboarding" })}
-            onBack={() => goTabs(tab)}
+            onBack={() => {
+              const { returnTo } = screen;
+              if (returnTo) {
+                setScreen({
+                  name: "reader",
+                  storyId: returnTo.storyId,
+                  chapterIndex: returnTo.chapterIndex,
+                });
+              } else goTabs(tab);
+            }}
             onStory={openStory}
           />
         )
