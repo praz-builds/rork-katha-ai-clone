@@ -171,6 +171,37 @@ export function removeComment(tree: CommentNode[], id: string): CommentNode[] {
   return changed ? next : tree;
 }
 
+/**
+ * Every comment by `authorId` gone, and nobody else's words with them.
+ *
+ * A reply to a blocked person's comment was written by somebody the reader
+ * has not blocked, so it stays, promoted to the top level. That is where the
+ * server puts it too: the thread read leaves the blocked author's rows out,
+ * and `buildThread` promotes a reply whose parent is missing rather than
+ * dropping it. Doing the same here means the refetch that follows a block
+ * does not rearrange the thread under the reader a second time.
+ */
+export function removeAuthor(tree: CommentNode[], authorId: string): CommentNode[] {
+  const promoted: CommentNode[] = [];
+  const prune = (nodes: CommentNode[]): CommentNode[] => {
+    const kept: CommentNode[] = [];
+    for (const node of nodes) {
+      const replies = prune(node.replies);
+      if (node.authorId === authorId) {
+        promoted.push(...replies);
+        continue;
+      }
+      kept.push(replies === node.replies ? node : { ...node, replies });
+    }
+    const unchanged = kept.length === nodes.length &&
+      kept.every((node, index) => node === nodes[index]);
+    return unchanged ? nodes : kept;
+  };
+  const roots = prune(tree);
+  if (roots === tree && promoted.length === 0) return tree;
+  return [...roots, ...promoted];
+}
+
 /** Toggle whether a comment's subtree is collapsed. */
 export function collapse(tree: CommentNode[], id: string): CommentNode[] {
   return updateNode(tree, id, (node) => ({ ...node, collapsed: !node.collapsed }));

@@ -62,8 +62,6 @@
       "readingPrefsDesc": "Tema, tamanho da fonte, idioma",
       "kathaPlus": "Katha Plus",
       "kathaPlusDesc": "Assinatura, vozes, sem anuncios",
-      "parentalControls": "Controle dos pais",
-      "parentalControlsDesc": "Modo infantil e PIN de acesso",
       "feedback": "Feedback",
       "feedbackDesc": "Comentarios, avaliacao, suporte"
     },
@@ -221,7 +219,7 @@
     "fantasy": "Fantasia",
     "historical": "Hist\u00f3rico",
     "horror": "Terror",
-    "kids": "Infantil",
+    "kids": "Todas as idades",
     "lgbtq": "LGBTQ+",
     "motivational": "Motivacional",
     "mystery": "Misterio",

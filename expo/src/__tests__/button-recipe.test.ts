@@ -266,9 +266,10 @@ const ALLOWED: Record<string, string> = {
     'state; it is not drawn by Button, so Button\'s grey plate does not ' +
     'reach it. If this sheet is ever restyled onto the accent, this entry ' +
     'goes and the control moves to Button with it.',
-  'components/moderation/StoryActionsSheet.tsx#destructiveButton':
-    'Block author, in colors.premium. Same argument as above; the ordinary ' +
-    'buttons in this same sheet DID move to Button.',
+  'components/moderation/BlockConfirm.tsx#destructiveButton':
+    'Block, in colors.premium: the one confirmation the story sheet and the ' +
+    'comment menu both draw. Same argument as above; the ordinary buttons in ' +
+    'those sheets DID move to Button.',
 
   // An outline affordance, not a filled secondary.
   'components/reader/ChapterEnd.tsx#secondaryButton':

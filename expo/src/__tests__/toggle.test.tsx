@@ -22,19 +22,19 @@ function flatten(node: { props: { style?: unknown } }) {
 describe("Toggle", () => {
   it("announces itself as a switch, named, and in the state it is drawing", async () => {
     const off = await render(
-      <Toggle value={false} onValueChange={jest.fn()} accessibilityLabel="Kids Mode" />,
+      <Toggle value={false} onValueChange={jest.fn()} accessibilityLabel="All-ages" />,
     );
-    const control = off.getByRole("switch", { name: "Kids Mode" });
+    const control = off.getByRole("switch", { name: "All-ages" });
     expect(control.props.accessibilityState).toMatchObject({
       checked: false,
       disabled: false,
     });
 
     const on = await render(
-      <Toggle value onValueChange={jest.fn()} accessibilityLabel="Kids Mode" />,
+      <Toggle value onValueChange={jest.fn()} accessibilityLabel="All-ages" />,
     );
     expect(
-      on.getByRole("switch", { name: "Kids Mode" }).props.accessibilityState,
+      on.getByRole("switch", { name: "All-ages" }).props.accessibilityState,
     ).toMatchObject({ checked: true });
   });
 
@@ -94,7 +94,7 @@ describe("Toggle", () => {
     // The off track is `track`, the recessed step, with a `borderStrong`
     // edge. It used to be `borderStrong` with no edge, which on the warm page
     // was so close to the background that the control read as switched ON --
-    // the owner reported exactly that about the Kids Mode row.
+    // the owner reported exactly that about the audience switch on Create.
     expect(trackOf(off).backgroundColor).toBe(colors.track);
     expect(trackOf(off).borderColor).toBe(colors.borderStrong);
     expect(trackOf(disabled).backgroundColor).toBe(colors.border);
@@ -103,9 +103,9 @@ describe("Toggle", () => {
 
   it("meets the 44pt target and draws no colour outside the token file", async () => {
     const view = await render(
-      <Toggle value onValueChange={jest.fn()} accessibilityLabel="Kids Mode" />,
+      <Toggle value onValueChange={jest.fn()} accessibilityLabel="All-ages" />,
     );
-    const control = view.getByRole("switch", { name: "Kids Mode" });
+    const control = view.getByRole("switch", { name: "All-ages" });
     const target = flatten(control);
     expect(target.minWidth).toBe(controls.toggleHitTarget);
     expect(target.minHeight).toBe(controls.toggleHitTarget);

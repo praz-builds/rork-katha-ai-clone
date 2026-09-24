@@ -487,6 +487,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
 | **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
 | **00092 (Story bible)** | `stories.story_bible` -- nullable, server-owned, append-only jsonb holding a multi-chapter story's settled facts, its clock, its fixed truth and the scenes already shown. Written only by `mergeStoryBible`; the model proposes and never writes. NULL means the story predates it and reads as an empty bible. **Never sent to a client** |
+| **00097 (Report queue)** | `content_reports_open` view: unresolved reports newest first with story, comment and author context; `security_invoker`, readable by `service_role` only (plus the dashboard). Also the first `service_role` SELECT grant on `content_reports`. Query and resolve steps: `backend/MONITORING.md` § *The report queue* |
 | **00091 (Entity gate removed)** | Drops both 00050 constraints, clears `stories.entity_gate_reason` on every row and leaves the column nullable and unused for older clients; re-issues `public_profile`, `profile_comments` and `activity_calendar` without the gate clause. A writer's publish toggle is honoured. |
 
 ### Credit Ledger Pattern
@@ -1154,7 +1155,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted when the user declines the paywall. (It used to require declining the one-time offer as well; that offer was removed 2026-09-10.)
-- Kids mode off by default, PIN-gated in parental controls.
+- Kids mode off by default, per draft, labelled **All-ages** in the UI (`audienceMode: "kids"` internally). There is no PIN gate and no parental-controls surface (`source-of-truth/STORY_GENERATION_FLOW.md` §3).
 
 ### Plans, packs, and grants
 

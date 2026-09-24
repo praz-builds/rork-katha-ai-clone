@@ -46,6 +46,7 @@ import {
   type ChapterSaveEntry,
 } from "@/lib/chapter-save-queue";
 import { blockAuthor, reportContent } from "@/lib/comments";
+import { rememberBlocked } from "@/lib/blocks";
 import { defaultTrackForStory, findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { resolveMusicUri } from "@/lib/music-cache";
 import {
@@ -1368,15 +1369,15 @@ export default function ReaderScreen({
       setActionsOpen(false);
       return false;
     }
-    if (isSupabaseConfigured) {
-      try {
-        await blockAuthor(story.authorId);
-      } catch {
-        return false;
-      }
+    try {
+      if (isSupabaseConfigured) await blockAuthor(story.authorId);
+    } catch {
+      return false;
     }
     setActionsOpen(false);
+    // Leave first, then hide: see the same handler on the story page.
     onBack();
+    rememberBlocked(story.authorId);
     return true;
   }, [onBack, requireSignIn, story.authorId]);
   const handleReportStory = useCallback(

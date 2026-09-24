@@ -11,6 +11,7 @@ import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import CharactersTab from "@/components/library/CharactersTab";
 import StoryShelf, { type ShelfState } from "@/components/library/StoryShelf";
 import { fetchCreatedShelf, fetchStarredShelf } from "@/lib/api";
+import { useBlockedAuthorIds, withoutBlockedAuthors } from "@/lib/blocks";
 import { colors, fonts, radius, spacing, type } from "@/theme";
 import type { Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
@@ -120,6 +121,15 @@ export default function LibraryScreen({
     ];
   }, [generatedStories, created]);
 
+  // A starred story by somebody the reader has since blocked is hidden with
+  // the rest of their work. The bookmark itself is kept, so unblocking brings
+  // it back rather than asking the reader to find it again.
+  const blocked = useBlockedAuthorIds();
+  const starredStories = useMemo(
+    () => withoutBlockedAuthors(starred, blocked),
+    [starred, blocked],
+  );
+
   const tabs: { key: LibraryTab; label: string }[] = [
     { key: "created", label: "Created" },
     { key: "starred", label: "Starred" },
@@ -190,7 +200,7 @@ export default function LibraryScreen({
             <StoryShelf
               testID="library-starred"
               state={starredState}
-              stories={starred}
+              stories={starredStories}
               onStory={onStory}
               onRetry={() => void loadStarred()}
               loadingLabel="Loading your starred stories"

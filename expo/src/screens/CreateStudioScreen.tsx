@@ -214,10 +214,10 @@ export default function CreateStudioScreen({
         setDraft({
           ...restored,
           characters: characters.slice(0, MAX_CHARACTERS),
-          // KIDS MODE IS NOT RESTORED.
+          // ALL-AGES MODE (audienceMode "kids") IS NOT RESTORED.
           //
           // Everything else in a draft is work in progress worth getting
-          // back: the idea, the premise, the cast, the moments. Kids Mode is
+          // back: the idea, the premise, the cast, the moments. All-ages mode is
           // not work, it is a decision about who a story is FOR, and it
           // changes what gets written -- the genre list shrinks, spice is
           // forced to sweet, the length changes, the content rating changes.
@@ -234,7 +234,7 @@ export default function CreateStudioScreen({
           // screen and it is now legible -- whereas the reverse mistake is
           // invisible until the story comes back wrong.
           //
-          // And everything Kids Mode DERIVED goes with it. `chooseAudience`
+          // And everything All-ages mode DERIVED goes with it. `chooseAudience`
           // forces `spiceLevel` to sweet and `chapterLength` to short when the
           // switch goes on, and `storyValues` exists only for kids. Resetting
           // the switch alone would leave those behind, and the next generation

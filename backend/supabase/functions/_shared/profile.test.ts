@@ -13,6 +13,7 @@ import {
   readPublicStories,
   RESERVED_USERNAMES,
   usernameProblem,
+  viewerHasBlocked,
 } from "./profile.ts";
 
 // ---------------------------------------------------------------------------
@@ -497,4 +498,124 @@ Deno.test("a public profile request refuses an authorId that is not a UUID", asy
   assertEquals(await response.json(), {
     error: "authorId must be a valid UUID",
   });
+});
+
+// ---------------------------------------------------------------------------
+// A public profile honours the viewer's block list
+// ---------------------------------------------------------------------------
+
+const PROFILE_VIEWER = "11111111-1111-4111-8111-111111111111";
+const PROFILE_AUTHOR = "22222222-2222-4222-8222-222222222222";
+
+/**
+ * One `public` request against a stubbed network. `blocked` is whether the
+ * viewer's `user_blocks` read finds the author; "error" fails that read.
+ */
+async function publicProfileRequest(
+  blocked: boolean | "error",
+): Promise<{ status: number; body: Record<string, unknown>; urls: string[] }> {
+  const urls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  const env: Record<string, string> = {
+    SUPABASE_URL: "https://project.supabase.test",
+    SUPABASE_ANON_KEY: "test-anon-key",
+    SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+  };
+  const previous: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    previous[key] = Deno.env.get(key);
+    Deno.env.set(key, value);
+  }
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const request = new Request(input as RequestInfo, init);
+    urls.push(request.url);
+    if (request.url.includes("/auth/v1/user")) {
+      return json({
+        id: PROFILE_VIEWER,
+        aud: "authenticated",
+        role: "authenticated",
+        app_metadata: {},
+        user_metadata: {},
+        created_at: new Date().toISOString(),
+      });
+    }
+    if (request.url.includes("/rpc/public_profile")) {
+      return json([{ username: "blocked_writer", followers: 3 }]);
+    }
+    if (request.url.includes("/rest/v1/user_blocks")) {
+      if (blocked === "error") return json({ message: "boom" }, 500);
+      return json(blocked ? [{ blocked_id: PROFILE_AUTHOR }] : []);
+    }
+    if (request.url.includes("/rest/v1/stories")) {
+      return json([{ id: "s1", title: "Their Story", genre: [] }]);
+    }
+    return json({ message: `unexpected ${request.url}` }, 404);
+  }) as typeof fetch;
+
+  try {
+    const response = await handleProfile(
+      new Request("https://example.com/profile", {
+        method: "POST",
+        headers: { Authorization: "Bearer viewer-token" },
+        body: JSON.stringify({ action: "public", authorId: PROFILE_AUTHOR }),
+      }),
+    );
+    return { status: response.status, body: await response.json(), urls };
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
+Deno.test("a blocked author's public page lists none of their stories", async () => {
+  const { status, body, urls } = await publicProfileRequest(true);
+  assertEquals(status, 200);
+  assertEquals(body.stories, []);
+  assertEquals(body.viewerBlocked, true);
+  // The profile itself still answers: a name has to lead somewhere.
+  assert(body.profile);
+  const blockRead = urls.find((url) => url.includes("/rest/v1/user_blocks"));
+  assert(blockRead, "the block list was never consulted");
+  assert(blockRead.includes(`blocker_id=eq.${PROFILE_VIEWER}`));
+  assert(blockRead.includes(`blocked_id=eq.${PROFILE_AUTHOR}`));
+});
+
+Deno.test("an author the viewer has not blocked is listed as before", async () => {
+  const { status, body } = await publicProfileRequest(false);
+  assertEquals(status, 200);
+  assertEquals((body.stories as unknown[]).length, 1);
+  assertEquals(body.viewerBlocked, undefined);
+});
+
+Deno.test("a block list that cannot be read fails the page rather than showing the work", async () => {
+  const { status } = await publicProfileRequest("error");
+  assertEquals(status, 500);
+});
+
+Deno.test("a signed-out visitor and the author themselves have no block to honour", async () => {
+  let queried = false;
+  const client = {
+    from() {
+      queried = true;
+      throw new Error("should not be read");
+    },
+  } as unknown as Parameters<typeof viewerHasBlocked>[0];
+  assertEquals(await viewerHasBlocked(client, null, PROFILE_AUTHOR), false);
+  assertEquals(
+    await viewerHasBlocked(client, PROFILE_AUTHOR, PROFILE_AUTHOR),
+    false,
+  );
+  assertEquals(queried, false);
 });
