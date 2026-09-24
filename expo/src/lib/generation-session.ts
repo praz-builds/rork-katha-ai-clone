@@ -198,6 +198,13 @@ export type GenerationSession = {
   readonly chapter: Chapter | null;
   readonly startedAt: number;
   readonly finishedAt: number | null;
+  /**
+   * True for a Re-prompt: the chapter already on screen is being written
+   * again. The reader covers it with the crafting screen until the first
+   * settled page of the new version exists, where a continuation instead
+   * opens straight onto its own (empty) opener.
+   */
+  readonly rewrite?: boolean;
 };
 
 export type StartStoryInput = {
@@ -912,6 +919,7 @@ export function adoptReimagineGeneration(input: {
       chapter: null,
       startedAt: now,
       finishedAt: null,
+      rewrite: true,
     },
     raw: "",
     requestId: createGenerationRequestId(),
@@ -923,6 +931,11 @@ export function adoptReimagineGeneration(input: {
     coverAttempts: 0,
   };
   records.set(id, record);
+  // Published now, not on the run's first event. Nothing else here publishes
+  // until prose or a stage change arrives, so the session was invisible to
+  // every subscriber for the first seconds of the rewrite: the reader went on
+  // showing the old chapter with no loader, then dropped to a blank page.
+  publish();
 
   let seen = 0;
   const unsubscribe = run.subscribe(() => {

@@ -170,6 +170,34 @@ it("a settled swipe moves the reader forward and the Pages control follows it", 
   });
 });
 
+it("on web, where no momentum end ever fires, a swipe that comes to rest still moves the Pages control", async () => {
+  // react-native-web accepts `onMomentumScrollEnd` and never calls it: the
+  // browser has no such event, and a swipe snaps by CSS scroll-snap with only
+  // `scroll` events to show for it. The reader could turn to the last page
+  // and the Pages control still said "Page 1". So only `scroll` fires here.
+  jest.replaceProperty(Platform, "OS", "web");
+  const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
+  const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;
+  const lastPage = pageCount - 1;
+
+  await act(async () => {
+    // Mid-swipe frames, then the snapped resting offset.
+    fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(0.6));
+    fireEvent.scroll(view.getByTestId("reader-pager"), settledSwipeTo(lastPage));
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Toggle reader controls"));
+  });
+
+  await waitFor(() => {
+    expect(view.getByLabelText("Pages").props.accessibilityValue).toMatchObject({
+      min: 1,
+      max: pageCount,
+      now: pageCount,
+    });
+  });
+});
+
 it("the Pages control still drives the pager, so the sync runs both ways", async () => {
   const view = await render(<ReaderScreen story={pagedStory} onBack={jest.fn()} />);
   const pageCount = view.getAllByTestId(/^reader-page-label-\d+$/).length;

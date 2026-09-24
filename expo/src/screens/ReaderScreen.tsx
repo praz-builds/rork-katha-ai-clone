@@ -244,6 +244,19 @@ const DEFAULT_PREFS: ReaderPreferences = { typeSize: 18, lineHeight: 30, theme: 
 
 const PAGE_RENDER_WINDOW = 2;
 /**
+ * How long the web pager must sit still before its offset counts as a settled
+ * page turn.
+ *
+ * On web there is no `onMomentumScrollEnd`: react-native-web accepts the prop
+ * and never calls it, because the browser has no such event. A swipe there
+ * snaps by CSS scroll-snap and reports nothing but `onScroll`, so the reader
+ * turned pages and the Pages control kept saying "Page 1". Web instead
+ * commits the page once scrolling has been quiet for this long -- a little
+ * longer than react-native-web's own 100ms scroll-end timer, so the final
+ * snapped offset is the one read.
+ */
+const WEB_PAGER_SETTLE_MS = 150;
+/**
  * The opener every chapter has: the story's title and the rule under the
  * block. Measured off the styles below, at the reader's default type.
  *
@@ -638,6 +651,18 @@ export default function ReaderScreen({
    * fits one page reflowed under the reader, which is the whole thing this is
    * supposed to prevent.
    */
+  /**
+   * A Re-prompt that has not settled its first page yet.
+   *
+   * The old chapter is gone from the screen the moment the rewrite starts --
+   * the session's empty prose replaces it -- so without this the reader sat
+   * on a blank opener for the half-minute before page one of the new version
+   * existed. It gets the same crafting screen the create flow shows before
+   * its first pages instead, and the reader takes over as soon as one whole
+   * page has settled (`allPages` has a fixed page ahead of the growing one).
+   */
+  const awaitingRewritePages = isWritingHere && session?.rewrite === true
+    && allPages.length <= 1;
   const pages = useMemo(() => {
     if (!isWritingHere) return allPages;
     const fixed = allPages.slice(0, -1);
@@ -927,24 +952,18 @@ export default function ReaderScreen({
    */
   const [visiblePage, setVisiblePage] = useState(0);
 
-  const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+  /**
+   * A page turn has settled at this offset: make it the committed page.
+   *
+   * The pager's own width, not the window's: they are the same on a phone,
+   * but reading the measured value means a rotation or a split-view resize
+   * mid-swipe still resolves to the right page instead of an offset divided
+   * by a stale width.
+   */
+  const commitPagerOffset = useCallback((offsetX: number, measuredWidth: number | undefined) => {
+    const layoutWidth = measuredWidth || width;
     if (layoutWidth <= 0) return;
-    const next = clampIndex(
-      Math.round(event.nativeEvent.contentOffset.x / layoutWidth),
-      pages.length,
-    );
-    setVisiblePage((current) => (current === next ? current : next));
-  }, [pages.length, width]);
-
-  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // The pager's own width, not the window's: they are the same on a phone,
-    // but reading the measured value means a rotation or a split-view resize
-    // mid-swipe still resolves to the right page instead of an offset
-    // divided by a stale width.
-    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
-    if (layoutWidth <= 0) return;
-    const next = clampIndex(Math.round(event.nativeEvent.contentOffset.x / layoutWidth), pages.length);
+    const next = clampIndex(Math.round(offsetX / layoutWidth), pages.length);
     pagerPageRef.current = next;
     setVisiblePage(next);
     if (next === pageIndex) return;
@@ -954,6 +973,38 @@ export default function ReaderScreen({
     // the reader had actually reached rather than on page 0.
     setAnchorOffset(pages[next]?.start ?? 0);
   }, [pageIndex, pages, width]);
+  // The web settle timer fires after renders it did not see, so it reads the
+  // commit through a ref rather than closing over a stale `pageIndex`.
+  const commitPagerOffsetRef = useRef(commitPagerOffset);
+  commitPagerOffsetRef.current = commitPagerOffset;
+  const webSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (webSettleTimerRef.current) clearTimeout(webSettleTimerRef.current);
+  }, []);
+
+  const handlePagerScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const layoutWidth = event.nativeEvent.layoutMeasurement?.width || width;
+    if (layoutWidth <= 0) return;
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const next = clampIndex(Math.round(offsetX / layoutWidth), pages.length);
+    setVisiblePage((current) => (current === next ? current : next));
+    // See WEB_PAGER_SETTLE_MS: web never fires the momentum end below, so
+    // the last offset before the pager goes quiet is the settled page.
+    if (Platform.OS === "web") {
+      if (webSettleTimerRef.current) clearTimeout(webSettleTimerRef.current);
+      webSettleTimerRef.current = setTimeout(() => {
+        webSettleTimerRef.current = null;
+        commitPagerOffsetRef.current(offsetX, layoutWidth);
+      }, WEB_PAGER_SETTLE_MS);
+    }
+  }, [pages.length, width]);
+
+  const handlePagerMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    commitPagerOffset(
+      event.nativeEvent.contentOffset.x,
+      event.nativeEvent.layoutMeasurement?.width,
+    );
+  }, [commitPagerOffset]);
 
   /**
    * Android's hardware back dismisses the controls overlay before it leaves
@@ -1762,12 +1813,14 @@ export default function ReaderScreen({
         />
       ) : null}
       {/*
-        The rewrite takes about a minute and arrives whole. This covers the
-        reader for the whole of it - the same wait the create flow shows, so
-        "Katha is writing a chapter" looks the same wherever it happens - and
-        never implies measurable progress.
+        Without a host the rewrite takes about a minute and arrives whole, so
+        this covers the reader for the whole of it; with one, only until the
+        new version's first page has settled (`awaitingRewritePages`). It is
+        the same wait the create flow shows, so "Katha is writing a chapter"
+        looks the same wherever it happens, and never implies measurable
+        progress.
       */}
-      {repromptWaiting ? (
+      {repromptWaiting || awaitingRewritePages ? (
         <View style={StyleSheet.absoluteFill} accessibilityLabel="Writing this chapter again">
           <GeneratingOverlay genre={story.genre} mode="chapter" />
         </View>

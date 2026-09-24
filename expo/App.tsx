@@ -1432,7 +1432,10 @@ export default function App() {
                   adoptReimagineGeneration({
                     run,
                     story: target,
-                    chapterNumber: (screen.chapterIndex ?? 0) + 1,
+                    // The chapter the sheet was opened on, not the one the
+                    // reader was opened at: a reader who turned to chapter 3
+                    // and re-prompted it saw chapter 1 blanked instead.
+                    chapterNumber: run.request.chapterNumber,
                   });
                 }}
                 onBack={() => goTabs(tab)}
