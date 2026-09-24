@@ -1380,6 +1380,11 @@ export default function ReaderScreen({
           if (isWritingHere) return;
           setChromeVisible((visible) => !visible);
         }}
+        // A long-press is the reader selecting text, not asking for controls.
+        // Without a long-press handler RN still fires onPress when the finger
+        // lifts, so the chrome would flip just as the selection menu appears.
+        // A no-op here makes that release not count as a tap.
+        onLongPress={() => {}}
       >
         <ScrollView
           ref={pagerRef}

@@ -7,6 +7,42 @@
 
 ---
 
+## 2026-09-24 UTC — Save phrase leaves the app, and Library gets your characters
+
+**Session:** worktree `codex/drop-phrases-add-characters` (PR #135). Client, edge
+functions and docs. **No migration.** The `saved_phrases`, `phrase_corpus` and
+practice tables stay, unread, until a post-launch drop.
+
+### What changed
+
+- The reader has no word-picker, toolbar, coach mark or Save phrase action. The
+  page body is one `selectable` Text, so a long-press gives the phone's own
+  Copy / Share / Look Up. The reader's tap-to-toggle `Pressable` has a no-op
+  `onLongPress`: without it RN fires `onPress` on release, and the controls would
+  flip just as the selection menu appears.
+- Library is Created / Starred / Characters. Characters lists the saved cast and
+  opens the brief's Craft character screen. Saving under a name another
+  character already has is refused. The library upserts by name, so that save
+  would overwrite the other character and then, on a rename, delete the one
+  being edited.
+- Generation no longer reads saved phrases: the phrase-seed layer is out of
+  `story-prompts.ts`, `generate-story` and `generate-story-stream`.
+
+### Deploy (merge deletes source only)
+
+1. `supabase functions deploy generate-story generate-story-stream profile`. Pull
+   each live bundle and confirm `fetchPhraseSeeds` is absent.
+2. Only after that: `supabase functions delete save-phrase unsave-phrase phrases record-practice`.
+   Until then the four stay ACTIVE on Supabase and keep answering.
+3. `continue-story` and `reimagine-chapter` bundle `story-prompts.ts` too. Their
+   live copies carry the dead layer but never called `fetchPhraseSeeds`, so they
+   are harmless until their next deploy.
+
+Tests: `characters-tab.test.tsx` (the name-clash refusal fails with the guard
+removed), `library-screen.test.tsx`, `reader-paging.test.tsx`.
+
+---
+
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no

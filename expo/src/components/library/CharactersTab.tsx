@@ -17,6 +17,7 @@ import {
   deleteSavedCharacter,
   draftCharacterFromSaved,
   listSavedCharacters,
+  nameKey,
   saveCharacterToLibrary,
   savedCharacterInputFromDraft,
   type SavedCharacterInput,
@@ -31,6 +32,15 @@ import { colors, radius, spacing, type } from "@/theme";
 import type { CreateDraft, SavedCharacter } from "@/types/domain";
 
 type DraftCharacter = CreateDraft["characters"][number];
+
+/** Alert.alert is a no-op on react-native-web, so the browser's own alert stands in. */
+function notify(title: string, message: string) {
+  if (Platform.OS === "web") {
+    if (typeof globalThis.alert === "function") globalThis.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
 
 export type CharactersTabProps = {
   /** Overrides the library read so a test can hand in fixtures. */
@@ -170,6 +180,22 @@ export default function CharactersTab({
 
   const save = useCallback(async () => {
     if (!buffer.name.trim() || saving) return;
+    /*
+      The library upserts by name, so saving under a name another character
+      already has would overwrite that character's description and then, on a
+      rename, delete the one being edited. Refuse instead of merging two people.
+    */
+    const key = nameKey(buffer.name);
+    const clash = (characters ?? []).find(
+      (item) => nameKey(item.name) === key && item.id !== editing?.id,
+    );
+    if (clash) {
+      notify(
+        "That name is taken",
+        `You already have a character called ${clash.name}. Give this one a different name.`,
+      );
+      return;
+    }
     setSaving(true);
     try {
       const saved = await saveCharacter(savedCharacterInputFromDraft(buffer));
@@ -180,23 +206,30 @@ export default function CharactersTab({
         name they changed.
       */
       const renamedFrom = editing && editing.id !== saved.id ? editing.id : null;
-      if (renamedFrom) {
-        await deleteCharacter(renamedFrom).catch(() => undefined);
-      }
-      setCharacters((previous) => [
-        saved,
-        ...(previous ?? []).filter((item) => item.id !== saved.id && item.id !== renamedFrom),
-      ]);
+      // If the old row cannot be deleted it stays listed, so the list matches
+      // what the next load will show rather than hiding it until then.
+      const oldRowGone = renamedFrom
+        ? await deleteCharacter(renamedFrom).then(() => true, () => false)
+        : false;
+      setCharacters((previous) => {
+        const list = previous ?? [];
+        const dropped = oldRowGone ? renamedFrom : null;
+        // An edit keeps its place; only a new character goes to the top.
+        const at = editing ? list.findIndex((item) => item.id === editing.id) : -1;
+        const rest = list.filter((item) => item.id !== saved.id && item.id !== dropped);
+        if (at < 0 || (renamedFrom && !oldRowGone)) return [saved, ...rest];
+        return [...rest.slice(0, at), saved, ...rest.slice(at)];
+      });
       closeCraft();
     } catch (error) {
-      Alert.alert(
+      notify(
         "Couldn't save this character",
         error instanceof Error ? error.message : "Please try again.",
       );
     } finally {
       setSaving(false);
     }
-  }, [buffer, closeCraft, deleteCharacter, editing, saveCharacter, saving]);
+  }, [buffer, characters, closeCraft, deleteCharacter, editing, saveCharacter, saving]);
 
   const remove = useCallback(() => {
     const target = editing;
@@ -207,7 +240,7 @@ export default function CharactersTab({
         setCharacters((previous) => (previous ?? []).filter((item) => item.id !== target.id));
         closeCraft();
       } catch (error) {
-        Alert.alert(
+        notify(
           "Couldn't delete this character",
           error instanceof Error ? error.message : "Please try again.",
         );
@@ -217,7 +250,8 @@ export default function CharactersTab({
     // react-native-web's Alert is a no-op, so a confirm with buttons would
     // never resolve there; the browser's own confirm is the web equivalent.
     if (Platform.OS === "web") {
-      if (typeof globalThis.confirm !== "function" || globalThis.confirm(question)) void run();
+      // No confirm, no delete: a missing dialog must never mean yes.
+      if (typeof globalThis.confirm === "function" && globalThis.confirm(question)) void run();
       return;
     }
     Alert.alert("Delete character", question, [

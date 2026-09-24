@@ -437,7 +437,7 @@ plan beats, series state, characters, grounded facts, moments, exclusion, langua
 as untrusted data (`<katha:...>`), and the fence delimiter is stripped from the
 value so it cannot be closed early.
 
-Three of those layers carry rules of their own.
+Two of those layers carry rules of their own.
 
 Reader phrase seeds were removed on 2026-09-24 with the reader's Save phrase
 feature: generation no longer reads a reader's saved phrases, and the layer and

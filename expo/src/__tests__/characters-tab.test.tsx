@@ -85,3 +85,32 @@ it("opens a saved character for editing, and a rename replaces the old row", asy
   expect(await view.findByLabelText("Edit Naina Rao")).toBeTruthy();
   expect(view.queryByLabelText("Edit Naina Mistry")).toBeNull();
 });
+
+it("refuses a rename onto another character's name instead of overwriting them", async () => {
+  const kabir: SavedCharacter = {
+    id: "saved-kabir",
+    name: "Kabir Sethi",
+    appearance: "A ferry pilot",
+    createdAt: "2026-09-10T00:00:00Z",
+  };
+  const saveCharacter = savedFrom("saved-kabir");
+  const deleteCharacter = jest.fn(async () => {});
+  const alert = jest.spyOn(require("react-native").Alert, "alert").mockImplementation(() => {});
+  const view = await render(
+    <CharactersTab
+      loadCharacters={async () => [naina, kabir]}
+      saveCharacter={saveCharacter}
+      deleteCharacter={deleteCharacter}
+    />,
+  );
+  await fireEvent.press(await view.findByLabelText("Edit Naina Mistry"));
+  await waitFor(() => expect(view.getByLabelText("Name").props.value).toBe("Naina Mistry"));
+
+  await fireEvent.changeText(view.getByLabelText("Name"), " kabir sethi ");
+  await fireEvent.press(view.getByText("Save"));
+
+  await waitFor(() => expect(alert).toHaveBeenCalledWith("That name is taken", expect.stringContaining("Kabir Sethi")));
+  expect(saveCharacter).not.toHaveBeenCalled();
+  expect(deleteCharacter).not.toHaveBeenCalled();
+  alert.mockRestore();
+});
