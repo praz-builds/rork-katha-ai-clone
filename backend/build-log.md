@@ -7,6 +7,58 @@
 
 ---
 
+## 2026-09-24 UTC — Why "Where does it begin?" had no chips, and the service watch-list
+
+**Session:** worktree `codex/opening-chips-watchlist`. **Deploy after merge:
+`shape-story`.** No migration.
+
+### What production showed (read-only)
+
+The founder's newest story (reviewer account, 2026-09-24 10:00 UTC, "What the
+Mountain Locked") has `beats = []`. So the opening screen had nothing to offer,
+and the writer went on without a direction.
+
+- `shape-story` is healthy. The same idea, on the same account, called the way
+  DirectionStep calls it, returned 200 with three beats in 7.3s
+  (`meta/muse-spark-1.3-contributor`). The house account got the same result.
+- **The request never reached the server's rate-limit claim.** There is no
+  `story_shape_rate_limits` row for that account at all. There is one for the
+  anonymous account that made "The Wrong Pedigree" at 08:29:52, 39s before
+  that story, and that story did get its chips.
+- `error_events` has no `story_shape_*` row since 2026-09-09.
+- OpenRouter was answering. The balance is **$3.29 of $60**, with about $31
+  spent this month. That is not the cause, but it needs topping up.
+
+So the call failed on the client, before the server could count it. The
+client turned the failure into `null`. DirectionStep then showed "Katha has no
+opening to suggest for this idea yet", which reads as an answer, offers no
+Retry, and was logged nowhere. The exact client error cannot be recovered,
+because nothing recorded it. That gap is what this change fixes.
+
+### What changed
+
+- `DirectionStep` calls `inferStoryBrief(..., { throwOnError: true })`. A
+  failed lookup now shows "We couldn't load suggested openings" with a **Try
+  again** button, and reports `opening_directions_failed` with its reason (PostHog,
+  and Sentry once a DSN exists). "No opening to suggest" is kept for the case
+  where the model answered and had nothing usable.
+- When the model planned beats and `toDirection` refused every one, the screen
+  still says "no opening", but `opening_directions_all_dropped` is logged with
+  counts only.
+- `shape-story` now logs its two silent nulls: `story_shape_rate_limited` when
+  the claim is refused, and `story_shape_empty` when `parseStoryShape` returns
+  null (with the model name and response length, never the text). The handler
+  takes its dependencies as a parameter so `index.test.ts` can drive both
+  branches. Removing either log call makes those tests fail.
+- `backend/MONITORING.md` is the watch-list: all 33 remaining functions by
+  tier, the upstream providers, the buckets, the one cron job, what the smoke
+  suites cover, and how to check each P0 by hand.
+- `smoke-app-surface.py` now covers `bootstrap-user`, `profile` (`me`,
+  `ledger`) and `shape-story`: they must refuse anonymous callers, answer, and
+  shape-story must return beats.
+
+---
+
 ## 2026-09-24 UTC — Craft character fits one screen, names its photo, and gives three free images
 
 **Session:** lane `codex/craft-character-fit` (PR 3 of the staged plan).
@@ -50,6 +102,9 @@ over-three carry and the wrapper.
 
 Migration tests for 00084/00086/00088/00096: 36 passed. Client typecheck clean;
 targeted jest suites green (full numbers in the PR).
+
+---
+
 ## 2026-09-24 UTC — Profile, Your journey and the public page stop waiting on the network
 
 **Session:** PR 1 of the 2026-09-24 plan, worktree `codex/profile-speed`.
@@ -113,6 +168,9 @@ already fetched the profile and thrown it away.
   does not re-seed from the balance it had before the charge.
 - `src/__tests__/profile-store.test.ts` has one test per guard. I removed each
   guard in turn and confirmed its test fails.
+
+---
+
 ## 2026-09-24 UTC — Save phrase leaves the app, and Library gets your characters
 
 **Session:** worktree `codex/drop-phrases-add-characters` (PR #135). Client, edge
@@ -146,6 +204,9 @@ practice tables stay, unread, until a post-launch drop.
 
 Tests: `characters-tab.test.tsx` (the name-clash refusal fails with the guard
 removed), `library-screen.test.tsx`, `reader-paging.test.tsx`.
+
+---
+
 ## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
 
 **Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
@@ -177,6 +238,9 @@ no migration and no function source changed. **Nothing to deploy.**
   on your own story, and Back from the author page returns to the chapter.
 - Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
   has the same fallback.
+
+---
+
 ## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
 
 **Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
@@ -204,6 +268,9 @@ next client build / web preview.
   `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
   its chapter from the run's request, so App no longer passes one. A pending
   web page-settle is dropped on chapter switch (tested with fake timers).
+
+---
+
 ## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
 
 **Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
