@@ -650,11 +650,16 @@ export async function handleProfile(req: Request): Promise<Response> {
       // the profile row, and a visitor was waiting on both round trips in a
       // row. A missing author costs one wasted list query, which is rare and
       // cheap next to making every visit pay twice.
-      const [profile, stories] = await Promise.all([
-        readPublicProfile(service, authorId, viewerId),
-        readPublicStories(service, authorId),
-      ]);
+      //
+      // The profile is awaited first so a missing author is still a 404: a
+      // story-list failure only matters once there is somebody to list for.
+      const storiesRequest = readPublicStories(service, authorId);
+      // Handled here so an unawaited rejection (on the 404 path) is not
+      // reported as unhandled; the await below still sees it.
+      storiesRequest.catch(() => {});
+      const profile = await readPublicProfile(service, authorId, viewerId);
       if (!profile) return respond({ error: "Not found" }, 404);
+      const stories = await storiesRequest;
       return respond({ profile, stories });
     }
 

@@ -344,6 +344,20 @@ describe("your journey", () => {
     expect(mockFetchOwnProfile).toHaveBeenCalledTimes(2);
   });
 
+  it("lets the calendar be retried on its own when only it failed", async () => {
+    mockFetchActivityCalendar.mockResolvedValueOnce(null);
+    const view = await render(
+      <JourneyScreen profile={profile()} onBack={jest.fn()} />,
+    );
+    await waitFor(() => view.getByTestId("journey-calendar-retry"));
+    expect(view.getByTestId("journey-current-streak")).toBeTruthy();
+
+    mockFetchActivityCalendar.mockResolvedValueOnce([today()]);
+    fireEvent.press(view.getByTestId("journey-calendar-retry"));
+    await waitFor(() => view.getByTestId("activity-grid"));
+    expect(view.queryByTestId("journey-calendar-retry")).toBeNull();
+  });
+
   it("shows the calendar placeholder, not its failure line, while it loads", async () => {
     mockFetchActivityCalendar.mockReturnValue(new Promise(() => {}));
     const view = await render(

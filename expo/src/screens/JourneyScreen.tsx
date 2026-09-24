@@ -233,6 +233,23 @@ export default function JourneyScreen({
         <Text style={styles.sectionTitle}>Activity</Text>
         <View style={styles.gridCard}>
           <ActivityGrid days={days} loading={calendarState === "loading"} />
+          {calendarState === "error"
+            ? (
+              // The profile arrived and the calendar did not: the calendar
+              // gets its own way to try again rather than a dead end.
+              <Button
+                label="Try again"
+                variant="secondary"
+                size="sm"
+                fullWidth={false}
+                testID="journey-calendar-retry"
+                style={styles.retry}
+                onPress={() => {
+                  void refreshOwnCalendar();
+                }}
+              />
+            )
+            : null}
         </View>
 
         <Text style={styles.sectionTitle}>Milestones</Text>
