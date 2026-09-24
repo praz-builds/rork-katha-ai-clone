@@ -4,7 +4,6 @@ import {
   Ellipsis,
   Pause,
   Play,
-  Send,
   X,
 } from "lucide-react-native";
 import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,11 +20,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
 import { EditStoryScreen, type SavedChapterEdit } from "@/components/reader/EditStoryScreen";
+import ChapterSocial from "@/components/reader/ChapterSocial";
 import { ReaderChrome } from "@/components/reader/ReaderChrome";
 import GeneratingOverlay from "@/components/GeneratingOverlay";
 import { RepromptSheet } from "@/components/reader/RepromptSheet";
@@ -46,7 +45,7 @@ import {
   subscribeToChapterSaves,
   type ChapterSaveEntry,
 } from "@/lib/chapter-save-queue";
-import { blockAuthor, fetchThread, formatRelativeTime, postComment, reportContent } from "@/lib/comments";
+import { blockAuthor, reportContent } from "@/lib/comments";
 import { defaultTrackForStory, findMusicTrack, MUSIC_TRACKS } from "@/lib/music-catalogue";
 import { resolveMusicUri } from "@/lib/music-cache";
 import {
@@ -81,8 +80,6 @@ import {
 import { colors, fonts, motion, radius, shadows, spacing, type } from "@/theme";
 import { Button } from "@/components/Button";
 import type { Chapter, Story } from "@/types/domain";
-
-type ReaderComment = { id: string; user: string; text: string; time: string };
 
 type ReaderPreferences = {
   typeSize: number;
@@ -216,6 +213,12 @@ export type ReaderScreenProps = {
    * what a signed-in session passes.
    */
   onRequireSignIn?: () => void;
+  /**
+   * Opens the author's profile from the author card at the end of a chapter --
+   * the same `setScreen({ name: "author", authorId })` the story page's author
+   * row uses. Omitted and the author card is not a button.
+   */
+  onAuthor?: (authorId: string) => void;
 };
 
 const READER_PREFS_KEY = "katha.reader.preferences.v1";
@@ -463,6 +466,7 @@ export default function ReaderScreen({
   onListen,
   onSavePhrase,
   onRequireSignIn,
+  onAuthor,
 }: ReaderScreenProps) {
   const author = authorFor(story.authorId);
   const { width, height } = useWindowDimensions();
@@ -650,10 +654,6 @@ export default function ReaderScreen({
   const maleVoice = getVoice(voicePair[1] ?? "kai");
   const hasBothVoices = !!(chapter.audioUrls?.female && chapter.audioUrls?.male);
 
-  const [comments, setComments] = useState<ReaderComment[]>([]);
-  const [commentsLoaded, setCommentsLoaded] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [isFollowing, setIsFollowing] = useState(false);
   const [shareToast, setShareToast] = useState(false);
 
   /*
@@ -1184,44 +1184,6 @@ export default function ReaderScreen({
     return () => onReimagineStory(story);
   }, [chapterComplete, isAuthor, onReimagine, onReimagineStory, story]);
 
-  /*
-    The real thread, for THIS story, from the same endpoint the detail page
-    reads. A story with no comments gets an empty state saying so rather than
-    three seeded strangers.
-
-    A failure is treated as "none yet" on purpose. This is a preview at the foot
-    of a page of prose, not the comments product; an error row here would be the
-    loudest thing on the page, and the reader loses nothing they were promised.
-  */
-  useEffect(() => {
-    let alive = true;
-    setCommentsLoaded(false);
-    setComments([]);
-    fetchThread(story.id).then(
-      (rows) => {
-        if (!alive) return;
-        const now = Date.now();
-        setComments(
-          rows
-            .filter((row) => !row.deleted)
-            .map((row) => ({
-              id: row.id,
-              user: row.authorName,
-              text: row.body,
-              time: formatRelativeTime(Date.parse(row.createdAt), now),
-            })),
-        );
-        setCommentsLoaded(true);
-      },
-      () => {
-        if (alive) setCommentsLoaded(true);
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [story.id]);
-
   /**
    * Every engagement control routes through this.
    *
@@ -1275,59 +1237,8 @@ export default function ReaderScreen({
 
 
 
-  const handleToggleFollow = useCallback(() => {
-    if (requireSignIn()) return;
-    setIsFollowing((prev) => !prev);
-  }, [requireSignIn]);
 
 
-  /*
-    The comment is POSTED, not just prepended.
-
-    This composer read the real thread from `fetchThread` and then wrote
-    nowhere: the comment appeared, an alert explained it was "saved locally",
-    and it was gone on the next chapter change -- while `postComment`, the call
-    the comments product itself uses, sat in the same module. The row appears
-    immediately (optimistic, keyed `local-`) and is replaced by the server's
-    own row when it lands; a refusal takes the row back out and says so, rather
-    than leaving the reader looking at a comment nobody else will ever see.
-  */
-  const handleSubmitComment = useCallback(() => {
-    if (requireSignIn()) return;
-    const trimmed = commentText.trim();
-    if (!trimmed) return;
-    const localId = `local-${Date.now()}`;
-    setComments((prev) => [
-      { id: localId, user: "You", text: trimmed, time: "just now" },
-      ...prev,
-    ]);
-    setCommentText("");
-    void postComment(story.id, trimmed, undefined, baseChapter.id).then(
-      (posted) => {
-        if (!posted) return;
-        setComments((prev) =>
-          prev.map((comment) =>
-            comment.id === localId
-              ? {
-                id: posted.id,
-                user: posted.authorName,
-                text: posted.body,
-                time: formatRelativeTime(Date.parse(posted.createdAt), Date.now()),
-              }
-              : comment
-          )
-        );
-      },
-      () => {
-        setComments((prev) => prev.filter((comment) => comment.id !== localId));
-        setCommentText(trimmed);
-        Alert.alert(
-          "Comment not posted",
-          "Katha could not save your comment. Check your connection and try again.",
-        );
-      },
-    );
-  }, [baseChapter.id, commentText, requireSignIn, story.id]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (searchMatches.length === 0) return;
@@ -1597,54 +1508,15 @@ export default function ReaderScreen({
                         instruction, not an oversight; if likes should stay
                         reachable they need a home on the story page.
                       */}
-                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                      <View style={styles.authorCard}>
-                        <View style={styles.avatar}><Text style={styles.avatarText}>{author.displayName.charAt(0)}</Text></View>
-                        <View style={styles.authorInfo}>
-                          <Text style={[styles.authorName, { color: theme.text }]}>{author.displayName}</Text>
-                          <Text style={[styles.authorBio, { color: theme.muted }]} numberOfLines={2}>{author.bio}</Text>
-                        </View>
-                        <Pressable onPress={handleToggleFollow} accessibilityLabel={isFollowing ? "Unfollow author" : "Follow author"} accessibilityRole="button" testID="reader-follow" style={styles.followButton}>
-                          <Text style={styles.followText}>{isFollowing ? "Following" : "Follow"}</Text>
-                        </Pressable>
-                      </View>
-                      <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-                      <View style={styles.commentsSection}>
-                        <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments ({comments.length})</Text>
-                        <View style={styles.commentInputRow}>
-                          <TextInput
-                            value={commentText}
-                            onChangeText={setCommentText}
-                            placeholder="Add a comment..."
-                            placeholderTextColor={theme.muted}
-                            style={[styles.commentInput, { color: theme.text, borderColor: theme.divider }]}
-                            multiline
-                            maxLength={500}
-                            accessibilityLabel="Add a comment"
-                          />
-                          <Pressable onPress={handleSubmitComment} accessibilityLabel="Submit comment" accessibilityRole="button" testID="reader-comment-send" style={styles.commentSendBtn}>
-                            <Send size={16} color={colors.surface} />
-                          </Pressable>
-                        </View>
-                        {/* The honest empty state. It waits for the fetch to
-                          * settle rather than flashing "No comments yet" at a
-                          * story that has forty. */}
-                        {commentsLoaded && comments.length === 0 ? (
-                          <Text
-                            style={[styles.commentsEmpty, { color: theme.muted }]}
-                            testID="reader-comments-empty"
-                          >
-                            No comments yet. Be the first to say something.
-                          </Text>
-                        ) : null}
-                        {comments.map((comment) => (
-                          <View key={comment.id} style={[styles.commentItem, { borderTopColor: theme.divider }]}>
-                            <Text style={[styles.commentUser, { color: theme.text }]}>{comment.user}</Text>
-                            <Text style={[styles.commentTime, { color: theme.muted }]}>{comment.time}</Text>
-                            <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
-                          </View>
-                        ))}
-                      </View>
+                      <ChapterSocial
+                        storyId={story.id}
+                        authorId={story.authorId}
+                        chapterId={baseChapter.id}
+                        author={author}
+                        theme={theme}
+                        onAuthor={onAuthor}
+                        requireSignIn={requireSignIn}
+                      />
                       </View>
                     ) : null}
                   </View>
@@ -2190,10 +2062,6 @@ const styles = StyleSheet.create({
   searchHighlight: {
     borderRadius: 3,
   },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: spacing.lg,
-  },
   engagementRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2211,60 +2079,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     fontSize: 13,
     fontWeight: "700",
-    letterSpacing: 0,
-  },
-  authorCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.tertiary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontFamily: fonts.display,
-    color: colors.surface,
-    fontSize: 20,
-    letterSpacing: 0,
-  },
-  authorInfo: { flex: 1 },
-  authorName: {
-    fontFamily: fonts.display,
-    fontSize: 17,
-    letterSpacing: 0,
-  },
-  authorBio: {
-    fontFamily: fonts.ui,
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: 0,
-  },
-  followButton: {
-    minHeight: 44,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.ink,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  followText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0,
-  },
-  commentsSection: {
-    gap: spacing.md,
-  },
-  commentsTitle: {
-    fontFamily: fonts.display,
-    fontSize: 20,
     letterSpacing: 0,
   },
   saveFailure: {
@@ -2308,60 +2122,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: colors.tertiary,
-    letterSpacing: 0,
-  },
-  commentsEmpty: {
-    fontFamily: fonts.ui,
-    fontSize: 14,
-    lineHeight: 20,
-    letterSpacing: 0,
-    paddingVertical: spacing.sm,
-  },
-  commentInputRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  commentInput: {
-    flex: 1,
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontFamily: fonts.ui,
-    fontSize: 14,
-    lineHeight: 20,
-    letterSpacing: 0,
-  },
-  commentSendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.ink,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  commentItem: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: spacing.md,
-    gap: spacing.xs,
-  },
-  commentUser: {
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0,
-  },
-  commentTime: {
-    fontFamily: fonts.ui,
-    fontSize: 12,
-    letterSpacing: 0,
-  },
-  commentText: {
-    fontFamily: fonts.ui,
-    fontSize: 14,
-    lineHeight: 20,
     letterSpacing: 0,
   },
   shareToast: {

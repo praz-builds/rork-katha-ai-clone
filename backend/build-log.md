@@ -7,6 +7,35 @@
 
 ---
 
+## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
+
+**Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
+no migration and no function source changed. **Nothing to deploy.**
+
+- **Comments were not filtered by viewer.** Checked against production
+  read-only: the live SELECT policy on `comments` lets any authenticated
+  caller read a public or curated story's thread, `handleReadThread` filters by
+  `story_id` and the caller's own block list, and the deployed `comments`
+  bundle matches main. `select count(*) from comments` in production is **0**:
+  no comment has ever been stored, so "Comments (0)" was true. What the client
+  got wrong: any failed read (no session, offline, 5xx) rendered as "Comments
+  (0) / No comments yet", and a post answered by something other than a comment
+  row left the optimistic "You" row on screen for its writer alone. Both fixed
+  in `ChapterSocial`; a deno test pins cross-viewer visibility on a curated
+  story with chapter-attached comments.
+- **The author card never navigated.** It was a plain `View`, and neither
+  `ReaderScreen` nor `PhraseCaptureReader` had an `onAuthor` prop. App now
+  passes `setScreen({ name: "author", authorId })`, the same call the story
+  page uses.
+- **The author card and comments are cards now**, lifted off the page in
+  `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
+  Night) with `shadows.card`, replacing the hairline dividers.
+- Still open: the author card names its author through `authorFor` from the
+  seed, which falls back to "Katha AI" for any id it does not know. The story
+  page has the same fallback.
+
+---
+
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no

@@ -179,6 +179,26 @@ it("leaves reading itself completely open to a guest", async () => {
   expect(onRequireSignIn).not.toHaveBeenCalled();
 });
 
+/*
+  The author card at the end of a chapter was a plain View: tapping the avatar
+  or the name did nothing, and the reader had no prop to navigate with. It now
+  hands the story's author id to `onAuthor`, which App wires to AuthorScreen
+  exactly as the story page's author row does.
+*/
+it("opens the author's profile from the chapter-end author card", async () => {
+  const onAuthor = jest.fn();
+  const view = await render(
+    <ReaderScreen story={story} onBack={jest.fn()} onAuthor={onAuthor} />,
+  );
+  await openChapterEnd(view);
+  await waitFor(() => expect(view.getByTestId("reader-author")).toBeTruthy());
+
+  await act(async () => {
+    fireEvent.press(view.getByTestId("reader-author"));
+  });
+  expect(onAuthor).toHaveBeenCalledWith("author-1");
+});
+
 it("engages normally with no gate supplied", async () => {
   const view = await render(<ReaderScreen story={story} onBack={jest.fn()} />);
   await openChapterEnd(view);

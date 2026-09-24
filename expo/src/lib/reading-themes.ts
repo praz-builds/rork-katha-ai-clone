@@ -31,7 +31,28 @@ export type ReaderTheme = {
   activeHighlight: string;
   /** Drawn on `activeHighlight`; must clear AA against it. */
   activeHighlightText: string;
+  /**
+   * The app's own surfaces at the end of a chapter: the author card and the
+   * comments. They are deliberately NOT the page -- the book ends where these
+   * begin -- so they are drawn as cards lifted off it, in the app's UI colours
+   * rather than the page's ink. `field` is the recessed fill of the comment
+   * box inside that card. `text` and `muted` must clear AA against both.
+   */
+  social: {
+    surface: string;
+    field: string;
+    text: string;
+    muted: string;
+  };
 };
+
+/** Paper and Sepia share the app's light card: white, lifted by `shadows.card`. */
+const LIGHT_SOCIAL = {
+  surface: colors.surface,
+  field: colors.surface2,
+  text: colors.ink,
+  muted: colors.muted,
+} as const;
 
 /**
  * The reading modes, and why there are three of them.
@@ -81,6 +102,7 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     highlight: "#FFE3C7",
     activeHighlight: "#B44708",
     activeHighlightText: "#FFF7F0",
+    social: LIGHT_SOCIAL,
   },
   sepia: {
     name: "sepia",
@@ -97,6 +119,7 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     highlight: "#F2D9A8",
     activeHighlight: "#8A3A0B",
     activeHighlightText: "#FFF6EC",
+    social: LIGHT_SOCIAL,
   },
   night: {
     name: "night",
@@ -110,6 +133,14 @@ export const READER_THEMES: Record<ReadingThemeName, ReaderTheme> = {
     highlight: "#4A3524",
     activeHighlight: "#E58A45",
     activeHighlightText: "#1A1208",
+    // One step up from the Night page, the way a dark app lifts a card: a
+    // lighter surface, not a border.
+    social: {
+      surface: "#24211D",
+      field: "#302C28",
+      text: "#F2EEE8",
+      muted: "#B8AEA3",
+    },
   },
 };
 
