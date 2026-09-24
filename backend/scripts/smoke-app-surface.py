@@ -16,8 +16,8 @@ opening screen could go unnoticed. See backend/MONITORING.md.
 
 COST: this suite is not free to run. shape-story makes 2 paid OpenRouter calls
 (the shape and the entity classification, run together), on top of the paid
-calls the rest of the suite already made: generate-story, edit-story and the
-cover image publish-story triggers.
+calls the rest of the suite already made: generate-story (which also starts the
+cover in the background) and edit-story.
 
 Reads SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
 environment. Never prints key material, story prose, or seeds.
@@ -60,10 +60,19 @@ def req(method, path, body=None, token=None, key=None, timeout=240):
     r.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(r, timeout=timeout, context=CTX) as resp:
-            raw = resp.read().decode()
-            return resp.status, (json.loads(raw) if raw.strip() else None)
+            body_bytes = resp.read()
+            # A cover is PNG bytes, not JSON. Decoding it as UTF-8 raised, and
+            # the catch-all below turned a served image into "HTTP 0".
+            try:
+                raw = body_bytes.decode()
+            except UnicodeDecodeError:
+                return resp.status, {"bytes": len(body_bytes)}
+            try:
+                return resp.status, (json.loads(raw) if raw.strip() else None)
+            except ValueError:
+                return resp.status, {"raw": raw[:300]}
     except urllib.error.HTTPError as e:
-        raw = e.read().decode()
+        raw = e.read().decode(errors="replace")
         try:
             return e.code, json.loads(raw)
         except Exception:
@@ -94,8 +103,15 @@ try:
         print("  cannot create user:", s, json.dumps(d)[:200])
         sys.exit(1)
     uid = d["id"]
-    req("POST", "/rest/v1/profiles",
-        {"id": uid, "username": f"smoke_{uid.replace('-', '')[:16]}"}, key=SVC)
+    # profiles_username_shape (00060) allows 3-20 characters, so the handle is
+    # "smoke_" plus 12 hex. At 16 hex it was 22 and every insert was refused.
+    # The status is checked: an ignored refusal only surfaced one step later
+    # as a foreign-key error from grant_credit, which reads like a credit bug.
+    ps, pd = req("POST", "/rest/v1/profiles",
+                 {"id": uid, "username": f"smoke_{uid.replace('-', '')[:12]}"}, key=SVC)
+    if ps not in (200, 201):
+        print("  cannot create profile:", ps, json.dumps(pd)[:200])
+        sys.exit(1)  # the cleanup below still runs and removes the auth user
     s, d = req("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": pw})
     if s != 200:
         print("  cannot sign in:", s, json.dumps(d)[:200])
@@ -230,8 +246,11 @@ try:
               bool((ed or {}).get("model")), str((ed or {}).get("model")))
 
     # ------------------------------------------------------ 6 publish-story
-    print("\n[6] publish-story (generates a cover - real spend)")
-    st, pb = req("POST", "/functions/v1/publish-story", {"story_id": story_id},
+    print("\n[6] publish-story (and the cover generate-story started)")
+    # A body without `visibility` publishes privately on purpose (a missing
+    # field must never make a story public), so the public path is asked for.
+    st, pb = req("POST", "/functions/v1/publish-story",
+                 {"story_id": story_id, "visibility": "public"},
                  token=jwt, timeout=300)
     check("6.1 publish-story 200", st == 200, f"HTTP {st}"
           + ("" if st == 200 else " " + json.dumps(pb)[:180]))
@@ -248,14 +267,19 @@ try:
         row = (rows or [{}])[0] if rows else {}
         check("6.2 story is public", row.get("is_public") is True, str(row.get("is_public")))
         cover = row.get("cover_image_url") or ""
-        if cover:
-            check("6.3 cover_image_url persisted", True, "set")
-        else:
-            # Not a regression: on main, `generateCoverImage` has no caller.
-            # The publish -> cover pipeline lands with the regenerate-cover
-            # work. Flagged loudly so it cannot be mistaken for done.
-            print("  [PENDING] 6.3 no cover generated - publish-story does not "
-                  "call generateCoverImage on main yet")
+        # The cover is drawn in the background after generation, so it can
+        # land after publish returns. Wait for it rather than calling a slow
+        # cover a missing one.
+        waited = 0
+        while not cover and waited < 90:
+            time.sleep(5)
+            waited += 5
+            _, again = req("GET", f"/rest/v1/stories?id=eq.{story_id}&select=cover_image_url",
+                           key=SVC, timeout=15)
+            cover = ((again or [{}])[0] if isinstance(again, list) and again else {}).get(
+                "cover_image_url") or ""
+        check("6.3 cover_image_url persisted", bool(cover),
+              "set" if cover else "none after 90s")
         if cover:
             # Only a URL on this project can be fetched with the anon key. A
             # transport failure returns status 0, which is a failure - not a
@@ -300,16 +324,19 @@ finally:
         targets.append((f"/rest/v1/chapters?story_id=eq.{story_id}", "chapters"))
         targets.append((f"/rest/v1/stories?id=eq.{story_id}", "story"))
     if uid:
-        # Order matters: these reference profiles(id), which references the
-        # auth user. Deleting the user first returns 500 and strands the row.
+        # Order matters: these rows reference profiles(id) with no cascade, so
+        # they go before the profile, and the profile before the auth user.
         targets += [
             (f"/rest/v1/generation_operations?user_id=eq.{uid}", "operations"),
             (f"/rest/v1/credit_ledger?user_id=eq.{uid}", "credit ledger"),
-            # error_events.user_id references profiles (00022 validated the
-            # FK). A failed or rate-limited call in [1b] writes a row here,
-            # and left in place it blocks the profile delete below and
-            # strands the smoke user in production.
-            (f"/rest/v1/error_events?user_id=eq.{uid}", "error events"),
+            # error_events is not in this list, on purpose. 00023 dropped its
+            # foreign key to profiles and 00025 nulls user_id when the profile
+            # is deleted, so its rows cannot block the delete below. Only
+            # INSERT and SELECT are granted to service_role (00019), so a
+            # delete here would be refused with 403 on every run.
+            # publish-story records a writing day (touch_streak, 00089), and
+            # streaks reference profiles with no cascade.
+            (f"/rest/v1/streaks?user_id=eq.{uid}", "streaks"),
             (f"/rest/v1/profiles?id=eq.{uid}", "profile"),
             (f"/auth/v1/admin/users/{uid}", "auth user"),
         ]
