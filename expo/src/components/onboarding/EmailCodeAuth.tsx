@@ -206,6 +206,9 @@ export function EmailCodeAuth({
       return;
     }
     setCode(next);
+    // The "more than 6 digits" line is about a paste that is gone once they
+    // type; any other error stays until the next verify answers.
+    setAuthError((current) => (current === CODE_TOO_LONG ? null : current));
     if (!isCompleteOtp(next)) {
       // Editing the code re-arms the auto-submit, so correcting one digit
       // back to the same six is an explicit retry.
