@@ -275,7 +275,7 @@ try:
             time.sleep(5)
             waited += 5
             _, again = req("GET", f"/rest/v1/stories?id=eq.{story_id}&select=cover_image_url",
-                           key=SVC)
+                           key=SVC, timeout=15)
             cover = ((again or [{}])[0] if isinstance(again, list) and again else {}).get(
                 "cover_image_url") or ""
         check("6.3 cover_image_url persisted", bool(cover),
