@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { BookOpen, ChevronRight, Heart } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
 import { imageAssets } from "@/data/images";
@@ -262,7 +262,7 @@ function Stat(
   );
 }
 
-export function StoryFeedCard({
+function StoryFeedCardComponent({
   story,
   onPress,
   variant = "list",
@@ -313,6 +313,16 @@ export function StoryFeedCard({
     </Pressable>
   );
 }
+
+/**
+ * Memoised because a Home rail holds a dozen of these and Home re-renders on
+ * anything App does -- a credits tick, a generation publishing, a tab switch.
+ * Each card owns a cover image and an `Animated` fade, so re-rendering every
+ * one of them for a change none of them shows is work that makes a rail
+ * stutter under the thumb. It only holds if `onPress` is stable: see
+ * `RailCard` in `FeedRail`.
+ */
+export const StoryFeedCard = memo(StoryFeedCardComponent);
 
 const styles = StyleSheet.create({
   card: {

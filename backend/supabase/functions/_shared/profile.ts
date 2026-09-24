@@ -4,7 +4,7 @@
  *
  * These are two different products sharing a file because they share exactly
  * one thing -- a `profiles` row -- and disagree about everything else. The
- * owner's view is allowed to know about drafts, saved phrases and streaks. The
+ * owner's view is allowed to know about drafts and streaks. The
  * public view is not allowed to know that any of those exist. Keeping the two
  * next to each other is how that boundary stays legible: `readOwnProfile`
  * calls `profile_overview`, `readPublicProfile` calls `public_profile`, and
@@ -289,7 +289,6 @@ export type OwnProfile = {
   chaptersWritten: number;
   totalReads: number;
   totalLikes: number;
-  phrasesSaved: number;
   followers: number;
   following: number;
 };
@@ -443,7 +442,6 @@ export async function readOwnProfile(
     chaptersWritten: count(row.chapters_written),
     totalReads: count(row.total_reads),
     totalLikes: count(row.total_likes),
-    phrasesSaved: count(row.phrases_saved),
     followers: count(row.followers),
     following: count(row.following),
   };
@@ -646,9 +644,20 @@ export async function handleProfile(req: Request): Promise<Response> {
         return respond({ error: "authorId must be a valid UUID" }, 400);
       }
       const service = serviceClient();
+      // Together, not one after the other: the story list does not depend on
+      // the profile row, and a visitor was waiting on both round trips in a
+      // row. A missing author costs one wasted list query, which is rare and
+      // cheap next to making every visit pay twice.
+      //
+      // The profile is awaited first so a missing author is still a 404: a
+      // story-list failure only matters once there is somebody to list for.
+      const storiesRequest = readPublicStories(service, authorId);
+      // Handled here so an unawaited rejection (on the 404 path) is not
+      // reported as unhandled; the await below still sees it.
+      storiesRequest.catch(() => {});
       const profile = await readPublicProfile(service, authorId, viewerId);
       if (!profile) return respond({ error: "Not found" }, 404);
-      const stories = await readPublicStories(service, authorId);
+      const stories = await storiesRequest;
       return respond({ profile, stories });
     }
 
@@ -660,6 +669,14 @@ export async function handleProfile(req: Request): Promise<Response> {
     if (action === "me") {
       // Settle before reading, so the numbers the screen shows are the ones
       // the settle just produced.
+      //
+      // DELIBERATELY SEQUENTIAL. `profile_overview` reads
+      // `referral_summary(p.id)`, whose `credited` and `month_remaining` count
+      // `referrals.credited_at` -- the column `settle_referrals` writes. Run
+      // side by side, the overview can read the row a moment before the
+      // settle pays it, and the referral card shows an invite as unpaid right
+      // after it was paid. Checked 2026-09-24 when the rest of the profile
+      // path went parallel; leave this pair in order.
       //
       // A referral payout waits on two conditions: the invitee has generated
       // something, and their account is 24 hours old. The generation path

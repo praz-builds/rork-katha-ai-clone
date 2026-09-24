@@ -20,13 +20,19 @@ import { authorFor } from "@/data/seed";
 import {
   fetchActivityCalendar,
   fetchProfileComments,
-  fetchPublicProfile,
   isRealAuthorId,
   type ProfileComment,
   type PublicProfile,
   type PublicStorySummary,
   writingSince,
 } from "@/lib/profile";
+import {
+  cachedPublicProfile,
+  loadPublicProfile,
+  markOwnProfileStale,
+  patchPublicProfile,
+  useOwnProfileStore,
+} from "@/lib/profile-store";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { GENRES, type Genre, type Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
@@ -38,8 +44,8 @@ import { sharedStyles } from "@/screens/shared";
  * public stories, and four counts taken over exactly those public stories.
  * Nothing else, and the boundary is enforced on the server rather than here --
  * `public_profile` and the list query in `_shared/profile.ts` share one
- * predicate, so their drafts, their private stories, their credits, their
- * saved phrases and their own reading streak are not merely hidden by this
+ * predicate, so their drafts, their private stories, their credits and
+ * their own reading streak are not merely hidden by this
  * screen: they never leave the database.
  *
  * A visitor cannot tell from this page whether the author has drafts at all.
@@ -69,10 +75,23 @@ export default function AuthorScreen({
 }) {
   const real = isRealAuthorId(authorId);
   const seeded = authorFor(authorId);
+  // A page seen earlier this session is drawn at once from what it showed
+  // then, and refreshed behind it; see `src/lib/profile-store.ts`.
+  const held = real ? cachedPublicProfile(authorId) : null;
+  // The reader's own page, opened from the Profile tab. The calendar is the
+  // same one Journey draws, which the Profile tab has usually fetched already.
+  const own = useOwnProfileStore();
+  const isOwnPage = real && own.profile?.userId === authorId;
   const [days, setDays] = useState<string[] | null>(null);
+  const [daysState, setDaysState] = useState<"loading" | "ready" | "error">("loading");
   const [comments, setComments] = useState<ProfileComment[]>([]);
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
-  const [published, setPublished] = useState<PublicStorySummary[] | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(held?.profile ?? null);
+  const [published, setPublished] = useState<PublicStorySummary[] | null>(
+    held?.stories ?? null,
+  );
+  const [profileState, setProfileState] = useState<"loading" | "ready" | "error">(
+    held ? "ready" : "loading",
+  );
 
   useEffect(() => {
     if (!real) return;
@@ -80,23 +99,40 @@ export default function AuthorScreen({
     // Cleared on every author change, before anything is fetched. Without this
     // a failed or empty request leaves the PREVIOUS author's comments and
     // calendar on screen, attributed to whoever is being looked at now.
+    const cached = cachedPublicProfile(authorId);
+    setProfile(cached?.profile ?? null);
+    setPublished(cached?.stories ?? null);
     setComments([]);
     setDays(null);
-    fetchPublicProfile(authorId)
+    setDaysState("loading");
+    setProfileState(cached ? "ready" : "loading");
+    loadPublicProfile(authorId)
       .then((result) => {
-        if (!alive || !result) return;
+        if (!alive) return;
+        if (!result) {
+          // A refresh that failed behind a held copy leaves the copy up.
+          if (!cached) setProfileState("error");
+          return;
+        }
         setProfile(result.profile);
         setPublished(result.stories);
+        setProfileState("ready");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (alive && !cached) setProfileState("error");
+      });
     // The calendar and the comments are independent of the profile and of
     // each other: one failing leaves the other two on the page rather than
     // taking the whole thing down.
     fetchActivityCalendar(authorId)
       .then((result) => {
-        if (alive) setDays(result);
+        if (!alive) return;
+        setDays(result);
+        setDaysState(result ? "ready" : "error");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (alive) setDaysState("error");
+      });
     fetchProfileComments(authorId)
       .then((result) => {
         if (alive && result) setComments(result);
@@ -107,13 +143,25 @@ export default function AuthorScreen({
     };
   }, [authorId, real]);
 
-  const handle = profile?.username ?? (real ? null : seeded.username);
-  const displayName = profile?.username
-    ? `@${profile.username}`
+  // Their own calendar, held app-wide, until this page's own read lands.
+  const shownDays = days ?? (isOwnPage ? own.calendar : null);
+
+  // On the reader's own page, the name and face they already have stand in
+  // until the public row arrives.
+  const ownSeed = isOwnPage && !profile ? own.profile : null;
+  const username = profile?.username ?? ownSeed?.username ?? null;
+  const avatarUrl = profile?.avatarUrl ?? ownSeed?.avatarUrl ?? null;
+  // A real author whose row has not arrived yet: hold the name's place rather
+  // than calling them "A Katha writer" and then renaming them.
+  const nameLoading = real && !username && profileState === "loading";
+
+  const handle = username ?? (real ? null : seeded.username);
+  const displayName = username
+    ? `@${username}`
     : real
     ? "A Katha writer"
     : seeded.displayName;
-  const bio = profile?.bio ?? (real ? null : seeded.bio);
+  const bio = profile?.bio ?? ownSeed?.bio ?? (real ? null : seeded.bio);
   const since = writingSince(profile?.firstPublishedAt ?? null) ??
     writingSince(profile?.memberSince ?? null);
 
@@ -135,14 +183,16 @@ export default function AuthorScreen({
 
         <View style={styles.authorHeader}>
           <View style={styles.authorAvatar}>
-            {profile?.avatarUrl
+            {avatarUrl
               ? (
                 <Image
-                  source={{ uri: profile.avatarUrl }}
+                  source={{ uri: avatarUrl }}
                   style={styles.avatarImage}
                   accessibilityIgnoresInvertColors
                 />
               )
+              : nameLoading
+              ? null
               : (
                 <Text style={styles.authorInitial}>
                   {(handle ?? displayName).replace("@", "").charAt(0)
@@ -150,8 +200,16 @@ export default function AuthorScreen({
                 </Text>
               )}
           </View>
-          <Text style={styles.h1}>{displayName}</Text>
-          {handle && profile?.username
+          {nameLoading
+            ? (
+              <View
+                style={styles.nameSkeleton}
+                testID="author-name-skeleton"
+                accessibilityLabel="Loading profile"
+              />
+            )
+            : <Text style={styles.h1}>{displayName}</Text>}
+          {handle && username
             ? null
             : handle
             ? <Text style={styles.profileMeta}>@{handle}</Text>
@@ -170,7 +228,7 @@ export default function AuthorScreen({
                   followers={profile.followers}
                   canEngage={canEngage}
                   onRequireSignIn={onRequireSignIn}
-                  onChange={(next) =>
+                  onChange={(next) => {
                     setProfile((current) =>
                       current
                         ? {
@@ -179,7 +237,14 @@ export default function AuthorScreen({
                           followers: next.followers,
                         }
                         : current
-                    )}
+                    );
+                    patchPublicProfile(authorId, {
+                      isFollowing: next.following,
+                      followers: next.followers,
+                    });
+                    // The reader's own "following" count just moved.
+                    markOwnProfileStale();
+                  }}
                 />
               </View>
             )
@@ -223,7 +288,10 @@ export default function AuthorScreen({
                   it says something true about how somebody shows up that no
                   single number can. */}
               <View style={styles.activityCard}>
-                <ActivityGrid days={days} />
+                <ActivityGrid
+                  days={shownDays}
+                  loading={shownDays === null && daysState === "loading"}
+                />
               </View>
             </View>
           )
@@ -352,6 +420,14 @@ const styles = {
       alignItems: "center",
       gap: spacing.sm,
       marginBottom: spacing.xl,
+    },
+    /** The `h1` line's footprint (35pt) while the name is on its way. */
+    nameSkeleton: {
+      marginTop: 3,
+      width: 180,
+      height: 35,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surface2,
     },
     authorAvatar: {
       width: 86,

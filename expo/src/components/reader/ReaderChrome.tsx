@@ -9,7 +9,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
-  BookmarkPlus,
   ChevronLeft,
   ChevronRight,
   List,
@@ -19,7 +18,7 @@ import {
   Play,
   Search,
   SlidersHorizontal,
-  Sparkles,
+  RefreshCw,
   X,
 } from "lucide-react-native";
 import { colors, fonts, motion, radius, spacing } from "@/theme";
@@ -65,20 +64,6 @@ export type ReaderChromeProps = {
   reimagineLabel?: string;
   onPreferences: () => void;
   onChapters: () => void;
-  /**
-   * Opens the reader's explicit "Save a phrase" mode.
-   *
-   * THE ONLY ROUTE TO PHRASE CAPTURE THAT DOES NOT REQUIRE KNOWING A GESTURE.
-   * Saving a phrase is a long-press on a line, which is invisible, absent
-   * entirely on web (react-native-web drops `Text.onLongPress`), and
-   * unavailable to a screen-reader user -- the reader deliberately serves
-   * fluent prose rather than per-word buttons when one is running. A labelled
-   * control in the chrome is the accessible door to the same feature.
-   *
-   * Omitted and the control is not rendered at all, so a host that has no
-   * phrase capture mounted does not offer one.
-   */
-  onSavePhrase?: () => void;
   onListen: () => void;
   onMusic?: () => void;
   /** Music is silenced: the Music glyph renders struck through. */
@@ -132,13 +117,8 @@ type ChromeAction = {
   /**
    * What a screen reader says, when that has to differ from the visible text.
    *
-   * Only "Save phrase" needs it today, and the reason is worth keeping: the
-   * selection toolbar's COMMIT button is also called "Save phrase", and on
-   * native a long-press raises that toolbar without dismissing the chrome, so
-   * both can be on screen at once. Two buttons announcing identically, one of
-   * which opens a mode and one of which writes a phrase, is a coin flip for
-   * anybody listening rather than looking. The visible label stays short to
-   * match its neighbours; the spoken one says which control this is.
+   * Nothing needs it today; it is kept so a control whose short visible
+   * label is ambiguous out loud can say more to a screen reader.
    */
   a11yLabel?: string;
 };
@@ -251,7 +231,6 @@ export function ReaderChrome({
   reimagineLabel = "Reimagine",
   onPreferences,
   onChapters,
-  onSavePhrase,
   onListen,
   onMusic = () => {},
   musicMuted = false,
@@ -292,19 +271,7 @@ export function ReaderChrome({
     },
     ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
     ...(onReimagine
-      ? [{ label: reimagineLabel, icon: Sparkles, onPress: onReimagine }]
-      : []),
-    // Beside Edit and Reimagine because it is the third thing you do TO the
-    // page, rather than a way of moving through it (row two). It is also the
-    // row that is empty on somebody else's finished story, which is exactly
-    // the reader most likely to want to keep a line out of it.
-    ...(onSavePhrase
-      ? [{
-        label: "Save phrase",
-        a11yLabel: "Save a phrase",
-        icon: BookmarkPlus,
-        onPress: onSavePhrase,
-      }]
+      ? [{ label: reimagineLabel, icon: RefreshCw, onPress: onReimagine }]
       : []),
   ];
   const rowTwo: ChromeAction[] = [

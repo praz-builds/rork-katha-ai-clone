@@ -10,7 +10,7 @@ Use this document before changing onboarding, paywall, or shared visual componen
 
 1. Use `BrandWordmark` everywhere the Katha AI wordmark appears. Do not rebuild it from ordinary text or use the square app icon as a wordmark.
 2. Use bundled fonts and wait for `Font.loadAsync` before rendering the app.
-3. Use `BricolageGrotesque` for display text, `HankenGrotesk` for product UI, `Baloo2` only for the brand, and `Literata` for long-form reading.
+3. Use `BricolageGrotesque` for display text, `HankenGrotesk` for product UI, `Baloo2` only for the brand, and `Literata` for long-form reading. **A CTA never uses the display font**: every button label is Hanken.
 4. Set visible text to `letterSpacing: 0`. Do not introduce negative letter spacing.
 5. Do not introduce visible em dashes. Rewrite the sentence or use punctuation that reads naturally.
 6. Preserve the fixed intro geometry and fixed message slots across all three slides.
@@ -152,7 +152,7 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Family | Role | Bundled files |
 | --- | --- | --- |
 | `Baloo2` | Brand wordmark only | `Baloo2.ttf` |
-| `BricolageGrotesque` | Display headings, important numbers | `BricolageGrotesque.ttf` |
+| `BricolageGrotesque` | Display headings on Home, Profile and onboarding; important numbers. Never a button label, never a create-flow heading | `BricolageGrotesque.ttf` |
 | `HankenGrotesk` | UI labels, body copy, metadata, inputs | `HankenGrotesk.ttf` |
 | `Literata` | Long-form story reading | `Literata.ttf` |
 | `LiterataItalic` | Long-form italic reading | `Literata-Italic.ttf` |
@@ -171,12 +171,15 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Compact body | Hanken | 500 | 14.5 / 22 | Compact descriptions |
 | Option title | Hanken | 700 | 16 / natural | Selection labels |
 | Option detail | Hanken | 400 | 13 / natural | Selection descriptions |
-| Primary CTA | Hanken | 700 | 17 / natural | Main button labels |
+| Create step heading | Hanken | 700 | 26 / 32 | `type.createTitle`: every create-flow step heading ("What's your story about?", "Where does it begin?", "Craft character", the crafting loader, create dialogs) |
+| Primary CTA | Hanken | 700 | 17 / natural | Main button labels. **CTAs never use the display font** -- not a Button, not a text link, not a tappable card whose label is its only text |
 | Input | Hanken | 600 | 17 / natural | Email input |
 | Name input | Bricolage | 700 | 24 / natural | First-name entry |
 | Review copy | Hanken | 500 | 12.5 / 17 | Social proof cards |
 | Metadata | Hanken | 400 to 700 | 11 to 13 / 17 to 19 | Hints, labels, prices |
 | Story text in intro | Hanken | 400 | 13.2 / 19 | Generated story lines |
+
+**Bricolage is for Home and Profile display titles, onboarding headings, and numbers only.** The create flow is a working surface, so its headings are Hanken bold (`type.createTitle`); Bricolage at 32 there read as a poster rather than a form.
 
 The design rule is zero letter spacing for visible text. The only currently tolerated positive tracking is tiny uppercase metadata such as `NEW STORY`, cover-author labels, rating stars, and paywall badges. Do not add tracking to headings, body copy, buttons, or the wordmark.
 
@@ -216,7 +219,7 @@ act, none of them reading the token that was supposed to govern them.
   `radius.pill`.
 - `colors.accent`, going to `colors.accentPressed` while held, with
   `shadows.primaryCta`.
-- Label `type.button`: white, **17 / 700**, `fonts.ui`.
+- Label `type.button`: white, **17 / 700**, `fonts.ui`. **A CTA never uses the display font**, and that includes a hand-rolled text link: `button-recipe.test.ts` fails on a `<Pressable>` whose only `<Text>` is set in `fonts.display`. Home's write card (`WriteAnotherCTA`) is a button too, so its heading is Hanken 700, not Bricolage; the scan cannot see labels drawn by a child component, so that one is held by review.
 - Full available width inside the page gutter, unless `fullWidth={false}`.
 - `size="sm"` is `controls.buttonSmHeight` **44** with `type.buttonSmall`
   (15 / 700), for a control sitting in a row rather than under the content.
@@ -233,6 +236,14 @@ act, none of them reading the token that was supposed to govern them.
 
 `source-of-truth/DESIGN_SYSTEM.md` section 6.1 carries the reasoning and
 `src/__tests__/button-recipe.test.ts` enforces it.
+
+### Icons
+
+Icons are lucide (`lucide-react-native`). Some glyphs carry one meaning across the app and must not be reused for another:
+
+- **`Sparkles` means credits, and nothing else.** The credits pill, prices and the credits screen. Not AI, not generation, not a suggestion.
+- **`Signpost` is a direction the story could take**: the opening chips on Create's "Where does it begin?" and the chapter-end direction cards (both drawn by `DirectionChoices`).
+- **`RefreshCw` is Reimagine**: the reader chrome action, the chapter-end pill and the re-prompt sheet's submit.
 
 ### Option Row
 

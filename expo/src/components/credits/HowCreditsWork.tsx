@@ -34,7 +34,7 @@ export const PRICE_ROWS: readonly { label: string; detail?: string; cost: string
   { label: "Regenerate a cover", detail: "There is no free retry", cost: "1" },
   {
     label: "Create or edit a character image",
-    detail: "6 free per account, ever",
+    detail: "3 free per account, ever",
     cost: "then 1 each",
   },
   {
@@ -57,7 +57,7 @@ export const PLAIN_NOTES: readonly { lead: string; body: string }[] = [
       "When you set a story to write itself, the chapters it is going to write are paid for the moment chapter one lands, as many as your balance affords, and then it stops. It never writes past the length you planned, and it never extends a finished story by itself.",
   },
   {
-    lead: "The six free character images are for the life of the account,",
+    lead: "The three free character images are for the life of the account,",
     body:
       "not per story and not per month, and editing one counts. Changing a character's appearance draws a brand-new picture, which costs us exactly what the first one did.",
   },

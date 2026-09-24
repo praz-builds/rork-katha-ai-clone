@@ -37,7 +37,6 @@ export function ownProfile(over: Partial<OwnProfile> = {}): OwnProfile {
     chaptersWritten: 0,
     totalReads: 0,
     totalLikes: 0,
-    phrasesSaved: 0,
     followers: 0,
     following: 0,
     avatarId: null,

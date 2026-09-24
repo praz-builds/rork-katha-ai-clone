@@ -32,6 +32,22 @@ export const type = {
     fontFamily: fonts.display,
     fontWeight: '600' as const,
   },
+  /**
+   * A step heading in the create flow. 26/32, `fonts.ui`, 700.
+   *
+   * HANKEN, NOT BRICOLAGE, AND ON PURPOSE. Create is a working surface: the
+   * reader is filling in a brief, choosing an opening, drawing a character.
+   * Bricolage at 32 made those steps read like a poster, and the founder
+   * called it unserious. Hanken bold keeps the size of a heading with the
+   * voice of the controls beneath it. Bricolage stays for Home and Profile
+   * display titles and for numbers.
+   */
+  createTitle: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontFamily: fonts.ui,
+    fontWeight: '700' as const,
+  },
   headline: {
     fontSize: 18,
     fontFamily: fonts.ui,

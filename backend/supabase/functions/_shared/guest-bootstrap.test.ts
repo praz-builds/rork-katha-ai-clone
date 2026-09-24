@@ -1,6 +1,7 @@
 import {
   assertEquals,
   assertMatch,
+  assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   anonymousGrantScope,
@@ -11,6 +12,7 @@ import {
   hashAnonymousGrantScope,
   isAnonymousUser,
   readGuestClaimToken,
+  runBootstrapReads,
 } from "./guest-bootstrap.ts";
 
 Deno.test("guest bootstrap constants and operation key stay canonical", () => {
@@ -131,5 +133,105 @@ Deno.test("only a JWS-shaped claim token is worth verifying", () => {
   assertEquals(
     readGuestClaimToken({ claim_guest_token: `${"a".repeat(4100)}.b.c` }),
     null,
+  );
+});
+
+/** A step that records when it started and resolves only when released. */
+function gate<T>(name: string, started: string[], value: T) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    release,
+    run: async () => {
+      started.push(name);
+      await released;
+      return value;
+    },
+  };
+}
+
+Deno.test("bootstrap reads start together rather than one after another", async () => {
+  const started: string[] = [];
+  const identity = gate("identity", started, undefined);
+  const balance = gate("balance", started, 7);
+  const free = gate("free", started, 2);
+
+  const pending = runBootstrapReads({
+    guest: false,
+    ensureIdentity: identity.run,
+    grantGuest: () => Promise.reject(new Error("a named account is never granted")),
+    readBalance: balance.run,
+    readFreeRemaining: free.run,
+  });
+
+  // Nothing has resolved, and all three are already in flight. Run in sequence,
+  // only the first would have started.
+  await Promise.resolve();
+  assertEquals(started.sort(), ["balance", "free", "identity"]);
+
+  identity.release();
+  balance.release();
+  free.release();
+  assertEquals(await pending, {
+    balance: 7,
+    welcomeGranted: false,
+    rateLimited: false,
+    characterImagesFreeRemaining: 2,
+  });
+});
+
+Deno.test("a guest's balance is the grant's answer, never the racing ledger read", async () => {
+  let identityCalls = 0;
+  const result = await runBootstrapReads({
+    guest: true,
+    ensureIdentity: () => {
+      identityCalls += 1;
+      return Promise.resolve();
+    },
+    grantGuest: () =>
+      Promise.resolve({ balance: 3, welcomeGranted: true, rateLimited: false }),
+    // The read that went out before the grant landed: the pre-grant zero.
+    readBalance: () => Promise.resolve(0),
+    readFreeRemaining: () => Promise.resolve(null),
+  });
+
+  assertEquals(result, {
+    balance: 3,
+    welcomeGranted: true,
+    rateLimited: false,
+    characterImagesFreeRemaining: null,
+  });
+  // A guest is not given a handle or an invite code (D1).
+  assertEquals(identityCalls, 0);
+});
+
+Deno.test("a rate-limited guest falls back to the ledger balance", async () => {
+  const result = await runBootstrapReads({
+    guest: true,
+    ensureIdentity: () => Promise.resolve(),
+    grantGuest: () =>
+      Promise.resolve({ balance: null, welcomeGranted: false, rateLimited: true }),
+    readBalance: () => Promise.resolve(1),
+    readFreeRemaining: () => Promise.resolve(6),
+  });
+  assertEquals(result.balance, 1);
+  assertEquals(result.rateLimited, true);
+  assertEquals(result.welcomeGranted, false);
+});
+
+Deno.test("a failed balance read still fails the bootstrap", async () => {
+  await assertRejects(
+    () =>
+      runBootstrapReads({
+        guest: false,
+        ensureIdentity: () => Promise.resolve(),
+        grantGuest: () => Promise.reject(new Error("unused")),
+        readBalance: () => Promise.reject(new Error("ledger unreachable")),
+        readFreeRemaining: () => Promise.resolve(6),
+      }),
+    Error,
+    "ledger unreachable",
   );
 });

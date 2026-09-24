@@ -1,3 +1,4 @@
+import { memo, useCallback, useLayoutEffect, useRef } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   feedCardMetrics,
@@ -37,6 +38,15 @@ export function FeedRail({
   const { content } = useLayoutWidth();
   const { cardWidth } = feedCardMetrics(content, "rail");
 
+  // Home is handed `onStory` from App, where it is recreated on every App
+  // render. Reading it through a ref gives the cards one handler for the life
+  // of the rail, so a re-render upstream does not re-render every card in it.
+  const onStoryRef = useRef(onStory);
+  useLayoutEffect(() => {
+    onStoryRef.current = onStory;
+  }, [onStory]);
+  const handleStory = useCallback((id: string) => onStoryRef.current(id), []);
+
   if (items.length === 0) return null;
 
   return (
@@ -50,17 +60,30 @@ export function FeedRail({
         decelerationRate="fast"
       >
         {items.map((story) => (
-          <StoryFeedCard
-            key={story.id}
-            story={story}
-            variant="rail"
-            onPress={() => onStory(story.id)}
-          />
+          <RailCard key={story.id} story={story} onStory={handleStory} />
         ))}
       </ScrollView>
     </View>
   );
 }
+
+/**
+ * One card with its own stable press handler, so `StoryFeedCard`'s memo holds.
+ *
+ * `() => onStory(story.id)` inline in the map was a new function for every card
+ * on every Home render, which re-rendered every card on every rail whatever
+ * had changed.
+ */
+const RailCard = memo(function RailCard({
+  story,
+  onStory,
+}: {
+  story: Story;
+  onStory: (id: string) => void;
+}) {
+  const onPress = useCallback(() => onStory(story.id), [onStory, story.id]);
+  return <StoryFeedCard story={story} variant="rail" onPress={onPress} />;
+});
 
 const styles = StyleSheet.create({
   section: { marginTop: spacing.betweenGroups },

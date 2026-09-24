@@ -9,7 +9,7 @@
 
 /* eslint-disable import/first */
 import React from "react";
-import { Linking } from "react-native";
+import { Linking, Text } from "react-native";
 import {
   act,
   cleanup,
@@ -50,6 +50,7 @@ import AuthorScreen from "@/screens/AuthorScreen";
 import ProfileScreen, { PRIVACY_URL, TERMS_URL } from "@/screens/ProfileScreen";
 import FollowButton from "@/components/profile/FollowButton";
 import { ownProfile } from "@/test-support/profileFixtures";
+import { resetProfileStoreForTests } from "@/lib/profile-store";
 
 const AUTHOR = "11111111-1111-4111-8111-111111111111";
 
@@ -64,7 +65,6 @@ const ownProfileFixture = () =>
     chaptersWritten: 7,
     totalReads: 42,
     totalLikes: 8,
-    phrasesSaved: 12,
     followers: 3,
     following: 1,
   });
@@ -105,6 +105,8 @@ beforeEach(() => {
     mockFetchActivityCalendar.mockResolvedValue([]);
   mockFetchOwnProfile.mockReset();
   mockFetchOwnProfile.mockResolvedValue(null);
+  // The profile is held app-wide now; each test starts from a cold boot.
+  resetProfileStoreForTests();
 });
 
 afterEach(cleanup);
@@ -269,7 +271,6 @@ describe("somebody else's profile", () => {
     expect(view.getByText("@ada")).toBeTruthy();
     expect(view.getByText("Followers")).toBeTruthy();
     expect(view.getByText("Following")).toBeTruthy();
-    expect(view.queryByText("Phrases")).toBeNull();
     expect(view.queryByText("Best streak")).toBeNull();
     expect(view.queryByText("Credits")).toBeNull();
 
@@ -457,7 +458,7 @@ describe("the reader's own profile", () => {
     expect(view.getByText("3 followers · 1 following")).toBeTruthy();
   });
 
-  // Reads, likes, chapter and phrase counts were an eight-cell grid here. They
+  // Reads, likes and chapter counts were an eight-cell grid here. They
   // are a scoreboard, they belong to nobody but the writer, and the story
   // counts already exist in Library next to the stories they count.
   it("no longer shows reads, likes or story counts", async () => {
@@ -467,7 +468,7 @@ describe("the reader's own profile", () => {
 
     await waitFor(() => view.getByTestId("profile-journey"));
     expect(view.queryByTestId("stat-grid")).toBeNull();
-    for (const gone of ["Reads", "Likes", "Phrases", "Chapters", "Stories"]) {
+    for (const gone of ["Reads", "Likes", "Chapters", "Stories"]) {
       expect(view.queryByText(gone)).toBeNull();
     }
   });
@@ -480,15 +481,16 @@ describe("the reader's own profile", () => {
     expect(view.queryByText("Profile")).toBeNull();
   });
 
-  it("opens the journey page with the profile it already loaded", async () => {
-    const profile = ownProfileFixture();
-    mockFetchOwnProfile.mockResolvedValue(profile);
+  // Journey reads the app-wide copy this screen just filled, so the row only
+  // has to navigate.
+  it("opens the journey page", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
     const props = profileProps();
 
     const view = await render(<ProfileScreen {...props} />);
-    await waitFor(() => view.getByTestId("profile-journey"));
+    await waitFor(() => view.getByText("Ada Lovelace"));
     fireEvent.press(view.getByTestId("profile-journey"));
-    expect(props.onJourney).toHaveBeenCalledWith(profile);
+    expect(props.onJourney).toHaveBeenCalled();
   });
 
   it("gives a signed-in reader both a way out and a way to delete", async () => {
@@ -508,6 +510,50 @@ describe("the reader's own profile", () => {
 
     await waitFor(() => view.getByTestId("profile-unavailable"));
     expect(view.queryByTestId("profile-public")).toBeNull();
+  });
+
+  // While the name is on its way, the row holds its shape: no "Your profile"
+  // that then renames itself, no public-profile row that pushes the rest
+  // down when it arrives, and no failure line for a request still running.
+  it("holds the layout still while the profile loads", async () => {
+    let answer!: (value: unknown) => void;
+    mockFetchOwnProfile.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const view = await render(<ProfileScreen {...profileProps()} />);
+
+    await waitFor(() => view.getByTestId("profile-name-skeleton"));
+    expect(view.getByTestId("profile-public-placeholder")).toBeTruthy();
+    expect(view.queryByText("Your profile")).toBeNull();
+    expect(view.queryByTestId("profile-unavailable")).toBeNull();
+    // The static rows are drawn from the first frame.
+    expect(view.getByTestId("profile-voices")).toBeTruthy();
+
+    await act(async () => {
+      answer(ownProfileFixture());
+    });
+    await waitFor(() => view.getByText("Ada Lovelace"));
+    expect(view.queryByTestId("profile-name-skeleton")).toBeNull();
+    expect(view.getByTestId("profile-public")).toBeTruthy();
+  });
+
+  // The tab unmounts on every switch. Coming back used to fetch from scratch
+  // and flash the skeleton; now it draws what it had at once.
+  it("comes back to the tab with the profile already drawn", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByText("Ada Lovelace"));
+    // The tab switch: the screen leaves the tree entirely, then comes back.
+    await view.rerender(<Text>Home</Text>);
+    expect(view.queryByText("Ada Lovelace")).toBeNull();
+
+    await view.rerender(<ProfileScreen {...profileProps()} />);
+    expect(view.getByText("Ada Lovelace")).toBeTruthy();
+    expect(view.queryByTestId("profile-name-skeleton")).toBeNull();
+    // Fresh enough that the revisit did not ask again.
+    expect(mockFetchOwnProfile).toHaveBeenCalledTimes(1);
   });
 
   // "Get more" opens Credits, not the paywall: D8 put every way of getting

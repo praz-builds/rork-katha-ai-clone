@@ -1,4 +1,4 @@
-import { controls, radius } from '@/theme';
+import { controls, fonts, radius, type } from '@/theme';
 import { BUTTON_RECIPE } from '@/components/Button';
 
 /*
@@ -505,15 +505,220 @@ describe('a busy label and a busy state', () => {
   });
 
   it('finds the sites it is meant to be watching', () => {
-    // A source-scanning guard that matches nothing passes forever. These four
+    // A source-scanning guard that matches nothing passes forever. These three
     // are the ones the sweep found; the assertion is that the scan still sees
     // them at all, not that they are the only ones allowed to exist.
     const watched = busyLabelledButtons().map((found) => found.file);
     expect(watched).toEqual(expect.arrayContaining([
-      'components/library/AddPhrasesSheet.tsx',
       'components/comments/CommentRow.tsx',
       'components/moderation/StoryActionsSheet.tsx',
       'components/profile/IdentityEditor.tsx',
     ]));
+  });
+});
+
+/**
+ * A CTA NEVER WEARS THE DISPLAY FACE.
+ *
+ * Bricolage is for headings and numbers (DESIGN.md, Typography). A control
+ * set in it reads as a title somebody made tappable, and Home's "See
+ * everything" did exactly that: a hand-rolled Pressable with its label in
+ * `fonts.display` at headline size, a scroll below a Button whose label is
+ * Hanken 17/700.
+ *
+ * The rule is enforced where a label is drawn: a `<Pressable>` whose only
+ * text is ONE `<Text>` is a text control, and that Text's style entries must
+ * not resolve to the display face -- either `fontFamily: fonts.display`, or a
+ * spread of a `type.*` step that is set in it (`largeTitle`, `title`,
+ * `section`, `titleSmall`) without overriding the family.
+ *
+ * Why "only one Text": a story card is a Pressable too, and its title is
+ * rightly in Bricolage beside a byline and a count. Several texts make a card;
+ * one text is a label.
+ *
+ * WHAT THIS DOES NOT CATCH: inline style objects, a label drawn by a child
+ * component rather than a `<Text>` written inside the Pressable, and styles
+ * that arrive through a variable. Same honest limit as the tall-pill scan.
+ */
+describe('a button label is never in the display face', () => {
+  /** The `type` steps that are set in the display face. */
+  const DISPLAY_STEPS = new Set(
+    Object.entries(type)
+      .filter(([, style]) => style.fontFamily === fonts.display)
+      .map(([name]) => name),
+  );
+
+  /** A one-Text Pressable whose display-face text is not a label. */
+  const DISPLAY_LABEL_ALLOWED: Record<string, string> = {
+    'components/comments/CommentRow.tsx#avatarInitial':
+      "An avatar's initial, drawn as a monogram. It is a picture of a " +
+      'person that happens to be a letter, not the words on a control.',
+  };
+
+  function isDisplayFace(body: string): boolean {
+    if (/fontFamily\s*:\s*fonts\.display\b/.test(body)) return true;
+    if (/fontFamily\s*:/.test(body)) return false;
+    // The LAST spread wins, as it does at runtime:
+    // `{ ...type.title, ...type.body }` is set in the UI face.
+    const spreads = [...body.matchAll(/\.\.\.type\.(\w+)/g)];
+    const last = spreads[spreads.length - 1];
+    return last !== undefined && DISPLAY_STEPS.has(last[1]);
+  }
+
+  /** Index of the `>` that ends the tag opening at `start`, outside braces. */
+  function tagEnd(source: string, start: number): number {
+    let depth = 0;
+    let index = start;
+    for (; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === '{') depth += 1;
+      else if (char === '}') depth -= 1;
+      else if (char === '>' && depth === 0) break;
+    }
+    return index;
+  }
+
+  /** The children of every non-self-closing `<Pressable>`, with its line. */
+  function pressableBodies(source: string): { inner: string; line: number }[] {
+    const found: { inner: string; line: number }[] = [];
+    const opener = /<Pressable\b/g;
+    let match: RegExpExecArray | null;
+    while ((match = opener.exec(source)) !== null) {
+      // The opening tag ends at the first `>` that is not inside braces.
+      const index = tagEnd(source, match.index);
+      if (source[index - 1] === '/') continue;
+      const tags = /<Pressable\b|<\/Pressable>/g;
+      tags.lastIndex = index;
+      let open = 1;
+      let end = source.length;
+      let tag: RegExpExecArray | null;
+      while ((tag = tags.exec(source)) !== null) {
+        if (tag[0] !== '</Pressable>') {
+          // A nested `<Pressable ... />` opens nothing; counting it as an
+          // opener ran the outer body to end of file.
+          const end = tagEnd(source, tag.index);
+          if (source[end - 1] !== '/') open += 1;
+          tags.lastIndex = end;
+          continue;
+        }
+        open -= 1;
+        if (open === 0) {
+          end = tag.index;
+          break;
+        }
+      }
+      found.push({
+        inner: source.slice(index + 1, end),
+        line: source.slice(0, match.index).split('\n').length,
+      });
+    }
+    return found;
+  }
+
+  /** `<file>#<style>` for every one-Text Pressable whose label is display. */
+  function displayLabels(source: string, relative: string): { key: string; where: string }[] {
+    const entries = new Map(styleEntries(source).map((e) => [e.name, e.body]));
+    const out: { key: string; where: string }[] = [];
+    for (const { inner, line } of pressableBodies(source)) {
+      const texts = [...inner.matchAll(/<Text\b([^>]*?)>/g)];
+      if (texts.length !== 1) continue;
+      for (const [, name] of texts[0][1].matchAll(/styles\.(\w+)/g)) {
+        const body = entries.get(name);
+        if (body !== undefined && isDisplayFace(body)) {
+          out.push({ key: `${relative}#${name}`, where: `${relative}:${line}` });
+        }
+      }
+    }
+    return out;
+  }
+
+  it('finds no Pressable label in fonts.display', () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      if (!/\.(tsx|jsx)$/.test(file)) continue;
+      const source = fs.readFileSync(file, 'utf8');
+      if (!source.includes('<Pressable')) continue;
+      const relative = path.relative(SRC, file).split(path.sep).join('/');
+      for (const found of displayLabels(source, relative)) {
+        if (!(found.key in DISPLAY_LABEL_ALLOWED)) {
+          offenders.push(`${found.where} — "${found.key.split('#')[1]}" is in the display face`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('would catch the See everything row it was written for', () => {
+    const sample = `
+      <Pressable onPress={onSeeAll} style={styles.row} accessibilityRole="button">
+        <Text style={styles.label}>See everything</Text>
+        <ChevronRight size={18} />
+      </Pressable>
+      const styles = StyleSheet.create({
+        row: { paddingVertical: 16 },
+        label: { ...type.headline, fontFamily: fonts.display },
+        viaStep: { ...type.title },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#label']);
+    const viaStep = sample.replace('styles.label', 'styles.viaStep');
+    expect(displayLabels(viaStep, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#viaStep']);
+  });
+
+  it('still sees the label when a self-closing Pressable is nested inside', () => {
+    const sample = `
+      <Pressable onPress={go}>
+        <Pressable onPress={close} style={styles.dismiss} />
+        <Text style={styles.label}>Go</Text>
+      </Pressable>
+      <Text style={styles.elsewhere}>Not inside</Text>
+      const styles = StyleSheet.create({
+        dismiss: { width: 44 },
+        label: { fontFamily: fonts.display },
+        elsewhere: { fontFamily: fonts.ui },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx').map((f) => f.key)).toEqual(['x.tsx#label']);
+  });
+
+  it('reads the last type spread, as the runtime does', () => {
+    const sample = `
+      <Pressable onPress={go}><Text style={styles.label}>Go</Text></Pressable>
+      const styles = StyleSheet.create({
+        label: { ...type.title, ...type.body },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx')).toEqual([]);
+  });
+
+  it('leaves a story card alone', () => {
+    const sample = `
+      <Pressable onPress={open}>
+        <Text style={styles.title}>{story.title}</Text>
+        <Text style={styles.byline}>{story.author}</Text>
+      </Pressable>
+      const styles = StyleSheet.create({
+        title: { fontFamily: fonts.display },
+        byline: { fontFamily: fonts.ui },
+      });
+    `;
+    expect(displayLabels(sample, 'x.tsx')).toEqual([]);
+  });
+
+  it('does not carry a stale allow-list entry', () => {
+    const stale: string[] = [];
+    for (const key of Object.keys(DISPLAY_LABEL_ALLOWED)) {
+      const [relative] = key.split('#');
+      const file = path.join(SRC, relative);
+      if (!fs.existsSync(file)) {
+        stale.push(`${key} (file is gone)`);
+        continue;
+      }
+      const source = fs.readFileSync(file, 'utf8');
+      if (!displayLabels(source, relative).some((found) => found.key === key)) {
+        stale.push(`${key} (no longer a display label)`);
+      }
+    }
+    expect(stale).toEqual([]);
   });
 });

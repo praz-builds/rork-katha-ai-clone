@@ -6,7 +6,7 @@ import {
   View,
 } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import { Sparkles } from "lucide-react-native";
+import { RefreshCw } from "lucide-react-native";
 import DirectionChoices from "@/components/DirectionChoices";
 import {
   canExtend,
@@ -597,7 +597,7 @@ export default function ChapterEnd({
             onPress={onReimagine}
             testID="chapter-end-reimagine"
           >
-            <Sparkles size={16} color={colors.accent} />
+            <RefreshCw size={16} color={colors.accent} />
             <Text style={styles.secondaryButtonText}>{reimagineLabel}</Text>
           </Pressable>
         ) : null}

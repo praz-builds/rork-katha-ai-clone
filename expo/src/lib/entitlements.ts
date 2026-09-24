@@ -23,17 +23,18 @@ import { revenueCatService } from "./revenuecat";
 /**
  * Character images ANY account may generate before each one costs a credit.
  *
- * Six, for the life of the account, generations and edits alike -- and the
- * same six whether or not the user pays. It is not a free-tier allowance: the
+ * Three, for the life of the account, generations and edits alike -- and the
+ * same three whether or not the user pays. (Six until 2026-09-24; the product
+ * owner cut it to three, migration 00096.) It is not a free-tier allowance: the
  * subscriber exemption that used to make portraits unlimited on a plan was
  * withdrawn on 2026-09-14, and `CREDITS_AND_PRICING.md` §3 carries the note
  * saying the paywall still sells unlimited while this deployment caps it.
  *
- * The number is duplicated in migration 00088, which is the one that enforces
+ * The number is duplicated in migration 00096, which is the one that enforces
  * it. This copy exists to QUOTE a price, never to decide one -- see the module
  * note above.
  */
-export const FREE_PORTRAITS_PER_ACCOUNT = 6;
+export const FREE_PORTRAITS_PER_ACCOUNT = 3;
 
 /** Reimagines a free account may run per chapter, on its own stories. */
 export const FREE_REIMAGINES_PER_CHAPTER = 1;
@@ -144,14 +145,14 @@ export function reimagineQuote({
  *
  * `subscribed` is deliberately not a parameter any more. A plan used to buy
  * unlimited portraits, and the server enforced no such thing; since 00088 it
- * enforces six for everybody, so quoting "Included in your plan" to a
+ * enforces three for everybody, so quoting "Included in your plan" to a
  * subscriber would be the client promising something the server will refuse --
  * which is the exact failure this module exists to prevent.
  */
 export function portraitQuote({
   usedOnAccount,
   /**
-   * Whether this identity may BUY once its six are gone.
+   * Whether this identity may BUY once its free images are gone.
    *
    * An anonymous one may not: the server refuses it outright
    * (`p_may_purchase` is false for a guest, migration 00088) because its

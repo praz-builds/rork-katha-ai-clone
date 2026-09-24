@@ -90,13 +90,13 @@ export type IdentityLens = "queer";
  * New drafts may be created in these languages. Existing stories keep theirs.
  *
  * PORTUGUESE IS GONE from the offer. It was in every language picker in the
- * app -- the create brief, the add-phrases sheet -- and nothing behind it was
- * ever built for it: no narration voice, no phrase corpus, none of the prose
+ * app, and nothing behind it was ever built for it: no narration voice,
+ * none of the prose
  * rules tuned for it. Offering a language the product cannot actually write
  * or speak is a promise broken at the moment somebody takes it up.
  *
  * The TYPE deliberately still admits it, and `normalizeCreationLanguage` still
- * recognises it, because stories and saved phrases already carry it and those
+ * recognises it, because existing stories already carry it and those
  * rows must keep resolving. It simply cannot be chosen any more.
  */
 export type CreationLanguage = "English" | "Portuguese";
@@ -571,6 +571,14 @@ export type CreateDraft = {
      */
     referenceImage?: string;
     /**
+     * The attached photo's file name, shown back to the writer under the
+     * portrait ("IMG_2231.jpg · Remove"). Display only, and cleared together
+     * with `referenceImage`. Neither the portrait call nor `shape-story`
+     * sends it: `generateCharacterImage` takes the photo alone, and
+     * `inferStoryBrief` maps the cast to name/background/appearance/isHero.
+     */
+    referenceImageName?: string;
+    /**
      * The `user_characters` row this character came from, when the writer
      * picked them out of their saved-character library instead of writing a
      * new one (migration 00057).
@@ -694,7 +702,12 @@ export type Screen =
     /** Which screen Close returns to, so Listen never strands the reader. */
     returnTo: "story" | "reader" | "tabs";
   }
-  | { name: "author"; authorId: string }
+  | {
+    name: "author";
+    authorId: string;
+    /** Set when opened from the reader, so Back returns to that chapter. */
+    returnTo?: { storyId: string; chapterIndex: number };
+  }
   /**
    * "Your journey" — the reader's own streak, activity calendar and
    * milestones. A page rather than a section of the profile because the
@@ -705,5 +718,4 @@ export type Screen =
   /** The narration voice picker, reached from the profile. */
   | { name: "voices" }
   | { name: "credits" }
-  | { name: "paywall" }
-  | { name: "practice" };
+  | { name: "paywall" };

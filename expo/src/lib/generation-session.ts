@@ -47,7 +47,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { clearDraft } from "@/lib/draft-storage";
 import { isOwnStory } from "@/lib/ownership";
 import { normalizeText } from "@/lib/paginate";
-import type { ReimagineRun } from "@/lib/reimagine-client";
+import { startReimagine, type RepromptRequest, type ReimagineRun } from "@/lib/reimagine-client";
 import {
   CHAPTER_ART_CREDITS,
   CHAPTER_TEXT_CREDITS,
@@ -198,6 +198,13 @@ export type GenerationSession = {
   readonly chapter: Chapter | null;
   readonly startedAt: number;
   readonly finishedAt: number | null;
+  /**
+   * True for a Re-prompt: the chapter already on screen is being written
+   * again. The reader covers it with the crafting screen until the first
+   * settled page of the new version exists, where a continuation instead
+   * opens straight onto its own (empty) opener.
+   */
+  readonly rewrite?: boolean;
 };
 
 export type StartStoryInput = {
@@ -881,9 +888,17 @@ export function forkOf(
 export function adoptReimagineGeneration(input: {
   run: ReimagineRun;
   story: Story;
-  chapterNumber: number;
+  /**
+   * Defaults to the chapter the run was asked to rewrite. Hosts should not
+   * pass their own: App once passed the chapter the reader was OPENED at,
+   * so re-prompting chapter 3 blanked chapter 1.
+   */
+  chapterNumber?: number;
+  /** How a retry starts a fresh run. Injected by tests; `startReimagine` otherwise. */
+  restart?: (request: RepromptRequest) => ReimagineRun;
 }): GenerationSession {
-  const { run, story, chapterNumber } = input;
+  const { run, story, restart = startReimagine } = input;
+  const chapterNumber = input.chapterNumber ?? run.request.chapterNumber;
   const now = Date.now();
   pruneFinished(now);
   const id = createGenerationRequestId();
@@ -912,57 +927,82 @@ export function adoptReimagineGeneration(input: {
       chapter: null,
       startedAt: now,
       finishedAt: null,
+      rewrite: true,
     },
     raw: "",
     requestId: createGenerationRequestId(),
     deferred: defer(),
-    // Not restartable in place: the run is already away and retrying it would
-    // be a second charge. A failed rewrite is retried from the sheet.
+    // Replaced below, once `follow` exists.
     start: () => {},
     coverTimer: null,
     coverAttempts: 0,
   };
   records.set(id, record);
+  // Published now, not on the run's first event. Nothing else here publishes
+  // until prose or a stage change arrives, so the session was invisible to
+  // every subscriber for the first seconds of the rewrite: the reader went on
+  // showing the old chapter with no loader, then dropped to a blank page.
+  publish();
 
-  let seen = 0;
-  const unsubscribe = run.subscribe(() => {
-    if (run.stage && run.stage !== record.session.stage) {
-      update(id, { stage: run.stage });
-    }
-    if (run.text.length > seen) {
-      const chunk = run.text.slice(seen);
-      seen = run.text.length;
-      acceptChunk(record, chunk);
-    }
-  });
+  /*
+    A retry is a NEW run, not a replay. `startReimagine` mints a fresh request
+    id, and the server refunded the failed operation, so this is one charge
+    for one rewrite -- the same as re-submitting the sheet. It used to be a
+    no-op (`start: () => {}`), and because a host takes the run before the
+    reader wires its own failure branch, a failed rewrite left the reader on
+    an empty chapter with a Retry that did nothing and no way back to the sheet.
+  */
+  let current = run;
+  const follow = (active: ReimagineRun) => {
+    current = active;
+    let seen = 0;
+    const unsubscribe = active.subscribe(() => {
+      if (current !== active) return;
+      if (active.stage && active.stage !== record.session.stage) {
+        update(id, { stage: active.stage });
+      }
+      if (active.text.length > seen) {
+        const chunk = active.text.slice(seen);
+        seen = active.text.length;
+        acceptChunk(record, chunk);
+      }
+    });
 
-  run.promise.then(
-    (result) => {
-      unsubscribe();
-      settle(record, {
-        phase: "complete",
-        stage: "done",
-        chapterTitle: result.chapter.title,
-        chapter: result.chapter,
-        creditsCharged: CHAPTER_TEXT_CREDITS,
-        // A READER WHO IS NOT THE AUTHOR GETS A PRIVATE COPY, AND THE SESSION
-        // HAS TO SAY SO. The server writes the rewrite into a fork and returns
-        // its id; the session was keyed to the SOURCE story, so app state
-        // looked for the rewritten chapter on a story that does not have it,
-        // found chapter 3 already there, and dropped the result on the floor.
-        // The copy the reader now owns was invisible: not in their library,
-        // never opened, and charged for.
-        storyId: result.storyId,
-        story: result.forked && result.storyId !== story.id
-          ? forkOf(story, result.storyId, result.chapter)
-          : null,
-      });
-    },
-    (error: unknown) => {
-      unsubscribe();
-      fail(record, error);
-    },
-  );
+    active.promise.then(
+      (result) => {
+        unsubscribe();
+        if (current !== active) return;
+        settle(record, {
+          phase: "complete",
+          stage: "done",
+          chapterTitle: result.chapter.title,
+          chapter: result.chapter,
+          creditsCharged: CHAPTER_TEXT_CREDITS,
+          // A READER WHO IS NOT THE AUTHOR GETS A PRIVATE COPY, AND THE SESSION
+          // HAS TO SAY SO. The server writes the rewrite into a fork and returns
+          // its id; the session was keyed to the SOURCE story, so app state
+          // looked for the rewritten chapter on a story that does not have it,
+          // found chapter 3 already there, and dropped the result on the floor.
+          // The copy the reader now owns was invisible: not in their library,
+          // never opened, and charged for.
+          storyId: result.storyId,
+          story: result.forked && result.storyId !== story.id
+            ? forkOf(story, result.storyId, result.chapter)
+            : null,
+        });
+      },
+      (error: unknown) => {
+        unsubscribe();
+        if (current !== active) return;
+        fail(record, error);
+      },
+    );
+  };
+  record.start = () => {
+    beginRun(record);
+    follow(restart(current.request));
+  };
+  follow(run);
 
   return record.session;
 }
@@ -1437,8 +1477,9 @@ export function splitProseParagraphs(prose: string): string[] {
 /**
  * The chapter a session is writing, as the reader can show it right now.
  *
- * The id is namespaced so nothing persistent - a phrase save, a comment - is
- * ever keyed against a chapter the server has not yet named.
+ * The id is namespaced (`live:<session>`) so it can never collide with a
+ * chapter id the server has named; it is replaced by the real chapter the
+ * moment the session completes.
  */
 export function liveChapterFor(session: GenerationSession): Chapter {
   const completed = session.chapter;
