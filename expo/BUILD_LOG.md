@@ -1673,6 +1673,7 @@ and `deno check` clean.
 - Created `src/lib/adapty.ts`: Adapty v4 SDK wrapper for paywall products, purchases, and restore.
 - Created `src/lib/notifications.ts`: expo-notifications setup with permission request, push token retrieval, and Android notification channels (default + stories).
 - Created `src/lib/firebase-analytics.ts`: Firebase Analytics wrapper with safe dynamic imports (works in Expo Go/web, activates in EAS builds). Pre-defined AppEvents for onboarding, story creation, monetization (Google Ads ROAS), engagement, and acquisition.
+  - *Removed 2026-09-25 (#138): both `@react-native-firebase` packages and `firebase-analytics.ts` are gone; they were never configured and added the AD_ID permission.*
 - Created `src/lib/tracking-transparency.ts`: iOS App Tracking Transparency wrapper.
 - Added i18n infrastructure: i18next + react-i18next + expo-localization with device locale detection. 400+ strings extracted into en.json (English), es.json (Spanish), pt.json (Portuguese).
 - Updated app.json with plugins (Sentry, notifications, ATT, updates), OTA update config, and runtime version policy.

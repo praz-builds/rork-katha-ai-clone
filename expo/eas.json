@@ -21,7 +21,11 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "env": { "APP_ENV": "production", "EXPO_PUBLIC_APP_ENV": "production" }
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
     }
   },
   "submit": {

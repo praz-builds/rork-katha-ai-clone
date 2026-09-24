@@ -232,7 +232,14 @@ export function avatarMessage(reason: Exclude<AvatarResult, { ok: true }>["reaso
  * on this screen.
  */
 export async function pickAndUploadAvatar(): Promise<AvatarResult> {
-  if (!(await ensurePhotoLibraryAccess())) return { ok: false, reason: "permission" };
+  let allowed = false;
+  try {
+    allowed = await ensurePhotoLibraryAccess();
+  } catch {
+    // A permission request that throws (iOS only; Android asks nothing) is a
+    // refusal, not a crash on the Profile screen.
+  }
+  if (!allowed) return { ok: false, reason: "permission" };
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],

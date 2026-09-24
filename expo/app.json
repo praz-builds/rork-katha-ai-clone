@@ -20,17 +20,12 @@
         }
       ],
       "expo-tracking-transparency",
-      [
-        "expo-updates",
-        {
-          "username": "katha-ai"
-        }
-      ],
+      "expo-updates",
       "expo-secure-store",
       [
         "expo-image-picker",
         {
-          "photosPermission": "Katha uses a photo you choose as a style reference for a character illustration. The face is always original art, never a real person's likeness.",
+          "photosPermission": "Katha uses a photo you choose as your profile picture, or as a style reference for a character illustration (the character's face is always original art).",
           "cameraPermission": false,
           "microphonePermission": false
         }
