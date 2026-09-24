@@ -7,6 +7,69 @@
 
 ---
 
+## 2026-09-24 UTC — Profile, Your journey and the public page stop waiting on the network
+
+**Session:** PR 1 of the 2026-09-24 plan, worktree `codex/profile-speed`.
+Client and two functions. **Deploy after merge: `bootstrap-user`, `profile`.**
+No migration.
+
+### Why it was slow (measured against production, house session, 2026-09-24)
+
+| Call | Warm median |
+|---|---|
+| `bootstrap-user` | 2,714 ms |
+| `profile` `me` | 1,246 ms |
+| `profile` `calendar` | 776 ms |
+| `profile` `public` | 882 ms |
+
+Every one of those `profile` calls was preceded by a fresh `bootstrap-user`, so
+opening the Profile tab cost ~4 s in two round trips in a row, Journey ~3.5 s,
+and the Profile tab re-did it on every tab switch because it unmounts. Boot had
+already fetched the profile and thrown it away.
+
+### What changed
+
+- `bootstrapUser()` keeps its answer, keyed by the session's access token.
+  A new session (sign-in, sign-out, a converted guest, a refreshed token) is a
+  miss; `bootstrapUser({ fresh: true })` / `invalidateBootstrap()` for a caller
+  that knows the balance moved (Credits, post-sign-in). A request in flight
+  across an invalidation cannot re-seed the cache.
+- `src/lib/profile-store.ts`: one app-wide copy of the own profile and
+  calendar, filled at boot, drawn at once by Profile/Journey/own public page,
+  refreshed behind them (30 s freshness), persisted to AsyncStorage for cold
+  starts, cleared on sign-out. Each value carries `idle | loading | ready |
+  error`, so loading no longer shows "could not be loaded".
+- Journey loads the profile itself when opened without one, with a Retry.
+  The Profile tab prefetches the calendar.
+- `ActivityGrid`: the `useMemo` keyed on a `new Date()` default and never hit;
+  it now keys on the day number and the joined day list, the component is
+  `memo`ized, and each week column is memoized on its seven cells.
+- `bootstrap-user`: `ensure_identity` / the guest grant, the ledger balance and
+  `character_image_free_remaining` run in parallel (`runBootstrapReads` in
+  `_shared/guest-bootstrap.ts`). The profile upsert stays first.
+- `profile` `public`: the profile row and the story list are read in parallel.
+- `profile` `me`: **left sequential on purpose.** `profile_overview` reads
+  `referral_summary()`, which counts `referrals.credited_at` -- the column
+  `settle_referrals` writes -- so running them together could show a referral
+  as unpaid right after it was paid.
+
+### Review round (Fable)
+
+- The device copy is now `katha.ownProfile.v2`: a projection (name, handle,
+  avatar, bio, streaks, follow counts, ladder) with its `userId`. It never
+  holds the referral code, the entitlement override or `phrasesSaved`. v1 is
+  deleted on read.
+- It is removed together with `katha.displayName.v1` in `signOutToSignIn` and
+  in the dead-session guest restart. Hydrate ignores a record whose user is
+  not the viewer. App clears the store at boot and at `completeSignIn` when
+  the session's user differs from it. A failed refresh drops a held copy that
+  belongs to somebody else.
+- A profile for a different user bumps the store epoch, so a calendar request
+  made for the previous account lands nowhere.
+- A story charge calls `invalidateBootstrap()`, so the character-image sheet
+  does not re-seed from the balance it had before the charge.
+- `src/__tests__/profile-store.test.ts` has one test per guard. I removed each
+  guard in turn and confirmed its test fails.
 ## 2026-09-24 UTC — Save phrase leaves the app, and Library gets your characters
 
 **Session:** worktree `codex/drop-phrases-add-characters` (PR #135). Client, edge

@@ -150,3 +150,63 @@ export async function hashAnonymousGrantScope(
     value.toString(16).padStart(2, "0")
   ).join("");
 }
+
+/** What the anonymous welcome grant answered. */
+export type GuestGrant = {
+  balance: number | null;
+  welcomeGranted: boolean;
+  rateLimited: boolean;
+};
+
+export type BootstrapReads = {
+  balance: number;
+  welcomeGranted: boolean;
+  rateLimited: boolean;
+  characterImagesFreeRemaining: number | null;
+};
+
+/**
+ * The steps `bootstrap-user` takes once the profile row exists, run together.
+ *
+ * They used to run one after another, and every screen that needs an identity
+ * waits on this call, so its latency was the sum of their round trips. None of
+ * them reads anything another one writes:
+ *
+ * - `ensure_identity` (named accounts) fills username, avatar and referral
+ *   code on `profiles`. Nothing here reads those.
+ * - The welcome grant (guests) writes the ledger, and answers with the balance
+ *   it produced -- which replaces the ledger read below. So a ledger read that
+ *   raced the grant cannot leak a pre-grant number: it is used only when the
+ *   grant did not answer with one.
+ * - The ledger balance and the free-image count are plain reads.
+ *
+ * The profile upsert is NOT in here and must stay before it: `ensure_identity`
+ * locks that row, and a brand-new account has no row until the upsert lands.
+ *
+ * A failed balance read or grant rejects the whole thing, as it always did.
+ * The identity step and the free-image count report their own failures and
+ * resolve.
+ */
+export async function runBootstrapReads(steps: {
+  guest: boolean;
+  ensureIdentity: () => Promise<void>;
+  grantGuest: () => Promise<GuestGrant>;
+  readBalance: () => Promise<number>;
+  readFreeRemaining: () => Promise<number | null>;
+}): Promise<BootstrapReads> {
+  const [grant, ledgerBalance, characterImagesFreeRemaining] = await Promise
+    .all([
+      steps.guest
+        ? steps.grantGuest()
+        : steps.ensureIdentity().then(() => null),
+      steps.readBalance(),
+      steps.readFreeRemaining(),
+    ]);
+
+  return {
+    balance: typeof grant?.balance === "number" ? grant.balance : ledgerBalance,
+    welcomeGranted: grant?.welcomeGranted === true,
+    rateLimited: grant?.rateLimited === true,
+    characterImagesFreeRemaining,
+  };
+}

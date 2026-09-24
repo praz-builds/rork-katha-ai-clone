@@ -8,6 +8,7 @@ import {
   hashAnonymousGrantScope,
   isAnonymousUser,
   readGuestClaimToken,
+  runBootstrapReads,
 } from "../_shared/guest-bootstrap.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 
@@ -43,92 +44,99 @@ serve(async (req) => {
 
     const guest = isAnonymousUser(user);
 
-    // A name, a face and an invite code, before the first screen renders.
-    //
-    // `ensure_identity` (00089) fills `username`, `avatar_id` and
-    // `referral_code` only when they are null, so this is a no-op on every
-    // call after the first and cheap enough to make unconditionally. It runs
-    // here because this is the one request every client makes at boot and
-    // again after sign-in, which means a profile can never reach the home
-    // screen as an unnamed, faceless row -- the state the old flow left
-    // anybody who skipped the identity editor.
-    //
-    // NOT for a guest. A pre-auth session is infrastructure (D1: nobody gets
-    // past onboarding without an email), and handing one a handle and an
-    // invite code would burn both on an account that is about to be thrown
-    // away -- and put a referral code into the hands of something that costs
-    // nothing to create.
-    //
-    // Reported, never fatal: a person with credits and no handle can still
-    // read, and failing boot over a cosmetic default would be the worse
-    // outcome by a wide margin.
-    if (!guest) {
-      const { error: identityError } = await serviceClient.rpc(
-        "ensure_identity",
-        { p_user_id: user.id },
-      );
-      if (identityError) {
-        await logError({
-          bucket: "engagement",
-          severity: "low",
-          source: "runtime",
-          errorCode: "ensure_identity_failed",
-          error: identityError,
-          userId: user.id,
-        });
-      }
-    }
-
-    let balance = await getBalance(serviceClient, user.id);
-    let welcomeGranted = false;
-    let rateLimited = false;
-
-    if (guest) {
-      const scope = anonymousGrantScope(req);
-      const scopeHash = scope
-        ? await hashAnonymousGrantScope(scope, serviceRoleKey)
-        : null;
-      if (!scopeHash) {
-        rateLimited = true;
-      } else {
-        const { data: result, error: bootstrapError } = await serviceClient.rpc(
-          "bootstrap_anonymous_user",
-          { p_user_id: user.id, p_scope_hash: scopeHash },
+    // Everything after the profile row exists, in one round of parallel calls
+    // rather than four in a row. `runBootstrapReads` (`_shared/guest-bootstrap.ts`)
+    // records why none of these depends on another.
+    const {
+      balance,
+      welcomeGranted,
+      rateLimited,
+      characterImagesFreeRemaining,
+    } = await runBootstrapReads({
+      guest,
+      // A name, a face and an invite code, before the first screen renders.
+      //
+      // `ensure_identity` (00089) fills `username`, `avatar_id` and
+      // `referral_code` only when they are null, so this is a no-op on every
+      // call after the first and cheap enough to make unconditionally. It runs
+      // here because this is the one request every client makes at boot and
+      // again after sign-in, which means a profile can never reach the home
+      // screen as an unnamed, faceless row -- the state the old flow left
+      // anybody who skipped the identity editor.
+      //
+      // NOT for a guest. A pre-auth session is infrastructure (D1: nobody gets
+      // past onboarding without an email), and handing one a handle and an
+      // invite code would burn both on an account that is about to be thrown
+      // away -- and put a referral code into the hands of something that costs
+      // nothing to create.
+      //
+      // Reported, never fatal: a person with credits and no handle can still
+      // read, and failing boot over a cosmetic default would be the worse
+      // outcome by a wide margin.
+      ensureIdentity: async () => {
+        const { error: identityError } = await serviceClient.rpc(
+          "ensure_identity",
+          { p_user_id: user.id },
         );
+        if (identityError) {
+          await logError({
+            bucket: "engagement",
+            severity: "low",
+            source: "runtime",
+            errorCode: "ensure_identity_failed",
+            error: identityError,
+            userId: user.id,
+          });
+        }
+      },
+      grantGuest: async () => {
+        const scope = anonymousGrantScope(req);
+        const scopeHash = scope
+          ? await hashAnonymousGrantScope(scope, serviceRoleKey)
+          : null;
+        if (!scopeHash) {
+          return { balance: null, welcomeGranted: false, rateLimited: true };
+        }
+        const { data: result, error: bootstrapError } = await serviceClient
+          .rpc(
+            "bootstrap_anonymous_user",
+            { p_user_id: user.id, p_scope_hash: scopeHash },
+          );
         if (bootstrapError) throw bootstrapError;
         if (!result || typeof result !== "object") {
           throw new Error("Anonymous bootstrap returned an invalid result");
         }
-        balance = typeof result.balance === "number" ? result.balance : balance;
-        welcomeGranted = result.welcome_granted === true;
-        rateLimited = result.rate_limited === true;
-      }
-    }
-
-    // How many of the six free character images are left, so the client can
-    // price the button BEFORE the user taps it.
-    //
-    // It rides on bootstrap rather than on an endpoint of its own because this
-    // is the one call every client already makes at boot and after sign-in, and
-    // a second round trip for one small integer would be a second thing to keep
-    // in sync. A failure degrades to null and the client quotes nothing rather
-    // than quoting a guess -- an affordance that lies about a price is worse
-    // than one that shows none.
-    let characterImagesFreeRemaining: number | null = null;
-    {
-      const { data, error } = await serviceClient.rpc(
-        "character_image_free_remaining",
-        { p_user_id: user.id },
-      );
-      if (error) {
-        console.error(
-          "character_image_free_remaining failed:",
-          safeErrorMessage(error),
+        return {
+          balance: typeof result.balance === "number" ? result.balance : null,
+          welcomeGranted: result.welcome_granted === true,
+          rateLimited: result.rate_limited === true,
+        };
+      },
+      readBalance: () => getBalance(serviceClient, user.id),
+      // How many of the six free character images are left, so the client can
+      // price the button BEFORE the user taps it.
+      //
+      // It rides on bootstrap rather than on an endpoint of its own because
+      // this is the one call every client already makes at boot and after
+      // sign-in, and a second round trip for one small integer would be a
+      // second thing to keep in sync. A failure degrades to null and the client
+      // quotes nothing rather than quoting a guess -- an affordance that lies
+      // about a price is worse than one that shows none.
+      readFreeRemaining: async () => {
+        const { data, error } = await serviceClient.rpc(
+          "character_image_free_remaining",
+          { p_user_id: user.id },
         );
-      } else if (typeof data === "number") {
-        characterImagesFreeRemaining = data;
-      }
-    }
+        if (error) {
+          console.error(
+            "character_image_free_remaining failed:",
+            safeErrorMessage(error),
+          );
+          return null;
+        }
+        return typeof data === "number" ? data : null;
+      },
+    });
 
     // A character made before sign-in, on the one path where the identity
     // could not be kept. See migration 00082 for why this is verified here
