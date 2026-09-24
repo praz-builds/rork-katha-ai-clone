@@ -37,35 +37,41 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-21)
+## Production state (2026-09-24)
 
-**Production is current with main.** Verified on 2026-09-21 rather than
-assumed: the migration ledger matches main exactly through `00095` (no
-local-only, no remote-only), and `audio-status` and `generate-audio` were
-deployed in that order after `00095_chapter_audio_chunks` was applied.
+**Production is current with main, file for file.** Verified on 2026-09-24
+rather than assumed: the migration ledger matches main exactly through `00096`
+(no local-only, no remote-only), and every one of the **33** deployed functions
+was downloaded and every `.ts` file in each bundle compared byte for byte with
+main. All 33 are identical. The four phrase functions (`save-phrase`,
+`unsave-phrase`, `phrases`, `record-practice`) were deleted from the project
+after #135.
 
-Measured on production immediately after, not inferred from a green suite: a
-2-chunk chapter returned a `chunk_manifest`, its **first playable chunk arrived
-at 45.8s** and the whole chapter completed at 67.3s -- against the 101.6s the
-2026-09-19 entry measured for a 2-chunk chapter before any audio existed at
-all. `purpose: "prefetch"` answered **503**, because
-`NARRATION_PREFETCH_ENABLED` is deliberately unset. Re-run
-`backend/originals/verify-narration-deploy.ts` to check any of that again.
+That audit is also the lesson from the same night. Checking only the functions a
+PR's own folder touched had left **16 functions behind main**, some since #107 on
+2026-09-19. The worst was `publish-story`, which was still running the entity
+privacy gate #107 removed. A change to a `_shared/` file reaches every function
+that imports it, and those functions need deploying too. `deno info --json
+<fn>/index.ts` lists what a function imports.
+
+`backend/scripts/smoke-app-surface.py` passed **43/43** against production that
+night: bootstrap, profile, shaping, generation, edit, publish (public on request,
+chapters published), the cover served publicly, and audio-status. It cleans
+up after itself and leaves no user behind. `character_image_free_remaining`
+answers 3 for a new account (00096).
+
+The narration numbers from 2026-09-21 still stand: on a 2-chunk chapter the
+first playable chunk came at 45.8s and the whole chapter at 67.3s, and
+`purpose: "prefetch"` answers 503 while `NARRATION_PREFETCH_ENABLED` is unset.
+Re-run `backend/originals/verify-narration-deploy.ts` to check again.
 
 **The client is not deployed and cannot be.** `expo/app.json` still carries the
 literal `u.expo.dev/UPDATE_PROJECT_ID` and an empty EAS `projectId`, so there is
 no OTA channel and no build to update. Client changes merged to main are live
 on nothing; `scripts/preview.sh` is the only way to see them.
 
-The 2026-09-20 verification, still true: `stories.story_bible_rev` exists, and
-the deployed bundles for `continue-story`, `generate-story-stream` and
-`audio-status` were read back and contain the #113 and #115 changes.
-
-All 37 functions are listed ACTIVE, which is not the same claim: that is the
-platform saying a deployment exists, not that its code matches main. Only the
-three above were opened and checked. When it matters for a specific function,
-check that one -- a version number and an `ACTIVE` status cannot tell you which
-commit is inside.
+`ACTIVE` in `supabase functions list` only means a deployment exists. It does
+not mean the code matches main. Check the bundle contents, not the status.
 
 The `music` bucket holds 24 tracks and is served publicly; #116's client reads
 from it, so the bucket and its objects are a deploy dependency of that release,

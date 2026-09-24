@@ -7,6 +7,62 @@
 
 ---
 
+## 2026-09-24 UTC — Seven PRs merged and deployed, and sixteen functions found behind main
+
+**Session:** orchestration of the launch-week lanes. Merged #136, #133, #131, #135,
+#132, #129, #134 and #127, each after a Fable review with its fixes landed and CI
+green. What had to be fixed at merge time:
+- #135 deleted `PhraseCaptureReader.tsx`, which #131 had just edited. Resolved by
+  deleting the file; `onAuthor` was already on `<ReaderScreen>`.
+- #132's profile cache still set `phrasesSaved`, a field #135 had removed.
+- #129 changed `pickReferenceImage()` to return `{ dataUrl, fileName }`, but #135's
+  new Library › Characters tab still stored the result as a string.
+  `tsc` caught both breaks after the merges. CI on each branch alone could not.
+
+### Deploy
+
+1. `supabase db push`: applied `00096_character_images_three_free` only.
+2. Deployed `bootstrap-user generate-character-image profile shape-story
+   generate-story generate-story-stream continue-story edit-story
+   reimagine-chapter`. The live bundles were read back: `fetchPhraseSeeds`
+   is absent from both generators, and the control symbol is present.
+   `phrasesSaved` is absent from `profile`.
+3. Deleted `save-phrase unsave-phrase phrases record-practice`.
+4. **Full drift audit, which found 16 more.** Every function's bundle was
+   downloaded and diffed against main. `publish-story` still ran the entity gate
+   #107 removed on 09-19. `feed` and `library` were on pre-#107 code.
+   `regenerate-cover`, `voices` and `seed-voice-previews` had old shared image and
+   narration modules. Ten more differed only in `_shared/errors.ts`. All 16 were
+   redeployed. The re-audit found 33/33 identical to main.
+
+### The production smoke had been broken, not the product
+
+`smoke-app-surface.py` died at its fixture on every run, so it had not tested
+anything since 00060:
+- `smoke_` plus 16 hex is 22 characters, and `profiles_username_shape` allows 20.
+  The insert's status was ignored, so the failure surfaced one step later as a
+  foreign-key error from `grant_credit`.
+- It deleted `error_events` rows, but `service_role` has no DELETE there. None is
+  needed: 00023 dropped the foreign key and 00025 nulls `user_id` when a
+  profile is deleted.
+- It never deleted `streaks`, which blocks a profile delete.
+- It published without `visibility`, which is private by design. So "story is
+  public" failed against correct code.
+- It decoded the cover's PNG bytes as UTF-8. That raised, and a served image
+  was reported as "HTTP 0".
+- The cover is drawn in the background, so the check now waits up to 90s for it.
+
+After the fixes it passed **43/43** against production. The orphaned August
+fixture profile `smoke_6aad7a6d3d294b` and its six stories were removed.
+`smoke_bec922ba2be5` and `smoketester` were left alone, because either may be a
+real tester account. Three runs cost $0.21 of OpenRouter. The balance is
+**$3.08**, under MONITORING.md's $10 P0 line.
+
+Local: `scripts/smoke.sh` on main passes end to end. That is 1446 jest tests,
+1061 edge tests, 295 migration tests and a real web bundle.
+
+---
+
 ## 2026-09-24 UTC — Why "Where does it begin?" had no chips, and the service watch-list
 
 **Session:** worktree `codex/opening-chips-watchlist`. **Deploy after merge:
