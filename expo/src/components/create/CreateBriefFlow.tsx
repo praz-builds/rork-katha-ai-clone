@@ -40,6 +40,7 @@ import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
 import type { DropdownOption } from "@/components/create/Dropdown";
 import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
+import { ensurePhotoLibraryAccess } from "@/lib/photo-access";
 import * as storyApi from "@/lib/api";
 import {
   useCharacterImageBalance,
@@ -181,8 +182,7 @@ const MAX_REFERENCE_IMAGE_CHARS = 6 * 1024 * 1024;
  * portrait request and is dropped as soon as it has been used.
  */
 export async function pickReferenceImage(): Promise<PickedReferenceImage | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
+  if (!(await ensurePhotoLibraryAccess())) {
     Alert.alert(
       "Photo access needed",
       "Katha needs permission to open your photos so you can attach a reference.",
