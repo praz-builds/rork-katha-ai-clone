@@ -555,6 +555,23 @@ describe("the reference photo", () => {
     expect(screen.getByLabelText("Attach a reference photo")).toBeTruthy();
   });
 
+  it("asks before discarding a sheet whose only change is the photo", async () => {
+    mockLaunchImageLibrary.mockResolvedValue({
+      canceled: false,
+      assets: [{ base64: "AAAA", mimeType: "image/jpeg", fileName: "IMG_2231.jpg" }],
+    });
+    await render(<Harness />);
+    await openCharacterSheet();
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("Attach a reference photo"));
+    });
+    await screen.findByText("IMG_2231.jpg");
+
+    await fireEvent.press(screen.getByLabelText("Back to review and start"));
+
+    expect(await screen.findByText("Save this character?")).toBeTruthy();
+  });
+
   it("sends the photo to the image call but never its name", async () => {
     mockLaunchImageLibrary.mockResolvedValue({
       canceled: false,

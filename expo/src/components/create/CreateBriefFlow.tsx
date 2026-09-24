@@ -454,7 +454,9 @@ function truncateForDisplay(text: string, max: number) {
  * raise a "you have unsaved changes" dialog. `portraitStatus` is deliberately
  * NOT part of it: it moves idle -> generating -> ready on its own while the
  * user sits there, and a status transition is not an edit. `portraitUrl` is,
- * because a portrait that finished generating is real work to lose.
+ * because a portrait that finished generating is real work to lose. So is an
+ * attached reference photo: backing out of a sheet whose only change is the
+ * photo used to discard it without asking.
  */
 function characterFingerprint(character: CharacterDraft) {
   return JSON.stringify({
@@ -463,6 +465,11 @@ function characterFingerprint(character: CharacterDraft) {
     background: (character.background ?? "").trim(),
     isHero: character.isHero,
     portraitUrl: character.portraitUrl ?? "",
+    // The name stands in for the bytes: a different photo is a different
+    // name, and a fingerprint is not the place to hash megabytes of base64.
+    reference: character.referenceImage
+      ? character.referenceImageName ?? "attached"
+      : "",
   });
 }
 

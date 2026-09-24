@@ -143,9 +143,10 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     // The second bound, and the only one that survives a new session.
     //
-    // Six character images per user, for their whole life -- generations and
-    // edits alike, anonymous and named, free tier and plan -- and one credit
-    // each after that (migration 00088, `CREDITS_AND_PRICING.md` §3). This is
+    // Three free character images per user, for their whole life --
+    // generations and edits alike, anonymous and named, free tier and plan --
+    // and one credit each after that (migration 00088, with the number set by
+    // 00096; `CREDITS_AND_PRICING.md` §3). This is
     // what replaces "charges nothing, counts nothing": character onboarding
     // makes its aha before the email is asked for, so the first thing an
     // unverified identity can do here is spend money at the image provider, and
@@ -158,8 +159,8 @@ export async function handleRequest(req: Request): Promise<Response> {
     } = await serviceClient.rpc("claim_character_image_request", {
       p_user_id: user.id,
       p_request_id: requestId,
-      // An anonymous identity may use its three free images and no more. Its credits are the
-      // three from `bootstrap_user`, and those are for a story -- the thing
+      // An anonymous identity may use its three free images and no more. Its
+      // credits are the three from `bootstrap_user`, and those are for a story -- the thing
       // that converts them -- not for portraits they would spend before ever
       // writing one.
       p_may_purchase: user.is_anonymous !== true,
@@ -271,7 +272,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     };
 
     // A refusal from here down happens AFTER the reservation exists, so it has
-    // to settle it before it answers. Six is a small number to spend on a
+    // to settle it before it answers. Three is a small number to spend on a
     // request that never reached a provider, and a credit is worse.
     const refuse = async (body: unknown, status: number) => {
       await releaseReservation?.();

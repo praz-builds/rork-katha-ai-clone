@@ -2125,9 +2125,10 @@ Proportionate to a pre-launch app. Nine controls, and an explicit list of what
    grants in one transaction under `referral:referrer:{referred_id}` and
    `referral:invitee:{referred_id}`; tester accounts refused on either side.
 6. **Three character images per USER, for the life of the account, then 1 credit
-   each** (decided 2026-09-14 at six; amended to three 2026-09-24, migration
-   00096; enforced by migration 00088,
-   `claim_character_image_request`, enforced in `generate-character-image`).
+   each** (decided 2026-09-14 at six, migration 00088; amended to three
+   2026-09-24 by migration 00096, which redefines
+   `claim_character_image_request` and is the enforcement of the number today;
+   called from `generate-character-image`).
    This replaces the anonymous-only four of 2026-09-11 (migration 00084) and
    carries its counts forward rather than restarting them.
 

@@ -106,7 +106,8 @@ export function SavedCharactersPicker({
   const requestCloseCraft = useCallback(() => {
     const dirty = Boolean(
       buffer.name.trim() || buffer.background?.trim() ||
-        buffer.appearance.trim() || buffer.portraitUrl,
+        buffer.appearance.trim() || buffer.portraitUrl ||
+        buffer.referenceImage,
     );
     if (dirty) {
       setUnsavedPromptOpen(true);
