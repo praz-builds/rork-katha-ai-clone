@@ -239,5 +239,15 @@
     "morePoetic": "Mas poetico",
     "moreDramatic": "Mas dramatico",
     "simpler": "Mas simple"
+  },
+  "auth": {
+    "codeTitle": "Revisa tu correo",
+    "codeSub": "Escribe el c\u00f3digo de 6 d\u00edgitos que enviamos a {{email}}.",
+    "codeHint": "Escribe el c\u00f3digo de 6 d\u00edgitos",
+    "codeTooLong": "Tiene m\u00e1s de 6 d\u00edgitos. Pega solo el c\u00f3digo de 6 d\u00edgitos del correo m\u00e1s reciente.",
+    "codeMismatch": "Ese c\u00f3digo no coincide. Int\u00e9ntalo de nuevo o pide otro.",
+    "verify": "Verificar y continuar",
+    "resend": "Reenviar c\u00f3digo",
+    "differentEmail": "Usar otro correo"
   }
 }

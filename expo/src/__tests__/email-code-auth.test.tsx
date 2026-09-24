@@ -46,7 +46,7 @@ jest.mock("@expo/vector-icons", () => {
 });
 
 /* eslint-disable import/first */
-import { EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
+import { CODE_TOO_LONG, EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
 /* eslint-enable import/first */
 
 const HEADLINE = "Welcome back.";
@@ -107,15 +107,17 @@ describe("EmailCodeAuth", () => {
   });
 
   it("keeps a verify failure on the code step, with the code still editable", async () => {
-    mockVerifyEmailCode.mockRejectedValueOnce(new Error("no match"));
+    // Every code refused: the second one typed below is complete too, and
+    // submits itself.
+    mockVerifyEmailCode.mockRejectedValue(new Error("no match"));
     const { view, onVerified } = await mount();
     await reachCodeStep(view);
 
+    // The sixth digit submits on its own; there is no Verify tap here.
     await fireEvent.changeText(
       view.getByLabelText("Verification code"),
       "111111",
     );
-    await fireEvent.press(view.getByLabelText("Verify and continue"));
 
     await view.findByText("That code did not match. Try again or resend it.");
     // The box is still there and still takes input, not replaced by an error
@@ -144,7 +146,6 @@ describe("EmailCodeAuth", () => {
       view.getByLabelText("Verification code"),
       "424242",
     );
-    await fireEvent.press(view.getByLabelText("Verify and continue"));
 
     await waitFor(() => expect(onVerified).toHaveBeenCalledWith(EMAIL));
     expect(
@@ -169,11 +170,14 @@ describe("EmailCodeAuth", () => {
       view.getByLabelText("Verification code"),
       "123456",
     );
+    // A Verify tap after the auto-submit already succeeded is a no-op, not a
+    // second sign-in and a second `onVerified`.
     await fireEvent.press(view.getByLabelText("Verify and continue"));
 
     await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
     expect(onVerified).toHaveBeenCalledWith(EMAIL);
     expect(mockVerifyEmailCode).toHaveBeenCalledWith(EMAIL, "123456");
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
   });
 
   it("returns to the email step from the code step's Back, and calls onBack only from the email step", async () => {
@@ -228,5 +232,94 @@ describe("EmailCodeAuth", () => {
 
     await fireEvent.press(view.getByText("Use a different email"));
     view.getByLabelText("Email address");
+  });
+});
+
+/**
+ * Supabase sends a 6-digit code, and people paste it rather than type it. What
+ * a mail client or password manager hands over is rarely six bare digits.
+ */
+describe("EmailCodeAuth -- a 6-digit code, pasted or typed", () => {
+  it("does not let the field truncate a formatted paste before it is read", async () => {
+    const { view } = await mount();
+    await reachCodeStep(view);
+    // `maxLength={6}` cut "123 456" to "123 45" -- five digits, no code --
+    // before any normalising code ever saw it.
+    const input = view.getByLabelText("Verification code");
+    expect(input.props.maxLength ?? Infinity).toBeGreaterThan(
+      "123 456\n".length,
+    );
+  });
+
+  it.each([
+    ["with a space", "123 456"],
+    ["with a trailing newline", "123456\n"],
+    ["with a dash and padding", " 123-456 "],
+  ])("verifies a code pasted %s, without a Verify tap", async (_label, pasted) => {
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.changeText(view.getByLabelText("Verification code"), pasted);
+
+    await waitFor(() =>
+      expect(mockVerifyEmailCode).toHaveBeenCalledWith(EMAIL, "123456")
+    );
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits once, on the sixth typed digit", async () => {
+    const { view } = await mount();
+    await reachCodeStep(view);
+    const input = view.getByLabelText("Verification code");
+
+    for (const partial of ["1", "12", "123", "1234", "12345"]) {
+      await fireEvent.changeText(input, partial);
+    }
+    expect(mockVerifyEmailCode).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(input, "123456");
+    await waitFor(() => expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1));
+  });
+
+  it("refuses an 8-digit paste: no verify, empty boxes, and says why", async () => {
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "12345678",
+    );
+
+    await view.findByText(CODE_TOO_LONG);
+    expect(CODE_TOO_LONG).toContain("6-digit");
+    // Its first six are not the code; spending a verify on them only burns
+    // the rate limit.
+    expect(mockVerifyEmailCode).not.toHaveBeenCalled();
+    expect(mockReviewerSignIn).not.toHaveBeenCalled();
+    expect(onVerified).not.toHaveBeenCalled();
+    expect(view.getByLabelText("Verification code").props.value).toBe("");
+  });
+
+  it("says 6-digit code on the code step", async () => {
+    const { view } = await mount();
+    await reachCodeStep(view);
+    view.getByText(`Enter the 6-digit code we sent to ${EMAIL}.`);
+  });
+
+  it("retries the same code from Verify after the auto-submit was refused", async () => {
+    mockVerifyEmailCode.mockRejectedValueOnce(new Error("no match"));
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+
+    await fireEvent.changeText(
+      view.getByLabelText("Verification code"),
+      "654321",
+    );
+    await view.findByText("That code did not match. Try again or resend it.");
+
+    await fireEvent.press(view.getByLabelText("Verify and continue"));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(2);
   });
 });
