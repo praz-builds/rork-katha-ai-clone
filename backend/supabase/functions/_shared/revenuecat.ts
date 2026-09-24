@@ -9,6 +9,13 @@ export type RevenueCatProduct = {
   interval: "weekly" | "monthly" | "yearly" | null;
   credits: number;
   trialCredits: number | null;
+  /**
+   * The Google Play base plan id, for a subscription. RevenueCat names an
+   * Android subscription `<productId>:<basePlanId>` -- in the SDK and in every
+   * webhook it sends -- so the base plan is part of the product's identity.
+   * `backend/PLAY_BILLING_SETUP.md` is the checklist that creates it.
+   */
+  basePlanId: string | null;
 };
 
 /**
@@ -43,6 +50,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "weekly",
+    basePlanId: "weekly",
     credits: 20,
     trialCredits: 10,
   },
@@ -51,6 +59,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "monthly",
+    basePlanId: "monthly",
     credits: 50,
     trialCredits: 10,
   },
@@ -59,6 +68,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "yearly",
+    basePlanId: "yearly",
     credits: 50,
     trialCredits: 10,
   },
@@ -67,6 +77,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 2,
     trialCredits: null,
   },
@@ -75,6 +86,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 10,
     trialCredits: null,
   },
@@ -83,6 +95,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 50,
     trialCredits: null,
   },
@@ -91,6 +104,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 200,
     trialCredits: null,
   },
@@ -99,6 +113,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 1000,
     trialCredits: null,
   },
@@ -204,12 +219,44 @@ export function resolveRevenueCatCredit(
   };
 }
 
+/**
+ * The canonical product id for the id a store event carries, or null.
+ *
+ * iOS and every one-time pack arrive as the bare id. A Google Play
+ * subscription arrives as `<productId>:<basePlanId>` ("For Google Play
+ * products set up in RevenueCat after February 2023", RevenueCat's webhook
+ * field reference) -- `ai.katha.sub.yearly:yearly` -- and until this existed
+ * every Android subscription event was rejected as "Unknown product": paid
+ * for, and never credited.
+ *
+ * The base plan must be the one the catalogue names. Another base plan on the
+ * same subscription is another price or another billing period, and paying
+ * this plan's grant for it would be a guess; it stays "Unknown product" and
+ * lands in `payment_event_backlog`, where it is seen.
+ */
+export function canonicalRevenueCatProductId(
+  storeProductId: string | null | undefined,
+): string | null {
+  if (!storeProductId) return null;
+  const separator = storeProductId.indexOf(":");
+  const productId = separator === -1
+    ? storeProductId
+    : storeProductId.slice(0, separator);
+  if (!Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) return null;
+  if (separator === -1) return productId;
+  const basePlanId = storeProductId.slice(separator + 1);
+  const product = REVENUECAT_PRODUCT_MAP[productId];
+  return product.basePlanId !== null && product.basePlanId === basePlanId
+    ? productId
+    : null;
+}
+
 /** Resolve lifecycle identity without pretending a lifecycle event is a refund. */
 export function resolveRevenueCatIdentity(
   event: RevenueCatEvent,
 ): RevenueCatIdentity {
-  const productId = event.product_id;
-  if (!productId || !Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) {
+  const productId = canonicalRevenueCatProductId(event.product_id);
+  if (!productId) {
     throw new Error("Unknown product");
   }
   if (!event.id) throw new Error("Missing RevenueCat event ID");
