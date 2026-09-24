@@ -55,9 +55,12 @@ function fakeRun(chapterNumber: number) {
   const listeners = new Set<() => void>();
   const state = { text: "" };
   let resolve: (value: ReimagineResult) => void = () => {};
-  const promise = new Promise<ReimagineResult>((res) => {
+  let reject: (reason: unknown) => void = () => {};
+  const promise = new Promise<ReimagineResult>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
+  promise.catch(() => {});
   const run = {
     request: { storyId: story.id, chapterNumber, prompt: "Again, but at night." },
     get text() {
@@ -70,7 +73,9 @@ function fakeRun(chapterNumber: number) {
     promise,
     subscribe(listener: () => void) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   } as unknown as ReimagineRun;
   return {
@@ -79,6 +84,13 @@ function fakeRun(chapterNumber: number) {
       await act(async () => {
         resolve(value);
         await promise;
+        await Promise.resolve();
+      });
+    },
+    async reject(error: Error) {
+      await act(async () => {
+        reject(error);
+        await promise.catch(() => {});
         await Promise.resolve();
       });
     },
@@ -191,4 +203,79 @@ it("opens the new version on page 1 even when the old one was re-prompted from a
   await waitFor(() => {
     expect(view.getByLabelText("Pages").props.accessibilityValue).toMatchObject({ now: 1 });
   });
+});
+
+it("gives the crafting screen a Back control that leaves the reader", async () => {
+  // The overlay covers the reader and the reading area's tap is inert while a
+  // chapter is written, so on iOS and web this is the only way out.
+  const fake = fakeRun(1);
+  const session = adoptReimagineGeneration({ run: fake.run, story });
+  const onBack = jest.fn();
+  const view = await render(
+    <ReaderScreen story={story} liveSessionId={session.id} onBack={onBack} />,
+  );
+
+  expect(view.getByLabelText(LOADER)).toBeTruthy();
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("rewrite-overlay-back"));
+  });
+  expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+it("a failed rewrite says why, and Try again starts a fresh rewrite of the same request", async () => {
+  const first = fakeRun(1);
+  const second = fakeRun(1);
+  const restart = jest.fn(() => second.run);
+  const session = adoptReimagineGeneration({ run: first.run, story, restart });
+  const view = await render(
+    <ReaderScreen story={story} liveSessionId={session.id} onBack={jest.fn()} />,
+  );
+
+  await first.reject(new Error("The model gave up."));
+  await waitFor(() => expect(view.queryByLabelText(LOADER)).toBeNull());
+  expect(view.getByText(/The model gave up\./)).toBeTruthy();
+
+  await act(async () => {
+    await fireEvent.press(view.getByLabelText("Try again"));
+  });
+  // A NEW run for the same request -- not a replay of the failed one.
+  expect(restart).toHaveBeenCalledWith(first.run.request);
+  // Back behind the crafting screen until the new version's first page.
+  expect(view.getByLabelText(LOADER)).toBeTruthy();
+
+  await second.emit(longProse());
+  await waitFor(() => expect(view.queryByLabelText(LOADER)).toBeNull());
+  expect(view.getByTestId("reader-page-body-0")).toHaveTextContent(/She counted the lamps/);
+});
+
+it("rewrites the chapter the run was asked for, not the chapter the reader was opened at", async () => {
+  // App used to key the session to the chapter the reader was OPENED at, so
+  // turning to chapter 2 and re-prompting it blanked chapter 1. The session
+  // now takes its chapter from the run's own request.
+  const fake = fakeRun(2);
+  const session = adoptReimagineGeneration({ run: fake.run, story });
+  expect(session.chapterNumber).toBe(2);
+
+  const onChapterChange = jest.fn();
+  const view = await render(
+    <ReaderScreen
+      story={story}
+      initialChapterIndex={1}
+      liveSessionId={session.id}
+      onBack={jest.fn()}
+      onChapterChange={onChapterChange}
+    />,
+  );
+  expect(view.getByLabelText(LOADER)).toBeTruthy();
+
+  await fake.emit(longProse());
+  await waitFor(() => expect(view.queryByLabelText(LOADER)).toBeNull());
+  // Still on chapter 2, now showing the rewrite. A session keyed to chapter
+  // 1 would have pulled the reader back there and blanked it.
+  expect(view.getByTestId("reader-page-body-0")).toHaveTextContent(/She counted the lamps/);
+  expect(onChapterChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ chapterNumber: 2 }),
+    1,
+  );
+  expect(onChapterChange).not.toHaveBeenCalledWith(expect.anything(), 0);
 });

@@ -28,6 +28,12 @@ next client build / web preview.
   the chapter the reader was OPENED at rather than the one re-prompted
   (`run.request.chapterNumber` now). Tests: `reader-reprompt-loader.test.tsx`,
   `reimagine-live-session.test.ts`; both fail with their fix reverted.
+- **After review:** the crafting screen over a rewrite has a Back control
+  (the only exit on iOS and web; the rewrite keeps running). A failed rewrite
+  shows why and its Try again starts a fresh run of the same request —
+  `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
+  its chapter from the run's request, so App no longer passes one. A pending
+  web page-settle is dropped on chapter switch (tested with fake timers).
 
 ---
 

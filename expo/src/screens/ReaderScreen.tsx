@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import {
+  ChevronLeft,
   Ellipsis,
   Pause,
   Play,
@@ -251,9 +252,10 @@ const PAGE_RENDER_WINDOW = 2;
  * and never calls it, because the browser has no such event. A swipe there
  * snaps by CSS scroll-snap and reports nothing but `onScroll`, so the reader
  * turned pages and the Pages control kept saying "Page 1". Web instead
- * commits the page once scrolling has been quiet for this long -- a little
- * longer than react-native-web's own 100ms scroll-end timer, so the final
- * snapped offset is the one read.
+ * commits the page once scrolling has been quiet for this long. The timer is
+ * restarted by react-native-web's own final scroll-end emit (100ms after the
+ * last DOM scroll), so the commit lands about 250ms after the swipe stops and
+ * reads the snapped offset; the exact value matters little.
  */
 const WEB_PAGER_SETTLE_MS = 150;
 /**
@@ -788,7 +790,6 @@ export default function ReaderScreen({
     setChapterIndex((current) => {
       if (current === at) return current;
       setPageIndex(0);
-    setVisiblePage(0);
       setVisiblePage(0);
       setAnchorOffset(0);
       return at;
@@ -1213,7 +1214,6 @@ export default function ReaderScreen({
         setChapterEdits((prev) => ({ ...prev, [chapterId]: result.chapter.paragraphs.join("\n\n") }));
         setPageIndex(0);
         setVisiblePage(0);
-      setVisiblePage(0);
         if (result.forked) {
           setForkToast(true);
           setTimeout(() => setForkToast(false), 2500);
@@ -1609,18 +1609,24 @@ export default function ReaderScreen({
                       {showsFailureTail ? (
                         <View style={styles.failureTail}>
                           <Text style={[styles.failureText, { color: theme.muted }]}>
-                            {REFUND_NOTICE}
+                            {/* A failed rewrite says why, because the reader is
+                                looking at an empty chapter they asked for. */}
+                            {session?.rewrite && session.error
+                              ? `${session.error} ${REFUND_NOTICE}`
+                              : REFUND_NOTICE}
                           </Text>
                           <Pressable
                             onPress={() => {
                               if (session) retryGeneration(session.id);
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel="Retry"
+                            accessibilityLabel={session?.rewrite ? "Try again" : "Retry"}
                             hitSlop={8}
                             style={styles.failureRetry}
                           >
-                            <Text style={styles.failureRetryText}>Retry</Text>
+                            <Text style={styles.failureRetryText}>
+                              {session?.rewrite ? "Try again" : "Retry"}
+                            </Text>
                           </Pressable>
                         </View>
                       ) : null}
@@ -1840,6 +1846,23 @@ export default function ReaderScreen({
       {repromptWaiting || awaitingRewritePages ? (
         <View style={StyleSheet.absoluteFill} accessibilityLabel="Writing this chapter again">
           <GeneratingOverlay genre={story.genre} mode="chapter" />
+          {/*
+            The way out. The overlay covers the whole reader and the reading
+            area's tap is inert while a chapter is being written, so without
+            this only Android's hardware back could leave. Leaving does not
+            cancel anything: the rewrite keeps running in the session store,
+            and reopening the story lands back on it.
+          */}
+          <Pressable
+            testID="rewrite-overlay-back"
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.overlayBack}
+          >
+            <ChevronLeft size={22} color={colors.ink} />
+          </Pressable>
         </View>
       ) : null}
       {forkToast ? (
@@ -2246,6 +2269,15 @@ const styles = StyleSheet.create({
     ...type.caption,
     letterSpacing: 0,
     flexShrink: 1,
+  },
+  overlayBack: {
+    position: "absolute",
+    top: spacing.lg,
+    left: spacing.lg,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   failureRetry: {
     minHeight: 44,
