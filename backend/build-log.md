@@ -7,6 +7,37 @@
 
 ---
 
+## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
+
+**Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
+no migration and no function source changed. **Nothing to deploy.**
+
+- **Comments were not filtered by viewer.** Checked against production
+  read-only: the live SELECT policy on `comments` lets any authenticated
+  caller read a public or curated story's thread, `handleReadThread` filters by
+  `story_id` and the caller's own block list, and the deployed `comments`
+  bundle matches main. `select count(*) from comments` in production is **0**:
+  no comment has ever been stored, so "Comments (0)" was true. What the client
+  got wrong: any failed read (no session, offline, 5xx) rendered as "Comments
+  (0) / No comments yet", and a post answered by something other than a comment
+  row left the optimistic "You" row on screen for its writer alone. Both fixed
+  in `ChapterSocial`; a deno test pins cross-viewer visibility on a curated
+  story with chapter-attached comments.
+- **The author card never navigated.** It was a plain `View`, and neither
+  `ReaderScreen` nor `PhraseCaptureReader` had an `onAuthor` prop. App now
+  passes `setScreen({ name: "author", authorId })`, the same call the story
+  page uses.
+- **The author card and comments are cards now**, lifted off the page in
+  `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
+  Night) with `shadows.card`, replacing the hairline dividers.
+- **The reader no longer signs every story "Katha AI".** `authorFor` falls
+  back to the house account for any unknown id; the reader now resolves the
+  author through `useStoryAuthor` (`src/lib/story-author.ts`): the public
+  profile for a real account, the seed only for a seed id, "You" on your own
+  story. Follow is saved (`setAuthorFollow`), starts from the server, is hidden
+  on your own story, and Back from the author page returns to the chapter.
+- Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
+  has the same fallback.
 ## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
 
 **Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no

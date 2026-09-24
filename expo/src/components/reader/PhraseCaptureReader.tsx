@@ -105,6 +105,8 @@ export type PhraseCaptureReaderProps = {
    * a void because the sign-in gate never reached the reader.
    */
   onRequireSignIn?: () => void;
+  /** Forwarded to `ReaderScreen`: the chapter-end author card opens this. */
+  onAuthor?: (authorId: string, chapterIndex: number) => void;
 };
 
 const TOAST_VISIBLE_MS = 1800;
@@ -232,6 +234,7 @@ export default function PhraseCaptureReader({
   renderChapterEnd,
   liveSessionId = null,
   onRequireSignIn,
+  onAuthor,
   onReimagineStarted,
   onReimagineStory,
   onListen,
@@ -840,6 +843,7 @@ export default function PhraseCaptureReader({
             renderChapterEnd={renderChapterEnd}
             liveSessionId={liveSessionId}
             onRequireSignIn={onRequireSignIn}
+            onAuthor={onAuthor}
             onListen={onListen}
             onReimagineStarted={onReimagineStarted}
             onReimagineStory={onReimagineStory}

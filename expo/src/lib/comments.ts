@@ -249,12 +249,27 @@ export async function fetchCommentCount(storyId: string): Promise<number> {
 }
 
 export async function fetchThread(storyId: string): Promise<ServerComment[]> {
+  return (await fetchThreadPage(storyId)).comments;
+}
+
+/**
+ * The thread plus the server's exact count, or `total: null` when the reply
+ * carried none. A caller showing a number shows this one or none at all:
+ * counting the rows it happened to load undercounts past the first page.
+ */
+export async function fetchThreadPage(
+  storyId: string,
+): Promise<{ comments: ServerComment[]; total: number | null }> {
   const params = new URLSearchParams({ story_id: storyId });
-  const data = await invokeComments<{ comments?: WireComment[] }>(
-    `comments?${params.toString()}`,
-    { method: "GET" },
-  );
-  return (data?.comments ?? []).map(fromWire);
+  const data = await invokeComments<{
+    comments?: WireComment[];
+    pagination?: { total?: number };
+  }>(`comments?${params.toString()}`, { method: "GET" });
+  const total = data?.pagination?.total;
+  return {
+    comments: (data?.comments ?? []).map(fromWire),
+    total: typeof total === "number" && total >= 0 ? total : null,
+  };
 }
 
 export async function postComment(

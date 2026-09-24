@@ -99,6 +99,7 @@ export function Button({
   testID,
   accessibilityLabel,
   accessibilityHint,
+  selected,
   style,
 }: {
   label: string;
@@ -128,6 +129,8 @@ export function Button({
   /** Defaults to `label`. Give one when the label alone is not the whole act ("Read" -> "Read story"). */
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /** A toggle's on state (Follow / Following), announced as selected. */
+  selected?: boolean;
   /**
    * Layout only — margins, `flex`, `alignSelf`, `width`. The recipe (height,
    * radius, fill, border) is not passable: `ButtonLayoutStyle` omits those
@@ -151,7 +154,7 @@ export function Button({
         working". A screen reader that only ever hears "dimmed" cannot tell a
         purchase in flight from a form that is not filled in yet.
       */
-      accessibilityState={{ disabled: blocked, busy: loading }}
+      accessibilityState={{ disabled: blocked, busy: loading, selected }}
       style={({ pressed }) => [
         styles.base,
         size === "sm" ? styles.sizeSm : styles.sizeLg,

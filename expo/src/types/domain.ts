@@ -694,7 +694,12 @@ export type Screen =
     /** Which screen Close returns to, so Listen never strands the reader. */
     returnTo: "story" | "reader" | "tabs";
   }
-  | { name: "author"; authorId: string }
+  | {
+    name: "author";
+    authorId: string;
+    /** Set when opened from the reader, so Back returns to that chapter. */
+    returnTo?: { storyId: string; chapterIndex: number };
+  }
   /**
    * "Your journey" — the reader's own streak, activity calendar and
    * milestones. A page rather than a section of the profile because the
