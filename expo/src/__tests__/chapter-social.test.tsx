@@ -32,6 +32,11 @@ jest.mock("@/lib/comments", () => {
   };
 });
 
+const mockSetAuthorFollow = jest.fn();
+jest.mock("@/lib/api", () => ({
+  setAuthorFollow: (...args: unknown[]) => mockSetAuthorFollow(...args),
+}));
+
 import ChapterSocial from "@/components/reader/ChapterSocial";
 import { READER_THEMES } from "@/lib/reading-themes";
 /* eslint-enable import/first */
@@ -69,6 +74,8 @@ beforeEach(() => {
   cleanup();
   jest.clearAllMocks();
   mockFetchThread.mockResolvedValue([]);
+  mockSetAuthorFollow.mockImplementation((_id: string, on: boolean, count: number) =>
+    Promise.resolve({ on, count }));
 });
 
 afterEach(() => {
@@ -96,6 +103,28 @@ describe("the author card", () => {
       fireEvent.press(view.getByTestId("reader-follow"));
     });
     expect(onAuthor).not.toHaveBeenCalled();
+    expect(view.getByText("Following")).toBeTruthy();
+  });
+
+  it("saves the follow, and takes it back if the server refuses", async () => {
+    const view = await renderSocial({ author: { displayName: "Katha AI", followers: 10 } });
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId("reader-follow"));
+    });
+    expect(mockSetAuthorFollow).toHaveBeenCalledWith("author-uuid", true, 11);
+    expect(view.getByText("Following")).toBeTruthy();
+
+    mockSetAuthorFollow.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      fireEvent.press(view.getByTestId("reader-follow"));
+    });
+    await waitFor(() => expect(view.getByText("Following")).toBeTruthy());
+    expect(mockSetAuthorFollow).toHaveBeenLastCalledWith("author-uuid", false, 9);
+  });
+
+  it("starts from the follow the story already carries", async () => {
+    const view = await renderSocial({ initialFollowing: true });
     expect(view.getByText("Following")).toBeTruthy();
   });
 

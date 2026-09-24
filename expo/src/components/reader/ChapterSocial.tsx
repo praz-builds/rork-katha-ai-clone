@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Send } from "lucide-react-native";
+import { setAuthorFollow } from "@/lib/api";
 import { fetchThread, formatRelativeTime, postComment, type ServerComment } from "@/lib/comments";
 import type { ReaderTheme } from "@/lib/reading-themes";
 import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
@@ -15,7 +16,7 @@ import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
  * the elevation drawing the edge rather than a border.
  */
 
-export type ChapterSocialAuthor = { displayName: string; bio?: string };
+export type ChapterSocialAuthor = { displayName: string; bio?: string; followers?: number };
 
 type Row = { id: string; user: string; text: string; time: string; createdAt: number };
 
@@ -35,6 +36,8 @@ export type ChapterSocialProps = {
   onAuthor?: (authorId: string) => void;
   /** True when the tap was swallowed by the sign-in prompt. */
   requireSignIn: () => boolean;
+  /** Whether the viewer already follows this author, as the story carries it. */
+  initialFollowing?: boolean;
 };
 
 function toRow(comment: ServerComment, now: number): Row {
@@ -61,13 +64,15 @@ export default function ChapterSocial({
   theme,
   onAuthor,
   requireSignIn,
+  initialFollowing = false,
 }: ChapterSocialProps) {
   const social = theme.social;
   const [comments, setComments] = useState<Row[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [attempt, setAttempt] = useState(0);
   const [commentText, setCommentText] = useState("");
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(initialFollowing);
+  const followInFlight = useRef(false);
 
   /*
     Every reader's comments on this story, from the same endpoint the story
@@ -101,10 +106,26 @@ export default function ChapterSocial({
     };
   }, [storyId, attempt]);
 
+  /*
+    Follow is SAVED, the same way the story page saves it (`setAuthorFollow`):
+    optimistic, settled by the server's answer, rolled back on a refusal. It
+    used to flip local state only, so "Following" was gone on the next screen.
+  */
   const handleToggleFollow = useCallback(() => {
     if (requireSignIn()) return;
-    setIsFollowing((prev) => !prev);
-  }, [requireSignIn]);
+    if (followInFlight.current) return;
+    followInFlight.current = true;
+    const previousOn = isFollowing;
+    const nextOn = !previousOn;
+    setIsFollowing(nextOn);
+    const followers = author.followers ?? 0;
+    setAuthorFollow(authorId, nextOn, Math.max(0, followers + (nextOn ? 1 : -1)))
+      .then((result) => setIsFollowing(result.on))
+      .catch(() => setIsFollowing(previousOn))
+      .finally(() => {
+        followInFlight.current = false;
+      });
+  }, [author.followers, authorId, isFollowing, requireSignIn]);
 
   const openAuthor = useCallback(() => {
     onAuthor?.(authorId);

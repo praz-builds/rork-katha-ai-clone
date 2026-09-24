@@ -1516,6 +1516,7 @@ export default function ReaderScreen({
                         theme={theme}
                         onAuthor={onAuthor}
                         requireSignIn={requireSignIn}
+                        initialFollowing={story.viewerFollowsAuthor ?? false}
                       />
                       </View>
                     ) : null}
