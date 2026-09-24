@@ -240,7 +240,10 @@ const styles = StyleSheet.create({
   },
   gradientTitle: {
     marginTop: 2,
-    fontFamily: fonts.display,
+    // The UI face at button weight: this card is Home's write button, and a
+    // CTA never wears the display face (DESIGN.md, Typography).
+    fontFamily: fonts.ui,
+    fontWeight: "700",
     fontSize: 20,
     lineHeight: 24,
     color: colors.surface,
@@ -284,7 +287,10 @@ const styles = StyleSheet.create({
   },
   editorialTitle: {
     marginTop: 2,
-    fontFamily: fonts.display,
+    // The UI face at button weight: this card is Home's write button, and a
+    // CTA never wears the display face (DESIGN.md, Typography).
+    fontFamily: fonts.ui,
+    fontWeight: "700",
     fontSize: 20,
     lineHeight: 24,
     color: colors.ink,

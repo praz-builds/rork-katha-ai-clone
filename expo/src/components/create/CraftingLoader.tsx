@@ -7,7 +7,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { DottedGround } from "@/components/brand/DottedGround";
 import { KathaMark } from "@/components/brand/KathaMark";
-import { colors, fonts, motion } from "@/theme";
+import { colors, motion, type } from "@/theme";
 
 /**
  * The wait while a story is actually being written.
@@ -266,10 +266,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headlineText: {
-    fontFamily: fonts.display,
-    fontWeight: "700",
-    // 22 (`type.section`), the step this was one point short of.
+    // The create heading face (`type.createTitle`, Hanken bold) at the 22
+    // this fixed-height slot was drawn for; 26 would outgrow the 34pt row.
+    ...type.createTitle,
     fontSize: 22,
+    lineHeight: 28,
     color: colors.ink,
     textAlign: "center",
   },
