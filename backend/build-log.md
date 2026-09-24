@@ -7,6 +7,58 @@
 
 ---
 
+## 2026-09-24 UTC — Why "Where does it begin?" had no chips, and the service watch-list
+
+**Session:** worktree `codex/opening-chips-watchlist`. **Deploy after merge:
+`shape-story`.** No migration.
+
+### What production showed (read-only)
+
+The founder's newest story (reviewer account, 2026-09-24 10:00 UTC, "What the
+Mountain Locked") has `beats = []`. So the opening screen had nothing to offer,
+and the writer went on without a direction.
+
+- `shape-story` is healthy. The same idea, on the same account, called the way
+  DirectionStep calls it, returned 200 with three beats in 7.3s
+  (`meta/muse-spark-1.3-contributor`). The house account got the same result.
+- **The request never reached the server's rate-limit claim.** There is no
+  `story_shape_rate_limits` row for that account at all. There is one for the
+  anonymous account that made "The Wrong Pedigree" at 08:29:52, 39s before
+  that story, and that story did get its chips.
+- `error_events` has no `story_shape_*` row since 2026-09-09.
+- OpenRouter was answering. The balance is **$3.29 of $60**, with about $31
+  spent this month. That is not the cause, but it needs topping up.
+
+So the call failed on the client, before the server could count it. The
+client turned the failure into `null`. DirectionStep then showed "Katha has no
+opening to suggest for this idea yet", which reads as an answer, offers no
+Retry, and was logged nowhere. The exact client error cannot be recovered,
+because nothing recorded it. That gap is what this change fixes.
+
+### What changed
+
+- `DirectionStep` calls `inferStoryBrief(..., { throwOnError: true })`. A
+  failed lookup now shows "We couldn't load suggested openings" with a **Try
+  again** button, and reports `opening_directions_failed` with its reason (PostHog,
+  and Sentry once a DSN exists). "No opening to suggest" is kept for the case
+  where the model answered and had nothing usable.
+- When the model planned beats and `toDirection` refused every one, the screen
+  still says "no opening", but `opening_directions_all_dropped` is logged with
+  counts only.
+- `shape-story` now logs its two silent nulls: `story_shape_rate_limited` when
+  the claim is refused, and `story_shape_empty` when `parseStoryShape` returns
+  null (with the model name and response length, never the text). The handler
+  takes its dependencies as a parameter so `index.test.ts` can drive both
+  branches. Removing either log call makes those tests fail.
+- `backend/MONITORING.md` is the watch-list: all 33 remaining functions by
+  tier, the upstream providers, the buckets, the one cron job, what the smoke
+  suites cover, and how to check each P0 by hand.
+- `smoke-app-surface.py` now covers `bootstrap-user`, `profile` (`me`,
+  `ledger`) and `shape-story`: they must refuse anonymous callers, answer, and
+  shape-story must return beats.
+
+---
+
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no

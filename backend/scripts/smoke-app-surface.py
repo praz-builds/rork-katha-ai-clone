@@ -6,6 +6,15 @@ functions the Expo client calls outside generation. Five of these had never
 been deployed to the project at all, so this suite exists to keep that from
 being discovered by a user again.
 
+Also covers the three calls every session leans on before any of those:
+bootstrap-user (every screen's first load), profile (the You tab) and
+shape-story (the premise and "Where does it begin?" chips). All three are
+read-only from the product's point of view -- bootstrap-user is idempotent for
+an existing account, profile is asked for `me` and `ledger`, and shape-story
+spends no credit -- and all three were outside this suite until 2026-09-24,
+which is how an empty opening screen could go unnoticed. See
+backend/MONITORING.md for where this sits in the watch-list.
+
 Reads SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
 environment. Never prints key material, story prose, or seeds.
 """
@@ -13,6 +22,7 @@ import json
 import os
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -105,6 +115,9 @@ try:
         ("edit-story",    "POST", "/functions/v1/edit-story", {}),
         ("publish-story", "POST", "/functions/v1/publish-story", {}),
         ("generate-audio","POST", "/functions/v1/generate-audio", {}),
+        ("bootstrap-user","POST", "/functions/v1/bootstrap-user", {}),
+        ("profile",       "POST", "/functions/v1/profile", {"action": "me"}),
+        ("shape-story",   "POST", "/functions/v1/shape-story", {"idea": "x"}),
     ]:
         st, _ = req(method, path, body, key=ANON)
         check(f"1.x {name} is deployed (not 404)", st != 404, f"HTTP {st}")
@@ -115,6 +128,52 @@ try:
     # that an anonymous caller cannot see a private story. Checked in [3].
     st, _ = req("GET", "/functions/v1/library", key=ANON)
     check("1.x library is deployed and public by design", st == 200, f"HTTP {st}")
+
+    # ------------------------------------ 1b first load, profile, shaping
+    # Read-only calls, made before the generation below so a failure here is
+    # reported even when generation is what is broken.
+    print("\n[1b] Every screen's first load, the You tab, and shaping")
+    t0 = time.time()
+    st, boot = req("POST", "/functions/v1/bootstrap-user", {}, token=jwt, timeout=30)
+    boot_ms = int((time.time() - t0) * 1000)
+    check("1b.1 bootstrap-user 200", st == 200, f"HTTP {st} in {boot_ms}ms")
+    check("1b.2 bootstrap-user names this account",
+          isinstance(boot, dict) and boot.get("user_id") == uid)
+    check("1b.3 bootstrap-user returns a balance",
+          isinstance(boot, dict) and isinstance(boot.get("balance"), int),
+          str((boot or {}).get("balance")) if isinstance(boot, dict) else "")
+
+    t0 = time.time()
+    st, me = req("POST", "/functions/v1/profile", {"action": "me"}, token=jwt, timeout=30)
+    check("1b.4 profile me 200", st == 200,
+          f"HTTP {st} in {int((time.time() - t0) * 1000)}ms")
+    check("1b.5 profile me returns this account's profile",
+          isinstance(me, dict) and isinstance(me.get("profile"), dict))
+    st, ledger = req("POST", "/functions/v1/profile", {"action": "ledger"},
+                     token=jwt, timeout=30)
+    check("1b.6 profile ledger 200", st == 200, f"HTTP {st}")
+
+    # The same payload DirectionStep sends. `beats` is what the opening chips
+    # are made from, so an empty list here is the empty screen a writer sees.
+    t0 = time.time()
+    st, shaped = req("POST", "/functions/v1/shape-story",
+                     {"idea": "A lighthouse keeper on a remote island finds letters "
+                              "from her grandmother describing a shipwreck the "
+                              "village will not talk about.",
+                      "variant": "create", "genre": "mystery",
+                      "characters": [], "moments": [],
+                      "chapter_length": "standard",
+                      "planned_chapter_count": 3},
+                     token=jwt, timeout=60)
+    shape_ms = int((time.time() - t0) * 1000)
+    shape = shaped.get("shape") if isinstance(shaped, dict) else None
+    check("1b.7 shape-story 200", st == 200, f"HTTP {st} in {shape_ms}ms")
+    check("1b.8 shape-story returned a shape, not a null",
+          isinstance(shape, dict),
+          f"reason={shaped.get('reason')}" if isinstance(shaped, dict) and not shape else "")
+    check("1b.9 the shape carries opening beats",
+          isinstance(shape, dict) and len(shape.get("beats") or []) >= 1,
+          f"{len((shape or {}).get('beats') or [])} beats")
 
     # ---------------------------------------------------------- 2 a story
     print("\n[2] Generate a story to operate on")

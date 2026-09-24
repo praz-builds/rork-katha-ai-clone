@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, RotateCcw } from "lucide-react-native";
+import { Button } from "@/components/Button";
 import { CreditPill } from "@/components/KathaPrimitives";
 import DirectionChoices from "@/components/DirectionChoices";
 import type { ContinuationOption, DirectionStatus } from "@/components/DirectionChoices";
 import { toDirection } from "@/lib/directions";
 import * as storyApi from "@/lib/api";
+import { captureError, trackEvent } from "@/lib/analytics";
 import { MAX_BEAT_LENGTH, STORY_START_CREDITS } from "@/lib/pricing-limits";
 import { formatCredits } from "@/lib/pricing";
 import { colors, fonts, spacing } from "@/theme";
@@ -55,6 +57,12 @@ export type ResolvedDirections = {
    * replace chapter one's beat without discarding the rest of the outline.
    */
   beats: string[];
+  /**
+   * How many of `beats` the converter refused. Equal to `beats.length` with
+   * no options is the one "nothing to suggest" that is the client's doing
+   * rather than the idea's, and it is logged as such.
+   */
+  dropped: number;
 };
 
 /**
@@ -72,6 +80,15 @@ export type ResolvedDirections = {
  * phrased as a question becomes an instruction here exactly as a hook does
  * there. A beat it cannot convert grammatically is DROPPED, never replaced:
  * an invented opening would fit every story in the app.
+ *
+ * A FAILED CALL REJECTS. It used to resolve to an empty list: `inferStoryBrief`
+ * without `throwOnError` turns every failure -- a refused session, a network
+ * error, a rate limit, an unreadable answer -- into `null`, so the screen
+ * showed "Katha has no opening to suggest for this idea" when the truth was
+ * that it never got an answer. That is what the founder met on 2026-09-24,
+ * with nothing logged anywhere to say which. A rejection now reaches the
+ * screen as the failed state with a Retry; an empty list means the model
+ * really answered with nothing usable.
  */
 export async function resolveOpeningDirections(
   brief: DirectionBrief,
@@ -88,17 +105,30 @@ export async function resolveOpeningDirections(
       chapterLength: brief.chapterLength,
       plannedChapterCount: brief.plannedChapterCount,
     },
+    { throwOnError: true },
   );
   const beats = shape?.beats ?? [];
   const options: ContinuationOption[] = [];
+  let dropped = 0;
   beats.forEach((beat, index) => {
-    if (options.length >= MAX_OPTIONS) return;
+    // Converted even past MAX_OPTIONS, so `dropped` counts the whole plan.
     const prompt = toDirection(beat);
-    if (!prompt) return;
+    if (!prompt) {
+      dropped += 1;
+      return;
+    }
+    if (options.length >= MAX_OPTIONS) return;
     if (options.some((existing) => existing.prompt === prompt)) return;
     options.push({ id: `planned-beat-${index}`, prompt });
   });
-  return { options, beats };
+  return { options, beats, dropped };
+}
+
+/** Why the failed state is showing, as an enum safe for telemetry. */
+function failureReason(error: unknown): string {
+  return error instanceof storyApi.StoryShapeRequestError
+    ? error.reason
+    : "unknown";
 }
 
 export type DirectionStepProps = {
@@ -111,7 +141,7 @@ export type DirectionStepProps = {
    */
   onStart: (choice: { direction?: string; beats?: string[] }) => void;
   onBack: () => void;
-  /** Test seam. The real resolver is one network call and never rejects loudly. */
+  /** Test seam. The real resolver is one network call; it rejects when that call fails. */
   resolveDirections?: (brief: DirectionBrief) => Promise<ResolvedDirections>;
 };
 
@@ -128,6 +158,11 @@ export default function DirectionStep({
   const [unavailableReason, setUnavailableReason] = useState<string>(
     UNAVAILABLE_REASON.failed,
   );
+  // Only a FAILED lookup offers Retry. "No opening to suggest" is an answer,
+  // and asking the same question again would get the same one.
+  const [failed, setFailed] = useState(false);
+  // Bumped by Retry; the resolve effect re-runs on it and on nothing else.
+  const [attempt, setAttempt] = useState(0);
 
   /**
    * One start per visit, however many times a card is tapped.
@@ -139,9 +174,9 @@ export default function DirectionStep({
    */
   const startedRef = useRef(false);
 
-  // Resolved once per mount. Re-running on every `brief` identity change would
-  // re-shape (and re-offer different openings) while the writer is reading the
-  // ones they were given.
+  // Resolved once per mount, and again only when the writer taps Retry.
+  // Re-running on every `brief` identity change would re-shape (and re-offer
+  // different openings) while the writer is reading the ones they were given.
   const resolveRef = useRef(resolveDirections);
   resolveRef.current = resolveDirections;
   const briefRef = useRef(brief);
@@ -149,6 +184,7 @@ export default function DirectionStep({
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
+    setFailed(false);
     resolveRef.current(briefRef.current).then(
       (resolved) => {
         if (cancelled) return;
@@ -160,20 +196,45 @@ export default function DirectionStep({
           setOptions(resolved.options.slice(0, MAX_OPTIONS));
           setStatus("ready");
         } else {
+          // The model planned an opening and the converter refused every
+          // line of it. That is a client defect wearing the face of a thin
+          // idea, so it is counted. Counts only -- never the beats.
+          if (resolved.beats.length > 0 && resolved.dropped === resolved.beats.length) {
+            captureError({
+              bucket: "client.app",
+              severity: "low",
+              errorCode: "opening_directions_all_dropped",
+              error: new Error("opening_directions_all_dropped"),
+              context: { beats: resolved.beats.length, dropped: resolved.dropped },
+            });
+            trackEvent("opening_directions_all_dropped", {
+              beats: resolved.beats.length,
+            });
+          }
           setUnavailableReason(UNAVAILABLE_REASON.insufficient);
           setStatus("unavailable");
         }
       },
-      () => {
+      (error: unknown) => {
         if (cancelled) return;
+        const reason = failureReason(error);
+        captureError({
+          bucket: "client.app",
+          severity: "low",
+          errorCode: "opening_directions_failed",
+          error,
+          context: { reason, attempt },
+        });
+        trackEvent("opening_directions_failed", { reason, attempt });
         setUnavailableReason(UNAVAILABLE_REASON.failed);
+        setFailed(true);
         setStatus("unavailable");
       },
     );
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   const startOnce = (direction?: string) => {
     if (startedRef.current) return;
@@ -220,6 +281,23 @@ export default function DirectionStep({
         charLimit={MAX_BEAT_LENGTH}
         onChoose={startOnce}
       />
+      {/*
+        Retry sits under the choices, not inside them: DirectionChoices is the
+        shared chapter-end surface and has no failed-with-retry state of its
+        own. It is only here when the lookup FAILED -- the writer can still
+        type an opening or let Katha decide without it.
+      */}
+      {status === "unavailable" && failed ? (
+        <Button
+          label="Try again"
+          variant="secondary"
+          size="sm"
+          accessibilityLabel="Try loading suggested openings again"
+          onPress={() => setAttempt((value) => value + 1)}
+          icon={<RotateCcw size={16} color={colors.ink} />}
+          testID="create-direction-retry"
+        />
+      ) : null}
     </ScrollView>
   );
 }

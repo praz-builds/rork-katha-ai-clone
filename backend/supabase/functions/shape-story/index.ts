@@ -1,14 +1,23 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import {
+  logError,
+  type LogErrorInput,
+  safeErrorMessage,
+} from "../_shared/errors.ts";
 import {
   type ClassificationOutcome,
   EMPTY_RESOLVED_GROUNDING,
   reportClassificationFailure,
+  type ResolvedGrounding,
   resolveGrounding,
+  type ResolveGroundingInput,
 } from "../_shared/grounding-pipeline.ts";
-import { generateFastStructuredText } from "../_shared/llm.ts";
+import {
+  generateFastStructuredText,
+  type StructuredOutputSpec,
+} from "../_shared/llm.ts";
 import { readJsonObject } from "../_shared/operations.ts";
 import {
   buildStoryShapePrompt,
@@ -68,7 +77,73 @@ const SHAPE_DEADLINE_MS = 30_000;
 const ONBOARDING_SHAPE_MAX_TOKENS = 2_000;
 const SHAPE_MAX_TOKENS = 1_200;
 
-serve(async (req) => {
+/**
+ * Everything the handler reaches outside itself, so a test can stand in for
+ * the network.
+ *
+ * Injected rather than mocked at the module level because the two outcomes
+ * this seam exists to prove -- a refused claim and an unparseable answer --
+ * were both SILENT until 2026-09-24: they returned `{shape: null}` and wrote
+ * nothing, so "Where does it begin?" could come up empty for a writer while
+ * `error_events` held no row to say why. A test that cannot drive those two
+ * branches cannot keep them logged.
+ */
+export type ShapeStoryDeps = {
+  /** The caller's user id from their JWT, or null when it is not accepted. */
+  authenticate: (authHeader: string) => Promise<string | null>;
+  /** The per-caller rate-limit claim. `true` means go ahead. */
+  claim: (userId: string) => Promise<boolean>;
+  shape: (
+    systemPrompt: string,
+    userPrompt: string,
+    output: StructuredOutputSpec,
+    maxTokens: number,
+    deadlineMs: number,
+  ) => Promise<{ text: string; model: string }>;
+  ground: (input: ResolveGroundingInput) => Promise<ResolvedGrounding>;
+  log: (input: LogErrorInput) => Promise<unknown>;
+  reportClassification: typeof reportClassificationFailure;
+};
+
+function serviceClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
+
+const defaultDeps: ShapeStoryDeps = {
+  authenticate: async (authHeader) => {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  },
+  claim: async (userId) => {
+    const { data, error } = await serviceClient().rpc(
+      "claim_story_shape_request",
+      { p_user_id: userId },
+    );
+    if (error) throw error;
+    return data === true;
+  },
+  shape: generateFastStructuredText,
+  ground: (input) => resolveGrounding({ ...input, cache: serviceClient() }),
+  log: logError,
+  reportClassification: reportClassificationFailure,
+};
+
+if (import.meta.main) {
+  serve((req) => handleRequest(req));
+}
+
+export async function handleRequest(
+  req: Request,
+  deps: ShapeStoryDeps = defaultDeps,
+): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
   const respond = (body: unknown, status = 200) =>
@@ -79,14 +154,8 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return respond({ error: "Unauthorized" }, 401);
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return respond({ error: "Unauthorized" }, 401);
-    userId = user.id;
+    userId = await deps.authenticate(authHeader);
+    if (!userId) return respond({ error: "Unauthorized" }, 401);
 
     const body = await readJsonObject(req);
     const idea = typeof body?.idea === "string" ? body.idea.trim() : "";
@@ -110,10 +179,6 @@ serve(async (req) => {
       plannedChapterCount: body?.planned_chapter_count,
     });
 
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     /**
      * The one limit left, and it is not a ceiling on the product.
      *
@@ -132,11 +197,7 @@ serve(async (req) => {
      * stays in the RPC signature, accepted and ignored, so that a migration
      * and a function deploy in either order are both correct.
      */
-    const { data: allowed, error: rateLimitError } = await serviceClient.rpc(
-      "claim_story_shape_request",
-      { p_user_id: user.id },
-    );
-    if (rateLimitError) throw rateLimitError;
+    const allowed = await deps.claim(userId);
     /**
      * A refused claim is capacity, not content, and the client could not tell.
      *
@@ -145,8 +206,25 @@ serve(async (req) => {
      * onboarding on its error screen with no way past it. Onboarding now falls
      * back to a preview built from what the writer typed, which is the right
      * answer whether they hit the per-minute window or the model failed.
+     *
+     * And it is logged. It used to be the one refusal that left no trace, so
+     * a writer who hit it saw an empty "Where does it begin?" screen and
+     * `error_events` had nothing to say about it. Not awaited: the writer is
+     * watching this response.
      */
     if (allowed !== true) {
+      void Promise.resolve(deps.log({
+        bucket: "llm.provider",
+        severity: "low",
+        source: "runtime",
+        errorCode: "story_shape_rate_limited",
+        error: new Error("story_shape_rate_limited"),
+        context: {
+          feature: "story_shape",
+          kind: onboarding ? "onboarding" : "create",
+        },
+        userId,
+      })).catch(() => {});
       return respond({ shape: null, reason: "rate_limited" });
     }
 
@@ -171,7 +249,7 @@ serve(async (req) => {
       // with it. A rejected grounding promise here would cost the writer their
       // shaped brief for a convenience they never asked for.
       const [shapeResult, groundingResult] = await Promise.allSettled([
-        generateFastStructuredText(
+        deps.shape(
           onboarding
             ? ONBOARDING_SHAPE_SYSTEM_PROMPT
             : STORY_SHAPE_SYSTEM_PROMPT,
@@ -180,13 +258,12 @@ serve(async (req) => {
           onboarding ? ONBOARDING_SHAPE_MAX_TOKENS : SHAPE_MAX_TOKENS,
           onboarding ? ONBOARDING_SHAPE_DEADLINE_MS : SHAPE_DEADLINE_MS,
         ),
-        resolveGrounding({
+        deps.ground({
           idea,
           // The writer's own cast, forced to `private_individual` by the
           // parser. This is the enforcement half of the rule that a user's
           // named family never becomes a search query.
           characterNames: brief.characters?.map((c) => c.name).filter(Boolean),
-          cache: serviceClient,
           deadlineMs: onboarding
             ? ONBOARDING_SHAPE_DEADLINE_MS
             : SHAPE_DEADLINE_MS,
@@ -209,15 +286,49 @@ serve(async (req) => {
       // response and a telemetry insert must never be in front of it.
       const classification = classified.outcome;
       if (classification && classification.status !== "ok") {
-        void reportClassificationFailure({
+        void deps.reportClassification({
           outcome: classification,
           feature: "story_shape",
           userId,
         }).catch(() => {});
       }
 
+      const shape = parseStoryShape(shapeResult.value.text);
+      /*
+        THE MODEL ANSWERED AND THERE IS NOTHING TO USE.
+
+        A provider that returns text `parseStoryShape` cannot read -- truncated
+        JSON, the wrong schema, an empty string -- was the second silent null.
+        The response is unchanged (the client degrades exactly as before); what
+        changes is that it is countable, with the model that did it and how
+        much it said, never what it said.
+      */
+      if (!shape) {
+        void Promise.resolve(deps.log({
+          bucket: "llm.provider",
+          severity: "low",
+          source: "runtime",
+          errorCode: "story_shape_empty",
+          error: new Error("story_shape_empty"),
+          context: {
+            feature: "story_shape",
+            kind: onboarding ? "onboarding" : "create",
+            model: shapeResult.value.model,
+            chars: shapeResult.value.text.length,
+          },
+          userId,
+        })).catch(() => {});
+        return respond({
+          shape: null,
+          reason: "unavailable",
+          model: shapeResult.value.model,
+          grounding: grounding.cards,
+          grounding_entities: grounding.entities,
+        });
+      }
+
       return respond({
-        shape: parseStoryShape(shapeResult.value.text),
+        shape,
         model: shapeResult.value.model,
         // Echoed to the client, which carries both into the generation request.
         // They are re-validated there; see the note in validation.ts on why
@@ -233,7 +344,7 @@ serve(async (req) => {
       // Shape is optional scaffolding. Record the provider condition without
       // retaining the user's idea, then let Screen 2 render normally.
       console.error("shape-story provider error:", safeErrorMessage(error));
-      await logError({
+      await deps.log({
         bucket: "llm.provider",
         severity: "low",
         source: "runtime",
@@ -246,7 +357,7 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error("shape-story error:", safeErrorMessage(error));
-    await logError({
+    await deps.log({
       bucket: "generation.story",
       severity: "low",
       source: "runtime",
@@ -257,7 +368,7 @@ serve(async (req) => {
     });
     return respond({ shape: null, reason: "unavailable" });
   }
-});
+}
 
 function jsonResponse(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

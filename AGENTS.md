@@ -182,6 +182,8 @@ The rules:
 
 `logError()` never throws and never blocks the response path -- a telemetry failure degrades to a console line. Keep the existing `console.error` alongside it for live tailing.
 
+**What to watch, and how:** [`backend/MONITORING.md`](backend/MONITORING.md) is the service watch-list -- every edge function by tier (P0 to P2), the upstream providers (OpenRouter balance, Gemini, RunPod, Brave), the storage buckets, the one scheduled job, what the smoke suites cover, and a by-hand check for each P0. A function added without a row there is a function nobody is watching. A failure that produces an empty state instead of an error is the kind this list exists to catch: "Where does it begin?" showed no chips on 2026-09-24 with nothing logged anywhere.
+
 `context` stores identifiers and enums only. Never story prose, seeds, prompts, or any free user text.
 
 ### Sentry push alerts (narration)
@@ -1271,5 +1273,6 @@ CodeAnt reviews `main` pull requests, including drafts and incremental pushes. *
 - **Cover images (full reference):** `backend/COVER_IMAGES.md`.
 - **Backend roadmap:** `backend/ROADMAP.md` -- phased execution plan with checklists.
 - **Build log:** `backend/build-log.md` -- chronological change record.
+- **Service watch-list:** `backend/MONITORING.md` -- what must be up, how bad each outage is, and how to check it.
 - **Expo design contract:** `expo/DESIGN.md`.
 - **Expo build log:** `expo/BUILD_LOG.md`.
