@@ -42,14 +42,14 @@ import {
   refreshOwnProfile,
   useOwnProfileStore,
 } from "@/lib/profile-store";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
 import { revenueCatService } from "@/lib/revenuecat";
 import { signOutToSignIn } from "@/lib/session";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
-/** The legal pages (D12). Opened in the system browser, never rendered in-app. */
-export const PRIVACY_URL = "https://katha.thetractionlabs.com/privacy";
-export const TERMS_URL = "https://katha.thetractionlabs.com/terms";
+/** The legal pages (D12), shared with the paywall. Re-exported for existing callers. */
+export { PRIVACY_URL, TERMS_URL };
 
 /**
  * The reader's own profile.

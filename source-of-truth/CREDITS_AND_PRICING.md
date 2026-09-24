@@ -1114,6 +1114,15 @@ Eight SKUs, one entitlement (`katha`). The server-side product map is
 `_shared/revenuecat.ts`; migration 00089 and the functions deployed with it
 carry this list.
 
+**Store-side configuration** — the Google Play base plan ids (`weekly`,
+`monthly`, `yearly`), the RevenueCat packages and offerings, and the setup
+steps — is in [`backend/PLAY_BILLING_SETUP.md`](../backend/PLAY_BILLING_SETUP.md).
+That file repeats the prices above only as a checklist convenience; tests fail
+if its prices or ids drift from this table or from the code, and this table
+wins. The app buys the yearly **base plan**, never an offer, so the 3-day
+trial is not created for launch: no surface discloses a trial today
+(2026-09-25).
+
 > **The `reader.*` and `writer.*` SKU families are retired** with the two-audience
 > grid, and **`ai.katha.credits.{5,30,100,300}` are retired with the six-pack
 > grid** *(2026-09-16)*. **Neither family ever shipped to a store** — as of this

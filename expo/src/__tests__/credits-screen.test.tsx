@@ -64,7 +64,11 @@ jest.mock("@/lib/revenuecat", () => ({
 
 /* eslint-disable import/first */
 import CreditsScreen from "@/screens/CreditsScreen";
-import { WEB_PURCHASE_NOTE } from "@/components/credits/CreditPacksSheet";
+import {
+  STORE_UNAVAILABLE_NOTE,
+  unavailablePurchaseNote,
+  WEB_PURCHASE_NOTE,
+} from "@/components/credits/CreditPacksSheet";
 import { CREDIT_PACKS } from "@/lib/pricing";
 import { ownProfile } from "@/test-support/profileFixtures";
 /* eslint-enable import/first */
@@ -159,7 +163,9 @@ it("opens the packs sheet and disables purchase where the store cannot be reache
   }
   const button = view.getByTestId("credit-packs-purchase");
   expect(button.props.accessibilityState.disabled).toBe(true);
-  expect(view.getByText(WEB_PURCHASE_NOTE)).toBeTruthy();
+  // A native build with no store says the store is missing, not "work in the app".
+  expect(view.getByText(STORE_UNAVAILABLE_NOTE)).toBeTruthy();
+  expect(view.queryByText(WEB_PURCHASE_NOTE)).toBeNull();
   // The store was never asked, because it cannot answer.
   expect(mockFindPackageByProductId).not.toHaveBeenCalled();
 });
@@ -231,4 +237,13 @@ it("shows the invite code the profile carries", async () => {
   await waitFor(() => view.getByTestId("credits-invite-code"));
   expect(view.getByTestId("credits-invite-code").props.children).toBe("ada42");
   expect(view.getByTestId("credits-invite-share")).toBeTruthy();
+});
+
+// Why the Purchase button is disabled decides what it says: web is told to use
+// the app, a native build with no store key is told the store is missing, and
+// a configured store that does not sell a pack says that pack is unavailable.
+it("words a disabled Purchase by the reason it is disabled", () => {
+  expect(unavailablePurchaseNote("web", false)).toBe(WEB_PURCHASE_NOTE);
+  expect(unavailablePurchaseNote("android", false)).toBe(STORE_UNAVAILABLE_NOTE);
+  expect(unavailablePurchaseNote("android", true)).toBe("This pack isn't available right now");
 });

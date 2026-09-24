@@ -14,12 +14,14 @@
  */
 import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { Linking, Platform } from "react-native";
 
 const mockGetOfferings = jest.fn();
 const mockPurchasePackage = jest.fn();
 const mockPresentCustomerCenter = jest.fn();
 /** What the service reports after a purchase attempt. Mutable per test. */
-const mockRevenueCatState = { premium: false };
+const mockRevenueCatState = { premium: false, available: false };
+const mockRestorePurchases = jest.fn();
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -31,17 +33,30 @@ jest.mock("@/lib/revenuecat", () => ({
     getOfferings: (...args: unknown[]) => mockGetOfferings(...args),
     purchasePackage: (...args: unknown[]) => mockPurchasePackage(...args),
     presentCustomerCenter: (...args: unknown[]) => mockPresentCustomerCenter(...args),
+    restorePurchases: (...args: unknown[]) => mockRestorePurchases(...args),
     get isPremium() {
       return mockRevenueCatState.premium;
     },
+    get isAvailable() {
+      return mockRevenueCatState.available;
+    },
+    profile: null,
     subscribe: () => () => undefined,
   },
 }));
 
 /* eslint-disable import/first */
-import { OnboardingPaywall } from "@/components/onboarding/OnboardingPaywall";
+import {
+  cancelLine,
+  OnboardingPaywall,
+  renewalLine,
+} from "@/components/onboarding/OnboardingPaywall";
 import { TESTIMONIALS } from "@/data/testimonials";
+import i18n from "@/i18n";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
 /* eslint-enable import/first */
+
+let mockOpenURL: jest.SpyInstance;
 
 async function renderPaywall(
   overrides: Partial<React.ComponentProps<typeof OnboardingPaywall>> = {},
@@ -76,15 +91,30 @@ beforeEach(() => {
   mockPurchasePackage.mockReset();
   mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
   mockRevenueCatState.premium = false;
+  mockRevenueCatState.available = false;
+  mockRestorePurchases.mockReset().mockResolvedValue(null);
+  mockOpenURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
 });
+
+afterEach(() => {
+  mockOpenURL.mockRestore();
+});
+
+/** Render as the Android build: the store the policy lines are written for. */
+function asAndroid(): () => void {
+  const original = Platform.OS;
+  Object.defineProperty(Platform, "OS", { configurable: true, get: () => "android" });
+  return () =>
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => original });
+}
 
 describe("OnboardingPaywall", () => {
   it("arrives on the yearly plan, with weekly beside it", async () => {
     const { view } = await renderPaywall();
     // The canonical prices, as the fallback the store has not overridden. The
     // period rides inside the price node, so the match is on the substring.
-    expect(view.getByText(/\$59/)).toBeTruthy();
-    expect(view.getByText(/\$5\.99/)).toBeTruthy();
+    expect(view.getAllByText(/\$59/)[0]).toBeTruthy();
+    expect(view.getAllByText(/\$5\.99/)[0]).toBeTruthy();
     expect(view.getByText("SAVE 80%")).toBeTruthy();
     expect(view.getByText("20 credits a week")).toBeTruthy();
 
@@ -107,7 +137,9 @@ describe("OnboardingPaywall", () => {
   it("names the product on the button, never a trial or a third duration", async () => {
     const { view } = await renderPaywall();
     expect(view.getByText("Unlock Katha")).toBeTruthy();
-    expect(view.getByText("Cancel anytime, no commitments")).toBeTruthy();
+    // Replaced by the Subscriptions-policy line: it promised "no
+    // commitments" on a plan paid a year up front, and never said it renews.
+    expect(view.queryByText(/no commitments/)).toBeNull();
     // Removed 2026-09-11: no trial, no monthly, no More options disclosure.
     expect(view.queryByText(/trial/i)).toBeNull();
     expect(view.queryByText(/monthly/i)).toBeNull();
@@ -215,7 +247,7 @@ describe("OnboardingPaywall", () => {
       },
     });
     const { view } = await renderPaywall();
-    await waitFor(() => expect(view.getByText(/73,00/)).toBeTruthy());
+    await waitFor(() => expect(view.getAllByText(/73,00/)[0]).toBeTruthy());
     expect(view.getByText("0.20€ a day")).toBeTruthy();
   });
 
@@ -256,11 +288,12 @@ describe("OnboardingPaywall", () => {
     );
   });
 
-  it("never grants premium off-store in a shipped build", async () => {
+  it("never grants premium off-store in a shipped build whose store answered with nothing", async () => {
     // The off-store completion below exists for review and for web. In a
     // production native build the same path would hand premium to anyone
     // whose offerings lookup failed -- no purchase, no receipt -- so there it
     // has to fail loudly instead.
+    mockRevenueCatState.available = true;
     const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
     (globalThis as { __DEV__?: boolean }).__DEV__ = false;
     try {
@@ -272,6 +305,33 @@ describe("OnboardingPaywall", () => {
       );
       expect(onSubscribed).not.toHaveBeenCalled();
       expect(mockPurchasePackage).not.toHaveBeenCalled();
+    } finally {
+      (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+    }
+  });
+
+  /**
+   * A shipped build with no RevenueCat key: what every Android user saw
+   * before the key existed. It used to be a live button that answered every
+   * tap with "Purchase didn't go through. Try again." -- a retry that could
+   * never work. Now the button is off and the screen says why.
+   */
+  it("disables the button and says why when a shipped build has no store", async () => {
+    const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    try {
+      const { view, onSubscribed } = await renderPaywall();
+      const button = view.getByLabelText("Unlock Katha");
+      expect(button.props.accessibilityState.disabled).toBe(true);
+      expect(
+        view.getByText(
+          "Subscriptions aren't available in this version of the app yet. Reading stays free.",
+        ),
+      ).toBeTruthy();
+      await fireEvent.press(button);
+      expect(onSubscribed).not.toHaveBeenCalled();
+      expect(mockGetOfferings).toHaveBeenCalledTimes(1); // the price lookup, not a purchase
+      expect(view.queryByText("Purchase didn't go through. Try again.")).toBeNull();
     } finally {
       (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
     }
@@ -295,7 +355,7 @@ describe("OnboardingPaywall", () => {
       return Promise.resolve(null);
     });
     const { view, onSubscribed } = await renderPaywall();
-    await waitFor(() => expect(view.getByText(/\$59/)).toBeTruthy());
+    await waitFor(() => expect(view.getAllByText(/\$59/)[0]).toBeTruthy());
     await fireEvent.press(view.getByLabelText("Unlock Katha"));
     await waitFor(() => expect(mockPurchasePackage).toHaveBeenCalledTimes(1));
     await waitFor(() =>
@@ -332,8 +392,11 @@ describe("OnboardingPaywall", () => {
 
     await waitFor(() => expect(view.getByTestId("paywall-member-state")).toBeTruthy());
     await fireEvent.press(view.getByLabelText("Manage subscription"));
+    // Native with no Customer Center: the store's own subscriptions page.
     await waitFor(() =>
-      expect(view.getByText(/Manage or cancel|not available right now/)).toBeTruthy()
+      expect(mockOpenURL).toHaveBeenCalledWith(
+        "https://apps.apple.com/account/subscriptions",
+      )
     );
   });
 
@@ -353,5 +416,120 @@ describe("OnboardingPaywall", () => {
         view.getByLabelText("Unlock Katha").props.accessibilityState.busy,
       ).toBe(false)
     );
+  });
+
+  /**
+   * GOOGLE PLAY SUBSCRIPTIONS POLICY. The screen must state the price and
+   * the period of the plan being bought, that it renews automatically, and
+   * how to cancel -- beside the button -- and it must offer Restore, a way to
+   * manage the subscription, and the Terms and Privacy documents.
+   */
+  it("states the selected plan's price, period, auto-renewal and where to cancel", async () => {
+    const restore = asAndroid();
+    try {
+      const { view } = await renderPaywall();
+      expect(view.getByTestId("paywall-renewal-terms")).toBeTruthy();
+      expect(
+        view.getByText(
+          "$59 a year, renews automatically until you cancel. Cancel anytime in Google Play.",
+        ),
+      ).toBeTruthy();
+      await fireEvent.press(view.getByLabelText(/^weekly,/));
+      expect(
+        view.getByText(
+          "$5.99 a week, renews automatically until you cancel. Cancel anytime in Google Play.",
+        ),
+      ).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("uses the store's own price in the renewal line", async () => {
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { packageType: "ANNUAL", product: { price: 4990, priceString: "₹4,990" } },
+        ],
+      },
+    });
+    const { view } = await renderPaywall();
+    await waitFor(() =>
+      expect(view.getByText(/^₹4,990 a year, renews automatically/)).toBeTruthy()
+    );
+  });
+
+  it("offers Restore, Manage subscriptions, Terms and Privacy under the button", async () => {
+    const restore = asAndroid();
+    try {
+      const { view } = await renderPaywall();
+      await fireEvent.press(view.getByLabelText("Terms"));
+      expect(mockOpenURL).toHaveBeenCalledWith(TERMS_URL);
+      await fireEvent.press(view.getByLabelText("Privacy"));
+      expect(mockOpenURL).toHaveBeenCalledWith(PRIVACY_URL);
+      await fireEvent.press(view.getByLabelText("Manage subscriptions"));
+      expect(mockOpenURL).toHaveBeenCalledWith(
+        "https://play.google.com/store/account/subscriptions",
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it("restores through the store and says what it found", async () => {
+    mockRevenueCatState.available = true;
+    const { view } = await renderPaywall();
+    await fireEvent.press(view.getByLabelText("Restore purchases"));
+    await waitFor(() => expect(mockRestorePurchases).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(view.getByText("No active plan on this store account.")).toBeTruthy()
+    );
+  });
+
+  it("buys the base plan, never a trial the card does not mention", async () => {
+    mockRevenueCatState.available = true;
+    const annual = { packageType: "ANNUAL", product: { price: 59, priceString: "$59" } };
+    mockGetOfferings.mockResolvedValue({ current: { availablePackages: [annual] } });
+    mockPurchasePackage.mockResolvedValue(null);
+    const { view } = await renderPaywall();
+    await waitFor(() => expect(view.getAllByText(/\$59/)[0]).toBeTruthy());
+    await fireEvent.press(view.getByLabelText("Unlock Katha"));
+    await waitFor(() =>
+      expect(mockPurchasePackage).toHaveBeenCalledWith(annual, { basePlanOnly: true })
+    );
+  });
+
+  it("reads the default offering by id before the current one", async () => {
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { packageType: "ANNUAL", product: { price: 1, priceString: "$1" } },
+        ],
+      },
+      all: {
+        default: {
+          availablePackages: [
+            { packageType: "ANNUAL", product: { price: 59, priceString: "$59.00" } },
+          ],
+        },
+      },
+    });
+    const { view } = await renderPaywall();
+    await waitFor(() => expect(view.getAllByText(/\$59\.00/).length).toBeGreaterThan(0));
+  });
+});
+
+describe("the policy lines in Portuguese and Spanish", () => {
+  afterEach(() => {
+    void i18n.changeLanguage("en");
+  });
+
+  it.each([
+    ["pt", "R$ 299,90 por ano, renovação automática até você cancelar.", "Cancele quando quiser no Google Play."],
+    ["es", "R$ 299,90 al año, se renueva automáticamente hasta que canceles.", "Cancela cuando quieras en Google Play."],
+  ])("%s", async (lang, renews, cancel) => {
+    await i18n.changeLanguage(lang);
+    expect(renewalLine("yearly", "R$ 299,90")).toBe(renews);
+    expect(cancelLine("android")).toBe(cancel);
   });
 });

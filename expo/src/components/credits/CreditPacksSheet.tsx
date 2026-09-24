@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,6 +41,20 @@ import { Button } from "@/components/Button";
  */
 export const PACKS_HEADLINE = "Credit packs that never expire";
 export const WEB_PURCHASE_NOTE = "Purchases work in the app";
+/**
+ * A native build whose store never configured (no RevenueCat key in the
+ * build). "Purchases work in the app" was shown here too, which is nonsense
+ * to somebody already in the app.
+ */
+export const STORE_UNAVAILABLE_NOTE = "Purchases aren't available in this version yet";
+/** The store answered but does not sell this pack (not created, or not in an offering). */
+export const PACK_UNAVAILABLE_NOTE = "This pack isn't available right now";
+
+/** What the disabled Purchase button says, by why it is disabled. */
+export function unavailablePurchaseNote(platform: string, storeAvailable: boolean): string {
+  if (platform === "web") return WEB_PURCHASE_NOTE;
+  return storeAvailable ? PACK_UNAVAILABLE_NOTE : STORE_UNAVAILABLE_NOTE;
+}
 
 type PackOffer = {
   pack: CreditPack;
@@ -105,6 +120,7 @@ export default function CreditPacksSheet({
     offers.find((offer) => offer.pack.credits === pack.credits)?.amount ?? pack.usd
   );
   const purchasable = available && chosen?.pkg !== null;
+  const unavailableNote = unavailablePurchaseNote(Platform.OS, available);
 
   const purchase = useCallback(async () => {
     if (busy || !chosen?.pkg) return;
@@ -206,8 +222,8 @@ export default function CreditPacksSheet({
               ? busy
                 ? "Purchasing..."
                 : `Purchase ${chosen?.pack.credits ?? ""} credits for ${chosen?.priceString ?? ""}`
-              : WEB_PURCHASE_NOTE}
-            accessibilityLabel={purchasable ? "Purchase" : WEB_PURCHASE_NOTE}
+              : unavailableNote}
+            accessibilityLabel={purchasable ? "Purchase" : unavailableNote}
             onPress={purchase}
             disabled={!purchasable}
             /* `loading`, not just `disabled`: a purchase in flight is busy,

@@ -6,21 +6,33 @@ import Purchases, {
 } from "react-native-purchases";
 import RevenueCatUI from "react-native-purchases-ui";
 
+import {
+  basePlanOption,
+  findPackageInOfferings,
+  KATHA_ENTITLEMENT,
+  resolveRevenueCatKey,
+  subscriptionPackages,
+} from "./store-catalog";
+
 // RevenueCat public SDK keys ship in the app binary and are not secrets.
-// TODO: Production `appl_` and `goog_` keys have not been issued yet. Add them
-// here before a preview or production build; never use the Test Store in release.
+//
+// The release keys come from BUILD CONFIGURATION, never from an edit to this
+// file: `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (the `goog_` key) and
+// `EXPO_PUBLIC_REVENUECAT_IOS_KEY` (the `appl_` key), set as EAS environment
+// variables for the production environment (`backend/PLAY_BILLING_SETUP.md`
+// step 6). Expo inlines `EXPO_PUBLIC_*` at bundle time, so the value is baked
+// into the build and into every `eas update` published with the same
+// environment. With no key, or a key for the wrong store, purchases stay
+// disabled and every paywall says so; nothing else changes.
 const REVENUECAT_TEST_STORE_PUBLIC_KEY = "test_VzetjoZZQyauDNrUNmaZqGYkSXE";
-const REVENUECAT_IOS_RELEASE_PUBLIC_KEY: string | undefined = undefined;
-const REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY: string | undefined = undefined;
 const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV ?? (__DEV__ ? "development" : "production");
-const IS_DEVELOPMENT_BUILD = APP_ENV === "development";
-const REVENUECAT_PUBLIC_KEY = IS_DEVELOPMENT_BUILD
-  ? REVENUECAT_TEST_STORE_PUBLIC_KEY
-  : Platform.select({
-    ios: REVENUECAT_IOS_RELEASE_PUBLIC_KEY,
-    android: REVENUECAT_ANDROID_RELEASE_PUBLIC_KEY,
-    default: undefined,
-  });
+const REVENUECAT_PUBLIC_KEY = resolveRevenueCatKey({
+  platform: Platform.OS,
+  appEnv: APP_ENV,
+  androidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+  iosKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
+  testStoreKey: REVENUECAT_TEST_STORE_PUBLIC_KEY,
+});
 
 /**
  * Add a tier by adding exactly one entitlement-to-tier entry here.
@@ -32,7 +44,7 @@ const REVENUECAT_PUBLIC_KEY = IS_DEVELOPMENT_BUILD
  * and not for writing, which nothing in the app charges for any more.
  */
 export const ENTITLEMENT_TIER_MAP = {
-  katha: "katha",
+  [KATHA_ENTITLEMENT]: "katha",
   // Kept while the existing RevenueCat Test Store configuration is migrated.
   katha_ai_pro: "katha",
 } as const;
@@ -76,7 +88,8 @@ class RevenueCatService {
       console.error(
         `RevenueCat has no public SDK key for APP_ENV="${APP_ENV}" on ${Platform.OS}. ` +
           "Purchases, restores, paywalls and Customer Center are all disabled. " +
-          "Set the production appl_/goog_ keys in src/lib/revenuecat.ts.",
+          "Set EXPO_PUBLIC_REVENUECAT_ANDROID_KEY (goog_) / EXPO_PUBLIC_REVENUECAT_IOS_KEY " +
+          "(appl_) as EAS environment variables and rebuild (backend/PLAY_BILLING_SETUP.md).",
       );
       return;
     }
@@ -170,22 +183,15 @@ class RevenueCatService {
   async findPackageByProductId(productId: string): Promise<PurchasesPackage | null> {
     const offerings = await this.getOfferings();
     if (!offerings) return null;
-    const pools: PurchasesPackage[][] = [];
-    if (offerings.current?.availablePackages) pools.push(offerings.current.availablePackages);
-    for (const offering of Object.values(offerings.all ?? {})) {
-      if (offering?.availablePackages) pools.push(offering.availablePackages);
-    }
-    for (const pool of pools) {
-      const match = pool.find((candidate) => candidate.product.identifier === productId);
-      if (match) return match;
-    }
-    return null;
+    return findPackageInOfferings(offerings, productId);
   }
 
-  /** Compatibility wrapper for the former placement-based service API. */
+  /**
+   * The subscription packages the paywall sells: the `default` offering when
+   * the dashboard has one by that id, otherwise whichever offering is current.
+   */
   async getPaywallProducts(_placementId?: string): Promise<RevenueCatPaywallProduct[] | null> {
-    const offerings = await this.getOfferings();
-    return offerings?.current?.availablePackages ?? null;
+    return subscriptionPackages(await this.getOfferings());
   }
 
   /**
@@ -195,10 +201,22 @@ class RevenueCatService {
    * from a purchase: the paywall read `isPremium`, saw true, and granted a
    * plan nobody bought. Null is the only honest answer for "nothing happened".
    */
-  async purchasePackage(pkg: PurchasesPackage): Promise<RevenueCatProfile | null> {
+  async purchasePackage(
+    pkg: PurchasesPackage,
+    options: { basePlanOnly?: boolean } = {},
+  ): Promise<RevenueCatProfile | null> {
     if (Platform.OS === "web" || !this._ready) return null;
     try {
-      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      // `basePlanOnly`: buy the plan at the price the screen showed. Google
+      // Play's default option is the longest free trial the user is eligible
+      // for, so a plain `purchasePackage` on the yearly plan would start a
+      // 3-day trial (10 credits) from a paywall that sells $59 and 50 credits
+      // and never mentions a trial. Where no base-plan option is reported
+      // (iOS, packs) the package is bought as it is.
+      const basePlan = options.basePlanOnly ? basePlanOption(pkg) : null;
+      const { customerInfo } = basePlan
+        ? await Purchases.purchaseSubscriptionOption(basePlan)
+        : await Purchases.purchasePackage(pkg);
       this.setProfile(customerInfo);
       return customerInfo;
     } catch (error) {
@@ -210,9 +228,8 @@ class RevenueCatService {
 
   /** Compatibility helper for callers that only have a store product identifier. */
   async purchase(productId: string): Promise<RevenueCatProfile | null> {
-    const packages = await this.getPaywallProducts();
-    const pkg = packages?.find((candidate) => candidate.product.identifier === productId);
-    if (!pkg) throw new Error(`RevenueCat product ${productId} is not in the current offering`);
+    const pkg = await this.findPackageByProductId(productId);
+    if (!pkg) throw new Error(`RevenueCat product ${productId} is not in any offering`);
     return this.purchasePackage(pkg);
   }
 
@@ -244,7 +261,7 @@ class RevenueCatService {
   // (see ENTITLEMENT_TIER_MAP). A stale default here would present the paywall
   // to a paying subscriber, because the entitlement it asked about no longer
   // exists on anyone's profile.
-  async presentPaywallIfNeeded(entitlement = "katha"): Promise<unknown> {
+  async presentPaywallIfNeeded(entitlement = KATHA_ENTITLEMENT): Promise<unknown> {
     if (Platform.OS === "web" || !this._ready) return null;
     try {
       return await RevenueCatUI.presentPaywallIfNeeded({

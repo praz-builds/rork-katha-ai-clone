@@ -80,7 +80,7 @@
   "credits": {
     "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
     "heroTitle": "Cr\u00e9ditos criam hist\u00f3rias e cap\u00edtulos",
-    "heroDescription": "Compras e assinaturas são sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
+    "heroDescription": "Compras e assinaturas s\u00e3o sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
     "history": "Hist\u00f3rico"
   },
   "create": {
@@ -239,5 +239,25 @@
     "morePoetic": "Mais poetico",
     "moreDramatic": "Mais dramatico",
     "simpler": "Mais simples"
+  },
+  "paywall": {
+    "renews": {
+      "weekly": "{{price}} por semana, renova\u00e7\u00e3o autom\u00e1tica at\u00e9 voc\u00ea cancelar.",
+      "yearly": "{{price}} por ano, renova\u00e7\u00e3o autom\u00e1tica at\u00e9 voc\u00ea cancelar."
+    },
+    "cancel": {
+      "android": "Cancele quando quiser no Google Play.",
+      "ios": "Cancele quando quiser nos ajustes da App Store.",
+      "other": "Cancele quando quiser na loja em que voc\u00ea assinou."
+    },
+    "restore": "Restaurar compras",
+    "manage": "Gerenciar assinaturas",
+    "terms": "Termos",
+    "privacy": "Privacidade",
+    "restored": "Seu plano foi restaurado.",
+    "nothingToRestore": "Nenhum plano ativo nesta conta da loja.",
+    "restoreFailed": "N\u00e3o foi poss\u00edvel restaurar agora. Tente de novo.",
+    "webOnly": "Compras e restaura\u00e7\u00f5es funcionam no app Katha.",
+    "unavailable": "As assinaturas ainda n\u00e3o est\u00e3o dispon\u00edveis nesta vers\u00e3o do app. Ler continua gr\u00e1tis."
   }
 }

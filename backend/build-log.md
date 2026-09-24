@@ -7,6 +7,75 @@
 
 ---
 
+## 2026-09-25 UTC — Android purchases need only the key, and the paywall meets the Subscriptions policy
+
+**Session:** Lane D of the Play launch push (`codex/paywall-play-ready`). Goal:
+the moment the founder creates the products and pastes the `goog_` key,
+purchases work on Android with no code change.
+
+### Two bugs that would have met the first Android purchase
+
+- **Every Android subscription webhook would have been "Unknown product".**
+  RevenueCat names a Google Play subscription `<productId>:<basePlanId>`
+  (`ai.katha.sub.yearly:yearly`) in every webhook; `REVENUECAT_PRODUCT_MAP` is
+  keyed by the bare id, so the webhook would have answered 422 and parked every
+  subscription purchase, renewal, refund and expiration in
+  `payment_event_backlog`: charged by Google, never credited. The client had
+  the same bug (`product.identifier === productId`). Both now accept exactly
+  the catalogue's base plan (`canonicalRevenueCatProductId`,
+  `storeProductMatches`); any other base plan stays unknown and visible.
+- **Every new yearly subscriber got up to 100 credits in their first month.**
+  The webhook grants the first 50 under `rc:<event id>`; the daily
+  `refresh-subscription-grants` cron guarded only on its own key
+  `subscription:<user>:<YYYY-MM>`, so the night after a purchase (or a trial
+  conversion) it reset the grant bucket to 50 again. The page logic moved to
+  `_shared/subscription-grants.ts` and skips a user whose ledger already holds a
+  positive `subscription` grant this calendar month.
+
+Both tests were run against the reverted fix and fail there (5 Deno tests).
+
+### Client
+
+- `expo/src/lib/store-catalog.ts`: the identifiers the client expects (product
+  ids, base plans, `$rc_*` packages, offerings `default` / `credit_packs`,
+  entitlement `katha`) and the key resolver. The release key is
+  `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` / `_IOS_KEY` from EAS env, accepted only
+  with the platform's prefix; no source edit, and it rides an OTA update.
+- The paywall buys the **base plan** (`purchaseSubscriptionOption`) so a Play
+  free-trial offer is never applied from a screen that does not mention one.
+- Subscriptions-policy copy under the plan cards: price per period, renews
+  automatically, "Cancel anytime in Google Play", and Restore · Manage
+  subscriptions (Play deep link) · Terms · Privacy. EN/PT/ES via `paywall.*` in
+  `src/i18n` -- the first strings on screen to use i18n.
+- A shipped build with no key: *Unlock Katha* is disabled with "Subscriptions
+  aren't available in this version of the app yet. Reading stays free." (it used
+  to fail every tap with "Try again"); the pack sheet says "Purchases aren't
+  available in this version yet" instead of "Purchases work in the app".
+
+### Docs
+
+`backend/PLAY_BILLING_SETUP.md` is the founder's checklist (Play products →
+service account → RevenueCat → RTDN → webhook → EAS key → device checks). Its
+catalogue table is pinned to the code and to `CREDITS_AND_PRICING.md` §3 by
+`expo/src/__tests__/store-catalog.test.ts` and `_shared/revenuecat_test.ts`.
+
+### Deploy (not done in this session)
+
+`revenuecat-webhook` and `refresh-subscription-grants` (both import the changed
+`_shared/revenuecat.ts`; the cron also imports the new
+`_shared/subscription-grants.ts`). `seed-voice-previews` and `reviewer-signin`
+also import `_shared/revenuecat.ts` (for `constantTimeEquals` only): their
+behaviour does not change, but redeploy them too so production stays byte for
+byte with main. No migration.
+
+### Gates
+
+Backend `deno test --allow-env --allow-net --allow-read supabase/functions/`
+1073 passed; `deno check` and `deno fmt --check` clean on touched files. Client
+`pnpm typecheck` clean, `pnpm lint` 0 errors, jest 1467/1470 in the full run
+with 3 reader tests timing out under load, which pass alone (18/18) and are
+untouched here.
+
 ## 2026-09-24 UTC — Seven PRs merged and deployed, and sixteen functions found behind main
 
 **Session:** orchestration of the launch-week lanes. Merged #136, #133, #131, #135,

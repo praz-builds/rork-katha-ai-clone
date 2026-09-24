@@ -239,5 +239,25 @@
     "morePoetic": "More poetic",
     "moreDramatic": "More dramatic",
     "simpler": "Simpler"
+  },
+  "paywall": {
+    "renews": {
+      "weekly": "{{price}} a week, renews automatically until you cancel.",
+      "yearly": "{{price}} a year, renews automatically until you cancel."
+    },
+    "cancel": {
+      "android": "Cancel anytime in Google Play.",
+      "ios": "Cancel anytime in your App Store settings.",
+      "other": "Cancel anytime from the store you subscribed on."
+    },
+    "restore": "Restore purchases",
+    "manage": "Manage subscriptions",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "restored": "Your plan is restored.",
+    "nothingToRestore": "No active plan on this store account.",
+    "restoreFailed": "Couldn't restore right now. Try again.",
+    "webOnly": "Purchases and restores work in the Katha app.",
+    "unavailable": "Subscriptions aren't available in this version of the app yet. Reading stays free."
   }
 }

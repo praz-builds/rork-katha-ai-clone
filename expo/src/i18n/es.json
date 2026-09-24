@@ -239,5 +239,25 @@
     "morePoetic": "Mas poetico",
     "moreDramatic": "Mas dramatico",
     "simpler": "Mas simple"
+  },
+  "paywall": {
+    "renews": {
+      "weekly": "{{price}} por semana, se renueva autom\u00e1ticamente hasta que canceles.",
+      "yearly": "{{price}} al a\u00f1o, se renueva autom\u00e1ticamente hasta que canceles."
+    },
+    "cancel": {
+      "android": "Cancela cuando quieras en Google Play.",
+      "ios": "Cancela cuando quieras en los ajustes de la App Store.",
+      "other": "Cancela cuando quieras en la tienda donde te suscribiste."
+    },
+    "restore": "Restaurar compras",
+    "manage": "Gestionar suscripciones",
+    "terms": "T\u00e9rminos",
+    "privacy": "Privacidad",
+    "restored": "Tu plan se ha restaurado.",
+    "nothingToRestore": "No hay ning\u00fan plan activo en esta cuenta de la tienda.",
+    "restoreFailed": "No se pudo restaurar ahora. Int\u00e9ntalo de nuevo.",
+    "webOnly": "Las compras y restauraciones funcionan en la app de Katha.",
+    "unavailable": "Las suscripciones a\u00fan no est\u00e1n disponibles en esta versi\u00f3n de la app. Leer sigue siendo gratis."
   }
 }
