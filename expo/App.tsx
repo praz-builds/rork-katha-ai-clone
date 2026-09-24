@@ -1429,11 +1429,9 @@ export default function App() {
                 onReimagineStarted={(run) => {
                   const target = allStories.find((item) => item.id === screen.storyId);
                   if (!target) return;
-                  adoptReimagineGeneration({
-                    run,
-                    story: target,
-                    chapterNumber: (screen.chapterIndex ?? 0) + 1,
-                  });
+                  // No chapter number: the session takes the one the run was
+                  // asked to rewrite, not the one this reader was opened at.
+                  adoptReimagineGeneration({ run, story: target });
                 }}
                 onBack={() => goTabs(tab)}
                 renderChapterEnd={(chapter, { reimagine, reimagineLabel }) => {

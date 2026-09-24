@@ -7,6 +7,33 @@
 
 ---
 
+## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
+
+**Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
+`backend/` code, no migration, no function. **Nothing to deploy** beyond the
+next client build / web preview.
+
+- **Page stuck on "Page 1".** The pager committed a page turn only in
+  `onMomentumScrollEnd`, which react-native-web accepts and never calls (the
+  browser has no such event). On web the reader swiped to the last page and
+  the Pages control never moved. `ReaderScreen` now commits on web once the
+  pager has been quiet for 150ms (`WEB_PAGER_SETTLE_MS`); native keeps the
+  momentum end. Test: `reader-paging.test.tsx`, fails with the web branch off.
+- **Re-prompt showed no loader.** `adoptReimagineGeneration` put the session
+  in the store without publishing it, so nothing re-rendered until the run's
+  first event: the old chapter stayed up, then a blank opener. It now publishes
+  at once and marks the session `rewrite: true`, and the reader holds
+  `GeneratingOverlay` (the create flow's pre-first-page screen) until one whole
+  page has settled. Continuations are unchanged. App also keyed the session to
+  the chapter the reader was OPENED at rather than the one re-prompted
+  (`run.request.chapterNumber` now). Tests: `reader-reprompt-loader.test.tsx`,
+  `reimagine-live-session.test.ts`; both fail with their fix reverted.
+- **After review:** the crafting screen over a rewrite has a Back control
+  (the only exit on iOS and web; the rewrite keeps running). A failed rewrite
+  shows why and its Try again starts a fresh run of the same request —
+  `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
+  its chapter from the run's request, so App no longer passes one. A pending
+  web page-settle is dropped on chapter switch (tested with fake timers).
 ## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
 
 **Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
