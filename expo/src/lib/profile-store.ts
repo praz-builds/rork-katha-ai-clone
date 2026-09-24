@@ -101,7 +101,7 @@ export function useOwnProfileStore(): Snapshot {
  * What goes to disk: only what the first frame draws, and whose it is.
  *
  * Not the whole row. The referral code and summary, the entitlement override,
- * the saved-phrase count and the story counts are not drawn before the server
+ * and the story counts are not drawn before the server
  * answers, and a copy of them on disk is only something to leak or to trust
  * wrongly. The override in particular must never be restored from a file.
  */
@@ -199,7 +199,6 @@ function restore(raw: string): { profile: OwnProfile; calendar: string[] | null 
     chaptersWritten: 0,
     totalReads: 0,
     totalLikes: 0,
-    phrasesSaved: 0,
     entitlementOverride: null,
     referralCode: null,
     referral: { invited: 0, credited: 0, monthRemaining: 0 },

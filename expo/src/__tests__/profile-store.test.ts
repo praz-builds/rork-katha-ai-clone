@@ -62,7 +62,6 @@ const ada = () =>
     displayName: "Ada",
     referralCode: "ada_invite",
     entitlementOverride: "katha",
-    phrasesSaved: 12,
   });
 const bo = () => ownProfile({ userId: "user-b", displayName: "Bo" });
 
@@ -100,7 +99,6 @@ describe("the device copy", () => {
     expect(stored.profile).not.toHaveProperty("entitlementOverride");
     expect(stored.profile).not.toHaveProperty("referralCode");
     expect(stored.profile).not.toHaveProperty("referral");
-    expect(stored.profile).not.toHaveProperty("phrasesSaved");
   });
 
   it("is not shown to a viewer it does not belong to", async () => {
