@@ -535,43 +535,78 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 
 ---
 
-## Play Store go-live (2026-09-16)
+## Play Store go-live — one-week push (2026-09-24 → 2026-10-01)
 
-**Goal:** the first Android build reaches a closed test and then production without a
-store rejection, and everything that can move by OTA afterwards is left for afterwards.
+**Goal:** by Thursday 2026-10-01 the Android build is in a Play closed test with every
+pre-push item done, so nothing is left except Google's clock. Production access itself
+cannot land inside the week: the 12-tester × 14-day closed test runs from the day the
+first AAB reaches testers, so **uploading on day 1 or 2 is the whole schedule** — a
+test started 2026-09-25 clears 2026-10-09 at the earliest.
 
-Pre-push means "before the first AAB is uploaded"; the binary bakes in the OTA
-channel, the runtime version, the Sentry plugin config and any Firebase file, so
-those cannot be fixed by an update. Post-push is everything an `expo-updates`
-release or a console change can carry. Items ticked here shipped in the
-`codex/profile-credits-launch` PR.
+Pre-push means "before the first AAB is uploaded"; the binary bakes in the OTA channel,
+the runtime version, the Sentry plugin config, any Firebase file, the Android
+permission list and the native audio mode, so those cannot be fixed by an update.
+Post-push is everything an `expo-updates` release or a console change can carry.
+
+Sources: the founder's launch sheet (2026-09-24, rows P0-MVP and P1 below; its row 28
+onwards was cut off in the screenshot and still needs adding) and two read-only audits
+the same day — native Android/iOS coverage, and Play policy readiness. The sheet's
+wording is kept in the Item column so the two can be ticked together.
+
+### P0 — MVP (must be done before the first AAB, unless marked)
 
 | Item | When | Done | Notes |
 |---|---|---|---|
-| EAS project + first AAB build | Pre-push | [ ] | EAS project id in `expo/app.json`; `eas build -p android --profile production`. First-time IAPs review with the first build |
-| OTA: `expo-updates` URL, channel and `runtimeVersion` baked into the binary | Pre-push | [ ] | A binary shipped without these cannot be updated over the air; a runtime-version bump later needs a store build |
-| Sentry: client DSN + source maps (plugin `organization` / `project`), backend `SENTRY_DSN` secret | Pre-push | [ ] | The DSN itself can be rotated by OTA later (last row); the plugin config cannot |
-| Firebase: `google-services.json` in the build, or drop Firebase Analytics from the plugin list | Pre-push | [ ] | Decide one; a configured plugin with no file fails the Android build |
-| Privacy and Terms URLs | Pre-push | [x] | `https://katha.thetractionlabs.com/privacy` and `/terms`, opened from Profile via `Linking.openURL`. The same URLs go on the Play listing and in the Data Safety form |
-| Play listing, Data Safety form, content rating questionnaire | Pre-push | [ ] | Data Safety must declare the email, the anonymous session id, story content and crash data; no device identifiers are collected (pricing doc §9) |
-| App Access: reviewer login | Pre-push | [x] | `reviewer@thetractionlabs.com` signs in with a fixed 6-digit code verified server-side by `reviewer-signin` (HMAC, peppered, rate-limited). The code is in `backend/.reviewer-code.local`, git-ignored; paste it into Play Console → App Access, never into the repo |
-| Closed test: 12 testers × 14 days | Pre-push (before production access) | [ ] | Google's requirement for new personal developer accounts. Opt-in URL from the console; the two `tester_accounts` rows do not count toward the twelve |
-| GenAI content reporting | Pre-push | [x] | Report sheet from the story page and the reader's ⋮ menu: copyright / inappropriate content / inappropriate cover / other, optional details; `content_reports` reasons extended in 00089. Satisfies the Generative AI policy's in-app reporting requirement |
-| Paid generation provider | Pre-push | [ ] | Gemini is quota-blocked (`429`) and the OpenRouter free router is the last position in the chain; fund a paid position before public traffic or the first busy evening runs on a random free model. Account action, no code |
-| Edge deploy audit | Pre-push | [x] | Done 2026-09-16: 34 / 34 functions deployed, migrations in sync through 00090 (00089 and 00090 both pushed the same day). The three new functions (`credit-claims`, `referral`, `reviewer-signin`) plus five changed ones deployed alongside them, taking it to 37 / 37 |
-| Seed library (Phase H) | Post-push, **start now** | [ ] | Thirty stories take longer to write than the review takes; the store does not need them, the first users do |
-| In-app feedback form | Post-push, via OTA | [ ] | A sheet posting to a `feedback` row; no store build needed |
-| RevenueCat production keys + 8 SKUs (5 packs, 3 subscriptions) + `katha` entitlement + country pricing | Post-push | [ ] | Blocked on the listing existing (Phase C). Until the keys are in, Purchase is disabled and the USD fallback copy renders; on web it is always disabled |
-| Push notifications (Phase G) | Post-launch | [ ] | Firebase service account, `device_tokens`, `register-device` |
-| Sentry DSN rotation | Post-push, via OTA | [ ] | The DSN is read at runtime; rotate it after the first public build so the value in the reviewed binary is not the one that stays live |
+| EAS project + first AAB build | Pre-push, **day 1** | [ ] | `expo/app.json` still has `extra.eas.projectId: ""`. `eas init`, then `eas build -p android --profile production`. Bump `version` from `0.1.0` to `1.0.0` first (it is the versionName users see); versionCode already auto-increments (`appVersionSource: remote`) |
+| OTA updates config | Pre-push, day 1 | [ ] | `updates.url` is the literal `https://u.expo.dev/UPDATE_PROJECT_ID`; the production profile in `expo/eas.json` has no `channel`. Bake URL, `channel: "production"` and `runtimeVersion` — a binary without them can never be updated over the air |
+| Crash reporting (Sentry DSN + wrap) | Pre-push, day 1 | [ ] | `sentryDsn: ""` in `app.json`; the plugin has no `organization` / `project`. Set both plus `SENTRY_AUTH_TOKEN` as EAS secrets; backend `SENTRY_DSN` secret too. The DSN can be rotated by OTA later, the plugin config cannot |
+| Firebase / google-services.json | Pre-push, day 1 | [ ] | `@react-native-firebase/app` + `/analytics` are dependencies but not in `plugins` and there is no `google-services.json`. **Recommendation: remove both packages.** They also pull in the `AD_ID` permission, which contradicts the Data Safety answer "no device identifiers", and a linked-but-unconfigured RNFB can fail at native init where JS `try/catch` cannot reach. Re-add with the file when push (P1) needs FCM |
+| Background audio (audit finding, not on the sheet) | Pre-push, day 1 | [ ] | No `Audio.setAudioModeAsync` anywhere and no `UIBackgroundModes: ["audio"]`: narration and genre music stop when the phone locks or the user switches app, and iOS silent mode mutes them. Invisible on the :8090 web preview. Set `staysActiveInBackground`, `playsInSilentModeIOS`, `shouldDuckAndroid` at app start |
+| Unjustified Android permissions (audit finding) | Pre-push, day 1 | [ ] | The merged manifest carries `RECORD_AUDIO` (expo-av), `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`, and `AD_ID` (Firebase). None is used. Add `android.blockedPermissions` in `app.json`; confirm against the first build's merged manifest, since the local `expo/android` folder is generated and untracked |
+| Decent looking website (katha.thetractionlabs.com) | Pre-push | [ ] | The Privacy / Terms / Delete account / Support pages are live there but it is not a product site. The Play listing links it as the developer website |
+| Privacy Policy + Terms (Katha's own) | Pre-push | [~] | Live at `/privacy` and `/terms` and opened from Profile. Open per the sheet: rewrite as Katha's own documents rather than the Traction Labs pages. Must list photos sent to OpenRouter / Gemini from the Create flow, since the Data Safety form will |
+| Play Console listing | Pre-push, day 2 | [ ] | Store listing (EN + PT + ES copy; i18n strings make it cheap), 512 icon (have the 1024 source), **1024×500 feature graphic and 4–8 phone screenshots — none exist yet**. Plus Data Safety (email, anonymous PostHog id, story + comment content, photos, purchase history, crash data; no ads), content rating (IARC: expect Mature 17+ / PEGI 16 for steamy + dark romance + horror + user comments), target audience **18+ only**, App Access (reviewer login — done) |
+| 12 testers for 14 days | Pre-push, **start day 2** | [ ] | Google's gate for new personal developer accounts. The two `tester_accounts` rows do not count. Line the twelve up now so the opt-in link goes out the hour the AAB is live |
+| Generative AI content reporting | Pre-push | [x] | Shipped 2026-09-16: report sheet from the story page and the reader's ⋮ menu, `content_reports` reasons extended in 00089. **Gap:** reports accumulate with no one acting on them — name an owner and a saved Supabase view; Play's UGC policy expects action, not just intake |
+| Block author (audit finding) | Pre-push | [ ] | `user_blocks` exists (00043) and `comments` honours it, but no client surface calls it. Play's UGC policy expects report *and* block. Add "Block author" to the comment and story ⋮ menus |
+| "Kids mode" wording (audit finding) | Pre-push | [ ] | `en.json:66` advertises "Kids mode and PIN gate"; no PIN gate exists. With an 18+ target audience, a "Kids" label invites Families-policy review. Rename to "All-ages" in UI and listing, delete the PIN-gate string in all three locales |
+| Generation provider (paid primary) | Pre-push | [ ] | Gemini is quota-blocked (`429`) and the OpenRouter free router is last in the chain. A reviewer whose first story fails is a "broken functionality" rejection. Account action, no code |
+| Edge function deploy audit | Pre-push, re-run day 6 | [~] | Last verified 2026-09-21 (production current with main, 37 / 37). Re-run after this week's merges and before the build that goes to review — merged is not deployed |
+| Ambient Music while story reading | Pre-push | [~] | Shipped: 24 genre tracks from the `music` bucket, mute-only in the reader. Depends on the background-audio row above to keep playing on device; the Profile control is still to build |
+| Send OTP from otp@katha, 6-digit code instead of Supabase's 8 | Pre-push | [ ] | Custom SMTP sender in Supabase Auth plus the OTP length setting; check the OTP input and paste handling accept 6 digits on all onboarding paths |
+| Refined intro animation | Pre-push | [ ] | Also fix the desktop-width intro carousel trap noted by `scripts/preview.sh` |
+| "More options" moments: cap long text, end with "…" | Pre-push | [ ] | Truncate at a fixed length with an ellipsis so a long moment cannot break the layout |
+| Loading screen consistency | — | [x] | Resolved on the sheet |
+| Recheck progress bar during onboarding (bug) | — | [x] | Resolved on the sheet |
+| Streak icon and credits always on top, beside profile | — | [x] | Resolved on the sheet |
 
-**What this PR ships toward it, in one line:** the reviewer login, the report sheet,
-the legal links, the credits economy of decisions 49-53, and the deploy audit. The
-seven pre-push rows still open are build configuration (EAS, OTA, Sentry, Firebase)
-and console or account work (listing and Data Safety, the closed test, provider
-funding); none of them is app code.
+### P1 — can follow by OTA or a console change
+
+| Item | When | Done | Notes |
+|---|---|---|---|
+| Seed story library (30 stories) | Post-push, **start now** | [ ] | Thirty stories take longer to write than the review takes; the store does not need them, the first users do |
+| In-app feedback form | Post-push, via OTA | [ ] | A sheet posting to a `feedback` row |
+| RevenueCat production key | Post-push, but **before production** | [ ] | `expo/src/lib/revenuecat.ts:13-14` are `undefined`, so Purchase is disabled on device. Needs the Play app to exist, then 8 SKUs (5 packs, 3 subscriptions), `katha` entitlement, country pricing, the `goog_` key. Add "renews automatically, cancel in Google Play" copy to the paywall — Subscriptions policy |
+| Push notifications | Post-launch | [ ] | Phase G. Client permission flow and Android channels exist; FCM is not wired. Needs Firebase back (see the Firebase row) |
+| Sentry DSN / PostHog tweaks (OTA) | Post-push, via OTA | [ ] | Rotate the DSN after the first public build so the value in the reviewed binary is not the one that stays live |
+| "Add Language" button at the bottom of language selection in More options, stored in Supabase | Post-push | [ ] | Needs a column or table for requested languages |
+| Feed inspired by Dungeon AI: once a user creates stories, "Your stories" comes first on Home | Post-push | [ ] | Unprioritised on the sheet |
+| Ship Dark Mode | Post-push | [ ] | Theme is light by decision today; a dark theme is a token pass plus the `prefers-color-scheme` equivalent on native |
+| Add character in the Reimagine flow between chapters … | — | [ ] | Sheet row 28, cut off in the screenshot — complete the description and the rows after it |
+
+### Day plan
+
+| Day | Date | Work |
+|---|---|---|
+| 1 | Thu 09-24 – Fri 09-25 | One build-config PR: EAS init, OTA, Sentry, remove Firebase, blocked permissions, background audio, version 1.0.0. First AAB |
+| 2 | Fri 09-25 | Play Console app, internal track upload, closed test open, invite the twelve. Fund the paid provider |
+| 3–4 | Sat 09-26 – Sun 09-27 | Block author, Kids→All-ages, "More options" truncation, OTP sender + 6 digits, intro animation. Store assets (feature graphic, screenshots, PT/ES copy) |
+| 5 | Mon 09-28 | Data Safety, content rating, target audience. Katha's own Privacy + Terms; website pass |
+| 6 | Tue 09-29 | Deploy what merged; edge deploy audit; new closed-test build |
+| 7 | Wed 09-30 – Thu 10-01 | Walk the flow on a real Android device (background audio, lock screen, report, block, OTP). Report-queue owner named. RevenueCat products created so the key lands before production |
 
 ---
+
 
 ## Post-Launch (Phase I — Growth)
 
