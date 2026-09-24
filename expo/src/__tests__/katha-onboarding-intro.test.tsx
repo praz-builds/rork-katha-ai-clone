@@ -46,8 +46,8 @@ describe("KathaOnboarding intro", () => {
 
     const cta = StyleSheet.flatten(
       view.getByLabelText("Get started").props.style,
-    ) as { height?: number; borderRadius?: number };
-    expect(cta.height).toBe(controls.onboardingCtaHeight);
+    ) as { minHeight?: number; borderRadius?: number };
+    expect(cta.minHeight).toBe(controls.onboardingCtaHeight);
     expect(cta.borderRadius).toBe(radius.pill);
   });
 

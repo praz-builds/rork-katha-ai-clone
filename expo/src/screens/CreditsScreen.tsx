@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 // mounted in App.tsx, so this is a swap, not new plumbing.
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, Sparkles } from "lucide-react-native";
+import { HeaderAction } from "@/components/HeaderAction";
 import CreditPacksSheet from "@/components/credits/CreditPacksSheet";
 import FeedbackClaimsCard from "@/components/credits/FeedbackClaimsCard";
 import HowCreditsWork from "@/components/credits/HowCreditsWork";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/profile";
 import { revenueCatService } from "@/lib/revenuecat";
 import { bootstrapUser } from "@/lib/session";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
 /**
@@ -119,9 +120,27 @@ export default function CreditsScreen({
             <ChevronLeft size={22} color={colors.ink} />
           </Pressable>
           <Text style={styles.title}>Get credits</Text>
-          <View style={styles.balancePill} testID="credits-balance">
-            <Sparkles size={14} color={colors.accent} />
-            <Text style={styles.balanceLabel}>{credits}</Text>
+          {/* The same object as Home's credits action, drawn by the same
+              component. It was a peach `accentSoft` capsule with an accent
+              number in it, which is a third face for one idea -- and a number
+              in `accent` on a warm ground is the least legible thing in the
+              header and also the one thing there you actually read.
+
+              No `onPress`: this balance is a readout, not a control. It draws
+              in HeaderAction's non-interactive mode -- one accessibility node
+              with `accessibilityRole="text"` -- so it is announced as
+              "7 credits" rather than "7 credits, button" and there is nothing
+              to activate. The spark and the number are inside that one node,
+              which is why the whole reading is in `label`. */}
+          <View testID="credits-balance">
+            <HeaderAction
+              icon={Sparkles}
+              tint={colors.chromeStar}
+              fill={colors.chromeStar}
+              iconSize={16}
+              value={String(credits)}
+              label={`${credits} credits`}
+            />
           </View>
         </View>
 
@@ -183,16 +202,6 @@ const styles = {
       marginLeft: -8,
     },
     title: { flex: 1, fontFamily: fonts.display, color: colors.ink, fontSize: 26 },
-    balancePill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.xs,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs + 2,
-      borderRadius: radius.pill,
-      backgroundColor: colors.accentSoft,
-    },
-    balanceLabel: { fontFamily: fonts.ui, color: colors.accent, fontWeight: "800", fontSize: 14 },
     section: {
       marginTop: spacing.betweenGroups,
       marginBottom: spacing.md,

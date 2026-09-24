@@ -202,6 +202,7 @@ export default function DirectionStep({
       <Text style={styles.eyebrow}>Your story starts here</Text>
       <DirectionChoices
         heading="Where does it begin?"
+        headingSize="step"
         priceNote={`Any of these writes chapter 1 · ${formatCredits(STORY_START_CREDITS)}`}
         status={status}
         options={options}

@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Info, Plus, X } from "lucide-react-native";
 
+import { Button } from "@/components/Button";
 import { Toggle } from "@/components/Toggle";
 import AddPhrasesSheet from "@/components/library/AddPhrasesSheet";
 import { colors, radius, spacing, type } from "@/theme";
@@ -183,19 +184,13 @@ export default function NotesTab({ onPractice }: { onPractice?: () => void }) {
           </Text>
         ) : null}
 
-        <Pressable
+        <Button
+          label="Add phrases"
           onPress={() => setSheetOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Add phrases"
           testID="notes-add-phrases"
-          style={({ pressed }) => [
-            styles.primaryButton,
-            pressed && styles.primaryButtonPressed,
-          ]}
-        >
-          <Plus size={18} color={colors.surface} />
-          <Text style={styles.primaryButtonLabel}>Add phrases</Text>
-        </Pressable>
+          icon={<Plus size={18} color={colors.surface} />}
+          style={styles.primaryButton}
+        />
       </View>
 
       <View style={styles.listHeaderRow}>
@@ -317,18 +312,8 @@ const styles = StyleSheet.create({
   },
   howLine: { ...type.caption, color: colors.muted },
   pausedNote: { ...type.caption, color: colors.strong },
-  primaryButton: {
-    marginTop: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  primaryButtonPressed: { backgroundColor: colors.accentPressed },
-  primaryButtonLabel: { ...type.body, fontWeight: "800", color: colors.surface },
+  /** Layout only; the recipe is `Button`'s. */
+  primaryButton: { marginTop: spacing.sm },
   listHeaderRow: {
     flexDirection: "row",
     alignItems: "center",

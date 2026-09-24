@@ -3,9 +3,9 @@ import React from "react";
 import type { PropsWithChildren } from "react";
 import { useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { ChevronRight, Sparkles } from "lucide-react-native";
+import { Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
-import { colors, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
+import { colors, controls, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
 /**
@@ -88,27 +88,6 @@ export function SectionHeader({ title, action }: { title: string; action?: strin
       <Text style={styles.sectionTitle}>{title}</Text>
       {action ? <Text style={styles.sectionAction}>{action}</Text> : null}
     </View>
-  );
-}
-
-export function PrimaryButton({
-  children,
-  onPress,
-  variant = "primary"
-}: PropsWithChildren<{ onPress?: () => void; variant?: "primary" | "secondary" }>) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        variant === "secondary" ? styles.secondaryButton : styles.primaryButton,
-        pressed && styles.pressed
-      ]}
-    >
-      <Text style={[styles.buttonText, variant === "secondary" && styles.secondaryButtonText]}>{children}</Text>
-      <ChevronRight size={18} color={variant === "secondary" ? colors.ink : colors.surface} />
-    </Pressable>
   );
 }
 
@@ -202,12 +181,22 @@ export function StoryCard({ story, onPress, compact }: { story: Story; onPress?:
   );
 }
 
+/**
+ * The credit readout in the Create flow's top bar.
+ *
+ * Containerless, like Home's and Get credits'. It used to sit on a peach
+ * `accentSoft` capsule, which is what the Get credits header also did and
+ * what Home did with a white plate -- one number, three costumes, on three
+ * screens a person walks straight through. The glyph stays gold and filled,
+ * which is the one thing the three always agreed on.
+ *
+ * Not a `HeaderAction`: this one is a label rather than a control. It does
+ * not navigate anywhere, so it is not given a button's role or a touch target
+ * it would not answer.
+ */
 export function CreditPill({ credits }: { credits: number }) {
   return (
     <View style={styles.creditPill}>
-      {/* Gold and filled, matching the credit glyph on Home. The spark was
-          accent-orange and hollow here and grey on Home, so the same number
-          wore two different faces depending on which screen you were on. */}
       <Sparkles size={16} color={colors.chromeStar} fill={colors.chromeStar} />
       <Text style={styles.creditText}>{credits} credits</Text>
     </View>
@@ -246,32 +235,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "700",
     fontSize: 13
-  },
-  button: {
-    minHeight: 52,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  },
-  primaryButton: {
-    backgroundColor: colors.accent
-  },
-  secondaryButton: {
-    backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  buttonText: {
-    fontFamily: fonts.ui,
-    color: colors.surface,
-    fontWeight: "800",
-    fontSize: 15
-  },
-  secondaryButtonText: {
-    color: colors.ink
   },
   pressed: {
     opacity: 0.82,
@@ -345,11 +308,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600"
   },
+  /* No plate and no fill. See the note on `CreditPill` above. */
   creditPill: {
-    paddingHorizontal: spacing.md,
-    minHeight: 34,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
+    minHeight: controls.headerActionTarget,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs

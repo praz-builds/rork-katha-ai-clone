@@ -318,8 +318,12 @@ export const fonts = {
 
 /**
  * Control geometry for the circular icon button (back control, close, and the
- * other single-glyph affordances in onboarding). NOT the primary CTA, which
- * stays a full-width pill at `spacing.huge + spacing.sm` with `radius.lg`.
+ * other single-glyph affordances in onboarding), and for the one text button.
+ *
+ * The text button's geometry is `primaryCtaHeight` / `primaryCtaRadius` /
+ * `buttonSmHeight` below, and `src/components/Button.tsx` is its only
+ * consumer. A screen that restates those numbers in its own StyleSheet is the
+ * drift `button-recipe.test.ts` exists to catch.
  *
  * The spec's "38-46px circular" is a range because the same control appears at
  * three densities: `iconButtonSm` in a dense row, `iconButton` as the default
@@ -335,8 +339,43 @@ export const controls = {
   iconButtonLg: 46,
   iconButtonStroke: 2.4,
   iconButtonStrokeStrong: 2.8,
-  primaryCtaHeight: 64,
-  primaryCtaRadius: 20,
+  /**
+   * THE primary button. One height, one radius, one component.
+   *
+   * 52 at `radius.pill`, and `src/components/Button.tsx` is the only thing
+   * allowed to draw it. Everything else — Read and Listen on the story page,
+   * Continue with email, Add phrases, the Create brief's Create story — asks
+   * `Button` for it.
+   *
+   * WHY IT CAME DOWN FROM 64. 64 was never on screen: it was documented in
+   * DESIGN_SYSTEM.md section 6, exported here, and consumed by nothing. The
+   * buttons the owner actually saw were hand-rolled per screen at 48, 50, 52,
+   * 54 and 56, and the ones nearest the top of that range read as fat — a slab
+   * of orange under a paragraph of text rather than a control. 52 is the
+   * height the most call sites had already chosen for themselves, it clears
+   * the 44pt platform minimum with room for a pressed state, and it is a
+   * visible step down from the 56/64 pair without going near the floor.
+   *
+   * WHY `radius.pill` RATHER THAN 20. A 20pt radius on a 52pt box is a
+   * rounded rectangle, and a rounded rectangle at that size is the shape of a
+   * card, not of a button. The pill was already what onboarding used and what
+   * two thirds of the hand-rolled CTAs used; 20 was the minority reading of a
+   * spec nobody was following.
+   */
+  primaryCtaHeight: 52,
+  primaryCtaRadius: radius.pill,
+  /**
+   * The same button in a row, beside other content: a sheet footer, a retry
+   * beside a message, an action inside a card. 44 is the platform minimum, so
+   * this is as small as a text button is ever allowed to be.
+   */
+  buttonSmHeight: 44,
+  /**
+   * A header action — the credits spark, the streak flame, the bell — and the
+   * credit readout in the Create flow. A 44pt touch target around a 20pt
+   * glyph, with no plate under it: see `src/components/HeaderAction.tsx`.
+   */
+  headerActionTarget: 44,
   formFieldMinHeight: 58,
   formFieldRadius: 18,
   otpCellHeight: 58,
@@ -359,7 +398,24 @@ export const controls = {
    * Exact values on purpose: the reference is pixel-signed, and a 2px snap to
    * the nearest app token is the drift the design review would catch first.
    */
-  onboardingCtaHeight: 56,
+  /**
+   * THE TWO-RECIPE SPLIT IS OVER. This is now `primaryCtaHeight`, and it is
+   * kept as a name rather than deleted so the dozen onboarding call sites and
+   * the tests that read it converge on the single recipe instead of drifting
+   * away from it one file at a time.
+   *
+   * The 2026-09-12 argument for 56 was that onboarding is a sequence of
+   * full-bleed compositions where the app's 64pt slab competes with the
+   * picture above it. That was a real observation about 64. It is not an
+   * argument for two numbers: the app's button is 52 now, which is the size
+   * that observation was reaching for, and a reader who signs up and then
+   * opens a story should press the same control twice rather than two
+   * controls that are four points apart for reasons nobody can see.
+   *
+   * Prefer `primaryCtaHeight` in new code. This alias exists for the
+   * onboarding files that name it today.
+   */
+  onboardingCtaHeight: 52,
   onboardingPlate: 44,
   onboardingPlateRadius: 14,
   onboardingPillWidth: 22,

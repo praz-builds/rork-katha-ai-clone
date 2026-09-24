@@ -47,6 +47,7 @@ import KathaOnboardingFlowV2, {
   MIN_GENRE_SELECTIONS,
 } from "@/screens/KathaOnboardingFlowV2";
 import { genreChipLabel } from "@/components/explore/GenreStrip";
+import { BUTTON_RECIPE } from "@/components/Button";
 import { colors, controls, genreLabels, radius } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre } from "@/types/domain";
@@ -476,18 +477,36 @@ describe("KathaOnboardingFlowV2", () => {
   /*
     The questionnaire used to draw the app-wide 64pt primary, so the button
     changed size halfway through onboarding. Pinned against the token rather
-    than against 56, so the day the pill moves, every screen moves with it.
+    than against a number, so the day the button moves, every screen moves
+    with it.
+
+    THIS USED TO ASSERT THE OPPOSITE. It read `not.toBe(primaryCtaHeight)`,
+    which was the two-recipe system's guard: onboarding at 56, the app at 64,
+    and the test standing between them. The split is over -- there is one
+    button, and `onboardingCtaHeight` is now an alias of
+    `primaryCtaHeight` -- so that assertion could only ever fail, and
+    deleting it would have left the screen with nothing checking it at all.
+    What replaces it says the thing that is now true and that a regression
+    would break: this screen draws no button of its own, it draws the shared
+    one.
   */
-  it("draws the shared onboarding pill, not the app-wide primary", async () => {
+  it("draws the one shared button, not a local copy", async () => {
     const view = await render(
       <KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />,
     );
 
     const cta = StyleSheet.flatten(
       view.getByLabelText("Continue").props.style,
-    ) as { height?: number; borderRadius?: number };
-    expect(cta.height).toBe(controls.onboardingCtaHeight);
-    expect(cta.height).not.toBe(controls.primaryCtaHeight);
+    ) as { minHeight?: number; borderRadius?: number };
+    // `minHeight`, not `height`: see the note in Button.tsx about labels
+    // that are a whole sentence. The floor is what the geometry promises.
+    expect(cta.minHeight).toBe(controls.primaryCtaHeight);
+    expect(cta.minHeight).toBe(controls.onboardingCtaHeight);
     expect(cta.borderRadius).toBe(radius.pill);
+    // And it came from `Button`, which is the assertion with teeth: a screen
+    // that grows its own CTA again would satisfy the numbers above by copying
+    // them, and would fail this.
+    expect(cta.minHeight).toBe(BUTTON_RECIPE.lg);
+    expect(cta.borderRadius).toBe(BUTTON_RECIPE.radius);
   });
 });

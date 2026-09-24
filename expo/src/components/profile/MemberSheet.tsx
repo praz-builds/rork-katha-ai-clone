@@ -1,6 +1,7 @@
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, Crown, X } from "lucide-react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
+import { Button } from "@/components/Button";
 
 /**
  * The member state, as a sheet (D7).
@@ -76,15 +77,12 @@ export default function MemberSheet({
             ))}
           </View>
           <Text style={styles.manage}>{manageLine}</Text>
-          <Pressable
+          <Button
+            label="Done"
             onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Done"
             testID="member-sheet-done"
-            style={({ pressed }) => [styles.done, pressed && styles.donePressed]}
-          >
-            <Text style={styles.doneLabel}>Done</Text>
-          </Pressable>
+            style={styles.done}
+          />
         </View>
       </View>
     </Modal>
@@ -154,14 +152,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-  done: {
-    marginTop: spacing.md,
-    minHeight: 50,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  donePressed: { backgroundColor: colors.accentPressed },
-  doneLabel: { fontFamily: fonts.ui, color: colors.surface, fontWeight: "800", fontSize: 16 },
+  /** Layout only; the recipe is `Button`'s. */
+  done: { marginTop: spacing.md },
 });

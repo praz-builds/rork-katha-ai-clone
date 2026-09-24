@@ -18,6 +18,7 @@ import {
 } from "@/lib/pricing";
 import { revenueCatService, type RevenueCatPaywallProduct } from "@/lib/revenuecat";
 import { colors, fonts, radius, spacing } from "@/theme";
+import { Button } from "@/components/Button";
 
 /**
  * The credit packs, as a sheet (D8).
@@ -200,27 +201,23 @@ export default function CreditPacksSheet({
 
           {notice ? <Text style={styles.notice} testID="credit-packs-notice">{notice}</Text> : null}
 
-          <Pressable
-            onPress={purchase}
-            disabled={!purchasable || busy}
-            accessibilityRole="button"
+          <Button
+            label={purchasable
+              ? busy
+                ? "Purchasing..."
+                : `Purchase ${chosen?.pack.credits ?? ""} credits for ${chosen?.priceString ?? ""}`
+              : WEB_PURCHASE_NOTE}
             accessibilityLabel={purchasable ? "Purchase" : WEB_PURCHASE_NOTE}
-            accessibilityState={{ disabled: !purchasable || busy, busy }}
+            onPress={purchase}
+            disabled={!purchasable}
+            /* `loading`, not just `disabled`: a purchase in flight is busy,
+               which is a different fact from a purchase that is unavailable.
+               A screen reader that only hears "dimmed" cannot tell them
+               apart. */
+            loading={busy}
             testID="credit-packs-purchase"
-            style={({ pressed }) => [
-              styles.purchase,
-              pressed && purchasable && styles.purchasePressed,
-              (!purchasable || busy) && styles.purchaseDisabled,
-            ]}
-          >
-            <Text style={styles.purchaseLabel}>
-              {purchasable
-                ? busy
-                  ? "Purchasing..."
-                  : `Purchase ${chosen?.pack.credits ?? ""} credits for ${chosen?.priceString ?? ""}`
-                : WEB_PURCHASE_NOTE}
-            </Text>
-          </Pressable>
+            style={styles.purchase}
+          />
         </View>
       </View>
     </Modal>
@@ -292,16 +289,6 @@ const styles = StyleSheet.create({
   },
   popularLabel: { fontFamily: fonts.ui, color: colors.surface, fontWeight: "800", fontSize: 10 },
   notice: { fontFamily: fonts.ui, color: colors.muted, fontSize: 13, textAlign: "center" },
-  purchase: {
-    marginTop: spacing.sm,
-    minHeight: 52,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  purchasePressed: { backgroundColor: colors.accentPressed },
-  purchaseDisabled: { backgroundColor: colors.borderStrong },
-  purchaseLabel: { fontFamily: fonts.ui, color: colors.surface, fontWeight: "800", fontSize: 16 },
+  /** Layout only; the recipe is `Button`'s. */
+  purchase: { marginTop: spacing.sm },
 });

@@ -10,7 +10,7 @@ Use this document before changing onboarding, paywall, or shared visual componen
 
 1. Use `BrandWordmark` everywhere the Katha AI wordmark appears. Do not rebuild it from ordinary text or use the square app icon as a wordmark.
 2. Use bundled fonts and wait for `Font.loadAsync` before rendering the app.
-3. Use `BricolageGrotesque` for display text, `HankenGrotesk` for product UI, `Baloo2` only for the brand, and `Literata` for long-form reading.
+3. Use `BricolageGrotesque` for display text, `HankenGrotesk` for product UI, `Baloo2` only for the brand, and `Literata` for long-form reading. **A CTA never uses the display font**: every button label is Hanken.
 4. Set visible text to `letterSpacing: 0`. Do not introduce negative letter spacing.
 5. Do not introduce visible em dashes. Rewrite the sentence or use punctuation that reads naturally.
 6. Preserve the fixed intro geometry and fixed message slots across all three slides.
@@ -134,10 +134,8 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | 12 | Intro cover cards |
 | 14 | OTP boxes, reaction chips |
 | 15 | Icon badges |
-| 16 | Intro notification, success button |
-| 17 | Paywall CTA |
+| 16 | Intro notification |
 | 18 | Text fields and prompt boxes |
-| 20 | Primary text CTA |
 | 18 | Option rows, plan cards, review cards |
 | 20 | Publish card |
 | 22 | Create card, genre chips, edit chips |
@@ -154,7 +152,7 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Family | Role | Bundled files |
 | --- | --- | --- |
 | `Baloo2` | Brand wordmark only | `Baloo2.ttf` |
-| `BricolageGrotesque` | Display headings, important numbers | `BricolageGrotesque.ttf` |
+| `BricolageGrotesque` | Display headings on Home, Profile and onboarding; important numbers. Never a button label, never a create-flow heading | `BricolageGrotesque.ttf` |
 | `HankenGrotesk` | UI labels, body copy, metadata, inputs | `HankenGrotesk.ttf` |
 | `Literata` | Long-form story reading | `Literata.ttf` |
 | `LiterataItalic` | Long-form italic reading | `Literata-Italic.ttf` |
@@ -173,12 +171,15 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Compact body | Hanken | 500 | 14.5 / 22 | Compact descriptions |
 | Option title | Hanken | 700 | 16 / natural | Selection labels |
 | Option detail | Hanken | 400 | 13 / natural | Selection descriptions |
-| Primary CTA | Hanken | 700 | 17 / natural | Main button labels |
+| Create step heading | Hanken | 700 | 26 / 32 | `type.createTitle`: every create-flow step heading ("What's your story about?", "Where does it begin?", "Craft character", the crafting loader, create dialogs) |
+| Primary CTA | Hanken | 700 | 17 / natural | Main button labels. **CTAs never use the display font** -- not a Button, not a text link, not a tappable card whose label is its only text |
 | Input | Hanken | 600 | 17 / natural | Email input |
 | Name input | Bricolage | 700 | 24 / natural | First-name entry |
 | Review copy | Hanken | 500 | 12.5 / 17 | Social proof cards |
 | Metadata | Hanken | 400 to 700 | 11 to 13 / 17 to 19 | Hints, labels, prices |
 | Story text in intro | Hanken | 400 | 13.2 / 19 | Generated story lines |
+
+**Bricolage is for Home and Profile display titles, onboarding headings, and numbers only.** The create flow is a working surface, so its headings are Hanken bold (`type.createTitle`); Bricolage at 32 there read as a poster rather than a form.
 
 The design rule is zero letter spacing for visible text. The only currently tolerated positive tracking is tiny uppercase metadata such as `NEW STORY`, cover-author labels, rating stars, and paywall badges. Do not add tracking to headings, body copy, buttons, or the wordmark.
 
@@ -199,21 +200,50 @@ Use shadows to establish a single center piece or actionable surface, not on eve
 | Surface | iOS shadow | Android | Web |
 | --- | --- | --- | --- |
 | Intro warm cards | `#7A2E0E`, radius 15, offset 0/12, opacity supplied by component | elevation 12 | No explicit fallback in intro helper |
-| Primary flow CTA | orange, opacity 0.42, radius 18, offset 0/12 | elevation 6 | `boxShadow: shadows.primaryCta` |
+| The text button | orange, opacity 0.42, offset 0/12 | elevation 6 | `boxShadow: shadows.primaryCta`, applied by `Button` |
 | Notification alert | `#3D2B1E`, opacity 0.18, radius 24, offset 0/12 | elevation 10 | `0 12px 30px rgba(61,43,30,0.16)` |
 | Review card | `#7A2E0E`, opacity 0.15, radius 12, offset 0/6 | elevation 3 | Platform default |
-| Paywall CTA | orange, opacity 0.7, radius 17, offset 0/12 | elevation 8 | Platform default |
 
 ## Component Recipes
 
-### Primary Button
+### Button
 
-- Full available width inside the page gutter.
-- Standard flow: height 58, radius 16, orange fill, Hanken 700 at 17, white label.
-- Intro: height 56, radius 16.
-- Paywall: height 60, radius 17, vertical orange gradient.
-- Disabled: `#EDE3D4` fill and `#B7AB99` label; remain non-pressable.
-- Keep command copy direct. Current examples include `Continue`, `Build my profile`, and personalized paywall actions.
+**There is one text button and it is `src/components/Button.tsx`. A screen
+never draws its own.** The four recipes this section used to list — 58/16 for
+the standard flow, 56/16 for the intro, 60/17 for the paywall, 64/20 in the
+theme — are exactly the drift it replaced: four sizes and four radii for one
+act, none of them reading the token that was supposed to govern them.
+
+- `controls.primaryCtaHeight` **52** (a `minHeight`, so a long label wraps
+  rather than clipping) at `controls.primaryCtaRadius`, which is
+  `radius.pill`.
+- `colors.accent`, going to `colors.accentPressed` while held, with
+  `shadows.primaryCta`.
+- Label `type.button`: white, **17 / 700**, `fonts.ui`. **A CTA never uses the display font**, and that includes a hand-rolled text link: `button-recipe.test.ts` fails on a `<Pressable>` whose only `<Text>` is set in `fonts.display`. Home's write card (`WriteAnotherCTA`) is a button too, so its heading is Hanken 700, not Bricolage; the scan cannot see labels drawn by a child component, so that one is held by review.
+- Full available width inside the page gutter, unless `fullWidth={false}`.
+- `size="sm"` is `controls.buttonSmHeight` **44** with `type.buttonSmall`
+  (15 / 700), for a control sitting in a row rather than under the content.
+- Variants: `primary`, `secondary` (`colors.surface` with a 1.5pt
+  `borderStrong` edge) and `ghost` (label and target only).
+- Disabled draws a `colors.borderStrong` plate with a `colors.tertiary`
+  label, not a faded orange one: a primary at 40% opacity still reads as the
+  accent, so it looks pressable and does nothing.
+- Destructive controls are **not** a variant. Deleting an account is
+  `colors.danger` and blocking an author is `colors.premium`, deliberately
+  unlike every other button in the app.
+- Keep command copy direct. Current examples include `Continue`,
+  `Build my profile`, and personalized paywall actions.
+
+`source-of-truth/DESIGN_SYSTEM.md` section 6.1 carries the reasoning and
+`src/__tests__/button-recipe.test.ts` enforces it.
+
+### Icons
+
+Icons are lucide (`lucide-react-native`). Some glyphs carry one meaning across the app and must not be reused for another:
+
+- **`Sparkles` means credits, and nothing else.** The credits pill, prices and the credits screen. Not AI, not generation, not a suggestion.
+- **`Signpost` is a direction the story could take**: the opening chips on Create's "Where does it begin?" and the chapter-end direction cards (both drawn by `DirectionChoices`).
+- **`RefreshCw` is Reimagine**: the reader chrome action, the chapter-end pill and the re-prompt sheet's submit.
 
 ### Option Row
 
@@ -266,7 +296,7 @@ token file here. `Toggle` draws every pixel itself from `@/theme`.
 - Name input uses a 2 point bottom rule, no enclosing card, Bricolage 24.
 - Email and Other inputs use a white surface, radius 14, border 1.5.
 - Email padding is 16 with Hanken 600 at 17.
-- Primary text CTAs use `controls.primaryCtaHeight` 64, `controls.primaryCtaRadius` 20, and `shadows.primaryCta`.
+- **Text buttons are never hand-rolled.** Compose `src/components/Button.tsx`: `controls.primaryCtaHeight` 52 at `controls.primaryCtaRadius` (`radius.pill`), a white `type.button` 17/700 label on `colors.accent`, and `shadows.primaryCta`. `size="sm"` is `controls.buttonSmHeight` 44 for a control in a row. The 58/60/64 heights and the 16/17/20 radii recorded elsewhere in this file were the per-screen copies this replaced; see `source-of-truth/DESIGN_SYSTEM.md` section 6.1.
 - Form fields and prompt boxes use `controls.formFieldMinHeight` 58, `controls.formFieldRadius` 18, and `shadows.formField`.
 - OTP is six equal cells, height 58, radius 14, with a single invisible numeric input over the row.
 - Focus is orange. Placeholders use `#B49A82`.
@@ -307,7 +337,7 @@ Message-sheet slots are fixed:
 - Headline: fixed height 64, Bricolage 27/31.3.
 - Description: fixed height 54, margin top 8, Hanken 15/22.5.
 - Action slot: fixed height 100, bottom aligned. It remains reserved on slides one and two.
-- Slide three CTA: height 56. Account sign-in follows with a 14 point gap.
+- Slide three CTA: the shared `Button` at `controls.primaryCtaHeight`. Account sign-in follows with a 14 point gap.
 
 Animation-object geometry:
 

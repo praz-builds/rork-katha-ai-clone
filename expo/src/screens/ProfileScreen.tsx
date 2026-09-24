@@ -258,7 +258,11 @@ export default function ProfileScreen({
           style={({ pressed }) => [styles.card, pressed && styles.pressed]}
         >
           <View style={styles.rowIcon}>
-            <Sparkles size={20} color={colors.accent} />
+            {/* Gold and filled, as on Home, Get credits and the Create brief.
+                It was hollow accent-orange here, which made the credits row
+                the one place in the app where the spark meant something
+                slightly different. */}
+            <Sparkles size={20} color={colors.chromeStar} fill={colors.chromeStar} />
           </View>
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Credits</Text>
@@ -574,11 +578,14 @@ const styles = {
       fontWeight: "800",
       fontSize: 12,
     },
+    /*
+      No disc. Every other credits affordance in the app lost its plate, and a
+      peach capsule at the right end of a white row was the last one left --
+      it read as a second card inside the card. The label alone is the
+      affordance; the row is the target.
+    */
     buyButton: {
       minHeight: 36,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.pill,
-      backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",
     },

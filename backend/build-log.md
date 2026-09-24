@@ -89,6 +89,246 @@ and no build to update, so **every client change in #119 and #122 is live in
 client that talks to production; the buttons, the story page and phrase capture
 are visible only through `scripts/preview.sh`. Setting up EAS is its own piece
 of work and is the owner's call.
+## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
+
+**Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
+no migration and no function source changed. **Nothing to deploy.**
+
+- **Comments were not filtered by viewer.** Checked against production
+  read-only: the live SELECT policy on `comments` lets any authenticated
+  caller read a public or curated story's thread, `handleReadThread` filters by
+  `story_id` and the caller's own block list, and the deployed `comments`
+  bundle matches main. `select count(*) from comments` in production is **0**:
+  no comment has ever been stored, so "Comments (0)" was true. What the client
+  got wrong: any failed read (no session, offline, 5xx) rendered as "Comments
+  (0) / No comments yet", and a post answered by something other than a comment
+  row left the optimistic "You" row on screen for its writer alone. Both fixed
+  in `ChapterSocial`; a deno test pins cross-viewer visibility on a curated
+  story with chapter-attached comments.
+- **The author card never navigated.** It was a plain `View`, and neither
+  `ReaderScreen` nor `PhraseCaptureReader` had an `onAuthor` prop. App now
+  passes `setScreen({ name: "author", authorId })`, the same call the story
+  page uses.
+- **The author card and comments are cards now**, lifted off the page in
+  `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
+  Night) with `shadows.card`, replacing the hairline dividers.
+- **The reader no longer signs every story "Katha AI".** `authorFor` falls
+  back to the house account for any unknown id; the reader now resolves the
+  author through `useStoryAuthor` (`src/lib/story-author.ts`): the public
+  profile for a real account, the seed only for a seed id, "You" on your own
+  story. Follow is saved (`setAuthorFollow`), starts from the server, is hidden
+  on your own story, and Back from the author page returns to the chapter.
+- Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
+  has the same fallback.
+## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
+
+**Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
+`backend/` code, no migration, no function. **Nothing to deploy** beyond the
+next client build / web preview.
+
+- **Page stuck on "Page 1".** The pager committed a page turn only in
+  `onMomentumScrollEnd`, which react-native-web accepts and never calls (the
+  browser has no such event). On web the reader swiped to the last page and
+  the Pages control never moved. `ReaderScreen` now commits on web once the
+  pager has been quiet for 150ms (`WEB_PAGER_SETTLE_MS`); native keeps the
+  momentum end. Test: `reader-paging.test.tsx`, fails with the web branch off.
+- **Re-prompt showed no loader.** `adoptReimagineGeneration` put the session
+  in the store without publishing it, so nothing re-rendered until the run's
+  first event: the old chapter stayed up, then a blank opener. It now publishes
+  at once and marks the session `rewrite: true`, and the reader holds
+  `GeneratingOverlay` (the create flow's pre-first-page screen) until one whole
+  page has settled. Continuations are unchanged. App also keyed the session to
+  the chapter the reader was OPENED at rather than the one re-prompted
+  (`run.request.chapterNumber` now). Tests: `reader-reprompt-loader.test.tsx`,
+  `reimagine-live-session.test.ts`; both fail with their fix reverted.
+- **After review:** the crafting screen over a rewrite has a Back control
+  (the only exit on iOS and web; the rewrite keeps running). A failed rewrite
+  shows why and its Try again starts a fresh run of the same request —
+  `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
+  its chapter from the run's request, so App no longer passes one. A pending
+  web page-settle is dropped on chapter switch (tested with fake timers).
+## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
+
+**Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no
+function. **Nothing to deploy.**
+
+**What the founder felt.** Swipes and the Pages slider lagged the finger, and
+muting the music took a visible moment before the icon struck through and a
+longer one before the sound stopped.
+
+**The cause is older than Save phrase.** Every `ReaderScreen` render rebuilt
+every word of every mounted page (up to five pages around the one on screen).
+Showing the chrome, muting, a slider step and crossing a page mid-swipe are
+all `ReaderScreen` renders, and none of them changes a word. This was already
+true of the plain reader: its default `renderWord` was an inline arrow, and
+`renderPageBody` was called straight from render. Phrase capture made each
+rebuild heavier: about 50% more host `Text` nodes (3,381 against 2,258 on a
+2,400-word chapter), and a `TappableWord` for every word with fresh
+`onPress`/`onLongPress` closures, so its `memo` never held.
+
+**Measured** with a scratch jest benchmark using React Profiler plus a count
+of words rebuilt, on a 2,400-word chapter. The word counts are
+deterministic. The milliseconds were taken with the machine at a load
+average of 600-1,000, so read them as ratios only.
+
+| Interaction | Words rebuilt before -> after (phrase reader) | Words rebuilt before -> after (plain reader) |
+| --- | --- | --- |
+| Show chrome | 1,120 -> 0 | 2,240 -> 0 |
+| Mute music | 1,680 -> 0 | 1,120 -> 0 |
+| Pages slider step | 1,698 -> 385 (only the page entering the window) | 3,395 -> 385 |
+
+**Fixes.**
+- `PageWords` (memo) renders a page's words. Its inputs are all stable:
+  `matchesByPage` is memoised per query, `NO_MATCHES` is shared, and
+  `plainWord` is module-level.
+- Mute is optimistic. The state flips first, then the playing sound is taken
+  out of the ref and paused, then unloaded, all from the handler. The
+  `musicMuted` effect used to do this after the commit, and it awaited
+  `unloadAsync` before anything went quiet. A load that lands after a mute is
+  now dropped by checking `musicMutedRef`.
+- Home rails: `StoryFeedCard` is memoised. `FeedRail` gives each card a stable
+  handler through `RailCard` and a ref to `onStory`, because App recreates
+  `openStory` on every render.
+
+**Does deleting Save phrase alone fix it? No.** Deleting it removes a third of
+the reader's text nodes and the pan detector around the pager. But the plain
+reader rebuilt 1,120-3,395 words per interaction too. `PageWords` is the fix.
+
+Tests: `reader-responsiveness.test.tsx`. The "no words rebuilt" test and the
+"pause from the tap" test both fail with `ReaderScreen` reverted.
+
+---
+
+## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
+
+**Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no
+`backend/` file, no migration, no function. **Nothing to deploy.**
+
+### The button did not exist
+
+`controls.primaryCtaHeight` (64) at `controls.primaryCtaRadius` (20) was written
+down in `source-of-truth/DESIGN_SYSTEM.md` §6, exported from the theme, and
+**imported by nothing** for the whole life of the app. `KathaPrimitives.PrimaryButton`
+existed at 52/`radius.md` and was imported by nothing either — it survived only
+in three test files that mocked it. Onboarding had its own `Primary` at 56.
+Everything else was a `Pressable` with a local `StyleSheet` entry, and those had
+settled at 48, 50, 52, 54 and 56, across three radii, with labels at 15/800,
+16/800, `type.body` 700 and `type.headline` 700.
+
+So the same act — press the orange thing — looked like a different control on
+almost every screen, and the token meant to prevent that had never been
+connected to anything. **The lesson is not "the number was wrong".** A test that
+asserts a token's value passes perfectly well while nothing reads the token;
+`theme.test.ts` had been green over this the entire time. A token only holds if
+exactly one component reads it.
+
+`expo/src/components/Button.tsx` is now that component: `primary | secondary |
+ghost`, `lg` (52) / `sm` (44), `minHeight` not `height` because the credit
+sheet's Purchase label is a whole sentence. 20 style blocks across 16 files
+migrated; `PrimaryButton` and Home's local `HeaderAction` deleted.
+
+`primaryCtaHeight` 64 → 52, `primaryCtaRadius` → `radius.pill`,
+`onboardingCtaHeight` 56 → 52 as an explained alias. The two-recipe split is
+over, and `DESIGN_SYSTEM.md` §6 — which argued for it at length — is rewritten
+as §6.1 (the one button) and §6.2 (the circular icon button, whose rules had
+been sitting headingless at the tail of the onboarding-field section). The old
+argument is kept as "What the two-recipe split got right, and what it got
+wrong": its observation that 64 reads as a slab is the reason the button is 52.
+
+### The guard, and what it honestly does not catch
+
+`expo/src/__tests__/button-recipe.test.ts` checks two different things: that
+`Button` consumes the tokens, and that nothing else draws a tall pill. It was
+proved by planting `naughtyCta: { minHeight: 56, borderRadius: radius.pill }`
+in `LibraryScreen` and watching it fail.
+
+It does **not** catch an inline style object, a computed height
+(`spacing.huge + spacing.sm`), or a height arriving through an unresolvable
+variable, and the file says so rather than implying coverage it does not have.
+The compile-time half is `ButtonLayoutStyle`, which omits every geometry key
+from the `style` prop — because the prop is applied last and an unnarrowed
+`ViewStyle` silently overrode the recipe while the doc comment claimed it could
+not be overridden.
+
+A radius floor of 20 pulled in six discs, avatars and cards. Rather than six
+exemptions they are excluded by shape: a style that pins `width <= height` is a
+disc or a card, never a text button.
+
+`DeleteAccountSheet#continueButton` stays exempt, dated, with the condition
+that would flip it. It is primary-*shaped* but deliberately not the primary:
+`colors.ink`, one row above "Keep my account", one screen before the red
+confirm. Moving it to `Button` would make the route to deleting an account the
+friendliest control on the sheet.
+
+### Chrome without plates
+
+Home's credits pill and bell, Get credits' `balancePill` and Create's
+`CreditPill` were three drawings of one idea — white shadowed circle, peach
+`accentSoft` capsule, and a third in the brief flow. All now use one
+containerless `HeaderAction`: no plate, no shadow, 44pt target kept, unread dot
+kept (its ring moved from `surface` to `bg`, there being nothing behind it now).
+
+**One regression this caused, caught in review and fixed:** the Get Credits
+balance is a *readout*, and `HeaderAction` had a required `onPress` and a
+hardcoded `accessibilityRole="button"`, so the balance was wired to `onBack`.
+A screen reader announced "7 credits, button" and activating it left the screen.
+`onPress` is now optional and its absence renders a plain `View`. The API forced
+the bug; that is the kind of default worth noticing when extracting a component.
+
+### The covers that never arrived
+
+Explore's first screenful of cards showed their genre gradient forever while
+cards scrolled to later were fine. `StoryFeedCard`'s `CardCover` reset the
+fade-in opacity in a **mount effect, which runs after commit**:
+
+    const opacity = useRef(new Animated.Value(0)).current;
+    useEffect(() => { opacity.setValue(0); }, [imageKey]);   // after paint
+    <FocalImage onLoad={reveal} />                            // can fire first
+
+A cover that resolves fast — warm HTTP cache, already-decoded image — fires
+`onLoad`, fades in, and is then set back to 0 by the effect, and `onLoad` never
+fires again for the life of the mount. Cards mounted during a scroll fetch cold,
+so their `onLoad` lands after the effect and they reveal correctly. Hence
+"the first set is missing and the rest are fine".
+
+The reveal is now a **fact, not an event**: `revealed = shownKey === imageKey`,
+set by `onLoad`, so a load that arrives before first paint is still true
+afterwards. The regression test earns its keep — a first version passed against
+the broken code because the mocked image re-fired `onLoad` on every render,
+which repaired the reveal. Firing it once per source, like a real image, is what
+exposes the bug, and the test says so.
+
+**The card is deliberately NOT gated on its image**, which is what the report
+asked for. A story whose cover generation failed would then never appear at all,
+and the feed would go blank for as long as the slowest cover took. Instead the
+first six covers are warmed with `Image.prefetch` behind a 180ms
+`Promise.race` — best effort, never blocking beyond the timeout, sequence guard
+re-checked after the await. The trade: every search hands over up to 180ms late,
+not only the first.
+
+### Viewports
+
+`useLayoutWidth()` (window, content, gutter, band `compact | regular | wide`)
+and `feedCardMetrics()` replace fixed 300/116/155 card geometry. 390 reproduces
+the reference frame exactly — cover 116×155, rail 300 — and moves only where the
+window forces it. `FeedRail` now snaps by the width the card actually drew at;
+snapping by the old 300 constant walked the row further with every swipe on a
+narrow window.
+
+### Gates
+
+`pnpm typecheck` clean. `pnpm lint` 0 errors, 30 warnings (all pre-existing).
+`pnpm exec jest --ci` **1326 passed, 131 suites**. Security scan: 0 findings —
+cover URLs reaching `Image.prefetch` are written only by `_shared/media.ts` and
+`regenerate-cover`, never accepted from a client.
+
+### Follow-ups
+
+1. `expo/DESIGN.md:398-410` still lists the one-time offer in its paywall
+   ordering — the feature was removed 2026-09-10. Needs renumbering, not just
+   deletion.
+2. A URL-scheme allowlist before `Image.prefetch` as defence in depth. Not a
+   finding today: the value is always a Supabase Storage HTTPS URL.
 
 ---
 

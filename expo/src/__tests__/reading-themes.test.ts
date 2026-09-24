@@ -66,6 +66,22 @@ describe("every reading mode", () => {
   );
 
   it.each(entries.map((theme) => [theme.label, theme] as const))(
+    "%s: the chapter-end cards stay readable, and are not the page",
+    (_label, theme) => {
+      // The author card and comments are the app, drawn as cards lifted off
+      // the page. Their text and secondary text must clear AA on the card and
+      // on the comment box inside it, and the card must not be the page colour
+      // -- that was the bug: the social layer read as more of the book.
+      const { surface, field, text, muted } = theme.social;
+      for (const ground of [surface, field]) {
+        expect(contrastRatio(text, ground)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+        expect(contrastRatio(muted, ground)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+      }
+      expect(surface.toLowerCase()).not.toBe(theme.background.toLowerCase());
+    },
+  );
+
+  it.each(entries.map((theme) => [theme.label, theme] as const))(
     "%s: is not pure black on pure white",
     (_label, theme) => {
       // 21:1 is the maximum contrast and the wrong choice for long-form

@@ -146,18 +146,6 @@ export const IconChevronForward = icon(
 export const IconPerson = icon("IconPerson", "person-outline", 28);
 
 /**
- * A credit. The spark, not a coin or a gem.
- *
- * Credits are already drawn as a spark everywhere else in the app (the Create
- * button, the cost card, the credits row on the profile, Home's header pill),
- * so onboarding's welcome coins use the same mark rather than inventing a
- * second idea of what a credit looks like on the one screen where the reader
- * meets them first. Default 18 matches the other action-sized glyphs here;
- * the welcome coin passes its own size because it scales with the window.
- */
-export const IconSparkle = icon("IconSparkle", "sparkles-outline", 18);
-
-/**
  * A shelf, a library, a cast you can come back to.
  *
  * The Meet screen's "Saved to your cast" row is the one promise in onboarding

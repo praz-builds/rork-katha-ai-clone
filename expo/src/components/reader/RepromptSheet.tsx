@@ -11,8 +11,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Sparkles, X } from "lucide-react-native";
+import { RefreshCw, X } from "lucide-react-native";
 
+import { Button } from "@/components/Button";
 import { reimagineQuote, useIsSubscribed } from "@/lib/entitlements";
 import type { RepromptRequest } from "@/lib/reimagine-client";
 import { colors, radius, spacing, type } from "@/theme";
@@ -173,19 +174,12 @@ export function RepromptSheet({
 
             <View style={styles.footer}>
               <Text style={styles.price}>Re-prompt · {quote.label}</Text>
-              <Pressable
+              <Button
+                label={isStandalone ? "Re-prompt story" : "Re-prompt chapter"}
+                icon={<RefreshCw size={18} color={colors.surface} />}
                 onPress={submit}
                 disabled={!canSubmit}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !canSubmit }}
-                accessibilityLabel={isStandalone ? "Re-prompt story" : "Re-prompt chapter"}
-                style={[styles.submit, !canSubmit && styles.submitDisabled]}
-              >
-                <Sparkles size={18} color={colors.surface} />
-                <Text style={styles.submitLabel}>
-                  {isStandalone ? "Re-prompt story" : "Re-prompt chapter"}
-                </Text>
-              </Pressable>
+              />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -291,21 +285,5 @@ const styles = StyleSheet.create({
   price: {
     ...type.caption,
     color: colors.muted,
-  },
-  submit: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  submitDisabled: {
-    backgroundColor: colors.tertiary,
-  },
-  submitLabel: {
-    ...type.headline,
-    color: colors.surface,
   },
 });
