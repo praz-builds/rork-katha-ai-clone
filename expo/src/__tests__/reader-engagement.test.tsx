@@ -26,7 +26,12 @@ const mockFetchThread = jest.fn();
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
 jest.mock("@/lib/comments", () => {
   const actual = jest.requireActual("@/lib/comments");
-  return { ...actual, fetchThread: (...args: [string]) => mockFetchThread(...args) };
+  return {
+    ...actual,
+    fetchThread: (...args: [string]) => mockFetchThread(...args),
+    fetchThreadPage: (...args: [string]) =>
+      mockFetchThread(...args).then((comments: unknown[]) => ({ comments, total: comments.length })),
+  };
 });
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -48,6 +53,8 @@ import ReaderScreen from "@/screens/ReaderScreen";
 import type { Chapter, Story } from "@/types/domain";
 /* eslint-enable import/first */
 
+const AUTHOR_ID = "3ae4750d-f24a-4dc9-a810-991dae1ce029";
+
 const chapter: Chapter = {
   id: "chapter-1",
   storyId: "story-1",
@@ -60,7 +67,8 @@ const chapter: Chapter = {
 const story: Story = {
   id: "story-1",
   title: "The Ward at Night",
-  authorId: "author-1",
+  // A real account id: Follow and the profile link are only offered for one.
+  authorId: AUTHOR_ID,
   genre: "contemporary",
   storyMode: "standalone",
   synopsis: "A nurse in Kochi finishes a long week.",
@@ -177,6 +185,27 @@ it("leaves reading itself completely open to a guest", async () => {
 
   // Chrome, preferences and page turning are not engagement and are not gated.
   expect(onRequireSignIn).not.toHaveBeenCalled();
+});
+
+/*
+  The author card at the end of a chapter was a plain View: tapping the avatar
+  or the name did nothing, and the reader had no prop to navigate with. It now
+  hands the story's author id to `onAuthor`, which App wires to AuthorScreen
+  exactly as the story page's author row does.
+*/
+it("opens the author's profile from the chapter-end author card", async () => {
+  const onAuthor = jest.fn();
+  const view = await render(
+    <ReaderScreen story={story} onBack={jest.fn()} onAuthor={onAuthor} />,
+  );
+  await openChapterEnd(view);
+  await waitFor(() => expect(view.getByTestId("reader-author")).toBeTruthy());
+
+  await act(async () => {
+    fireEvent.press(view.getByTestId("reader-author"));
+  });
+  // The chapter being read travels with it, so Back returns here.
+  expect(onAuthor).toHaveBeenCalledWith(AUTHOR_ID, 0);
 });
 
 it("engages normally with no gate supplied", async () => {

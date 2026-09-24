@@ -40,6 +40,64 @@ practice tables stay, unread, until a post-launch drop.
 
 Tests: `characters-tab.test.tsx` (the name-clash refusal fails with the guard
 removed), `library-screen.test.tsx`, `reader-paging.test.tsx`.
+## 2026-09-24 UTC — The chapter end's author and comments become the app, and the author opens
+
+**Session:** worktree `codex/chapter-end-social`. Client plus one new deno test;
+no migration and no function source changed. **Nothing to deploy.**
+
+- **Comments were not filtered by viewer.** Checked against production
+  read-only: the live SELECT policy on `comments` lets any authenticated
+  caller read a public or curated story's thread, `handleReadThread` filters by
+  `story_id` and the caller's own block list, and the deployed `comments`
+  bundle matches main. `select count(*) from comments` in production is **0**:
+  no comment has ever been stored, so "Comments (0)" was true. What the client
+  got wrong: any failed read (no session, offline, 5xx) rendered as "Comments
+  (0) / No comments yet", and a post answered by something other than a comment
+  row left the optimistic "You" row on screen for its writer alone. Both fixed
+  in `ChapterSocial`; a deno test pins cross-viewer visibility on a curated
+  story with chapter-attached comments.
+- **The author card never navigated.** It was a plain `View`, and neither
+  `ReaderScreen` nor `PhraseCaptureReader` had an `onAuthor` prop. App now
+  passes `setScreen({ name: "author", authorId })`, the same call the story
+  page uses.
+- **The author card and comments are cards now**, lifted off the page in
+  `ReaderTheme.social` colours (white on Paper and Sepia, a lifted warm grey on
+  Night) with `shadows.card`, replacing the hairline dividers.
+- **The reader no longer signs every story "Katha AI".** `authorFor` falls
+  back to the house account for any unknown id; the reader now resolves the
+  author through `useStoryAuthor` (`src/lib/story-author.ts`): the public
+  profile for a real account, the seed only for a seed id, "You" on your own
+  story. Follow is saved (`setAuthorFollow`), starts from the server, is hidden
+  on your own story, and Back from the author page returns to the chapter.
+- Still open: the story page (`StoryDetailScreen`) still uses `authorFor` and
+  has the same fallback.
+## 2026-09-24 UTC — The page counter follows the page on web, and a re-prompt waits behind the crafting screen
+
+**Session:** worktree `codex/reader-page-and-reprompt-loader`. Client only — no
+`backend/` code, no migration, no function. **Nothing to deploy** beyond the
+next client build / web preview.
+
+- **Page stuck on "Page 1".** The pager committed a page turn only in
+  `onMomentumScrollEnd`, which react-native-web accepts and never calls (the
+  browser has no such event). On web the reader swiped to the last page and
+  the Pages control never moved. `ReaderScreen` now commits on web once the
+  pager has been quiet for 150ms (`WEB_PAGER_SETTLE_MS`); native keeps the
+  momentum end. Test: `reader-paging.test.tsx`, fails with the web branch off.
+- **Re-prompt showed no loader.** `adoptReimagineGeneration` put the session
+  in the store without publishing it, so nothing re-rendered until the run's
+  first event: the old chapter stayed up, then a blank opener. It now publishes
+  at once and marks the session `rewrite: true`, and the reader holds
+  `GeneratingOverlay` (the create flow's pre-first-page screen) until one whole
+  page has settled. Continuations are unchanged. App also keyed the session to
+  the chapter the reader was OPENED at rather than the one re-prompted
+  (`run.request.chapterNumber` now). Tests: `reader-reprompt-loader.test.tsx`,
+  `reimagine-live-session.test.ts`; both fail with their fix reverted.
+- **After review:** the crafting screen over a rewrite has a Back control
+  (the only exit on iOS and web; the rewrite keeps running). A failed rewrite
+  shows why and its Try again starts a fresh run of the same request —
+  `adoptReimagineGeneration`'s `start` used to be a no-op. The session takes
+  its chapter from the run's request, so App no longer passes one. A pending
+  web page-settle is dropped on chapter switch (tested with fake timers).
 ## 2026-09-24 UTC — The reader stops rebuilding its prose on every tap
 
 **Session:** worktree `codex/smooth-and-fast`. Client only: no migration, no

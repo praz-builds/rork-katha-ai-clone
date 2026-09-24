@@ -12,6 +12,8 @@ import {
   __resetGenerationSessions,
   adoptReimagineGeneration,
   getGeneration,
+  getGenerationsSnapshot,
+  subscribeGenerations,
 } from "@/lib/generation-session";
 import type { ReimagineRun, ReimagineResult } from "@/lib/reimagine-client";
 import { stories } from "@/data/seed";
@@ -85,6 +87,20 @@ it("puts a rewrite on the store as a live session for the chapter being rewritte
   expect(session.chapterNumber).toBe(2);
   expect(session.phase).toBe("writing");
   expect(session.revealedProse).toBe("");
+});
+
+it("is on the published snapshot the moment it is adopted, before the run says anything", () => {
+  // Screens read sessions through `useGenerations`, i.e. this snapshot. A
+  // rewrite that only appeared on the run's first event left the reader on
+  // the old chapter, with no loader, for the first seconds of the rewrite.
+  const listener = jest.fn();
+  const unsubscribe = subscribeGenerations(listener);
+  const session = adoptReimagineGeneration({ run: fakeRun().run, story, chapterNumber: 1 });
+  unsubscribe();
+
+  expect(listener).toHaveBeenCalled();
+  expect(getGenerationsSnapshot().map((item) => item.id)).toContain(session.id);
+  expect(session.rewrite).toBe(true);
 });
 
 it("reveals settled pages as the rewrite arrives, not the raw tail", () => {
