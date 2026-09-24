@@ -65,7 +65,7 @@ try {
     await page.waitForLoadState("networkidle");
     // Fail loudly rather than ship a graphic in a fallback font or with a
     // missing cover.
-    const problems = await page.evaluate(() => {
+    const problems = await page.evaluate(async () => {
       const bad = [];
       for (const face of document.fonts) {
         if (face.status !== "loaded") bad.push(`font ${face.family}: ${face.status}`);
@@ -73,6 +73,19 @@ try {
       for (const img of document.images) {
         if (!img.complete || img.naturalWidth === 0) bad.push(`image ${img.src}`);
       }
+      // The book covers are CSS backgrounds, which document.images never
+      // lists. Load each one and fail if it does not decode.
+      const urls = new Set();
+      for (const el of document.querySelectorAll("*")) {
+        const bg = getComputedStyle(el).backgroundImage;
+        for (const m of bg.matchAll(/url\(["']?([^"')]+)["']?\)/g)) urls.add(m[1]);
+      }
+      await Promise.all([...urls].map((src) => new Promise((resolve) => {
+        const probe = new Image();
+        probe.onload = () => { if (probe.naturalWidth === 0) bad.push(`background ${src}`); resolve(); };
+        probe.onerror = () => { bad.push(`background ${src}`); resolve(); };
+        probe.src = src;
+      })));
       return bad;
     });
     if (problems.length) throw new Error(`${job.out}: ${problems.join(", ")}`);

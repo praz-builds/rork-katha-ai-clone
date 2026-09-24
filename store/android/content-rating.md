@@ -44,7 +44,7 @@ Google's wording shifts between questionnaire versions; match on meaning.
 |---|---|---|
 | Profanity or crude language | **Yes — strong language possible** | "It is not a profanity list: a character swearing in anger is characterisation" (`STORY_PROMPT_SYSTEM.md`, Base Safety Rules). User comments are unfiltered text as well. |
 | Crude sexual language | **No** | `CRUDE_LEXICON`. |
-| Discriminatory / hate language | **No** | Not produced by design and prohibited in the Terms; users can report it. |
+| Discriminatory / hate language | **No** | Not produced by design and prohibited in the Terms. IARC's content questions describe the developer's content; user comments are declared separately under "Can users interact or communicate with each other?" (below), which is the question that covers what users post, and they can be reported and their authors blocked. |
 
 ### Controlled substances
 

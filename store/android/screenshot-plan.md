@@ -8,7 +8,7 @@ Eight screenshots, in listing order. Capture them **after** the final UI feedbac
 
 - **1080 × 1920 PNG or JPEG, portrait, no alpha.** Play allows 320–3840 px per side with an aspect ratio no longer than **2:1**; at least four at ≥1080 px make the app eligible for promotion.
 - A modern phone's full screen (1080 × 2400, 20:9) is **too tall** — crop to 1080 × 1920 from the top of the content, or frame it (below).
-- **Where to capture:** a real Android device on the production build is best, since Play requires screenshots to show the real app. The Expo web preview (`scripts/preview.sh`, `:8090`) is an acceptable fallback for layout-only frames at a 360 × 640 viewport with device scale 3 (gives exactly 1080 × 1920); it cannot show narration or the native picker.
+- **Where to capture:** a real Android device running the closed-test build. Play requires screenshots to show the actual app experience, and the Expo web preview is a different renderer (different fonts, no native pickers, no narration), so it is **not** used for listing screenshots.
 - **Captions** go in a band above the phone frame, set in Bricolage Grotesque 800 on the app ground `#F3F2EF`, with the key word in `#FF6B1A` — the same system as `graphics/feature-graphic.html`. A frame template can be added to `graphics/` the same way when the captures exist; until then the raw captures are acceptable on their own.
 
 ## Rules for what is on screen

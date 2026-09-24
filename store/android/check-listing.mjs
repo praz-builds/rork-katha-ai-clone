@@ -23,7 +23,7 @@ const LIMITS = {
 // The target audience is 18+ only. A "kids" claim in the listing invites a
 // Families-policy review and contradicts the target-audience declaration.
 // Pricing claims are also banned: prices vary by country and come from Play.
-const BANNED = [/\bkids?\b/i, /\bchild(ren)?\b/i, /\bcrian[çc]as?\b/i, /\bni[ñn]os?\b/i, /\$\d/, /\bR\$/];
+const BANNED = [/\bkids?\b/i, /\bchild(ren)?\b/i, /\bcrian[çc]as?\b/i, /\bni[ñn]os?\b/i, /[$€£₹¥]\s?\d/, /\bR\$/, /\d\s?(USD|EUR|GBP|BRL|MXN|INR|US\$)\b/i, /\b(USD|EUR|GBP|BRL|MXN|INR)\s?\d/i];
 
 let failed = 0;
 for (const locale of readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()) {
