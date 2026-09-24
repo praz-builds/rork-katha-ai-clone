@@ -7,6 +7,64 @@
 
 ---
 
+## 2026-09-25 UTC — "Send feedback" and a Background music switch on the You tab
+
+**Session:** Lane E of the launch push, branch `codex/feedback-and-music-control`.
+Not deployed; the orchestrator deploys after review.
+
+### In-app feedback
+
+The existing `feedback` function turned out not to be app feedback: it posts a
+comment on a story and needs a story id. So this adds a separate path:
+
+- Migration `00097_app_feedback.sql`: the `app_feedback` table (service-role only,
+  no client grants), `submit_app_feedback` (5 an hour, 20 a day per user, under an
+  advisory lock; a repeated `request_id` replays the first row and is never refused
+  by the limit), and a trigger that deletes an account's rows when
+  `profiles.deleted_at` is set, because free text should not outlive the account.
+- Edge function `app-feedback` (JWT required, anonymous sessions included). It
+  checks the request shape, drops bad context fields without refusing the message,
+  and answers 429 when the SQL refuses.
+- Client: `src/lib/app-feedback.ts` and `components/profile/FeedbackSheet.tsx`,
+  opened from a new "Send feedback" row on You. "Thank you" appears only when the
+  server says `sent: true`. A failed send keeps the text. A retry reuses the request
+  id, and editing the text starts a new one. A 429 gets its own message.
+- Strings are in EN/PT/ES under `profile.feedbackSheet` and `profile.music`. These
+  are the first components to render through `@/i18n`. The rest of Profile is
+  still hard-coded English, so a PT or ES device sees these two rows translated
+  and the other rows in English until i18n is wired app-wide.
+
+### Profile music control
+
+A "Background music" `Toggle` on You reads and writes `katha.reader.music-muted.v1`
+through `music-storage.ts`, the same preference as the reader's mute. It has a
+`musicChosenByUserRef` so a slow storage read cannot undo a flip.
+
+### Tests (each checked to fail with its fix reverted)
+
+- `migrations/00097_app_feedback_test.ts` (6): with the limit and the trigger
+  removed, 3 fail.
+- `functions/app-feedback/index.test.ts` (8).
+- `__tests__/feedback-sheet.test.tsx` (8): with the `sent === true` check, the 429
+  mapping and the id reset reverted, 3 fail.
+- `__tests__/profile-music.test.tsx` (6), which covers both directions through the
+  real ReaderScreen and ProfileScreen: with the restore guard removed, the flip
+  test fails.
+
+### Deploy steps (not run)
+
+1. `supabase db push` to apply `00097_app_feedback`. If another lane has taken
+   00097 by then, renumber the file.
+2. `supabase functions deploy app-feedback`. This is a new function and needs no
+   `config.toml` entry because it verifies the JWT.
+3. Ship the client (OTA is fine). Until step 2 is done, the sheet shows its
+   failure message, not a false success.
+
+Roadmap: the Home "Your stories first" row was already built (`buildFeedRows`,
+pinned by `home-feed-rows.test.ts`) and is now ticked with that note.
+
+---
+
 ## 2026-09-24 UTC — Seven PRs merged and deployed, and sixteen functions found behind main
 
 **Session:** orchestration of the launch-week lanes. Merged #136, #133, #131, #135,

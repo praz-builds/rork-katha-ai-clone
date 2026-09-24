@@ -67,7 +67,35 @@
       "feedback": "Comentarios",
       "feedbackDesc": "Opiniones, calificacion, soporte"
     },
-    "legal": "Politica de privacidad - Terminos de servicio - v{{version}}"
+    "legal": "Politica de privacidad - Terminos de servicio - v{{version}}",
+    "music": {
+      "title": "M\u00fasica de fondo",
+      "desc": "Suena suave mientras lees",
+      "toggle": "M\u00fasica de fondo durante la lectura"
+    },
+    "feedbackSheet": {
+      "row": "Enviar comentarios",
+      "rowDesc": "Cu\u00e9ntanos qu\u00e9 funciona y qu\u00e9 no",
+      "title": "Enviar comentarios",
+      "lead": "Algo que falla, una idea, una historia que quieres leer: cu\u00e9ntanoslo con tus palabras.",
+      "about": "Sobre",
+      "categories": {
+        "bug": "Algo fall\u00f3",
+        "idea": "Una idea",
+        "story": "Una historia",
+        "other": "Otra cosa"
+      },
+      "placeholder": "Cu\u00e9ntanos qu\u00e9 pas\u00f3, o qu\u00e9 te gustar\u00eda que hiciera Katha",
+      "count": "{{count}} / {{max}}",
+      "send": "Enviar",
+      "sending": "Enviando",
+      "failed": "No se envi\u00f3. Tu mensaje sigue aqu\u00ed; revisa tu conexi\u00f3n e int\u00e9ntalo de nuevo.",
+      "rateLimited": "Has enviado muchos comentarios recientemente. Tu mensaje sigue aqu\u00ed; int\u00e9ntalo de nuevo en un rato.",
+      "sentTitle": "Gracias",
+      "sentBody": "Tu mensaje nos lleg\u00f3.",
+      "done": "Listo",
+      "close": "Cerrar"
+    }
   },
   "reader": {
     "narration": "Narracion",

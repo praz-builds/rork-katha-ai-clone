@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -21,6 +21,8 @@ import {
   Flame,
   HelpCircle,
   LogOut,
+  MessageSquare,
+  Music,
   Pencil,
   Shield,
   Sparkles,
@@ -30,10 +32,14 @@ import {
 } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
+import FeedbackSheet from "@/components/profile/FeedbackSheet";
 import IdentityEditor, { type IdentityEdits } from "@/components/profile/IdentityEditor";
 import MemberSheet from "@/components/profile/MemberSheet";
+import { Toggle } from "@/components/Toggle";
+import i18n from "@/i18n";
 import { creatureSource } from "@/lib/creatures";
 import { useIsSubscribed } from "@/lib/entitlements";
+import { getMusicMuted, setMusicMuted } from "@/lib/music-storage";
 import { streakState } from "@/lib/profile";
 import {
   FRESH_FOR_MS,
@@ -104,7 +110,34 @@ export default function ProfileScreen({
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [memberSheet, setMemberSheet] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const subscribed = useIsSubscribed();
+
+  // Background music. The SAME stored preference the reader's mute control
+  // writes (`katha.reader.music-muted.v1`), so a mute in the reader shows here
+  // as off, and off here opens the next story silent. The switch reads "on"
+  // for music playing, which is the inverse of the stored "muted".
+  //
+  // On until the read lands, because unmuted is the shipped default and a
+  // failed read counts as unmuted. `musicChosenByUserRef` stops a slow read
+  // overwriting a flip the person made in the meantime (AGENTS.md, "An async
+  // restore must never overwrite a choice already made").
+  const [musicOn, setMusicOn] = useState(true);
+  const musicChosenByUserRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void getMusicMuted().then((muted) => {
+      if (alive && !musicChosenByUserRef.current) setMusicOn(!muted);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const changeMusic = useCallback((next: boolean) => {
+    musicChosenByUserRef.current = true;
+    setMusicOn(next);
+    void setMusicMuted(!next);
+  }, []);
 
   useEffect(() => {
     void refreshOwnProfile({ maxAgeMs: FRESH_FOR_MS });
@@ -371,6 +404,34 @@ export default function ProfileScreen({
             testID="profile-voices"
             grouped
           />
+          {/* Not a Pressable: the Toggle is the control, and a switch inside
+              a button is the nested-button trap noted on the credits row. */}
+          <View
+            style={[styles.groupedRow, styles.groupedDivider]}
+            testID="profile-music"
+          >
+            <View style={styles.rowIcon}>
+              <Music size={20} color={colors.accent} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>{i18n.t("profile.music.title")}</Text>
+              <Text style={styles.rowSubtitle}>{i18n.t("profile.music.desc")}</Text>
+            </View>
+            <Toggle
+              value={musicOn}
+              onValueChange={changeMusic}
+              accessibilityLabel={i18n.t("profile.music.toggle")}
+              testID="profile-music-toggle"
+            />
+          </View>
+          <Row
+            icon={MessageSquare}
+            title={i18n.t("profile.feedbackSheet.row")}
+            subtitle={i18n.t("profile.feedbackSheet.rowDesc")}
+            onPress={() => setFeedbackOpen(true)}
+            testID="profile-feedback"
+            grouped
+          />
           <Row
             icon={HelpCircle}
             title="How credits work"
@@ -440,6 +501,12 @@ export default function ProfileScreen({
       />
 
       <MemberSheet visible={memberSheet} onClose={() => setMemberSheet(false)} />
+
+      <FeedbackSheet
+        visible={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        screen="profile"
+      />
 
       <DeleteAccountSheet
         visible={deleting}

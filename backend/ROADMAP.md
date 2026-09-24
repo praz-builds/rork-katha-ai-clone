@@ -572,7 +572,7 @@ wording is kept in the Item column so the two can be ticked together.
 | "Kids mode" wording (audit finding) | Pre-push | [ ] | `en.json:66` advertises "Kids mode and PIN gate"; no PIN gate exists. With an 18+ target audience, a "Kids" label invites Families-policy review. Rename to "All-ages" in UI and listing, delete the PIN-gate string in all three locales |
 | Generation provider (paid primary) | Pre-push | [ ] | Gemini is quota-blocked (`429`) and the OpenRouter free router is last in the chain. A reviewer whose first story fails is a "broken functionality" rejection. Account action, no code |
 | Edge function deploy audit | Pre-push, re-run day 6 | [~] | Last verified 2026-09-21 (production current with main, 37 / 37). Re-run after this week's merges and before the build that goes to review — merged is not deployed |
-| Ambient Music while story reading | Pre-push | [~] | Shipped: 24 genre tracks from the `music` bucket, mute-only in the reader. Depends on the background-audio row above to keep playing on device; the Profile control is still to build |
+| Ambient Music while story reading | Pre-push | [~] | Shipped: 24 genre tracks from the `music` bucket, mute-only in the reader. **Profile control built (2026-09-25):** a "Background music" switch on You, writing the same `katha.reader.music-muted.v1` preference as the reader's mute, so each shows what the other set. Still depends on the background-audio row above to keep playing on device |
 | Send OTP from otp@katha, 6-digit code instead of Supabase's 8 | Pre-push | [ ] | Custom SMTP sender in Supabase Auth plus the OTP length setting; check the OTP input and paste handling accept 6 digits on all onboarding paths |
 | Refined intro animation | Pre-push | [ ] | Also fix the desktop-width intro carousel trap noted by `scripts/preview.sh` |
 | "More options" moments: cap long text, end with "…" | Pre-push | [ ] | Truncate at a fixed length with an ellipsis so a long moment cannot break the layout |
@@ -585,12 +585,12 @@ wording is kept in the Item column so the two can be ticked together.
 | Item | When | Done | Notes |
 |---|---|---|---|
 | Seed story library (30 stories) | Post-push, **start now** | [ ] | Thirty stories take longer to write than the review takes; the store does not need them, the first users do |
-| In-app feedback form | Post-push, via OTA | [ ] | A sheet posting to a `feedback` row |
+| In-app feedback form | Post-push, via OTA | [~] | Built 2026-09-25: "Send feedback" on You opens a sheet posting to the new `app-feedback` function and `app_feedback` table (00097). **Not** the old `feedback` function, which posts story comments. 5 per hour / 20 per day per user; retries replay rather than duplicate; rows are erased with the account. Ticks when 00097 and the function are deployed and the client ships. Still needs an owner who reads the table |
 | RevenueCat production key | Post-push, but **before production** | [ ] | `expo/src/lib/revenuecat.ts:13-14` are `undefined`, so Purchase is disabled on device. Needs the Play app to exist, then 8 SKUs (5 packs, 3 subscriptions), `katha` entitlement, country pricing, the `goog_` key. Add "renews automatically, cancel in Google Play" copy to the paywall — Subscriptions policy |
 | Push notifications | Post-launch | [ ] | Phase G. Client permission flow and Android channels exist; FCM is not wired. Needs Firebase back (see the Firebase row) |
 | Sentry DSN / PostHog tweaks (OTA) | Post-push, via OTA | [ ] | Rotate the DSN after the first public build so the value in the reviewed binary is not the one that stays live |
 | "Add Language" button at the bottom of language selection in More options, stored in Supabase | Post-push | [ ] | Needs a column or table for requested languages |
-| Feed inspired by Dungeon AI: once a user creates stories, "Your stories" comes first on Home | Post-push | [ ] | Unprioritised on the sheet |
+| Feed inspired by Dungeon AI: once a user creates stories, "Your stories" comes first on Home | Post-push | [x] | Already true in code: `buildFeedRows` in `HomeScreen.tsx` puts `yours` first whenever the reader owns a story with a chapter, and `home-feed-rows.test.ts` pins it ("leads with 'Your stories'"). Checked 2026-09-25; nothing to build |
 | Ship Dark Mode | Post-push | [ ] | Theme is light by decision today; a dark theme is a token pass plus the `prefers-color-scheme` equivalent on native |
 | Add character in the Reimagine flow between chapters … | — | [ ] | Sheet row 28, cut off in the screenshot — complete the description and the rows after it |
 

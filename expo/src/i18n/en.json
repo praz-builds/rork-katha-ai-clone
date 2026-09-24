@@ -67,7 +67,35 @@
       "feedback": "Feedback",
       "feedbackDesc": "Comments, rating, support"
     },
-    "legal": "Privacy Policy - Terms of Service - v{{version}}"
+    "legal": "Privacy Policy - Terms of Service - v{{version}}",
+    "music": {
+      "title": "Background music",
+      "desc": "Plays softly while you read",
+      "toggle": "Background music while reading"
+    },
+    "feedbackSheet": {
+      "row": "Send feedback",
+      "rowDesc": "Tell us what works and what does not",
+      "title": "Send feedback",
+      "lead": "Something broken, an idea, a story you want to read: tell us in your own words.",
+      "about": "About",
+      "categories": {
+        "bug": "Something broke",
+        "idea": "An idea",
+        "story": "A story",
+        "other": "Something else"
+      },
+      "placeholder": "Tell us what happened, or what you wish Katha did",
+      "count": "{{count}} / {{max}}",
+      "send": "Send",
+      "sending": "Sending",
+      "failed": "That did not send. Your message is still here, so check your connection and try again.",
+      "rateLimited": "You have sent a lot of feedback recently. Your message is still here; try again in a little while.",
+      "sentTitle": "Thank you",
+      "sentBody": "Your message reached us.",
+      "done": "Done",
+      "close": "Close"
+    }
   },
   "reader": {
     "narration": "Narration",
