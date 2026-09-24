@@ -7,6 +7,31 @@
 
 ---
 
+## 2026-09-25 UTC — The Play Store pack: listing, graphics, Data Safety and content rating, drafted
+
+**Session:** Lane F of the go-live push. Nothing was submitted to Google and nothing was deployed.
+
+New `store/android/`: listing copy in EN / PT-BR / ES-419 (fastlane `supply` layout, checked by
+`check-listing.mjs`), the 512 icon and a 1024×500 feature graphic per language rendered from HTML
+by `graphics/render.mjs` (local fonts and Originals covers only; two runs give identical bytes),
+`data-safety.md` with a code citation on every answer, `content-rating.md` (IARC, 18+, no ads, App
+access paste text) and `screenshot-plan.md`.
+
+What the audit found that the roadmap row did not say:
+- **The OpenRouter contributor tier makes story text "shared"** under Play's definition while it
+  serves, because that provider trains on what it receives. Turn it off, or tick Shared.
+- PostHog derives a city from the event's IP unless the project discards IPs: that is Approximate
+  location unless the setting is flipped.
+- `identifyUser` is never called, so PostHog and Sentry never see the account id.
+- The reviewer account's credits are seeded by hand and it earns none; top it up before review.
+- "Block author" is already wired from the story ⋮ menus (`StoryActionsSheet`), which the P0 row
+  does not reflect. There is no in-app delete or unpublish for a story or a comment.
+
+Katha's own privacy policy, terms and a product landing page are drafted on
+`thetractionlabs-site` branch `katha-legal-v2` (PR praz-builds/thetractionlabs-site#1), not merged.
+
+---
+
 ## 2026-09-24 UTC — Seven PRs merged and deployed, and sixteen functions found behind main
 
 **Session:** orchestration of the launch-week lanes. Merged #136, #133, #131, #135,
