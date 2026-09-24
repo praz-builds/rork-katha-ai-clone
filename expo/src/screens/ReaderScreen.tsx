@@ -507,7 +507,14 @@ function silenceMusic(sound: Audio.Sound): void {
     try {
       await sound.pauseAsync();
     } catch {
-      // Unloading below stops it anyway.
+      // A second, independent way to silence it. If the unload below also
+      // fails, the reader who pressed mute must still hear nothing, and the
+      // sound is already out of the ref, so nothing will retry.
+      try {
+        await sound.setStatusAsync({ shouldPlay: false, volume: 0 });
+      } catch {
+        // Unloading below is the last resort.
+      }
     }
     try {
       await sound.unloadAsync();
