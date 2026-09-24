@@ -25,27 +25,85 @@ export type BootstrappedUser = {
   characterImagesFreeRemaining: number | null;
 };
 
-let bootstrapInFlight: Promise<BootstrappedUser | null> | null = null;
+/**
+ * The last answer, and the session it was the answer for.
+ *
+ * WHY THIS IS KEPT. Almost every authenticated call in the app starts with
+ * `await bootstrapUser()` -- the profile, the calendar, the ledger, the
+ * shelves -- and it used to make a full `bootstrap-user` round trip every
+ * time. Opening the profile tab therefore waited on two edge calls in a row,
+ * and the first one told the client what it already knew. The identity does
+ * not change between two taps; only three things change it, and each of them
+ * lands here:
+ *
+ * - A different session (sign-in, sign-out, a dead session replaced, a
+ *   refreshed token). The key is the access token, so any of these is a miss.
+ *   A token refresh costs one extra call an hour, which is the right side to
+ *   err on: a guest converted in place keeps its user id but not its token.
+ * - A balance or allowance the caller knows has moved. It asks with
+ *   `bootstrapUser({ fresh: true })` or `invalidateBootstrap()`.
+ * - Sign-out, which clears it outright (`signOutToSignIn`).
+ */
+let cachedBootstrap: { key: string; user: BootstrappedUser } | null = null;
+/** Bumped on every invalidation, so a request already in flight cannot re-seed the cache with the old answer. */
+let bootstrapGeneration = 0;
+let bootstrapInFlight:
+  | { generation: number; promise: Promise<BootstrappedUser | null> }
+  | null = null;
+
+/**
+ * Forget the kept answer. The next `bootstrapUser()` asks the server again.
+ *
+ * Call it when something the answer carries has moved: credits bought or
+ * granted, an allowance spent, an identity claimed.
+ */
+export function invalidateBootstrap(): void {
+  bootstrapGeneration += 1;
+  cachedBootstrap = null;
+}
 
 /**
  * Ensure there is a persisted Supabase session before calling authenticated
- * functions. The shared promise prevents App startup and an early Create tap
- * from creating two guest identities or welcome-grant requests.
+ * functions, and say who it belongs to.
+ *
+ * Answered from memory when the session has not changed since the last
+ * answer; see `cachedBootstrap`. `fresh` skips the kept answer, for a caller
+ * that needs the balance as the server has it now.
+ *
+ * The shared promise prevents App startup and an early Create tap from
+ * creating two guest identities or welcome-grant requests.
  */
-export function bootstrapUser(): Promise<BootstrappedUser | null> {
+export function bootstrapUser(
+  options: { fresh?: boolean } = {},
+): Promise<BootstrappedUser | null> {
   if (!isSupabaseConfigured) return Promise.resolve(null);
-  if (bootstrapInFlight) return bootstrapInFlight;
+  if (options.fresh) invalidateBootstrap();
+  // A request that began before an invalidation would answer with what was
+  // true before it, so a fresh caller does not share it.
+  if (bootstrapInFlight && bootstrapInFlight.generation === bootstrapGeneration) {
+    return bootstrapInFlight.promise;
+  }
 
-  bootstrapInFlight = bootstrapCurrentUser().finally(() => {
-    bootstrapInFlight = null;
-  });
-  return bootstrapInFlight;
+  const generation = bootstrapGeneration;
+  const promise: Promise<BootstrappedUser | null> = bootstrapCurrentUser(generation)
+    .finally(() => {
+      if (bootstrapInFlight?.promise === promise) bootstrapInFlight = null;
+    });
+  bootstrapInFlight = { generation, promise };
+  return promise;
 }
 
-async function bootstrapCurrentUser(): Promise<BootstrappedUser> {
+async function bootstrapCurrentUser(generation: number): Promise<BootstrappedUser> {
   const session = await currentSession();
+  if (cachedBootstrap && cachedBootstrap.key === session.access_token) {
+    return cachedBootstrap.user;
+  }
+  const remember = (key: string, user: BootstrappedUser) => {
+    if (generation === bootstrapGeneration) cachedBootstrap = { key, user };
+    return user;
+  };
   try {
-    return await callBootstrap(session.access_token);
+    return remember(session.access_token, await callBootstrap(session.access_token));
   } catch (error) {
     if (!isUnusableSessionError(error)) throw error;
     // A stored session the server will not accept is a dead end that outlives
@@ -63,7 +121,7 @@ async function bootstrapCurrentUser(): Promise<BootstrappedUser> {
     // It costs one extra round trip on a path that was previously a
     // permanent failure, and it happens once: the new session is stored.
     const fresh = await restartGuestSession();
-    return await callBootstrap(fresh.access_token);
+    return remember(fresh.access_token, await callBootstrap(fresh.access_token));
   }
 }
 
@@ -510,6 +568,8 @@ async function claimGuestCharacters(guestAccessToken: string): Promise<void> {
     const accessToken = data?.session?.access_token;
     if (!accessToken || accessToken === guestAccessToken) return;
     await callBootstrap(accessToken, { claim_guest_token: guestAccessToken });
+    // Answered outside `bootstrapUser`, so whatever it kept is older than this.
+    invalidateBootstrap();
   } catch (error) {
     try {
       captureError({
@@ -547,6 +607,9 @@ export async function signOutToSignIn(): Promise<void> {
   // A half-finished sign-in must not be resumable by the guest who replaces
   // it: the token recorded there belongs to the identity that just left.
   forgetPendingEmailOtp();
+
+  // The kept bootstrap answer names the account that is leaving.
+  invalidateBootstrap();
 
   // The free-image count and the balance belong to the identity that just
   // left, and the guest replacing them is a different person with a different

@@ -7,6 +7,54 @@
 
 ---
 
+## 2026-09-24 UTC — Profile, Your journey and the public page stop waiting on the network
+
+**Session:** PR 1 of the 2026-09-24 plan, worktree `codex/profile-speed`.
+Client and two functions. **Deploy after merge: `bootstrap-user`, `profile`.**
+No migration.
+
+### Why it was slow (measured against production, house session, 2026-09-24)
+
+| Call | Warm median |
+|---|---|
+| `bootstrap-user` | 2,714 ms |
+| `profile` `me` | 1,246 ms |
+| `profile` `calendar` | 776 ms |
+| `profile` `public` | 882 ms |
+
+Every one of those `profile` calls was preceded by a fresh `bootstrap-user`, so
+opening the Profile tab cost ~4 s in two round trips in a row, Journey ~3.5 s,
+and the Profile tab re-did it on every tab switch because it unmounts. Boot had
+already fetched the profile and thrown it away.
+
+### What changed
+
+- `bootstrapUser()` keeps its answer, keyed by the session's access token.
+  A new session (sign-in, sign-out, a converted guest, a refreshed token) is a
+  miss; `bootstrapUser({ fresh: true })` / `invalidateBootstrap()` for a caller
+  that knows the balance moved (Credits, post-sign-in). A request in flight
+  across an invalidation cannot re-seed the cache.
+- `src/lib/profile-store.ts`: one app-wide copy of the own profile and
+  calendar, filled at boot, drawn at once by Profile/Journey/own public page,
+  refreshed behind them (30 s freshness), persisted to AsyncStorage for cold
+  starts, cleared on sign-out. Each value carries `idle | loading | ready |
+  error`, so loading no longer shows "could not be loaded".
+- Journey loads the profile itself when opened without one, with a Retry.
+  The Profile tab prefetches the calendar.
+- `ActivityGrid`: the `useMemo` keyed on a `new Date()` default and never hit;
+  it now keys on the day number and the joined day list, the component is
+  `memo`ized, and each week column is memoized on its seven cells.
+- `bootstrap-user`: `ensure_identity` / the guest grant, the ledger balance and
+  `character_image_free_remaining` run in parallel (`runBootstrapReads` in
+  `_shared/guest-bootstrap.ts`). The profile upsert stays first.
+- `profile` `public`: the profile row and the story list are read in parallel.
+- `profile` `me`: **left sequential on purpose.** `profile_overview` reads
+  `referral_summary()`, which counts `referrals.credited_at` -- the column
+  `settle_referrals` writes -- so running them together could show a referral
+  as unpaid right after it was paid.
+
+---
+
 ## 2026-09-20 UTC — One button, chrome without plates, and the covers that never arrived
 
 **Session:** Lane A, worktree `codex/button-and-chrome`. Client only — no

@@ -55,10 +55,14 @@ import {
 import {
   cachedDisplayName,
   cacheDisplayName,
-  fetchOwnProfile,
   type OwnProfile,
   saveDisplayName,
 } from "@/lib/profile";
+import {
+  clearOwnProfile,
+  hydrateOwnProfileCache,
+  refreshOwnProfile,
+} from "@/lib/profile-store";
 import JourneyScreen from "@/screens/JourneyScreen";
 import VoicesScreen from "@/screens/VoicesScreen";
 import { fetchReadingStreak } from "@/lib/streak";
@@ -451,6 +455,8 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    // Last session's profile, so Profile has real rows on its first frame.
+    void hydrateOwnProfileCache();
     bootstrapUser().then((user) => {
       if (active && user) {
         setCredits(
@@ -478,7 +484,9 @@ export default function App() {
         void cachedDisplayName().then((cached) => {
           if (active && cached) setDisplayName(cached);
         });
-        void fetchOwnProfile().then((profile) => {
+        // Into the app-wide copy, which Profile, Journey and the reader's
+        // own public page draw from, rather than read here and thrown away.
+        void refreshOwnProfile().then((profile) => {
           if (!active || !profile) return;
           setDisplayName(profile.displayName);
           void cacheDisplayName(profile.displayName);
@@ -1079,7 +1087,7 @@ export default function App() {
    * account. Used by the sign-in screen and by onboarding's post-OTP path.
    */
   const completeSignIn = async () => {
-    const user = await bootstrapUser().catch(() => null);
+    const user = await bootstrapUser({ fresh: true }).catch(() => null);
     if (user) {
       setCredits(
         resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, user.balance),
@@ -1090,7 +1098,7 @@ export default function App() {
     // thing whenever the bootstrap answered; the fallback is for when it did not.
     setIsAnonymous(user?.isAnonymous ?? false);
     void fetchReadingStreak().then((streak) => setStreakDays(streak?.current ?? null));
-    const profile = await fetchOwnProfile().catch(() => null);
+    const profile = await refreshOwnProfile().catch(() => null);
     if (profile) {
       setDisplayName(profile.displayName);
       void cacheDisplayName(profile.displayName);
@@ -1114,6 +1122,7 @@ export default function App() {
     setCredits(0);
     setStreakDays(null);
     setJourneyProfile(null);
+    clearOwnProfile();
     setEntitlementOverride(null);
     setTab("home");
     // `required`: there is no session behind this screen, so it has no back

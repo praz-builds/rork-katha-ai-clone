@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   Pressable,
   ScrollView,
@@ -20,13 +20,19 @@ import {
   Trophy,
 } from "lucide-react-native";
 import ActivityGrid from "@/components/profile/ActivityGrid";
+import { Button } from "@/components/Button";
 import {
   FALLBACK_LADDER,
-  fetchActivityCalendar,
   type OwnProfile,
   type StreakRung,
   streakState,
 } from "@/lib/profile";
+import {
+  FRESH_FOR_MS,
+  refreshOwnCalendar,
+  refreshOwnProfile,
+  useOwnProfileStore,
+} from "@/lib/profile-store";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
@@ -56,28 +62,35 @@ import { sharedStyles } from "@/screens/shared";
  * `profile.milestones`, which is the row the grant was written against.
  */
 export default function JourneyScreen({
-  profile,
+  profile: handedProfile,
   onBack,
 }: {
-  /** Null while loading or when the profile could not be read. */
-  profile: OwnProfile | null;
+  /**
+   * The profile the opener already had, if any. The app-wide copy wins when it
+   * exists; this only fills the first frame when it does not.
+   */
+  profile?: OwnProfile | null;
   onBack: () => void;
 }) {
-  const [days, setDays] = useState<string[] | null | undefined>(undefined);
+  const store = useOwnProfileStore();
+  const profile = store.profile ?? handedProfile ?? null;
+  const days = store.calendar;
 
   useEffect(() => {
-    let alive = true;
-    fetchActivityCalendar()
-      .then((next) => {
-        if (alive) setDays(next);
-      })
-      .catch(() => {
-        if (alive) setDays(null);
-      });
-    return () => {
-      alive = false;
-    };
+    // Quietly, behind whatever is already drawn. The Profile tab usually
+    // started both of these a moment ago, in which case this joins them.
+    void refreshOwnProfile({ maxAgeMs: FRESH_FOR_MS });
+    void refreshOwnCalendar({ maxAgeMs: FRESH_FOR_MS });
   }, []);
+
+  // Loading is not failing. Only a request that has actually come back empty
+  // may say so; before that the page holds its shape instead.
+  const profileFailed = !profile && store.profileStatus === "error";
+  const calendarState: "loading" | "ready" | "error" = days
+    ? "ready"
+    : store.calendarStatus === "error"
+    ? "error"
+    : "loading";
 
   const streak = profile ? streakState(profile) : null;
   const current = profile?.currentStreak ?? 0;
@@ -89,7 +102,9 @@ export default function JourneyScreen({
   // Rendering the page with `?? 0` would tell somebody with a 40 day streak
   // that they have none, and lock every milestone they have already reached,
   // because a request failed. That is the specific dishonesty the rest of this
-  // surface is built to avoid, so the page says it cannot answer instead.
+  // surface is built to avoid, so the page says it cannot answer instead --
+  // but only once it has actually failed, and with a way to try again. While
+  // the profile is still on its way the page shows its own outline.
   if (!profile) {
     return (
       <SafeAreaView style={styles.flex} edges={["top"]}>
@@ -106,9 +121,38 @@ export default function JourneyScreen({
             </Pressable>
             <Text style={styles.title}>Your journey</Text>
           </View>
-          <Text style={styles.unavailable} testID="journey-unavailable">
-            Your journey could not be loaded just now.
-          </Text>
+          {profileFailed
+            ? (
+              <View testID="journey-unavailable">
+                <Text style={styles.unavailable}>
+                  Your journey could not be loaded just now.
+                </Text>
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  size="sm"
+                  fullWidth={false}
+                  testID="journey-retry"
+                  style={styles.retry}
+                  onPress={() => {
+                    void refreshOwnProfile();
+                    if (!days) void refreshOwnCalendar();
+                  }}
+                />
+              </View>
+            )
+            : (
+              <View testID="journey-loading" accessibilityLabel="Loading your journey">
+                <View style={styles.statRow}>
+                  <View style={[styles.statCard, styles.skeletonCard]} />
+                  <View style={[styles.statCard, styles.skeletonCard]} />
+                </View>
+                <Text style={styles.sectionTitle}>Activity</Text>
+                <View style={styles.gridCard}>
+                  <ActivityGrid days={days} loading={calendarState === "loading"} />
+                </View>
+              </View>
+            )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -188,7 +232,7 @@ export default function JourneyScreen({
 
         <Text style={styles.sectionTitle}>Activity</Text>
         <View style={styles.gridCard}>
-          <ActivityGrid days={days === undefined ? null : days} />
+          <ActivityGrid days={days} loading={calendarState === "loading"} />
         </View>
 
         <Text style={styles.sectionTitle}>Milestones</Text>
@@ -309,6 +353,9 @@ const styles = {
       color: colors.muted,
       fontSize: 14,
     },
+    retry: { marginTop: spacing.md, alignSelf: "flex-start" },
+    /** A stat card's footprint with nothing in it yet. */
+    skeletonCard: { minHeight: 118, backgroundColor: colors.surface2 },
     memberSinceText: {
       fontFamily: fonts.ui,
       color: colors.muted,

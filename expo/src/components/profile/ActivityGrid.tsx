@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, fonts, radius, spacing } from "@/theme";
 
@@ -65,63 +65,137 @@ function dayNumber(value: string): number | null {
   );
 }
 
-export default function ActivityGrid({
+type Cell = { day: number; active: boolean; future: boolean };
+
+/**
+ * The grid for one day and one set of active days.
+ *
+ * Exported so the memo key can be tested: it depends on the DAY, never on a
+ * `Date` instance. The component used to default `now = new Date()`, which is
+ * a new object on every render, so its `useMemo` recomputed every time and
+ * 371 dots were rebuilt on each keystroke anywhere above it.
+ */
+export function buildActivityGrid(days: string[], today: number) {
+  const active = new Set<number>();
+  for (const day of days) {
+    const n = dayNumber(day);
+    if (n !== null) active.add(n);
+  }
+
+  // The last column is the week containing today, so the grid always ends on
+  // the current week rather than on a ragged edge.
+  const todayWeekday = new Date(today * DAY_MS).getUTCDay();
+  const lastColumnStart = today - todayWeekday;
+  const firstColumnStart = lastColumnStart - (WEEKS - 1) * 7;
+
+  const columns: Cell[][] = [];
+  const monthLabels: { column: number; label: string }[] = [];
+  let lastMonth = -1;
+
+  for (let week = 0; week < WEEKS; week += 1) {
+    const column: Cell[] = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const day = firstColumnStart + week * 7 + weekday;
+      column.push({
+        day,
+        active: active.has(day),
+        // Days after today are drawn as empty space, not as missed days.
+        future: day > today,
+      });
+    }
+    columns.push(column);
+
+    const month = new Date(column[0].day * DAY_MS).getUTCMonth();
+    if (month !== lastMonth) {
+      lastMonth = month;
+      // Skip a label that would collide with the previous one.
+      const previous = monthLabels[monthLabels.length - 1];
+      if (!previous || week - previous.column >= 3) {
+        monthLabels.push({ column: week, label: MONTHS[month] });
+      }
+    }
+  }
+
+  return { columns, monthLabels, total: active.size };
+}
+
+/**
+ * One week. Memoized on a signature of its seven cells, so a calendar that
+ * gains one active day re-renders one column rather than fifty-three.
+ */
+const WeekColumn = memo(
+  function WeekColumn({ cells }: { cells: Cell[]; signature: string }) {
+    return (
+      <View style={styles.column}>
+        {cells.map((cell) => (
+          <View
+            key={cell.day}
+            testID={cell.future
+              ? undefined
+              : cell.active
+              ? "activity-dot-active"
+              : "activity-dot-idle"}
+            style={[
+              styles.dot,
+              cell.future
+                ? styles.dotFuture
+                : cell.active
+                ? styles.dotActive
+                : styles.dotIdle,
+            ]}
+          />
+        ))}
+      </View>
+    );
+  },
+  (previous, next) => previous.signature === next.signature,
+);
+
+function signatureOf(cells: Cell[]): string {
+  let out = `${cells[0].day}:`;
+  for (const cell of cells) out += cell.future ? "f" : cell.active ? "a" : "i";
+  return out;
+}
+
+/** Every day in `days`, joined: equal lists give equal keys whatever their identity. */
+function daysKey(days: string[] | null): string | null {
+  return days ? days.join(",") : null;
+}
+
+function ActivityGrid({
   days,
-  now = new Date(),
+  now,
+  loading = false,
 }: {
   /** Active days as `YYYY-MM-DD`. Empty is a year with nothing in it; null is "unknown". */
   days: string[] | null;
   /** Injectable so the grid's day boundaries can be tested rather than assumed. */
   now?: Date;
+  /**
+   * The calendar has not answered yet. Draws a quiet placeholder of the
+   * grid's size instead of the "could not be loaded" line, which is for a
+   * request that has actually come back empty-handed.
+   */
+  loading?: boolean;
 }) {
-  const grid = useMemo(() => {
-    if (!days) return null;
-
-    const active = new Set<number>();
-    for (const day of days) {
-      const n = dayNumber(day);
-      if (n !== null) active.add(n);
-    }
-
-    const today = utcDay(now);
-    // The last column is the week containing today, so the grid always ends on
-    // the current week rather than on a ragged edge.
-    const todayWeekday = new Date(today * DAY_MS).getUTCDay();
-    const lastColumnStart = today - todayWeekday;
-    const firstColumnStart = lastColumnStart - (WEEKS - 1) * 7;
-
-    const columns: { day: number; active: boolean; future: boolean }[][] = [];
-    const monthLabels: { column: number; label: string }[] = [];
-    let lastMonth = -1;
-
-    for (let week = 0; week < WEEKS; week += 1) {
-      const column: { day: number; active: boolean; future: boolean }[] = [];
-      for (let weekday = 0; weekday < 7; weekday += 1) {
-        const day = firstColumnStart + week * 7 + weekday;
-        column.push({
-          day,
-          active: active.has(day),
-          // Days after today are drawn as empty space, not as missed days.
-          future: day > today,
-        });
-      }
-      columns.push(column);
-
-      const month = new Date(column[0].day * DAY_MS).getUTCMonth();
-      if (month !== lastMonth) {
-        lastMonth = month;
-        // Skip a label that would collide with the previous one.
-        const previous = monthLabels[monthLabels.length - 1];
-        if (!previous || week - previous.column >= 3) {
-          monthLabels.push({ column: week, label: MONTHS[month] });
-        }
-      }
-    }
-
-    return { columns, monthLabels, total: active.size };
-  }, [days, now]);
+  // A number, not a Date: two renders on the same day share it, and the memo
+  // below only recomputes when the day or the active days actually change.
+  const today = utcDay(now ?? new Date());
+  const key = daysKey(days);
+  // `days` is read through `key`: equal lists are the same grid.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const grid = useMemo(() => (days ? buildActivityGrid(days, today) : null), [key, today]);
 
   if (!grid) {
+    if (loading) {
+      return (
+        <View
+          style={styles.placeholder}
+          testID="activity-grid-loading"
+          accessibilityLabel="Loading your calendar"
+        />
+      );
+    }
     return (
       <View style={styles.unavailable} testID="activity-grid-unavailable">
         <Text style={styles.unavailableText}>
@@ -153,26 +227,7 @@ export default function ActivityGrid({
           </View>
           <View style={styles.columns}>
             {grid.columns.map((column, index) => (
-              <View key={index} style={styles.column}>
-                {column.map((cell) => (
-                  <View
-                    key={cell.day}
-                    testID={cell.future
-                      ? undefined
-                      : cell.active
-                      ? "activity-dot-active"
-                      : "activity-dot-idle"}
-                    style={[
-                      styles.dot,
-                      cell.future
-                        ? styles.dotFuture
-                        : cell.active
-                        ? styles.dotActive
-                        : styles.dotIdle,
-                    ]}
-                  />
-                ))}
-              </View>
+              <WeekColumn key={index} cells={column} signature={signatureOf(column)} />
             ))}
           </View>
         </View>
@@ -186,6 +241,27 @@ export default function ActivityGrid({
     </View>
   );
 }
+
+type GridProps = Parameters<typeof ActivityGrid>[0];
+
+/**
+ * Equal when the grid would draw the same thing: the same days (whatever the
+ * array's identity), the same loading state, and the same calendar day for
+ * `now` (whatever the Date's identity). Exported for the test that keeps
+ * this memo from silently missing again.
+ */
+export function sameGridProps(previous: GridProps, next: GridProps): boolean {
+  return daysKey(previous.days) === daysKey(next.days) &&
+    (previous.loading ?? false) === (next.loading ?? false) &&
+    (previous.now ? utcDay(previous.now) : null) ===
+      (next.now ? utcDay(next.now) : null);
+}
+
+/**
+ * Memoized on what it draws. A parent re-rendering with an equal list and the
+ * same day (a store tick, a streak update) skips the whole grid.
+ */
+export default memo(ActivityGrid, sameGridProps);
 
 const styles = StyleSheet.create({
   scroll: { paddingRight: spacing.lg },
@@ -211,6 +287,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui,
     color: colors.tertiary,
     fontSize: 11,
+  },
+  /** The grid's footprint, empty, while the calendar is on its way. */
+  placeholder: {
+    height: 16 + 7 * CELL + 6 * GAP + spacing.sm + 14,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface2,
+    opacity: 0.6,
   },
   unavailable: {
     padding: spacing.lg,

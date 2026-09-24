@@ -24,6 +24,7 @@ import {
   type OwnProfile,
 } from "@/lib/profile";
 import { revenueCatService } from "@/lib/revenuecat";
+import { markOwnProfileStale } from "@/lib/profile-store";
 import { bootstrapUser } from "@/lib/session";
 import { colors, fonts, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
@@ -79,7 +80,11 @@ export default function CreditsScreen({
     return fetchLedger().then(setLedger).catch(() => setLedger(null));
   }, []);
   const refreshBalance = useCallback(() => {
-    return bootstrapUser()
+    // `fresh`: this runs because credits just moved, and the kept bootstrap
+    // answer is from before they did.
+    // The profile's referral and streak-reward numbers can move with them.
+    markOwnProfileStale();
+    return bootstrapUser({ fresh: true })
       .then((user) => {
         if (user) onBalance(user.balance);
       })

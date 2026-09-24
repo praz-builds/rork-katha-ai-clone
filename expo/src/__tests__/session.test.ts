@@ -120,6 +120,116 @@ describe("bootstrapUser", () => {
   });
 });
 
+/**
+ * The kept answer. Every profile, calendar and ledger call starts with
+ * `bootstrapUser()`, and each used to cost a full edge round trip before the
+ * call it was guarding could even start.
+ */
+describe("bootstrapUser keeps its answer for the session", () => {
+  function persisted(token: string) {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: token } },
+      error: null,
+    });
+  }
+
+  it("asks the server once, then answers from memory for the same session", async () => {
+    persisted("persisted-token");
+    mockInvoke.mockResolvedValue(bootstrapResponse());
+    const { bootstrapUser } = loadSession();
+
+    const first = await bootstrapUser();
+    const second = await bootstrapUser();
+    const third = await bootstrapUser();
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+    expect(third).toEqual(first);
+  });
+
+  it("asks again when the session changes underneath it", async () => {
+    persisted("guest-token");
+    mockInvoke.mockResolvedValue(bootstrapResponse());
+    const { bootstrapUser } = loadSession();
+    await bootstrapUser();
+
+    // Sign-in, a converted guest, a refreshed token: a different session.
+    persisted("named-token");
+    mockInvoke.mockResolvedValue({
+      data: { ...bootstrapResponse().data, is_anonymous: false, balance: 9 },
+      error: null,
+    });
+    const after = await bootstrapUser();
+
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke.mock.calls[1][1].headers.Authorization).toBe(
+      "Bearer named-token",
+    );
+    expect(after).toMatchObject({ isAnonymous: false, balance: 9 });
+  });
+
+  it("asks again when a caller needs the balance as it is now", async () => {
+    persisted("persisted-token");
+    mockInvoke.mockResolvedValue(bootstrapResponse());
+    const { bootstrapUser, invalidateBootstrap } = loadSession();
+    await bootstrapUser();
+
+    mockInvoke.mockResolvedValue({
+      data: { ...bootstrapResponse().data, balance: 13 },
+      error: null,
+    });
+    await expect(bootstrapUser({ fresh: true })).resolves.toMatchObject({ balance: 13 });
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+    // And the fresh answer is what is kept.
+    await expect(bootstrapUser()).resolves.toMatchObject({ balance: 13 });
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+    invalidateBootstrap();
+    await bootstrapUser();
+    expect(mockInvoke).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let a request from before an invalidation become the kept answer", async () => {
+    persisted("persisted-token");
+    let answerOld!: (value: unknown) => void;
+    mockInvoke.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answerOld = resolve;
+      }),
+    );
+    const { bootstrapUser } = loadSession();
+    const stale = bootstrapUser();
+    // Let the in-flight request reach the network before credits move.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    mockInvoke.mockResolvedValueOnce({
+      data: { ...bootstrapResponse().data, balance: 20 },
+      error: null,
+    });
+    const fresh = await bootstrapUser({ fresh: true });
+    answerOld(bootstrapResponse());
+    await stale;
+
+    expect(fresh).toMatchObject({ balance: 20 });
+    // The old answer landed last, and must not have replaced the fresh one.
+    await expect(bootstrapUser()).resolves.toMatchObject({ balance: 20 });
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets the answer on sign-out", async () => {
+    persisted("persisted-token");
+    mockInvoke.mockResolvedValue(bootstrapResponse());
+    const { bootstrapUser, signOutToSignIn } = loadSession();
+    await bootstrapUser();
+
+    await signOutToSignIn();
+    await bootstrapUser();
+
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("verifyEmailCode", () => {
   it("lets any six digits through while Supabase is unconfigured", async () => {
     // SCAFFOLD: AUTH_NOT_WIRED. With no credentials in the bundle there is no
