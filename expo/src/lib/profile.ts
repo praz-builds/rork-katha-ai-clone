@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { setEntitlementOverride } from "@/lib/entitlements";
+import { ensurePhotoLibraryAccess } from "@/lib/photo-access";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -231,8 +232,14 @@ export function avatarMessage(reason: Exclude<AvatarResult, { ok: true }>["reaso
  * on this screen.
  */
 export async function pickAndUploadAvatar(): Promise<AvatarResult> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return { ok: false, reason: "permission" };
+  let allowed = false;
+  try {
+    allowed = await ensurePhotoLibraryAccess();
+  } catch {
+    // A permission request that throws (iOS only; Android asks nothing) is a
+    // refusal, not a crash on the Profile screen.
+  }
+  if (!allowed) return { ok: false, reason: "permission" };
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
