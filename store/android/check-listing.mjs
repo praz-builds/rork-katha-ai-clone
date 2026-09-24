@@ -26,7 +26,7 @@ const LIMITS = {
 const BANNED = [/\bkids?\b/i, /\bchild(ren)?\b/i, /\bcrian[çc]as?\b/i, /\bni[ñn]os?\b/i, /\$\d/, /\bR\$/];
 
 let failed = 0;
-for (const locale of readdirSync(ROOT).sort()) {
+for (const locale of readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()) {
   for (const [file, limit] of Object.entries(LIMITS)) {
     const path = join(ROOT, locale, file);
     if (!existsSync(path)) {

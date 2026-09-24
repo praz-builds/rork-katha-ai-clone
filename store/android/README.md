@@ -11,11 +11,21 @@ Everything that gets pasted or uploaded into Play Console for `ai.katha.createst
 | App icon 512 × 512, 32-bit PNG | `graphics/icon-512.png` (source `graphics/icon-512.html`, from `expo/assets/icon.png`) | Main store listing → Graphics → App icon |
 | Feature graphic 1024 × 500, one per language | `graphics/feature-graphic-{en,pt,es}.png` (source `graphics/feature-graphic.html`) | Main store listing → Graphics → Feature graphic (per translation) |
 | Re-render the graphics | `graphics/render.mjs` (instructions at the top of the file) | — |
-| Phone screenshots | `screenshot-plan.md` — captured after the final UI round | Main store listing → Phone screenshots |
+| Phone screenshots | `screenshot-plan.md` — captured after the final UI round, saved as JPEG or flattened PNG (Play rejects alpha) | Main store listing → Phone screenshots |
 | Data safety | `data-safety.md` | Policy → App content → Data safety |
 | Content rating, target audience, ads, App access | `content-rating.md` | Policy → App content |
 
 The metadata folders follow fastlane's `supply` layout (`metadata/<locale>/…`), so they can be uploaded with `fastlane supply` later without moving anything. Nobody has set that up; paste by hand for now.
+
+## Before you paste: these must be true first
+
+| Must be true | Why | Status |
+|---|---|---|
+| The website PR (`praz-builds/thetractionlabs-site#1`) is merged and deployed | Every listing links `/privacy/`, which still serves the 10 September policy. That page contradicts the Data Safety form (for example, it says guests never give an email) | Open, waiting on the founder's legal decisions |
+| Firebase is removed from the build | Data Safety answers "no advertising ID" | Done in #138 |
+| The in-app "Kids" toggle is renamed to All-ages | The target audience is declared 18+ only | #141 |
+| The eight SKUs exist in Play Console and RevenueCat, or the "credit packs" / "weekly, monthly or yearly" sentence is taken out of all three full descriptions | A reviewer who taps a pack and gets nothing reports it as broken | See `backend/PLAY_BILLING_SETUP.md` once the paywall PR lands |
+| Sentry DSN set, if the crash-data rows stay "collected" | `data-safety.md` | Founder |
 
 ## Other listing fields
 
@@ -23,7 +33,7 @@ The metadata folders follow fastlane's `supply` layout (`metadata/<locale>/…`)
 |---|---|
 | App category | **Books & Reference** (Entertainment is the alternative; Books & Reference is where reading and writing apps are browsed) |
 | Tags (pick up to five that Play offers) | Books, Fiction, Writing, Storytelling, Audiobooks |
-| Contact email | `hi@thetractionlabs.com` (the one monitored inbox today — see decision 4 in the PR) |
+| Contact email | `hi@thetractionlabs.com` (the one monitored inbox today) |
 | Website | `https://katha.thetractionlabs.com/` |
 | Privacy policy URL | `https://katha.thetractionlabs.com/privacy/` |
 | Phone | Leave empty (optional). |

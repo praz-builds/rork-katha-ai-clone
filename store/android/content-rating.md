@@ -27,7 +27,7 @@ Google's wording shifts between questionnaire versions; match on meaning.
 
 | Question | Answer | Why |
 |---|---|---|
-| Does the app contain content that could frighten or scare? | **Yes** | Horror is one of the twelve genres on the Create screen, with dark cover art (e.g. the Originals cover `decimal-point-hardware.jpg`). |
+| Does the app contain content that could frighten or scare? | **Yes** | Horror is one of the twelve genres on the Create screen, and horror stories carry dark cover art and frightening prose. |
 
 ### Sexuality
 
