@@ -16,7 +16,7 @@ Checked against `backend/supabase/functions/` on 2026-09-24: 37 directories. Fou
 | P0 | `generate-story`, `generate-story-stream`, `continue-story` | Every story and every chapter | `error_events` (`all_providers_failed`, `post_deduction_failed`, `streamed_chapter_outside_band`), p95 latency, provider fallbacks |
 | P0 | `bootstrap-user`, `profile` | Every screen's first load, the You tab | Latency, 5xx, `guest_bootstrap_failed` |
 | P0 | `generate-audio`, `audio-status` (RunPod MiniMax) | Narration | Job failures (`narration_*`, `audio_*`), queue time |
-| P0 | `revenuecat-webhook`, `refresh-subscription-grants` (GH Actions cron, 03:00 UTC) | Money | Webhook 4xx/5xx, whether the cron run passed |
+| P0 | `revenuecat-webhook`, `refresh-subscription-grants` (GH Actions cron, 03:00 UTC) | Money | RevenueCat's webhook delivery status and the function's own logs (it writes **no** `error_events` rows, only `console.error`); whether the cron run passed |
 | P1 | `generate-character-image`, `regenerate-cover` | Portraits and covers | Failures, refusals when the free allowance runs out |
 | P1 | `reimagine-chapter`, `edit-story` | Editing | `error_events` |
 | P1 | `library`, `feed`, `publish-story`, `comments`, `like`, `bookmark`, `follow-story`, `follow-user`, `record-read`, `referral`, `credit-claims`, `feedback` | Library, Explore and the social features | 5xx, `feed_unhandled` |
@@ -25,24 +25,24 @@ Checked against `backend/supabase/functions/` on 2026-09-24: 37 directories. Fou
 
 ## Upstream providers and storage
 
-| What | Used by | State on 2026-09-24 | How to check by hand |
-|---|---|---|---|
-| **OpenRouter** (`OPENROUTER_API_KEY`) | Every text call (`_shared/llm.ts`), every image (`_shared/image.ts`) | **$3.29 left of $60 bought** (usage $56.71). About $31 was spent this month. The key in Supabase secrets is the same one as in `backend/.env`: their sha256 digests match. | `curl -s https://openrouter.ai/api/v1/credits -H "Authorization: Bearer $OPENROUTER_API_KEY"`. `total_credits - total_usage` is what is left. At $0 every generation fails with `all_providers_failed` and every shape with `story_shape_failed`. |
-| **Gemini** (`GEMINI_API_KEY`) | Fallback in the text chain | Turned off with `LLM_DISABLED_PROVIDERS=gemini`. Quota ran out 2026-08-31. | `supabase secrets list` shows the flag is set. It is not a fallback until its share of the deadline is moved; see AGENTS.md *LLM Fallback Chain*. |
-| **RunPod** `minimax-speech-02-hd` (`RUNPOD_API_KEY`) | `generate-audio`, `audio-status` | Set | Narrate one short chapter on the house account and check that `chapter_audio` gets a row with `duration_seconds`. |
-| **Brave Search** (`BRAVE_SEARCH_API_KEY`, `GROUNDING_SEARCH_ENABLED`) | Grounding cards | **Not set.** Grounding search is off, so the classifier runs but no cards are fetched. | `supabase secrets list` |
-| Storage bucket `covers` | Covers, portraits | Public read | Fetch any `stories.cover_image_url`, expect 200 |
-| Storage bucket `audio` | Narration MP3s | Public read | Fetch any `chapter_audio` URL, expect 200 |
-| Storage bucket `music` | Reader music (24 tracks) | Public read, no write policy | Fetch one track URL from `expo/src/lib/music*`, expect 200 |
-| Storage bucket `avatars` | Profile photos (00060) | Public read | Fetch any `profiles.avatar_url`, expect 200 |
-| **Sentry** (`SENTRY_DSN`, `sentryDsn`) | Push alerts | **Not set on either side.** `captureError` does nothing, so client failures reach PostHog only. | `supabase secrets list`, `expo/app.json` |
+| Tier | What | Used by | State on 2026-09-24 | How to check by hand |
+|---|---|---|---|---|
+| **P0** | **OpenRouter balance** (`OPENROUTER_API_KEY`) | Every text call (`_shared/llm.ts`), every image (`_shared/image.ts`) | **$3.29 left of $60 bought, which is already below the alert line** (usage $56.71). About $31 was spent this month. The key in Supabase secrets is the same one as in `backend/.env`: their sha256 digests match. | `curl -s https://openrouter.ai/api/v1/credits -H "Authorization: Bearer $OPENROUTER_API_KEY"`. What is left is `total_credits - total_usage`. **Alert below $10**, which is roughly ten days at this month's rate. At $0 every generation fails with `all_providers_failed`, every shape with `story_shape_failed`, and every cover and portrait fails too: a total outage that looks like a code bug. |
+| P2 | **Gemini** (`GEMINI_API_KEY`) | Fallback in the text chain | Turned off with `LLM_DISABLED_PROVIDERS=gemini`. Quota ran out 2026-08-31. | `supabase secrets list` shows the flag is set. It is not a fallback until its share of the deadline is moved; see AGENTS.md *LLM Fallback Chain*. |
+| P0 | **RunPod** `minimax-speech-02-hd` (`RUNPOD_API_KEY`) | `generate-audio`, `audio-status` | Set | Narrate one short chapter on the house account and check that `chapter_audio` gets a row with `duration_seconds`. |
+| P2 | **Brave Search** (`BRAVE_SEARCH_API_KEY`, `GROUNDING_SEARCH_ENABLED`) | Grounding cards | **Not set.** Grounding search is off, so the classifier runs but no cards are fetched. | `supabase secrets list` |
+| P1 | Storage bucket `covers` | Covers, portraits | Public read | Fetch any `stories.cover_image_url`, expect 200 |
+| P0 | Storage bucket `audio` | Narration MP3s | Public read | Fetch any `chapter_audio` URL, expect 200 |
+| P1 | Storage bucket `music` | Reader music (24 tracks) | Public read, no write policy | Fetch one track URL from `expo/src/lib/music*`, expect 200 |
+| P2 | Storage bucket `avatars` | Profile photos (00060) | Public read | Fetch any `profiles.avatar_url`, expect 200 |
+| P2 | **Sentry** (`SENTRY_DSN`, `sentryDsn`) | Push alerts | **Not set on either side.** `captureError` does nothing, so client failures reach PostHog only. | `supabase secrets list`, `expo/app.json` |
 
 ## What is already checked, and what is not
 
 - **`backend/scripts/smoke-app-surface.py`** checks, against production: that `feed`, `audio-status`, `edit-story`, `publish-story`, `generate-audio`, `bootstrap-user`, `profile` and `shape-story` are deployed and refuse anonymous callers; `bootstrap-user`, `profile` (`me`, `ledger`) and `shape-story` (the payload DirectionStep sends, which must return opening beats) for a new account; then `generate-story`, `library`, `feed`, `edit-story`, `publish-story` (cover included) and `audio-status`. It creates its own account and cleans it up. It is run by hand; nothing schedules it.
 - **`backend/scripts/smoke-generation-matrix.py`** and **`smoke-series-generation.py`** check generation across genres and a multi-chapter series. They are expensive and run by hand.
 - **`.github/workflows/subscription-grants.yml`** is the only scheduled job. It calls `refresh-subscription-grants` daily at 03:00 UTC. If a run fails, the Actions tab shows it and nothing else does.
-- **Not checked by anything:** `revenuecat-webhook`, `generate-character-image`, `regenerate-cover`, `reimagine-chapter`, `continue-story`, the social functions, the OpenRouter balance, and the buckets.
+- **Not checked by anything:** `revenuecat-webhook`, `generate-character-image`, `regenerate-cover`, `reimagine-chapter`, `continue-story`, the social functions, the OpenRouter balance (a P0 with nothing watching it), and the buckets.
 
 ## How to check each P0 by hand
 
@@ -52,7 +52,7 @@ First mint a session for the house account (`originals@kathaai.test`). With the 
 - **`generate-story`, `generate-story-stream`, `continue-story`**: run `smoke-app-surface.py`, which covers `generate-story`. For the streamed paths, generate one story on the house account in the app. Then `select error_code, count(*) from error_events where bucket in ('generation.story','llm.provider') and occurred_at > now() - interval '1 day' group by 1`. If `all_providers_failed` shows up, check the OpenRouter balance first.
 - **`bootstrap-user`, `profile`**: POST `{}` to `bootstrap-user` and `{"action": "me"}` to `profile` with the house JWT. Both should return 200 in under 3s. `smoke-app-surface.py` [1b] prints how long each took.
 - **`generate-audio`, `audio-status`**: narrate one chapter on the house account, then poll `audio-status?job_id=…` until it says ready. Check that `chapter_audio.duration_seconds` is filled in. Look at `error_events` rows with `bucket = 'generation.audio'`.
-- **`revenuecat-webhook`**: the RevenueCat dashboard's webhook delivery log (non-2xx responses) and `error_events` rows with `bucket = 'payments'`. **`refresh-subscription-grants`**: the latest *subscription grants* run in GitHub Actions, then `credit_ledger` rows with a `subscription:` reference for the current month.
+- **`revenuecat-webhook`**: check the webhook delivery status in the RevenueCat dashboard (Project settings, Integrations, Webhooks). Any non-2xx or retrying delivery is the signal. Then read the function's logs in the Supabase dashboard (Edge Functions, `revenuecat-webhook`, Logs) for `revenuecat-webhook error`. **Do not look in `error_events`:** this function writes only `console.error`, never `logError`, so a query there always comes back empty even during an outage. Making it call `logError` is a follow-up; until it does and is deployed, this is the only check that works. **`refresh-subscription-grants`**: the latest *subscription grants* run in GitHub Actions, then `credit_ledger` rows with a `subscription:` reference for the current month.
 
 ## Deploy check
 

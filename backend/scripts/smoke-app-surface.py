@@ -8,12 +8,16 @@ being discovered by a user again.
 
 Also covers the three calls every session leans on before any of those:
 bootstrap-user (every screen's first load), profile (the You tab) and
-shape-story (the premise and "Where does it begin?" chips). All three are
-read-only from the product's point of view -- bootstrap-user is idempotent for
-an existing account, profile is asked for `me` and `ledger`, and shape-story
-spends no credit -- and all three were outside this suite until 2026-09-24,
-which is how an empty opening screen could go unnoticed. See
-backend/MONITORING.md for where this sits in the watch-list.
+shape-story (the premise and "Where does it begin?" chips). They write no
+product data -- bootstrap-user is idempotent for an existing account, profile
+is asked for `me` and `ledger`, and shape-story spends no user credit -- and
+all three were outside this suite until 2026-09-24, which is how an empty
+opening screen could go unnoticed. See backend/MONITORING.md.
+
+COST: this suite is not free to run. shape-story makes 2 paid OpenRouter calls
+(the shape and the entity classification, run together), on top of the paid
+calls the rest of the suite already made: generate-story, edit-story and the
+cover image publish-story triggers.
 
 Reads SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY from the
 environment. Never prints key material, story prose, or seeds.
@@ -301,6 +305,11 @@ finally:
         targets += [
             (f"/rest/v1/generation_operations?user_id=eq.{uid}", "operations"),
             (f"/rest/v1/credit_ledger?user_id=eq.{uid}", "credit ledger"),
+            # error_events.user_id references profiles (00022 validated the
+            # FK). A failed or rate-limited call in [1b] writes a row here,
+            # and left in place it blocks the profile delete below and
+            # strands the smoke user in production.
+            (f"/rest/v1/error_events?user_id=eq.{uid}", "error events"),
             (f"/rest/v1/profiles?id=eq.{uid}", "profile"),
             (f"/auth/v1/admin/users/{uid}", "auth user"),
         ]

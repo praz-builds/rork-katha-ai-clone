@@ -103,7 +103,27 @@ export type ShapeStoryDeps = {
   ground: (input: ResolveGroundingInput) => Promise<ResolvedGrounding>;
   log: (input: LogErrorInput) => Promise<unknown>;
   reportClassification: typeof reportClassificationFailure;
+  /**
+   * Keeps telemetry alive after the response has gone. A bare detached
+   * promise is not enough on the edge runtime: the isolate can be torn down
+   * once the response is sent, and the insert with it. `waitUntil` is what
+   * tells the runtime the work is still owed.
+   */
+  background: (work: Promise<unknown>) => void;
 };
+
+/**
+ * `EdgeRuntime.waitUntil`, the same contract as `runInBackground` in
+ * `_shared/media.ts`, restated here so this call site does not load the image
+ * stack that module imports.
+ */
+function waitUntil(work: Promise<unknown>): void {
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  const settled = work.catch(() => {});
+  if (typeof runtime?.waitUntil === "function") runtime.waitUntil(settled);
+}
 
 function serviceClient() {
   return createClient(
@@ -134,6 +154,7 @@ const defaultDeps: ShapeStoryDeps = {
   ground: (input) => resolveGrounding({ ...input, cache: serviceClient() }),
   log: logError,
   reportClassification: reportClassificationFailure,
+  background: waitUntil,
 };
 
 if (import.meta.main) {
@@ -149,6 +170,10 @@ export async function handleRequest(
   const respond = (body: unknown, status = 200) =>
     jsonResponse(req, body, status);
   let userId: string | null = null;
+  // Every telemetry write goes behind the response, never in front of it: a
+  // writer is watching this call, and `logError` may take up to 1.5s.
+  const logLater = (input: LogErrorInput) =>
+    deps.background(Promise.resolve().then(() => deps.log(input)));
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -209,12 +234,16 @@ export async function handleRequest(
      *
      * And it is logged. It used to be the one refusal that left no trace, so
      * a writer who hit it saw an empty "Where does it begin?" screen and
-     * `error_events` had nothing to say about it. Not awaited: the writer is
-     * watching this response.
+     * `error_events` had nothing to say about it. Written behind the response
+     * (`logLater`): the writer is watching it.
      */
     if (allowed !== true) {
-      void Promise.resolve(deps.log({
-        bucket: "llm.provider",
+      // `generation.story`, not `llm.provider`: a refused claim is our own
+      // capacity limit, and no provider was asked. There is no rate-limit
+      // bucket in `error_events_bucket_check` (00058); the code is what
+      // distinguishes it.
+      logLater({
+        bucket: "generation.story",
         severity: "low",
         source: "runtime",
         errorCode: "story_shape_rate_limited",
@@ -224,7 +253,7 @@ export async function handleRequest(
           kind: onboarding ? "onboarding" : "create",
         },
         userId,
-      })).catch(() => {});
+      });
       return respond({ shape: null, reason: "rate_limited" });
     }
 
@@ -286,11 +315,11 @@ export async function handleRequest(
       // response and a telemetry insert must never be in front of it.
       const classification = classified.outcome;
       if (classification && classification.status !== "ok") {
-        void deps.reportClassification({
+        deps.background(deps.reportClassification({
           outcome: classification,
           feature: "story_shape",
           userId,
-        }).catch(() => {});
+        }));
       }
 
       const shape = parseStoryShape(shapeResult.value.text);
@@ -304,7 +333,7 @@ export async function handleRequest(
         much it said, never what it said.
       */
       if (!shape) {
-        void Promise.resolve(deps.log({
+        logLater({
           bucket: "llm.provider",
           severity: "low",
           source: "runtime",
@@ -317,7 +346,7 @@ export async function handleRequest(
             chars: shapeResult.value.text.length,
           },
           userId,
-        })).catch(() => {});
+        });
         return respond({
           shape: null,
           reason: "unavailable",
@@ -344,7 +373,7 @@ export async function handleRequest(
       // Shape is optional scaffolding. Record the provider condition without
       // retaining the user's idea, then let Screen 2 render normally.
       console.error("shape-story provider error:", safeErrorMessage(error));
-      await deps.log({
+      logLater({
         bucket: "llm.provider",
         severity: "low",
         source: "runtime",
@@ -357,7 +386,7 @@ export async function handleRequest(
     }
   } catch (error) {
     console.error("shape-story error:", safeErrorMessage(error));
-    await deps.log({
+    logLater({
       bucket: "generation.story",
       severity: "low",
       source: "runtime",

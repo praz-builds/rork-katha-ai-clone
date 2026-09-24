@@ -33,6 +33,7 @@ const TRUNCATED = '{"genres": ["myst';
 
 function harness(overrides: Partial<ShapeStoryDeps> = {}) {
   const logged: LogErrorInput[] = [];
+  const pending: Promise<unknown>[] = [];
   const deps: ShapeStoryDeps = {
     authenticate: () => Promise.resolve("00000000-0000-4000-8000-000000000001"),
     claim: () => Promise.resolve(true),
@@ -43,9 +44,16 @@ function harness(overrides: Partial<ShapeStoryDeps> = {}) {
       return Promise.resolve(true);
     },
     reportClassification: () => Promise.resolve(),
+    // Collected rather than detached, so a test can wait for exactly the work
+    // the handler handed to the runtime -- and a log call that bypassed
+    // `background` would never be awaited and never land in `logged`.
+    background: (work) => {
+      pending.push(work);
+    },
     ...overrides,
   };
-  return { deps, logged };
+  const settle = () => Promise.all(pending);
+  return { deps, logged, settle };
 }
 
 function request(body: Record<string, unknown> = {}): Request {
@@ -63,11 +71,8 @@ function request(body: Record<string, unknown> = {}): Request {
   });
 }
 
-/** Lets the handler's un-awaited telemetry promise land. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 Deno.test("a healthy shape returns beats and logs nothing", async () => {
-  const { deps, logged } = harness();
+  const { deps, logged, settle } = harness();
   const response = await handleRequest(request(), deps);
   const body = await response.json();
   await settle();
@@ -78,7 +83,7 @@ Deno.test("a healthy shape returns beats and logs nothing", async () => {
 
 Deno.test("a refused rate-limit claim is logged as story_shape_rate_limited", async () => {
   let shaped = false;
-  const { deps, logged } = harness({
+  const { deps, logged, settle } = harness({
     claim: () => Promise.resolve(false),
     shape: () => {
       shaped = true;
@@ -94,10 +99,12 @@ Deno.test("a refused rate-limit claim is logged as story_shape_rate_limited", as
     "story_shape_rate_limited",
   ]);
   assertEquals(logged[0].context?.kind, "create");
+  // Our own capacity limit, not a provider's refusal.
+  assertEquals(logged[0].bucket, "generation.story");
 });
 
 Deno.test("an answer that does not parse is logged as story_shape_empty", async () => {
-  const { deps, logged } = harness({
+  const { deps, logged, settle } = harness({
     shape: () => Promise.resolve({ text: TRUNCATED, model: "test/model-2" }),
   });
   const response = await handleRequest(request(), deps);
@@ -116,13 +123,31 @@ Deno.test("an answer that does not parse is logged as story_shape_empty", async 
 });
 
 Deno.test("a provider failure is still logged as story_shape_failed", async () => {
-  const { deps, logged } = harness({
+  const { deps, logged, settle } = harness({
     shape: () => Promise.reject(new Error("all providers failed")),
   });
   const response = await handleRequest(request(), deps);
   const body = await response.json();
   assertEquals(body, { shape: null, reason: "provider_failed" });
+  await settle();
   assertEquals(logged.map((row) => row.errorCode), ["story_shape_failed"]);
+});
+
+/**
+ * The failure path used to AWAIT its log, so a slow `error_events` insert
+ * (up to `logError`'s 1.5s timeout) sat between a failed provider and the
+ * writer's fallback. A log that never finishes must not hold the response.
+ */
+Deno.test("a log that never finishes does not hold the response", async () => {
+  const { deps } = harness({
+    shape: () => Promise.reject(new Error("all providers failed")),
+    log: () => new Promise(() => {}),
+  });
+  const response = await handleRequest(request(), deps);
+  assertEquals(await response.json(), {
+    shape: null,
+    reason: "provider_failed",
+  });
 });
 
 Deno.test("an unaccepted token is a 401 and never claims or shapes", async () => {

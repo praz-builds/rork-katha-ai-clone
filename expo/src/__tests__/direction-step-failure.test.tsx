@@ -15,7 +15,7 @@
  *  - the converter refused every beat -> "no opening", and that is logged
  */
 import React from "react";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockInferStoryBrief = jest.fn();
 const mockCaptureError = jest.fn();
@@ -191,5 +191,31 @@ describe("DirectionStep", () => {
         }),
       )
     );
+  });
+
+  it("holds Retry for a moment after a rate-limit refusal", async () => {
+    jest.useFakeTimers();
+    try {
+      mockInferStoryBrief.mockRejectedValueOnce(
+        new StoryShapeRequestError("busy", false, "rate_limited"),
+      );
+      const view = await renderStep();
+
+      await view.findByText(/shaping a lot of stories right now/);
+      expect(view.getByText("Try again in a moment")).toBeTruthy();
+      await fireEvent.press(view.getByTestId("create-direction-retry"));
+      // Disabled: an instant retry would be refused by the same window.
+      expect(mockInferStoryBrief).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(10_000);
+      });
+      expect(view.getByText("Try again")).toBeTruthy();
+      mockInferStoryBrief.mockResolvedValueOnce(shapeWith(BEATS));
+      await fireEvent.press(view.getByTestId("create-direction-retry"));
+      expect(mockInferStoryBrief).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

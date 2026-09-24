@@ -35,7 +35,16 @@ const MAX_OPTIONS = 2;
 const UNAVAILABLE_REASON = {
   insufficient: "Katha has no opening to suggest for this idea yet. Tell it where to start, or let it decide.",
   failed: "We couldn't load suggested openings. Tell Katha where to start, or let it decide.",
+  rateLimited: "Katha is shaping a lot of stories right now. Try again in a moment, or tell it where to start.",
 } as const;
+
+/**
+ * How long Retry stays disabled after a rate-limited refusal.
+ *
+ * The server's window is six shapes a minute per caller, so an instant retry
+ * after a refusal is refused again -- and counts against the same window.
+ */
+const RATE_LIMIT_RETRY_DELAY_MS = 10_000;
 
 /** What the brief needs to carry for shaping to answer with a usable plan. */
 export type DirectionBrief = Pick<
@@ -163,6 +172,21 @@ export default function DirectionStep({
   const [failed, setFailed] = useState(false);
   // Bumped by Retry; the resolve effect re-runs on it and on nothing else.
   const [attempt, setAttempt] = useState(0);
+  // True while a rate-limited refusal is still cooling down.
+  const [coolingDown, setCoolingDown] = useState(false);
+  /*
+    One retry per failure, however many times it is tapped. Two taps before
+    the re-render would bump `attempt` twice and send two shaping requests --
+    each one spending the per-minute window. A ref, because the second tap of
+    a real double tap arrives before state could say anything. Re-armed only
+    when a lookup fails again.
+  */
+  const retryArmedRef = useRef(false);
+  useEffect(() => {
+    if (!coolingDown) return;
+    const timer = setTimeout(() => setCoolingDown(false), RATE_LIMIT_RETRY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [coolingDown]);
 
   /**
    * One start per visit, however many times a card is tapped.
@@ -226,7 +250,12 @@ export default function DirectionStep({
           context: { reason, attempt },
         });
         trackEvent("opening_directions_failed", { reason, attempt });
-        setUnavailableReason(UNAVAILABLE_REASON.failed);
+        const rateLimited = reason === "rate_limited";
+        setUnavailableReason(
+          rateLimited ? UNAVAILABLE_REASON.rateLimited : UNAVAILABLE_REASON.failed,
+        );
+        setCoolingDown(rateLimited);
+        retryArmedRef.current = true;
         setFailed(true);
         setStatus("unavailable");
       },
@@ -289,11 +318,16 @@ export default function DirectionStep({
       */}
       {status === "unavailable" && failed ? (
         <Button
-          label="Try again"
+          label={coolingDown ? "Try again in a moment" : "Try again"}
           variant="secondary"
           size="sm"
+          disabled={coolingDown}
           accessibilityLabel="Try loading suggested openings again"
-          onPress={() => setAttempt((value) => value + 1)}
+          onPress={() => {
+            if (!retryArmedRef.current) return;
+            retryArmedRef.current = false;
+            setAttempt((value) => value + 1);
+          }}
           icon={<RotateCcw size={16} color={colors.ink} />}
           testID="create-direction-retry"
         />
