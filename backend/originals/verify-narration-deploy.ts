@@ -30,6 +30,7 @@ const { client } = await houseClient();
 const CHUNK_CHARS = 9_000;
 const POLL_INTERVAL_MS = 2_500;
 const GIVE_UP_MS = 240_000;
+const POLL_TIMEOUT_MS = 20_000;
 
 type ManifestEntry = {
   index: number;
@@ -69,13 +70,21 @@ async function pollStatus(
   const url = new URL(`${env.SUPABASE_URL}/functions/v1/audio-status`);
   url.searchParams.set("story_id", storyId);
   url.searchParams.set("chapter_id", chapterId);
-  const res = await fetch(url, {
-    headers: {
-      apikey: env.SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
-  const text = await res.text();
+  // Bounded, so a stalled request cannot hold the loop past its deadline.
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, {
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+    });
+    text = await res.text();
+  } catch (error) {
+    return { status: "HTTP_ERROR", http_status: null, raw: String(error).slice(0, 300) };
+  }
 
   // AN HTTP FAILURE IS NOT A POLL RESULT.
   //
@@ -120,7 +129,12 @@ async function pickChapter() {
     .in("chapter_id", long.map((row) => row.id));
   const narrated = new Set((existing ?? []).map((row) => row.chapter_id));
 
-  return long.find((row) => !narrated.has(row.id)) ?? long[0];
+  // Never fall back to a narrated chapter: a cached answer comes back before
+  // the prefetch gate is consulted, so it would report the gate as open, and
+  // there would be no fresh job to time.
+  const fresh = long.find((row) => !narrated.has(row.id));
+  if (!fresh) throw new Error("every long published chapter is already narrated");
+  return fresh;
 }
 
 const chapter = await pickChapter();
@@ -148,6 +162,10 @@ if (!prefetchClosed) {
     status: prefetch.status,
     chapter_id: chapter.id,
   });
+  // Stop here. An open gate may already have started a paid job, and a second
+  // request would only spend more to measure a deploy that has failed.
+  console.error("\nFAIL");
+  Deno.exit(1);
 }
 
 // 1 + 2. The real request, then poll for the manifest.
@@ -171,6 +189,7 @@ if (begin.status >= 400) {
 let firstPlayableMs: number | null = null;
 let sawManifest = false;
 let completedMs: number | null = null;
+let audioUrlPresent = false;
 
 while (Date.now() - started < GIVE_UP_MS) {
   await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
@@ -193,6 +212,7 @@ while (Date.now() - started < GIVE_UP_MS) {
 
   if (body.status === "COMPLETED") {
     completedMs = elapsed;
+    audioUrlPresent = Boolean(body.audio_url);
     console.log(
       `completed at ${(elapsed / 1000).toFixed(1)}s, audio_url ${
         body.audio_url ? "present" : "MISSING"
@@ -257,6 +277,9 @@ if (!sawManifest) {
   await logFailure("narration_manifest_absent", { chapter_id: chapter.id });
 }
 
-const ok = sawManifest && firstPlayableMs !== null && prefetchClosed;
+// One playable chunk is not a narrated chapter: the job must finish and hand
+// back the whole chapter's audio.
+const ok = sawManifest && firstPlayableMs !== null && completedMs !== null &&
+  audioUrlPresent && prefetchClosed;
 console.log(ok ? "\nPASS" : "\nFAIL");
 if (!ok) Deno.exit(1);
