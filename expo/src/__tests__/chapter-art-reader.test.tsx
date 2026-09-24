@@ -77,12 +77,17 @@ function storyWith(
  * returns, so the text has to be walked out of the tree rather than read off a
  * single string.
  */
+/**
+ * The text a host element actually rendered.
+ *
+ * Walks the rendered host tree, not the element's `props.children`: the page
+ * body's children are a memoised `PageWords` component, whose words exist only
+ * once it has rendered.
+ */
 function textOf(node: unknown): string {
   if (typeof node === "string") return node;
-  if (Array.isArray(node)) return node.map(textOf).join("");
-  const element = node as { props?: { children?: unknown } } | null;
-  if (element?.props?.children !== undefined) return textOf(element.props.children);
-  return "";
+  const host = node as { children?: unknown[] } | null;
+  return (host?.children ?? []).map(textOf).join("");
 }
 
 /**
@@ -98,7 +103,7 @@ async function pageOneOf(story: Story): Promise<string> {
   // have loaded, and the second mount in one test does not get the first
   // mount's already-settled effects for free.
   const body = await waitFor(() => view.getByTestId("reader-page-body-0"));
-  const text = textOf(body.props.children);
+  const text = textOf(body);
   view.unmount();
   return text;
 }

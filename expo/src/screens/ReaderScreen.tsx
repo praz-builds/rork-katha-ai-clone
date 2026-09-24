@@ -434,12 +434,91 @@ function renderPageWords(
   });
 }
 
+type SearchMatch = { start: number; end: number };
+
+/** Shared by every page with no search hit, so its identity never changes. */
+const NO_MATCHES: readonly SearchMatch[] = [];
+
+/**
+ * One page's words, memoised so a reader re-render that did not touch the
+ * prose does not rebuild it.
+ *
+ * WHY THIS IS THE HOT PATH. A page is several hundred words, and each word is
+ * its own `<Text>` -- two when phrase capture wraps it -- plus one per run of
+ * whitespace. The pager keeps up to five pages mounted around the one on
+ * screen, so a single `ReaderScreen` render used to rebuild roughly 2,000
+ * word elements. Every tap on the page (showing the chrome), every mute,
+ * every step of the Pages slider and every page crossed mid-swipe is a
+ * `ReaderScreen` render, and none of them changes a word -- which is why the
+ * music icon took a visible moment to strike through, and why the slider
+ * lagged the finger.
+ *
+ * Every prop here is either a primitive or a value `ReaderScreen` memoises
+ * (`renderWord` comes from the host already stable, `matches` is per-page
+ * from `matchesByPage`, `theme` is a constant from `READER_THEMES`), so the
+ * memo holds until the page's own text, its search hits or the word renderer
+ * genuinely change.
+ */
+const PageWords = React.memo(function PageWords({
+  text,
+  pageStart,
+  pageWordStart,
+  matches,
+  activeMatch,
+  renderWord,
+  theme,
+}: {
+  text: string;
+  pageStart: number;
+  pageWordStart: number;
+  matches: readonly SearchMatch[];
+  activeMatch: number;
+  renderWord: (word: string, index: number) => ReactNode;
+  theme: ReaderTheme;
+}) {
+  return (
+    <>
+      {renderPageWords(text, pageStart, pageWordStart, matches, activeMatch, renderWord, theme)}
+    </>
+  );
+});
+
+/**
+ * Stops a music track now and releases it after. Fire-and-forget: a failure to
+ * pause or unload leaves a track that is already out of the reader's hands,
+ * and neither may throw into the tap that muted it.
+ */
+function silenceMusic(sound: Audio.Sound): void {
+  void (async () => {
+    try {
+      await sound.pauseAsync();
+    } catch {
+      // A second, independent way to silence it. If the unload below also
+      // fails, the reader who pressed mute must still hear nothing, and the
+      // sound is already out of the ref, so nothing will retry.
+      try {
+        await sound.setStatusAsync({ shouldPlay: false, volume: 0 });
+      } catch {
+        // Unloading below is the last resort.
+      }
+    }
+    try {
+      await sound.unloadAsync();
+    } catch {
+      // Already gone.
+    }
+  })();
+}
+
+/** The default word renderer: the word itself. Module-level so it is stable. */
+const plainWord = (word: string): ReactNode => word;
+
 export default function ReaderScreen({
   story,
   onBack,
   initialChapterIndex = 0,
   renderChapterEnd,
-  renderWord = (word) => word,
+  renderWord = plainWord,
   onChapterChange,
   autoplay = false,
   liveSessionId = null,
@@ -817,7 +896,10 @@ export default function ReaderScreen({
           isLooping: true,
           volume: 0,
         });
-        if (cancelled) {
+        // `musicMutedRef` as well as `cancelled`: a mute pressed while this
+        // load was in flight flips the ref at once, but `cancelled` only
+        // flips when the effect re-runs after the next commit.
+        if (cancelled || musicMutedRef.current) {
           await sound.unloadAsync();
           return;
         }
@@ -1095,12 +1177,30 @@ export default function ReaderScreen({
   // story after it. The track choosing that used to live here moved to
   // Profile, beside the narration voice -- picking background music is a
   // setting, not something to do in the middle of a chapter.
+  //
+  // OPTIMISTIC, IN THIS ORDER: the icon, then the sound, then the disk.
+  //
+  // The sound used to stop only once the effect keyed on `musicMuted` ran,
+  // which is after React has re-rendered the whole reader and committed it --
+  // and that effect then awaited `unloadAsync` before anything went quiet. On
+  // a long page that was a visible pause between the tap and the strike, and a
+  // longer one before the music stopped. Now the state flips first, so the
+  // struck glyph is in the very next frame, and the playing sound is taken out
+  // of the ref and paused in the same handler; the effect finds nothing left
+  // to unload. Nothing here awaits.
   const handleMusicMuteToggle = useCallback(() => {
     const next = !musicMutedRef.current;
     // Marks the choice as the reader's, so a slower restore cannot undo it.
     mutedChosenByUserRef.current = true;
     musicMutedRef.current = next;
     setMusicMutedState(next);
+    if (next && musicSoundRef.current) {
+      const playing = musicSoundRef.current;
+      // Cleared before the calls go out, so the fade-in loop (which checks
+      // this ref every step) stops raising the volume of a muted track.
+      musicSoundRef.current = null;
+      silenceMusic(playing);
+    }
     void setMusicMuted(next);
   }, []);
   const closeEditor = useCallback((saved: SavedChapterEdit | null) => {
@@ -1339,20 +1439,32 @@ export default function ReaderScreen({
   const lastPageIndex = pages.length - 1;
   const isLastPage = pageIndex === lastPageIndex;
 
+  // Per-page search hits, computed once per query rather than once per page
+  // per render, and handed to `PageWords` as a stable array so its memo holds.
+  const matchesByPage = useMemo(
+    () => pages.map((slice) => {
+      const onPage = searchMatches.filter((match) => match.start < slice.end && match.end > slice.start);
+      return onPage.length > 0 ? onPage : NO_MATCHES;
+    }),
+    [pages, searchMatches],
+  );
+
   const renderPageBody = (index: number) => {
     const slice = pages[index];
-    const matchesOnPage = searchMatches.filter((match) => match.start < slice.end && match.end > slice.start);
+    const matchesOnPage = matchesByPage[index] ?? NO_MATCHES;
     const activeOnPage = activeGlobalMatch
       ? matchesOnPage.findIndex((match) => match.start === activeGlobalMatch.start && match.end === activeGlobalMatch.end)
       : -1;
-    return renderPageWords(
-      slice.text,
-      slice.start,
-      pageWordStarts[index] ?? 0,
-      matchesOnPage,
-      activeOnPage,
-      renderWord,
-      theme,
+    return (
+      <PageWords
+        text={slice.text}
+        pageStart={slice.start}
+        pageWordStart={pageWordStarts[index] ?? 0}
+        matches={matchesOnPage}
+        activeMatch={activeOnPage}
+        renderWord={renderWord}
+        theme={theme}
+      />
     );
   };
 
