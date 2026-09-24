@@ -19,7 +19,7 @@ import {
   Play,
   Search,
   SlidersHorizontal,
-  Sparkles,
+  RefreshCw,
   X,
 } from "lucide-react-native";
 import { colors, fonts, motion, radius, spacing } from "@/theme";
@@ -292,7 +292,7 @@ export function ReaderChrome({
     },
     ...(onEdit ? [{ label: "Edit", icon: Pencil, onPress: onEdit }] : []),
     ...(onReimagine
-      ? [{ label: reimagineLabel, icon: Sparkles, onPress: onReimagine }]
+      ? [{ label: reimagineLabel, icon: RefreshCw, onPress: onReimagine }]
       : []),
     // Beside Edit and Reimagine because it is the third thing you do TO the
     // page, rather than a way of moving through it (row two). It is also the

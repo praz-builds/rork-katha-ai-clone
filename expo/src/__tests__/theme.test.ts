@@ -206,18 +206,20 @@ describe('theme tokens', () => {
   });
 
   describe('typography', () => {
-    it('exports the full ramp, plus the two that are not ramp steps', () => {
+    it('exports the full ramp, plus the three that are not ramp steps', () => {
+      // `createTitle` is a create-flow step heading in the UI face, a
+      // treatment rather than a level of the ramp (see its doc comment).
       // `button` and `buttonSmall` are in `type` but not in the ramp: a button
       // label is a control, not a level of the page, and `button` sits at 17
       // between `headline` (18) and `body` (16) precisely because it is not
       // competing with them. They are counted here so that adding a third
       // off-ramp style is a deliberate act rather than a silent one.
       const styles = Object.keys(type);
-      expect(styles.length).toBe(14);
+      expect(styles.length).toBe(15);
       expect(styles).toEqual(expect.arrayContaining([
         'largeTitle', 'title', 'section', 'titleSmall', 'headline', 'body',
         'bodySmall', 'subhead', 'meta', 'caption', 'micro', 'reader',
-        'button', 'buttonSmall',
+        'button', 'buttonSmall', 'createTitle',
       ]));
     });
 
@@ -233,6 +235,8 @@ describe('theme tokens', () => {
       // the integer rule and the 11pt floor below.
       expect(type.button.fontSize).toBe(17);
       expect(type.buttonSmall.fontSize).toBe(15);
+      // Create-flow headings are Hanken bold, never the display face.
+      expect(type.createTitle).toMatchObject({ fontSize: 26, fontFamily: fonts.ui, fontWeight: '700' });
       for (const size of Object.values(type).map((s) => s.fontSize)) {
         expect(Number.isInteger(size)).toBe(true);
         // 11 is the floor. Below it text is illegible at any fontScale under 1.
@@ -358,7 +362,7 @@ describe('theme tokens', () => {
 
     it('leaves the app-wide `type` scale untouched', () => {
       expect(type.title.fontFamily).toBe(fonts.display);
-      expect(Object.keys(type).length).toBe(14);
+      expect(Object.keys(type).length).toBe(15);
     });
   });
 

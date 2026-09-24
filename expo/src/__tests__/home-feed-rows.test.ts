@@ -10,6 +10,7 @@
  * Trending/Most loved cuts surviving only for a reader who chose none.
  */
 import { buildFeedRows, continueReading, yourStories } from "@/screens/HomeScreen";
+import { dailyFeedSeed } from "@/lib/feed-shuffle";
 import { stories } from "@/data/seed";
 import { genreLabels } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
@@ -224,5 +225,128 @@ describe("the Tonight rail", () => {
     expect(
       buildFeedRows(stories, [], [], [], "surprise").find((row) => row.key === "tonight"),
     ).toBeUndefined();
+  });
+});
+
+/*
+  The founder's walk of the preview: all three Home rails opened on the same
+  story. With every count at zero, Trending (by reads), Most loved (by likes)
+  and Originals (catalogue order) all fell back to the same first card.
+*/
+describe("variety across the rails", () => {
+  /** A catalogue with no signal at all: every read and like at zero. */
+  const levelField = (): Story[] =>
+    Array.from({ length: 30 }, (_, index) => ({
+      ...stories[index % stories.length],
+      id: `level-${index}`,
+      views: 0,
+      likes: 0,
+      isFeatured: index % 2 === 0,
+    }));
+
+  const firstIds = (rows: ReturnType<typeof buildFeedRows>) =>
+    rows.map((row) => row.stories[0]?.id);
+
+  it("never opens two rails on the same story when counts are level", () => {
+    const today = new Date(2026, 8, 24, 9);
+    for (const reader of ["reader-a", "reader-b", null]) {
+      const rows = buildFeedRows(
+        levelField(), [], [], [], null, dailyFeedSeed(reader, today),
+      );
+      expect(rows.map((row) => row.key)).toEqual(["originals", "trending", "loved"]);
+      const firsts = firstIds(rows);
+      expect(new Set(firsts).size).toBe(firsts.length);
+    }
+  });
+
+  it("does not repeat a story across rails while unseen ones are left", () => {
+    const rows = buildFeedRows(
+      levelField(), [], [], [], null, dailyFeedSeed("reader-a", new Date(2026, 8, 24)),
+    );
+    const ids = rows.flatMap((row) => row.stories.map((story) => story.id));
+    // 30 stories, three rails of at most ten: room for every card to be new.
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("holds the same order all day, so the page does not reshuffle under a thumb", () => {
+    const morning = dailyFeedSeed("reader-a", new Date(2026, 8, 24, 7, 5));
+    const night = dailyFeedSeed("reader-a", new Date(2026, 8, 24, 23, 40));
+    expect(morning).toBe(night);
+    const a = buildFeedRows(levelField(), [], [], [], null, morning);
+    const b = buildFeedRows(levelField(), [], [], [], null, night);
+    expect(a.map((row) => row.stories.map((s) => s.id)))
+      .toEqual(b.map((row) => row.stories.map((s) => s.id)));
+  });
+
+  it("changes with the day and with the reader", () => {
+    const orderFor = (reader: string, day: number) =>
+      buildFeedRows(
+        levelField(), [], [], [], null, dailyFeedSeed(reader, new Date(2026, 8, day)),
+      ).map((row) => row.stories.map((s) => s.id).join(",")).join("|");
+    const base = orderFor("reader-a", 24);
+    expect(orderFor("reader-a", 25)).not.toBe(base);
+    expect(orderFor("reader-b", 24)).not.toBe(base);
+  });
+
+  it("lets a real count beat 'already shown', even for a house Original", () => {
+    // The most read and most loved story in the catalogue is an Original, so
+    // Originals shows it first. Trending and Most loved must still lead with
+    // it: "already shown" only breaks ties, it never hides a real count.
+    const field = levelField();
+    const star = field[0];
+    star.isFeatured = true;
+    star.views = 5000;
+    star.likes = 900;
+    const genre = star.genre;
+    const seed = dailyFeedSeed("reader-a", new Date(2026, 8, 24));
+
+    const fallback = buildFeedRows(field, [], [], [], null, seed);
+    expect(fallback.find((row) => row.key === "originals")!.stories.map((s) => s.id))
+      .toContain(star.id);
+    expect(fallback.find((row) => row.key === "trending")!.stories[0].id).toBe(star.id);
+    expect(fallback.find((row) => row.key === "loved")!.stories[0].id).toBe(star.id);
+
+    const withGenre = buildFeedRows(field, [genre], [], [], null, seed);
+    expect(withGenre.find((row) => row.key === `genre-${genre}`)!.stories[0].id)
+      .toBe(star.id);
+  });
+
+  /*
+    What degrades on a tiny catalogue, written down rather than discovered.
+    With fewer stories than rails there are not enough cards for every rail
+    to open on a different one; the guarantee is that nothing throws, no rail
+    is empty, and every rail that CAN open fresh does.
+  */
+  it.each([0, 1, 2, 3])("builds sane rails from %i level stories", (n) => {
+    const field = levelField().slice(0, n).map((story) => ({ ...story, isFeatured: false }));
+    const rows = buildFeedRows(
+      field, [], [], [], null, dailyFeedSeed("reader-a", new Date(2026, 8, 24)),
+    );
+    if (n === 0) {
+      expect(rows).toEqual([]);
+      return;
+    }
+    // No Originals (none featured): Trending and Most loved, both full.
+    expect(rows.map((row) => row.key)).toEqual(["trending", "loved"]);
+    for (const row of rows) expect(row.stories).toHaveLength(n);
+    const [trending, loved] = rows.map((row) => row.stories[0].id);
+    if (n === 1) {
+      // One story is the only card either rail can open on.
+      expect(loved).toBe(trending);
+    } else {
+      // Two or more: Most loved opens on something Trending did not lead with.
+      expect(loved).not.toBe(trending);
+    }
+  });
+
+  it("lets a real count beat the shuffle", () => {
+    const field = levelField();
+    const popular = field[7];
+    popular.views = 500;
+    popular.isFeatured = false;
+    const rows = buildFeedRows(
+      field, [], [], [], null, dailyFeedSeed("reader-a", new Date(2026, 8, 24)),
+    );
+    expect(rows.find((row) => row.key === "trending")!.stories[0].id).toBe(popular.id);
   });
 });

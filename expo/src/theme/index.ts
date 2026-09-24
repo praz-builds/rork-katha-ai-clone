@@ -21,7 +21,6 @@ export {
   IconPerson,
   IconRefresh,
   IconRemove,
-  IconSparkle,
   IconTrash,
 } from './icons';
 export type { IconComponent, IconProps } from './icons';
