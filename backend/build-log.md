@@ -7,7 +7,7 @@
 
 ---
 
-## 2026-09-25 UTC — Production generation was failing on a probe deadline, and the launch deploy is now on the record
+## 2026-09-25 UTC — The buffered generation chain was failing on a probe deadline, and the launch deploy is now on the record
 
 **Session:** picking the Play launch push back up after the 2026-09-25 usage
 limit stopped every agent mid-verification. Branch
@@ -32,7 +32,32 @@ against `main`. The one file that is in the repo and in no bundle is
 `_shared/prompts.ts`, which has **zero importers** — it is dead code, not drift,
 and it is left alone here rather than deleted behind a generation fix.
 
-### The bug that made every story fail
+### The bug, and exactly what it did and did not break
+
+**Scope first, because the obvious headline is wrong.** This is the *buffered*
+chain — `runProviderChain`, reached by `generateStoryText` and `editParagraph`.
+The Expo Create flow does not use it: pressing Create calls
+`generateStoryStreaming` → `generate-story-stream` → `streamChapterProse`, which
+has its own model list (`OPENROUTER_STREAM_MODELS`), its own flat
+`STREAM_DEADLINE_MS` of 180s, and no `openRouterPhaseDeadlines` anywhere in it.
+`generateStory` in `expo/src/lib/api.ts` has no non-test caller, and neither does
+the buffered `continueStory`.
+
+So what was broken, and is fixed here:
+
+- `generate-story`, the buffered endpoint — which is what
+  `smoke-app-surface.py` step 2.1 calls, so **the production gate was red and
+  its 16 downstream checks never ran** (see the count note in AGENTS.md).
+- The non-streamed branches of `continue-story` and `reimagine-chapter`, which
+  are the fallbacks when the SSE transport is unavailable.
+- `editParagraph`, the non-streamed branch of `edit-story`. Its 60s deadline gave
+  the same 8s probe to a model that now writes, so every paragraph edit that took
+  that branch wasted 8s and one paid aborted request before the model behind it
+  served.
+
+What was **not** broken: the app's Create flow, its continuation, and the
+streamed edit branch. Anyone reading this later should not conclude from the
+smoke failure that users could not write stories — they could, over SSE.
 
 `backend/scripts/smoke-app-surface.py` re-run: **26 passed, 1 failed**, the same
 failure the interrupted session had found and not diagnosed —
@@ -103,18 +128,20 @@ decision `store/android/data-safety.md` D1 answers as *shared* for Play.
 
 ### Gates
 
-`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1104
-passed, 0 failed** after merging main. This branch alone was 1099, then 1101
-after the review round (one vacuous test removed, three added); #144 brings the
-other three. `deno check` and `deno fmt --check` clean on both touched
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1106
+passed, 0 failed.** This branch was 1099, 1101 after review round 1 (one vacuous
+test removed, three added) and 1106 after round 2 (two moderation-bound tests,
+plus the three #144 brought with the merge). `deno check` and `deno fmt --check`
+clean on all touched files. Every test added in either round was run against the
+code it guards, reverted, and fails there. `deno check` and `deno fmt --check` clean on both touched
 files. The two deadline tests that asserted the probe shape were rewritten to
 assert the invariant that replaces it — no model is capped below a chapter
 whatever its position — and each was run against the unfixed code, where both
 fail.
 
-### Review round (Opus on PR #145)
+### Review round 1 (Opus on PR #145)
 
-Requested changes, five findings, all addressed here rather than deferred:
+Requested changes, five findings, all addressed rather than deferred:
 
 - **The leader could spend the whole paid phase on moderation retries.** A
   `content_filter` is raised *after* a complete generation, and with the slices
@@ -142,8 +169,8 @@ Requested changes, five findings, all addressed here rather than deferred:
   `docs/ACCEPTANCE.md` A1 told the founder to check that story creation works
   while this fix was neither merged nor deployed (now gated on the deploy, in a
   callout); and "roughly 40 seconds" rested on one 1,504-word measurement while
-  production chapters have run 55–76s (now "well under two minutes", with the
-  arithmetic shown).
+  production chapters have run 55–76s. Round 2 replaced the timing claim
+  entirely — see below.
 - **The 26/27 and 43/43 smoke numbers were unreconciled.** The suite is
   sequential and its later checks operate on the story 2.1 generates, so a run
   where generation fails stops at 27 checks rather than 43. Said in AGENTS.md so
@@ -151,8 +178,67 @@ Requested changes, five findings, all addressed here rather than deferred:
 
 Also from the review: `AGENTS.md` still claimed "production is current with
 main, file for file", which this PR itself invalidates on merge. That section is
-now dated 2026-09-25, carries the 89/89 audit, and states plainly that
-production is behind by exactly this change until the deploy below.
+now dated 2026-09-25, carries the 89/89 audit, and states plainly what production
+is behind by until the deploy below.
+
+### Review round 2 (Opus on PR #145)
+
+Requested changes again, and the first finding was the one that mattered most.
+
+- **The fix was described as something it is not, in the document written for the
+  founder.** The PR was titled "creating a story works again", the entry above was
+  headed "the bug that made every story fail", and `ACCEPTANCE.md` A1 told him to
+  press Create to verify it. None of that is true: `openRouterPhaseDeadlines` has
+  one caller, `runProviderChain`, and the app's Create flow never reaches it — it
+  streams through `generate-story-stream` → `streamChapterProse`, which has its
+  own model list and its own flat 180s deadline. `generateStory` and the buffered
+  `continueStory` have no non-test callers at all. Pressing Create after this
+  deploy would have "verified" nothing, and if Create had failed for an unrelated
+  reason this fix would have been blamed. The scope is now stated first, in this
+  entry and in A1, and A1 checks the smoke suite and paragraph editing instead —
+  the things that do reach the fixed code. What was broken is still worth fixing:
+  it is the production gate, the non-streamed fallbacks, and a wasted 8s on every
+  non-streamed paragraph edit.
+- **The round-1 retry bound was untested, and its telemetry had the same defect
+  round 1 had just fixed elsewhere.** It now throws
+  `ProviderModerationNoTimeError` (`moderation_retry_no_time`) rather than
+  re-throwing the provider's rejection, so "gave up for time" and "softened it
+  twice and was still refused" are different codes in `error_events`. Two tests
+  added, driven through a stubbed provider that answers `content_filter` and
+  takes real time, because the bound measures the previous attempt's duration and
+  an instant mock cannot exercise it. Both were run against the unguarded code;
+  the refusal test fails there.
+- **The bound still let the leader take the whole phase.** "One more attempt of
+  the same size fits" is satisfied three times over a 115s window by 38s
+  attempts, so the comment claimed a protection the code did not provide. A model
+  with anything behind it now reserves a fallback's worth as well
+  (`lastAttemptMs * 2`); the last model in a phase, having nothing to reserve
+  for, keeps the old bound. `isLastModel` is passed at all three call sites.
+- **A refused retry still advanced the safety ladder.** `onModerationRetry` ran
+  before the time check, and it raises the chain-wide `safetyLevel` that every
+  later model inherits — so a retry that never happened handed the next model the
+  most-softened prompt and, at level 2, a single attempt. The check now precedes
+  the call.
+- **One of the three round-1 tests was vacuous.** "The paid phase cannot overrun
+  its share" asserted `deadline <= window`, which the old probe shape also
+  satisfied. Rewritten to assert both halves of the property that is actually new
+  — every model may run to the phase end, and none past it.
+- **The `OPENROUTER_STREAM_MODELS` rationale was thinner than it sounded.** It
+  claimed the order was about first-token latency, while the only TTFT number in
+  the repo is unattributed to a model and the full-completion measurements make
+  the standard tier the slower of the two. The comment now says the order holds
+  that position *constant* rather than fast, and that per-tier TTFT is unmeasured.
+- **A1 pointed into a 4,500-line engineering log for the deploy list**, and its
+  "under two minutes is healthy" threshold sat above `GENERATION_DEADLINE_MS`
+  (125s), so a chapter 7s from a refund would have read as fine. The eight
+  functions are named in A1 and the timing claim is gone with the rewrite.
+
+Still open, and recorded rather than quietly dropped: nothing drives a *slow*
+successful leader through `runProviderChain`, so an off-by-one wiring the
+deadline array to the wrong model would pass the suite. `llm-deadline.test.ts`
+pins the array itself and `llm.test.ts` covers the 404 fallthrough, which is why
+this is a gap and not a hole, but it is the test that would have caught the
+original bug directly.
 
 Two test findings, both fixed: "the model that actually writes gets a chapter's
 worth of time" passed against the *old* implementation too, so it discriminated

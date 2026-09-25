@@ -15,33 +15,39 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 # Round: the Play launch push (#138-#143, plus the generation fix)
 
-Six lanes merged on 2026-09-25 and are deployed. The generation fix in A1 is a
-seventh change and is **only checkable once it is deployed** — merged is not
-deployed on this project, and A1 says so again where it matters.
+Six lanes merged on 2026-09-25 and are deployed. A1 is a seventh change, is
+**only checkable once it is deployed**, and is narrower than it sounds — read its
+first paragraph before trying it.
 
 Most of this round is Android and Play Console work, so it splits into what you
 can eyeball on http://localhost:8090 and what genuinely needs a device or the
 Console. Anything below marked **device** or **Console** cannot be judged in the
 browser — that is a limit of the change, not a gap in the check.
 
-## A1. Creating a story works again
+## A1. The buffered generation chain works again
 
-This is the one to try first. Before this fix, every story you asked for failed
-and refunded the credit.
+**Read this one carefully, because it is not "press Create".** Pressing Create in
+the app uses the streaming endpoint, which was never affected and has been
+working throughout. What was broken is the *buffered* chain: the production smoke
+test's story step, the fallback used when streaming is unavailable, and the
+non-streamed paragraph edit. Every story generated over the stream was fine.
 
-> **Needs the deploy first.** This one is not live until the eight functions
-> listed in `backend/build-log.md` have been deployed — they all reach a file
-> that changed. Run A1 before that and it will still answer "Story generation
-> failed. Credit refunded.", and that is the old code, not a new bug.
+> **Needs the deploy first.** Not live until these eight functions are deployed:
+> `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+> `reimagine-chapter`, `shape-story`, `generate-character-image` and
+> `regenerate-cover`. Migration `00099` goes first.
 
-- [ ] Open Create, write one sentence, press Create. A chapter arrives. It does
-      **not** say "Story generation failed. Credit refunded."
-- [ ] It arrives well under two minutes. A 1,504-word chapter was measured at
-      38.7s from the model, but production chapters have run 55–76s and the
-      grounding step and persistence sit on top of that, so treat anything under
-      two minutes as healthy and anything over as worth reporting.
-- [ ] Do it twice more. All three succeed; the failure this fixes was happening
-      on every attempt, not occasionally.
+- [ ] The check that actually exercises it: run
+      `python3 backend/scripts/smoke-app-surface.py` from the repo root with
+      `backend/.env` loaded. It should report **43 passed, 0 failed**. Before this
+      fix it reported 26 passed, 1 failed and stopped at step 2.1 — which is why
+      the 16 checks after it had not run for a while.
+- [ ] In the app, the thing worth eyeballing is **paragraph editing**: open a
+      chapter, tap Edit, change a word, save. It should come back promptly. Before
+      this fix that path spent 8 seconds on a model it then abandoned.
+- [ ] Creating and continuing stories should behave exactly as they did before —
+      unchanged, not improved. If Create behaves *differently* after this deploy,
+      that is worth reporting, because nothing here should have touched it.
 
 ## A2. "All-ages" replaced "Kids", everywhere
 

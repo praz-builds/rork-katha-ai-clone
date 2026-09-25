@@ -119,7 +119,16 @@ export const OPENROUTER_MODELS: readonly string[] = [
  * one: the streamed path's first-token latency should not change because
  * somebody flipped a checkbox at https://openrouter.ai/settings/privacy. The
  * buffered chain can absorb a round trip and is ordered cheapest-first; the
- * stream cannot, so it stays pinned to the model whose latency was measured.
+ * stream cannot, so it stays pinned.
+ *
+ * **Be honest about the evidence for that.** First-token latency has never been
+ * measured for either tier - the only TTFT figure in the repo is the 2.9s in
+ * `story-stream.ts`, unattributed to a model - and on the 2026-09-25
+ * full-completion measurements the standard tier is the *slower* of the two
+ * (48.1s against 38.7s). So this order is not "the faster model in front"; it is
+ * "hold the reader-facing position constant rather than let an account setting
+ * move it". If TTFT is ever measured per tier, that measurement should decide
+ * this, not this comment.
  *
  * `OPENROUTER_MODEL` is kept behind it rather than dropped, reached only if the
  * standard tier fails before writing a token. That is the before-first-token
@@ -522,6 +531,20 @@ export class ProviderHttpError extends Error {
  *
  * Distinct from an `AbortError` on purpose - see `remainingDuration`.
  */
+/**
+ * A moderation retry that was refused because the time left would not hold it.
+ *
+ * Distinct from `ProviderModerationRejectedError`, which means all three
+ * attempts ran and the prompt could not be softened enough. See
+ * `generateOpenRouterText`.
+ */
+export class ProviderModerationNoTimeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderModerationNoTimeError";
+  }
+}
+
 export class ProviderSkippedNoTimeError extends Error {
   constructor(message: string) {
     super(message);
@@ -588,6 +611,9 @@ export function classifyLlmError(
   // that a timeout is how a stalled leader comes to look like a deadline bug.
   if (error instanceof ProviderSkippedNoTimeError) {
     return { ...base, code: "skipped_no_time", retryable: true };
+  }
+  if (error instanceof ProviderModerationNoTimeError) {
+    return { ...base, code: "moderation_retry_no_time", retryable: true };
   }
   if (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -763,6 +789,7 @@ export async function generateFastStructuredText(
         modelDeadline,
         0,
         () => undefined,
+        index === openRouterModels.length - 1,
       );
     } catch (error) {
       console.error(`${model} failed:`, error);
@@ -956,6 +983,7 @@ async function runProviderChain(
           modelDeadline,
           safetyLevel,
           recordModerationRetry,
+          index === openRouterModels.length - 1,
         );
         resolvedModel = result.model;
         return requireUsableStoryOutput(result.text, options);
@@ -1026,6 +1054,7 @@ async function runProviderChain(
           modelDeadline,
           safetyLevel,
           recordModerationRetry,
+          index === freeModels.length - 1,
         );
         // `openrouter/free` reports which model it actually routed to; a named
         // free model reports itself. Either way telemetry records the truth.
@@ -1220,6 +1249,12 @@ async function generateOpenRouterText(
   deadline: number,
   initialSafetyLevel: number,
   onModerationRetry: (level: number) => void,
+  /**
+   * Whether anything is behind this model in its phase. The last model has
+   * nothing to reserve time for; the ones in front of it do. See the retry
+   * bound below.
+   */
+  isLastModel: boolean,
 ): Promise<GenerationResult> {
   const apiKey = openRouterKey();
   if (!apiKey) {
@@ -1231,18 +1266,26 @@ async function generateOpenRouterText(
   // Moderation retries are bounded by the shared deadline, and since the paid
   // phase stopped slicing its window that deadline is the phase end - so three
   // full-length attempts on one model could spend the whole phase and leave
-  // every model behind it to be skipped. A `content_filter` is raised *after* a
-  // complete generation, so an attempt here costs a chapter's worth of time,
-  // not a round trip.
+  // every model behind it skipped for want of time. A `content_filter` is raised
+  // *after* a complete generation, so an attempt here costs a chapter's worth of
+  // time, not a round trip.
   //
-  // The bound is the previous attempt's own duration: a retry is only started
-  // if one more attempt of the same size actually fits in what is left. That is
-  // self-calibrating - it needs no constant to guess how long a chapter takes -
-  // and it removes the pathological case rather than the useful one. Retrying a
-  // softened prompt on the same model is usually the better bet than falling to
-  // the next (a refusal tends to repeat across a model family), so this stops
-  // only the retry that would have timed out anyway and eaten the fallback's
-  // time doing it.
+  // The bound is the previous attempt's own duration, which is self-calibrating:
+  // it needs no constant to guess how long a chapter takes. What it must reserve
+  // depends on whether anything is behind this model:
+  //
+  // - **Not the last model.** A retry runs only if this retry *and* one more
+  //   attempt of the same size both fit, so the model behind it is never left
+  //   with nothing. Retrying a softened prompt on the same model is usually the
+  //   better bet (a refusal tends to repeat across a model family), but not at
+  //   the price of the fallback existing at all.
+  // - **The last model.** There is nothing to reserve for, so it may retry
+  //   while one more attempt fits and use the rest of the window.
+  //
+  // A retry refused for time throws `ProviderModerationNoTimeError`, not the
+  // provider's own rejection, so `error_events` can tell it apart from genuinely
+  // exhausting all three attempts. Both end this model; only one of them means
+  // the prompt could not be softened enough.
   let lastAttemptMs = 0;
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
     const attemptStart = Date.now();
@@ -1271,16 +1314,24 @@ async function generateOpenRouterText(
     } catch (error) {
       if (!isModerationRejection(error)) throw error;
       lastAttemptMs = Date.now() - attemptStart;
-      onModerationRetry(Math.min(attempt + 1, 2));
       if (attempt === 2) throw error;
-      if (deadline - Date.now() < lastAttemptMs) {
+      // Checked BEFORE `onModerationRetry`: that call raises the chain-wide
+      // safety level, which every model behind this one inherits as its
+      // `initialSafetyLevel`. Advancing the ladder for a retry that never runs
+      // would hand the next model the most-softened prompt and, at level 2, a
+      // single attempt.
+      const remaining = deadline - Date.now();
+      const needed = isLastModel ? lastAttemptMs : lastAttemptMs * 2;
+      if (remaining < needed) {
         console.warn(
-          `${model} moderation retry ${attempt + 1} of 2 skipped: ` +
-            `${deadline - Date.now()}ms left, last attempt took ` +
-            `${lastAttemptMs}ms`,
+          `${model} moderation retry ${attempt + 1} of 2 refused for time: ` +
+            `${remaining}ms left, needs ${needed}ms`,
         );
-        throw error;
+        throw new ProviderModerationNoTimeError(
+          `Moderation retry needs ${needed}ms and ${remaining}ms remain`,
+        );
       }
+      onModerationRetry(Math.min(attempt + 1, 2));
       console.warn(
         `${model} moderation retry ${attempt + 1} of 2:`,
         failureMessage(error),
