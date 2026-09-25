@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -7,6 +7,8 @@ import {
   View,
 } from "react-native";
 import { Primary, StepScroll } from "@/components/onboarding/primitives";
+import i18n from "@/i18n";
+import { isCompleteOtp, normaliseOtpInput, OTP_LENGTH } from "@/lib/otp";
 import { reviewerSignIn, sendEmailCode, verifyEmailCode } from "@/lib/session";
 import {
   colors,
@@ -29,6 +31,22 @@ import {
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The code step's copy, from `auth.*` in `src/i18n/*.json`. The length is
+ * interpolated from `OTP_LENGTH` so the locales never carry their own six.
+ * i18n is pinned to English today (`FOLLOW_DEVICE_LOCALE` in `@/i18n`), so
+ * what renders is the English line until that flips.
+ */
+const t = (key: string, options?: Record<string, unknown>) =>
+  i18n.t(`auth.${key}`, { count: OTP_LENGTH, ...options });
+
+/**
+ * Said when a paste or autofill carries more digits than a code has. Almost
+ * always an old 8-digit code from before the switch to 6, so the line says
+ * what a code looks like and where to find the right one.
+ */
+export const codeTooLong = () => t("codeTooLong");
 
 type AuthStep = "email" | "code";
 
@@ -95,6 +113,20 @@ export function EmailCodeAuth({
   /** Belongs to the step that produced it. Carried across a step it becomes a
    *  complaint about a field that is no longer on screen. */
   const [authError, setAuthError] = useState<string | null>(null);
+  /**
+   * Refs, not state, because the auto-submit fires from inside the same
+   * change event that completed the code: state set there is not visible to
+   * the submit it triggers. `busyRef` stops a second verify while one is in
+   * flight (a sixth digit and a Verify tap in the same second); `verifiedRef`
+   * stops any verify after one has succeeded, so `onVerified` runs once even
+   * if the caller is slow to navigate away; `autoSubmittedRef` remembers which
+   * code was auto-submitted, so a wrong code is not re-sent on every render.
+   */
+  const busyRef = useRef(false);
+  /** What the boxes hold right now, readable from a verify as it finishes. */
+  const latestCodeRef = useRef("");
+  const verifiedRef = useRef(false);
+  const autoSubmittedRef = useRef<string | null>(null);
 
   const goToEmail = useCallback(() => {
     setAuthError(null);
@@ -118,6 +150,8 @@ export function EmailCodeAuth({
     try {
       await sendEmailCode(email);
       setCode("");
+      latestCodeRef.current = "";
+      autoSubmittedRef.current = null;
       setAuthStep("code");
     } catch {
       setAuthError("We could not send that code. Check the address and retry.");
@@ -126,9 +160,10 @@ export function EmailCodeAuth({
     }
   }, [authBusy, email]);
 
-  const submitCode = useCallback(async () => {
-    if (authBusy) return;
-    if (code.trim().length < 6) return;
+  /** `submitCode`, for a finishing verify to call without a dependency loop. */
+  const submitRef = useRef<(candidate: string) => boolean>(() => false);
+
+  const runVerify = useCallback(async (candidate: string) => {
     setAuthBusy(true);
     setAuthError(null);
     try {
@@ -139,20 +174,21 @@ export function EmailCodeAuth({
       // blaming their code for it.
       let verified = false;
       try {
-        await verifyEmailCode(email, code);
+        await verifyEmailCode(email, candidate);
         verified = true;
       } catch {
         // The reviewer's fixed code (D11). Tried only after the real OTP
         // refused, and the function answers 401 for every address but the
         // reviewer's, so for anyone else this is one extra round trip on the
         // way to the same error line.
-        verified = await reviewerSignIn(email, code).catch(() => false);
+        verified = await reviewerSignIn(email, candidate).catch(() => false);
       }
 
       if (!verified) {
-        setAuthError("That code did not match. Try again or resend it.");
+        setAuthError(t("codeMismatch"));
         return;
       }
+      verifiedRef.current = true;
 
       try {
         await onVerified(email.trim());
@@ -163,9 +199,69 @@ export function EmailCodeAuth({
         // regardless -- every screen tolerates a profile that did not load.
       }
     } finally {
+      busyRef.current = false;
       setAuthBusy(false);
+      // A complete code that arrived while this verify was in flight was
+      // declined then. It is the person's latest answer, so send it now.
+      const waiting = latestCodeRef.current;
+      if (
+        !verifiedRef.current &&
+        waiting !== candidate &&
+        isCompleteOtp(waiting) &&
+        autoSubmittedRef.current !== waiting &&
+        submitRef.current(waiting)
+      ) {
+        autoSubmittedRef.current = waiting;
+      }
     }
-  }, [authBusy, code, email, onVerified]);
+  }, [email, onVerified]);
+
+  /**
+   * Starts a verify and says whether it did. It declines (false) while one is
+   * in flight, after one has succeeded, or for an incomplete code, and the
+   * caller must not treat a declined code as sent.
+   */
+  const submitCode = useCallback((candidate: string = code): boolean => {
+    if (busyRef.current || verifiedRef.current) return false;
+    if (!isCompleteOtp(candidate)) return false;
+    busyRef.current = true;
+    void runVerify(candidate);
+    return true;
+  }, [code, runVerify]);
+
+  useEffect(() => {
+    submitRef.current = submitCode;
+  }, [submitCode]);
+
+  /**
+   * Every keystroke, paste and autofill lands here. A code that arrives
+   * complete -- the sixth digit typed, or all six pasted or filled from the
+   * mail -- is verified without a second tap on Verify.
+   */
+  const changeCode = useCallback((raw: string) => {
+    const { code: next, overflow } = normaliseOtpInput(raw);
+    latestCodeRef.current = next;
+    if (overflow) {
+      setCode("");
+      autoSubmittedRef.current = null;
+      setAuthError(codeTooLong());
+      return;
+    }
+    setCode(next);
+    // The "more than 6 digits" line is about a paste that is gone once they
+    // type; any other error stays until the next verify answers.
+    setAuthError((current) => (current === codeTooLong() ? null : current));
+    if (!isCompleteOtp(next)) {
+      // Editing the code re-arms the auto-submit, so correcting one digit
+      // back to the same six is an explicit retry.
+      autoSubmittedRef.current = null;
+      return;
+    }
+    if (autoSubmittedRef.current === next) return;
+    // Recorded only when it was actually sent. A code declined because a
+    // verify was in flight goes out when that verify finishes.
+    if (submitCode(next)) autoSubmittedRef.current = next;
+  }, [submitCode]);
 
   if (authStep === "code") {
     return (
@@ -174,20 +270,20 @@ export function EmailCodeAuth({
         steps={steps}
         currentStep={codeStep}
         art={artwork}
-        title="Check your inbox"
-        sub={`Enter the 6-digit code we sent to ${email.trim()}.`}
+        title={t("codeTitle")}
+        sub={t("codeSub", { email: email.trim() })}
       >
         <View style={styles.section}>
           <Text style={styles.eyebrowDark}>CODE</Text>
-          <OtpBoxes value={code} onChangeText={setCode} />
+          <OtpBoxes value={code} onChangeText={changeCode} />
         </View>
 
         {authError ? <Text style={styles.error}>{authError}</Text> : null}
         <Primary
-          label="Verify and continue"
+          label={t("verify")}
           busy={authBusy}
-          disabled={code.trim().length < 6}
-          onPress={submitCode}
+          disabled={!isCompleteOtp(code)}
+          onPress={() => submitCode()}
         />
         <Pressable
           onPress={submitEmail}
@@ -196,14 +292,14 @@ export function EmailCodeAuth({
           disabled={authBusy}
           style={[styles.resendButton, authBusy && styles.resendButtonBusy]}
         >
-          <Text style={styles.quietText}>Resend code</Text>
+          <Text style={styles.quietText}>{t("resend")}</Text>
         </Pressable>
         <Pressable
           onPress={goToEmail}
           accessibilityRole="button"
           style={styles.quietButton}
         >
-          <Text style={styles.quietText}>Use a different email</Text>
+          <Text style={styles.quietText}>{t("differentEmail")}</Text>
         </Pressable>
       </StepScroll>
     );
@@ -257,7 +353,7 @@ function OtpBoxes({
   onChangeText: (value: string) => void;
 }) {
   const inputRef = useRef<TextInput>(null);
-  const digits = value.replace(/\D/g, "").slice(0, 6);
+  const digits = value.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
   return (
     <View
@@ -266,7 +362,7 @@ function OtpBoxes({
       style={styles.otpShell}
     >
       <View style={styles.otpRow}>
-        {Array.from({ length: 6 }, (_, index) => {
+        {Array.from({ length: OTP_LENGTH }, (_, index) => {
           const active = index === digits.length;
           const filled = Boolean(digits[index]);
           return (
@@ -286,11 +382,15 @@ function OtpBoxes({
       <TextInput
         ref={inputRef}
         value={digits}
-        onChangeText={(next) => onChangeText(next.replace(/\D/g, "").slice(0, 6))}
+        // The RAW text goes up, unfiltered. Filtering here, or a
+        // `maxLength={6}`, runs before the parent can tell "123 456" (a code,
+        // with a space) from "12345678" (not a code): the platform truncates a
+        // paste to six characters first, so "123 456" arrived as "123 45" and
+        // an 8-digit code arrived as a plausible, wrong, six.
+        onChangeText={onChangeText}
         accessibilityLabel="Verification code"
-        accessibilityHint="Enter the six digit code"
+        accessibilityHint={t("codeHint")}
         keyboardType="number-pad"
-        maxLength={6}
         textContentType="oneTimeCode"
         autoComplete="one-time-code"
         style={styles.otpHidden}

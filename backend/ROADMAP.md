@@ -573,9 +573,9 @@ wording is kept in the Item column so the two can be ticked together.
 | Generation provider (paid primary) | Pre-push | [ ] | Gemini is quota-blocked (`429`) and the OpenRouter free router is last in the chain. A reviewer whose first story fails is a "broken functionality" rejection. Account action, no code |
 | Edge function deploy audit | Pre-push, re-run day 6 | [~] | Last verified 2026-09-21 (production current with main, 37 / 37). Re-run after this week's merges and before the build that goes to review — merged is not deployed |
 | Ambient Music while story reading | Pre-push | [~] | Shipped: 24 genre tracks from the `music` bucket, mute-only in the reader. **Profile control built (2026-09-25):** a "Background music" switch on You, writing the same `katha.reader.music-muted.v1` preference as the reader's mute, so each shows what the other set. The background-audio row above covers playback with the phone locked in code (#138); confirm on a device |
-| Send OTP from otp@katha, 6-digit code instead of Supabase's 8 | Pre-push | [ ] | Custom SMTP sender in Supabase Auth plus the OTP length setting; check the OTP input and paste handling accept 6 digits on all onboarding paths |
-| Refined intro animation | Pre-push | [ ] | Also fix the desktop-width intro carousel trap noted by `scripts/preview.sh` |
-| "More options" moments: cap long text, end with "…" | Pre-push | [ ] | Truncate at a fixed length with an ellipsis so a long moment cannot break the layout |
+| Send OTP from otp@katha, 6-digit code instead of Supabase's 8 | Pre-push | [~] | **Client done** (`codex/onboarding-and-create-polish`): one `OTP_LENGTH = 6` in `expo/src/lib/otp.ts` behind every code path (onboarding code step, Sign in, the reviewer's code); a pasted "123 456" / "123456⏎" verifies on its own, an 8-digit paste is refused with a line saying so, copy says "6-digit code" in EN/ES/PT. **Still the founder's:** the Supabase dashboard OTP length = 6 and the custom SMTP sender. The client refuses 8-digit codes, so flip the setting before this client reaches anyone |
+| Refined intro animation | Pre-push | [x] | `codex/onboarding-and-create-polish`: motion on the UI thread (Reanimated 4; no per-frame React render), swipe between slides, 44pt dot targets, copy crossfade, reduced motion honoured. Desktop trap fixed: a phone-width column (`controls.introMaxWidth`) that scrolls when the window is short |
+| "More options" moments: cap long text, end with "…" | Pre-push | [x] | `codex/onboarding-and-create-polish`: chips show at most 40 characters, cut at a word, ending "…" (`expo/src/lib/moment-display.ts`); the full moment (up to 300) is still stored and sent. The chip is the only place a moment is echoed back |
 | Loading screen consistency | — | [x] | Resolved on the sheet |
 | Recheck progress bar during onboarding (bug) | — | [x] | Resolved on the sheet |
 | Streak icon and credits always on top, beside profile | — | [x] | Resolved on the sheet |
@@ -603,7 +603,7 @@ wording is kept in the Item column so the two can be ticked together.
 | 3–4 | Sat 09-26 – Sun 09-27 | Block author, Kids→All-ages, "More options" truncation, OTP sender + 6 digits, intro animation. Store assets (feature graphic, screenshots, PT/ES copy) |
 | 5 | Mon 09-28 | Data Safety, content rating, target audience. Katha's own Privacy + Terms; website pass |
 | 6 | Tue 09-29 | Deploy what merged; edge deploy audit; new closed-test build |
-| 7 | Wed 09-30 – Thu 10-01 | Walk the flow on a real Android device (background audio, lock screen, report, block, OTP). Report-queue owner named. RevenueCat products created so the key lands before production |
+| 7 | Wed 09-30 – Thu 10-01 | Walk the flow on a real Android device (background audio, lock screen, report, block, OTP; the intro must not scroll on a phone, since its page is `minHeight: window.height` and a non-edge-to-edge Android window can differ from the root view by the status bar; swipe the intro on the slowest phone). Report-queue owner named. RevenueCat products created so the key lands before production |
 
 ---
 

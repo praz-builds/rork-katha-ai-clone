@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-09-25 UTC — Six-digit codes, a moment chip that fits, and an intro that works at any window
+
+Branch `codex/onboarding-and-create-polish` (Lane C of the Play launch push). Client only; nothing deployed.
+
+### Changed
+
+- **Sign-in code (`expo/src/lib/otp.ts`, `EmailCodeAuth.tsx`, `session.ts`).** One `OTP_LENGTH = 6` behind the onboarding code step, Sign in and the reviewer path. The hidden input no longer has `maxLength={6}`: the platform truncated a pasted "123 456" to "123 45" before any code read it. Raw input is normalised (spaces, dashes, newlines dropped), six digits verify on their own without a Verify tap, and more than six (an old 8-digit code) is refused with "That has more than 6 digits…" rather than silently keeping a wrong first six. Code-step copy added to `en/es/pt.json` under `auth.*` (i18n is still not wired into components; the keys are ready when it is).
+- **Moment chips (`expo/src/lib/moment-display.ts`).** Display cap 60 -> 40 characters, cut at a word boundary, trailing punctuation dropped, then "…". At 60 the chip was wider than the panel at 390pt and the platform clipped mid-word, so our ellipsis was never the one on screen. Data cap unchanged (300, sent in full).
+- **Intro (`KathaOnboarding.jsx`).** RN `Animated` + a `requestAnimationFrame` loop calling `setState` every frame for 20 seconds became Reanimated shared values read in `useAnimatedStyle`; only three tiny text components re-render (typed prompt, like counter, draft/published label). Swipe between slides (Gesture Handler pan, rubber band at the ends, velocity spring). Dots have 44pt targets and a 200ms width transition; copy crossfades in its fixed slots. Reduced motion shows the finished states as before.
+- **Desktop-width trap.** Each slide was the full window wide (1440pt: the middle marquee ran out of covers half way) and a window shorter than 800pt drew Get started over the description with nothing to scroll. The intro is now a centred column capped at `controls.introMaxWidth` (430) inside a ScrollView whose sheet keeps its 322pt of slots. `scripts/preview.sh` and AGENTS.md no longer warn about it.
+
+### Checks
+
+`pnpm typecheck` clean; `pnpm lint` 0 errors. New tests: `otp.test.ts`, `moment-display.test.ts`, new cases in `email-code-auth.test.tsx` and `katha-onboarding-intro.test.tsx`. Each was run against the pre-fix code and failed (13 OTP/moment cases; the intro cases fail on the old component's missing column, scroll page and 6pt dot target). Seen on Expo web :8091 at 390x844, 1440x900 and 1280x640, including a mouse-drag swipe both ways and `prefers-reduced-motion`.
+
+### After review (Fable, same day)
+
+Merged main (#138-#141; kept both `blocks` and `auth` in the locales, and main's Ambient Music row). Fixed: a swipe racing the auto-advance left a boolean armed that swallowed the next slide (now the target phase; `katha-onboarding-intro.test.tsx` reproduces the race and failed before the fix); a code pasted while a verify was in flight was never sent (verify now reports whether it ran and a finishing verify sends the waiting code; failed before the fix). The code step reads `auth.*` via `i18n.t`, length interpolated. Left as is: the typed prompt and like counter still update React state as their text changes (about 50 a second for 2s, two leaf `Text`s); moving them to an animated `TextInput` would change the prompt's fixed wrapping and is unproven on web.
+
+### Needs the founder
+
+Set Supabase Auth's email OTP length to 6 (and the custom SMTP sender) before this client ships: it refuses 8-digit codes by design.
 ## 2026-09-25 UTC — "Send feedback" and a Background music switch on the You tab
 
 **Session:** Lane E of the launch push, branch `codex/feedback-and-music-control`.

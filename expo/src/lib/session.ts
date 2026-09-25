@@ -6,6 +6,7 @@ import {
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
 import { setViewerId } from "@/lib/ownership";
+import { isCompleteOtp } from "@/lib/otp";
 import {
   LEGACY_OWN_PROFILE_CACHE_KEYS,
   OWN_PROFILE_CACHE_KEY,
@@ -564,7 +565,7 @@ export async function reviewerSignIn(email: string, code: string): Promise<boole
   if (!isSupabaseConfigured) return false;
   const address = email.trim().toLowerCase();
   const token = code.trim();
-  if (!/^\d{6}$/.test(token)) return false;
+  if (!isCompleteOtp(token)) return false;
   try {
     const { data, error } = await supabase.functions.invoke("reviewer-signin", {
       body: { email: address, code: token },

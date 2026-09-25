@@ -267,6 +267,16 @@
     "moreDramatic": "More dramatic",
     "simpler": "Simpler"
   },
+  "auth": {
+    "codeTitle": "Check your inbox",
+    "codeSub": "Enter the {{count}}-digit code we sent to {{email}}.",
+    "codeHint": "Enter the {{count}}-digit code",
+    "codeTooLong": "That has more than {{count}} digits. Paste just the {{count}}-digit code from the newest email.",
+    "codeMismatch": "That code did not match. Try again or resend it.",
+    "verify": "Verify and continue",
+    "resend": "Resend code",
+    "differentEmail": "Use a different email"
+  },
   "blocks": {
     "confirmTitle": "Block {{name}}?",
     "confirmBody": "You won't see {{name}}'s stories or comments anymore. You can unblock them from Profile, under Blocked accounts.",
