@@ -44,8 +44,13 @@ function change.** It reaches a phone only through an EAS build.
 
 - **Every voice sample 404s in production.** `voice-previews/{aria,kai,onyx,nova,echo,fable,elvira,alvaro}.mp3`
   do not exist in the `audio` bucket (checked 2026-09-25): `seed-voice-previews`
-  has never run. The button shows its error state until an operator runs it
-  (RunPod spend; not done here, per the no-deploy instruction).
+  has never run. A bounded operator attempt against the deployed function
+  stopped at its service-role check with HTTP 401, before any RunPod job could
+  start; its durable `generation.audio` fingerprint is
+  `a25f3c5df3dca9301fa52e59f5259c53` (`voice_preview_seed_unauthorized`). The
+  function's configured service-role secret must be reconciled before one
+  idempotent seed run can create the clips. The button correctly shows its
+  error state until then.
 - **Story detail's 4–5 line summary is not buildable from the current
   contract.** The page shows chapter 1's `first_line`. The only multi-sentence
   summary stored is `chapters.previously_summary`, written for the model's
