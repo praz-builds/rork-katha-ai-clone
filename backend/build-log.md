@@ -10,9 +10,13 @@
 ## 2026-09-25 UTC — Onboarding takes several answers, the stage shows three different people, and stories know the reader's languages and city
 
 **Session:** completion of the dirty `codex/onboarding-culture-remediation`
-worktree. Not deployed: migration `00100` and the `profile`,
-`generate-story` and `generate-story-stream` functions ship in a later deploy
-(migration first, per *Deploy discipline*).
+worktree. Not deployed. The later deploy is migration `00100` first, then
+**seven** functions -- every one whose bundle now includes
+`_shared/reader-preferences.ts` (`deno info` over each `index.ts`):
+`profile`, `generate-story`, `generate-story-stream`, and, through
+`_shared/story-prompts.ts`, `continue-story`, `edit-story`,
+`reimagine-chapter` and `shape-story`. Deploying only the first three would
+leave four functions behind main.
 
 ### Onboarding
 
@@ -52,6 +56,25 @@ worktree. Not deployed: migration `00100` and the `profile`,
 
 ### Fixes made while completing
 
+From the review round (Opus subagent, CHANGES REQUESTED, six findings, all
+fixed):
+
+- Deploy list was three functions; it is seven (above).
+- The *Languages and home* sheet showed an empty form when the first read
+  failed, and Save replaces both fields, so one tap could erase a saved city.
+  The form now appears only once the value has loaded (Try again on failure),
+  and it is seeded once per opening so a late read cannot overwrite typing.
+  `reader-context-sheet.test.tsx`.
+- Back from a verified W4 to W6 carried an unsubmitted edit, so Meet showed a
+  new name beside a portrait (and a saved row) drawn for the old one. Back now
+  restores the drawn sheet; the test fails with the fix removed.
+- The docs named an S3 option "Reading and Writing"; it is **A bit of both**.
+- `home-place` added to `USER_FIELD_LABELS`, so the fence tests cover it.
+- The city can shape published stories; the sheet and STORY_PROMPT_SYSTEM.md
+  now say so.
+
+Found before the review:
+
 - `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`
   and its doc comment, which left that comment attached to the wrong function.
   Moved.
@@ -67,10 +90,10 @@ worktree. Not deployed: migration `00100` and the `profile`,
 ### Gates
 
 `deno test` functions: 1118 passed. `deno check` on every function
-`index.ts`: clean. 00100 migration test: 7 passed; full migration suite: see
-the PR. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
+`index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
+passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
 `pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
-files), `jest --ci` 1607 passed across 152 suites, `expo-doctor` 18/18, web
+files), `jest --ci` 1610 passed across 153 suites (after the review fixes), `expo-doctor` 18/18, web
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.

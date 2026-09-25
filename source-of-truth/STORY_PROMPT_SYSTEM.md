@@ -498,6 +498,13 @@ optionally the city they live in. It reaches the first chapter's prompt as the
   in any script, digits, spaces and `. , ' ( ) -`, at most 60 characters,
   whitespace collapsed) and backstopped by the table's CHECKs, and it still
   reaches the prompt inside `userField("home-place", ...)` as untrusted text.
+- **A published story can reflect the city.** That is the point of the
+  block, and it is also a disclosure: a public story may hint at where its
+  author lives. The sheet says so under the city field ("Stories you publish
+  may reflect it"), and it asks for a city or region, never a street address.
+- **The sheet cannot save from a stand-in.** Save replaces both fields, so
+  the form on You is shown only once the saved value has loaded; a failed read
+  shows Try again rather than an empty form that would erase it.
 - **Never blocks a story.** A failed read is no block; a reader with nothing
   set gets a prompt byte-identical to one from before the preference.
 - **Chapter one only**, like Story world, via both `generate-story` and

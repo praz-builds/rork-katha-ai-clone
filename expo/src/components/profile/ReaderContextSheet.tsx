@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -39,11 +39,20 @@ import { colors, fonts, radius, spacing } from "@/theme";
 export default function ReaderContextSheet({
   visible,
   value,
+  status,
+  onRetry,
   onSaved,
   onClose,
 }: {
   visible: boolean;
   value: ReaderPreferences;
+  /**
+   * Whether `value` is the saved one. Save replaces both fields, so the form
+   * is not shown until it is: editing an empty stand-in after a failed read
+   * would erase what the reader had saved.
+   */
+  status: "loading" | "ready" | "failed";
+  onRetry: () => void;
   onSaved: (next: ReaderPreferences) => void;
   onClose: () => void;
 }) {
@@ -52,13 +61,21 @@ export default function ReaderContextSheet({
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  // Each opening starts from what is saved, not from an abandoned edit.
+  // Each opening starts from what is saved, not from an abandoned edit --
+  // seeded once per opening, when the saved value is known, so a read that
+  // lands while the sheet is open cannot overwrite what is being typed.
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      seeded.current = false;
+      return;
+    }
+    if (status !== "ready" || seeded.current) return;
+    seeded.current = true;
     setLanguages(value.spokenLanguages);
     setPlace(value.homePlace ?? "");
     setFailed(false);
-  }, [value, visible]);
+  }, [status, value, visible]);
 
   const placeProblem = homePlaceProblem(place);
   const atCap = languages.length >= MAX_SPOKEN_LANGUAGES;
@@ -118,91 +135,119 @@ export default function ReaderContextSheet({
             Create. Your idea always wins.
           </Text>
 
-          <Text style={styles.label}>Languages you speak</Text>
-          <Text style={styles.hint}>
-            Pick up to {MAX_SPOKEN_LANGUAGES}.
-          </Text>
-          <View style={styles.chips}>
-            {SPOKEN_LANGUAGES.map((language) => {
-              const selected = languages.includes(language.id);
-              const blocked = !selected && atCap;
-              return (
-                <Pressable
-                  key={language.id}
-                  onPress={() =>
-                    setLanguages((current) =>
-                      toggleSpokenLanguage(current, language.id)
-                    )}
-                  disabled={blocked}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={language.label}
-                  accessibilityState={{ checked: selected, disabled: blocked }}
-                  style={[
-                    styles.chip,
-                    selected && styles.chipSelected,
-                    blocked && styles.chipBlocked,
-                  ]}
-                  testID={`reader-context-language-${language.id}`}
+          {status !== "ready"
+            ? (
+              <View style={styles.pending} testID="reader-context-pending">
+                <Text
+                  style={status === "failed" ? styles.error : styles.hint}
+                  accessibilityLiveRegion="polite"
                 >
-                  <Text style={styles.chipLabel}>{language.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={styles.label}>Your city</Text>
-          <TextInput
-            value={place}
-            onChangeText={(next) => {
-              setPlace(next);
-              if (failed) setFailed(false);
-            }}
-            placeholder="e.g. Pune, Lagos or São Paulo"
-            placeholderTextColor={colors.tertiary}
-            accessibilityLabel="Your city"
-            maxLength={HOME_PLACE_MAX}
-            autoCapitalize="words"
-            autoCorrect={false}
-            textContentType="addressCity"
-            autoComplete="off"
-            style={[styles.input, placeProblem && styles.inputError]}
-            testID="reader-context-place"
-          />
-          <Text style={styles.hint}>
-            Optional. A city or a region, never a street address.
-          </Text>
-          {placeProblem
-            ? (
-              <Text
-                style={styles.error}
-                accessibilityLiveRegion="polite"
-                testID="reader-context-place-error"
-              >
-                {placeProblem}
-              </Text>
+                  {status === "failed"
+                    ? "Your saved languages and city could not be loaded, so they cannot be changed yet."
+                    : "Loading what you saved…"}
+                </Text>
+                {status === "failed"
+                  ? (
+                    <Button
+                      label="Try again"
+                      onPress={onRetry}
+                      testID="reader-context-retry"
+                      style={styles.save}
+                    />
+                  )
+                  : null}
+              </View>
             )
-            : null}
-
-          {failed
-            ? (
-              <Text
-                style={styles.error}
-                accessibilityLiveRegion="polite"
-                testID="reader-context-error"
-              >
-                That did not save. Check your connection and try again.
+            : (
+              <>
+              <Text style={styles.label}>Languages you speak</Text>
+              <Text style={styles.hint}>
+                Pick up to {MAX_SPOKEN_LANGUAGES}.
               </Text>
-            )
-            : null}
+              <View style={styles.chips}>
+                {SPOKEN_LANGUAGES.map((language) => {
+                  const selected = languages.includes(language.id);
+                  const blocked = !selected && atCap;
+                  return (
+                    <Pressable
+                      key={language.id}
+                      onPress={() =>
+                        setLanguages((current) =>
+                          toggleSpokenLanguage(current, language.id)
+                        )}
+                      disabled={blocked}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={language.label}
+                      accessibilityState={{ checked: selected, disabled: blocked }}
+                      style={[
+                        styles.chip,
+                        selected && styles.chipSelected,
+                        blocked && styles.chipBlocked,
+                      ]}
+                      testID={`reader-context-language-${language.id}`}
+                    >
+                      <Text style={styles.chipLabel}>{language.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <Button
-            label={saving ? "Saving" : "Save"}
-            onPress={() => void save()}
-            disabled={Boolean(placeProblem)}
-            loading={saving}
-            testID="reader-context-save"
-            style={styles.save}
-          />
+              <Text style={styles.label}>Your city</Text>
+              <TextInput
+                value={place}
+                onChangeText={(next) => {
+                  setPlace(next);
+                  if (failed) setFailed(false);
+                }}
+                placeholder="e.g. Pune, Lagos or São Paulo"
+                placeholderTextColor={colors.tertiary}
+                accessibilityLabel="Your city"
+                maxLength={HOME_PLACE_MAX}
+                autoCapitalize="words"
+                autoCorrect={false}
+                textContentType="addressCity"
+                autoComplete="off"
+                style={[styles.input, placeProblem && styles.inputError]}
+                testID="reader-context-place"
+              />
+              <Text style={styles.hint}>
+                Optional. A city or a region, never a street address. Stories you
+                publish may reflect it.
+              </Text>
+              {placeProblem
+                ? (
+                  <Text
+                    style={styles.error}
+                    accessibilityLiveRegion="polite"
+                    testID="reader-context-place-error"
+                  >
+                    {placeProblem}
+                  </Text>
+                )
+                : null}
+
+              {failed
+                ? (
+                  <Text
+                    style={styles.error}
+                    accessibilityLiveRegion="polite"
+                    testID="reader-context-error"
+                  >
+                    That did not save. Check your connection and try again.
+                  </Text>
+                )
+                : null}
+
+              <Button
+                label={saving ? "Saving" : "Save"}
+                onPress={() => void save()}
+                disabled={Boolean(placeProblem)}
+                loading={saving}
+                testID="reader-context-save"
+                style={styles.save}
+              />
+              </>
+            )}
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -233,6 +278,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.related,
   },
+  pending: { gap: spacing.related },
   lead: {
     fontFamily: fonts.ui,
     color: colors.muted,

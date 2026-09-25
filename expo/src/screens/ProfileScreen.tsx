@@ -170,21 +170,35 @@ export default function ProfileScreen({
     EMPTY_READER_PREFERENCES,
   );
   const [readerContextOpen, setReaderContextOpen] = useState(false);
+  // The sheet saves BOTH fields, so it may only be edited once the saved
+  // value is known: an edit started from an empty stand-in after a failed
+  // read would erase the city and languages the reader already had.
+  const [readerPrefsStatus, setReaderPrefsStatus] = useState<
+    "loading" | "ready" | "failed"
+  >("loading");
   const readerPrefsChosenByUserRef = useRef(false);
+  const aliveRef = useRef(true);
   useEffect(() => {
-    let alive = true;
-    void fetchReaderPreferences().then((prefs) => {
-      if (alive && prefs && !readerPrefsChosenByUserRef.current) {
-        setReaderPrefs(prefs);
-      }
-    });
+    aliveRef.current = true;
     return () => {
-      alive = false;
+      aliveRef.current = false;
     };
   }, []);
+  const loadReaderPrefs = useCallback(() => {
+    setReaderPrefsStatus("loading");
+    void fetchReaderPreferences().then((prefs) => {
+      if (!aliveRef.current || readerPrefsChosenByUserRef.current) return;
+      if (prefs) setReaderPrefs(prefs);
+      setReaderPrefsStatus(prefs ? "ready" : "failed");
+    });
+  }, []);
+  useEffect(() => {
+    loadReaderPrefs();
+  }, [loadReaderPrefs]);
   const saveReaderPrefs = useCallback((next: ReaderPreferences) => {
     readerPrefsChosenByUserRef.current = true;
     setReaderPrefs(next);
+    setReaderPrefsStatus("ready");
   }, []);
 
   useEffect(() => {
@@ -615,6 +629,8 @@ export default function ProfileScreen({
       <ReaderContextSheet
         visible={readerContextOpen}
         value={readerPrefs}
+        status={readerPrefsStatus}
+        onRetry={loadReaderPrefs}
         onSaved={saveReaderPrefs}
         onClose={() => setReaderContextOpen(false)}
       />

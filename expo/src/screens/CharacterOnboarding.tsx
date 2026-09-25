@@ -448,11 +448,28 @@ export default function CharacterOnboarding(
     setStep(next);
   }, [haptic]);
 
+  /**
+   * The sheet the current portrait was drawn from. W6 shows this name beside
+   * that face and `finish` hands it on with the saved row, so an edit made on
+   * a verified W4 and then abandoned with Back must not survive into W6: the
+   * name would sit beside a portrait (and a library row) drawn for the old one.
+   */
+  const drawnSheet = useRef<{ name: string; appearance: string } | null>(null);
+
   /** Back, by the table. See `backFrom`. */
   const back = useCallback(() => {
     const target = backFrom(step, emailVerified);
-    if (target === "exit") onExit?.();
-    else if (target) go(target);
+    if (target === "exit") {
+      onExit?.();
+      return;
+    }
+    if (!target) return;
+    if (step === "w4" && target === "w6" && drawnSheet.current) {
+      // Back is "never mind", not "submit": put the drawn sheet back.
+      setName(drawnSheet.current.name);
+      setAppearance(drawnSheet.current.appearance);
+    }
+    go(target);
   }, [emailVerified, go, onExit, step]);
 
   /*
@@ -700,6 +717,7 @@ export default function CharacterOnboarding(
       setReimaginesUsed((used) => used + 1);
     }
     const sheet = { name: name.trim(), appearance: appearance.trim() };
+    drawnSheet.current = { name, appearance };
     void saveCharacter(fingerprint, null, sheet);
     redraw(fingerprint, sheet);
     go(next);
@@ -736,6 +754,7 @@ export default function CharacterOnboarding(
       const trimmed = nextAppearance.trim();
       if (!trimmed) return;
       setAppearance(nextAppearance);
+      drawnSheet.current = { name, appearance: nextAppearance };
       setReimaginesUsed((used) => used + 1);
       const fp = sheetFingerprint(name, nextAppearance);
       redraw(fp, { name: name.trim(), appearance: trimmed });

@@ -1405,6 +1405,7 @@ export const USER_FIELD_LABELS = [
   "writing-style",
   "avoid",
   "next-chapter",
+  "home-place",
 ] as const;
 
 /** Render one labelled, fenced span of user-authored text. */

@@ -480,7 +480,7 @@ table; the screens and the tests read it.
 
 | Question | Purpose | Selection |
 |---|---|---|
-| S3 `purpose` | all | single -- it routes, and **Reading and Writing** is already an option |
+| S3 `purpose` | all | single -- it routes, and **A bit of both** is already an option |
 | `refine` (W0a *What do you want to write?*) | write | **multi** |
 | `refine` (R-how *How do you like your stories?*) | read | single -- **A mix of both** is the combination |
 | `refine` ("both") | both | single -- **Balance both** is the combination |

@@ -33,7 +33,7 @@
  * stops you?") and the reader's mood and routine questions take several
  * answers; everything else takes one. `selectionFor` is the table.
  * Purpose stays single-select because it routes: the screens after it are
- * that purpose's own, and "Reading and Writing" is already an option. The
+ * that purpose's own, and "A bit of both" is already an option. The
  * reader's "How do you like your stories?" and the two "both" questions stay
  * single too, because one of their options IS the combination ("A mix of
  * both", "Balance both") or the question asks for the one that fits most.

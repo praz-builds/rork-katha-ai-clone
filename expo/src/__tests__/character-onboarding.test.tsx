@@ -993,6 +993,25 @@ describe("character onboarding", () => {
     expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1);
   });
 
+  it("an edit abandoned with Back on a verified W4 does not reach the Meet screen", async () => {
+    const onDone = jest.fn();
+    const view = await mount("write", onDone);
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    view.getByText("Craft your lead");
+    await fireEvent.changeText(view.getByLabelText("Name"), "Somebody Else");
+    await fireEvent.press(view.getByLabelText("Back"));
+
+    // The face was drawn for the old sheet, so the old name comes back with it.
+    await view.findByText(`Meet ${NAME}.`);
+    expect(view.queryByText("Meet Somebody Else.")).toBeNull();
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1);
+  });
+
   it("routes Android's hardware Back by the same table, and never closes the app", async () => {
     const handlers: (() => boolean)[] = [];
     const spy = jest
