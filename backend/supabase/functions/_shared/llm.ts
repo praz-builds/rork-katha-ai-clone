@@ -33,24 +33,34 @@ export const GEMINI_MODEL = "gemini-3.1-pro-preview";
  * That is ~12x cheaper on input and ~21x cheaper on output than the standard
  * `meta/muse-spark-1.3` behind it.
  *
- * **The contributor tier trains on what it is sent, and this account currently
- * refuses it.** The `-contributor` suffix is a cost-reduced tier: it is priced
- * down in exchange for the provider retaining prompts and completions for
- * training, which here means the user's story idea and the generated prose. A
- * live request on 2026-09-05 returned `404`, not a completion:
+ * **The contributor tier trains on what it is sent, and it is serving today.**
+ * The `-contributor` suffix is a cost-reduced tier: it is priced down in
+ * exchange for the provider retaining prompts and completions for training,
+ * which here means the user's story idea and the generated prose.
+ *
+ * It has not always served. A live request on 2026-09-05 returned `404`, not a
+ * completion:
  *
  *     0 endpoints out of 1 requested are available matching your guardrail
  *     restrictions and data policy... Paid model training violation (account
  *     settings): 1 endpoint excluded
  *
- * So the account's OpenRouter privacy setting blocks training-tier endpoints,
- * and this model cannot serve a single request until that setting is changed at
- * https://openrouter.ai/settings/privacy. That is the account owner's decision
- * and no code change reaches it. The model is wired as the default anyway,
- * because the day the setting changes the cheaper tier simply starts winning -
- * exactly the way an OpenAI entitlement going live needs no deploy. Until then
- * `OPENROUTER_MODELS[1]` serves, and `404` is classified `model_not_found`, so
- * the fallthrough is immediate rather than a stall.
+ * The account's OpenRouter privacy setting blocked training-tier endpoints. It
+ * no longer does: measured against the real `STORY_OUTPUT_JSON_SCHEMA` with
+ * `strict: true` on 2026-09-25, this id answered `200` / `finish_reason: stop`
+ * with a schema-valid 1,504-word chapter in 38.7s, and a trivial prompt in
+ * 2.1s. Do not reason from "the leader fails for free" anywhere in this file;
+ * that assumption is what broke generation (see `openRouterPhaseDeadlines`).
+ *
+ * **Whether to keep using it is a live decision, and it is not a code
+ * decision.** Sending story ideas and prose to a training tier is why
+ * `store/android/data-safety.md` (D1) answers Play's "shared with third
+ * parties" as *shared*. Turning training off at
+ * <https://openrouter.ai/settings/privacy> returns this id to `404`
+ * (classified `model_not_found`, so the fallthrough is immediate rather than a
+ * stall) and `meta/muse-spark-1.3` writes instead at ~17x the token cost. The
+ * chain is correct either way by construction, so that setting can be changed
+ * without a deploy.
  *
  * The position stays pinned to *named, priced* models. `openrouter/free` picks a
  * free model at random per request, so its output cap, latency and prose quality
@@ -67,9 +77,11 @@ export const OPENROUTER_MODEL = "meta/muse-spark-1.3-contributor";
  *
  * `meta/muse-spark-1.3` is the same model without the training tier. Measured on
  * 2026-09-05 against the real strict schema: `200`, `finish_reason: "stop"`,
- * every requested key present, ~11s. It sits immediately behind the contributor
- * id so that the `404`-by-data-policy above costs one round trip rather than the
- * whole flow, and so onboarding produces a real story today.
+ * every requested key present, ~11s; re-measured 2026-09-25 at 48.1s for a
+ * 1,222-word chapter. It sits immediately behind the contributor id so that the
+ * day the privacy setting is turned back off costs one round trip rather than
+ * the whole flow. Neither position holds a fixed slice - see
+ * `openRouterPhaseDeadlines`.
  *
  * **Both are reasoning models, and that is the trap in this position.** Reasoning
  * tokens are billed and counted inside `max_tokens`, and they are emitted before
@@ -100,11 +112,12 @@ export const OPENROUTER_MODELS: readonly string[] = [
  * The OpenRouter position for STREAMED prose, without the contributor probe.
  *
  * `OPENROUTER_MODEL` is a training-tier id that this account's data policy
- * answers `404` to. On a buffered call that costs one round trip out of a
- * hundred-odd seconds and buys optionality for the day the policy changes.
- * On the streamed path it is a guaranteed wasted round trip in front of the
- * number the product lives or dies on -- the seconds before the reader sees a
- * first page -- so the stream starts at the model that actually serves.
+ * answered `404` to when this order was chosen. It serves again as of
+ * 2026-09-25, so the reason for the order is no longer "it cannot answer" but
+ * "the streamed path is judged on the seconds before the reader sees a first
+ * page, and that position should not change with an account setting". The
+ * buffered chain is ordered cheapest-first because it can afford a round trip;
+ * the stream is not, so it stays pinned to the standard tier.
  *
  * The probe is not deleted, only demoted to last, where it is reached solely
  * if the serving model fails before writing a token. That keeps the
@@ -267,9 +280,10 @@ export const EDGE_REQUEST_IDLE_TIMEOUT_MS = 150_000;
  * two 76s attempts. The chain is therefore one serious position - the paid
  * OpenRouter phase, where the standard model may take its full 90s socket
  * timeout - in front of positions that exist only to turn a *fast* refusal
- * into a retry rather than a refund: the contributor tier answers `404` in a
- * round trip by account policy, and Gemini answers `429 RESOURCE_EXHAUSTED`
- * immediately (and is disabled outright by `LLM_DISABLED_PROVIDERS` today).
+ * into a retry rather than a refund: Gemini answers `429 RESOURCE_EXHAUSTED`
+ * immediately (and is disabled outright by `LLM_DISABLED_PROVIDERS` today), and
+ * the contributor tier answers `404` in a round trip whenever the account's
+ * privacy setting forbids training tiers - which it does not today.
  *
  * That is a real limitation and it is architectural, not a tuning mistake: a
  * blocking request cannot both wait for one 76-second model and keep a second
@@ -350,12 +364,10 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * | gemini         | 0.96  | 120s    | 5s     | a fast `429`, not a chapter     |
  * | openrouterFree | 1.00  | 125s    | 5s     | the same, last                  |
  *
- * Inside the paid phase (see `openRouterPhaseDeadlines`):
- *
- * | model                              | deadline | why                          |
- * |------------------------------------|----------|------------------------------|
- * | `meta/muse-spark-1.3-contributor`  | 8s       | `404`s in a round trip by account policy; it must not hold time it cannot use |
- * | `meta/muse-spark-1.3`              | 115s     | the model that actually writes; capped in practice by its own 90s socket timeout |
+ * Inside the paid phase every model is bounded by the phase end and nothing
+ * else, so the first one able to serve writes and a model that fails fast hands
+ * the remainder to the next. See `openRouterPhaseDeadlines` for why there are no
+ * sub-slices.
  *
  * The two tail phases are honestly sized: neither can write a chapter in its
  * slice, and neither is expected to. They exist so that a position that fails
@@ -372,16 +384,17 @@ const OPENROUTER_MIN_OUTPUT_TOKENS = 8_000;
  * router with whatever is left of the remaining 10s. If Gemini is ever meant
  * to be a real fallback again, its *share* has to move, not just its secret.
  *
- * The paid phase is no longer split evenly - see `openRouterPhaseDeadlines`.
+ * The paid phase is not sliced at all - see `openRouterPhaseDeadlines`.
  *
  * OpenAI held 0.28 of this budget until its credential was revoked
  * (2026-09-08). Its share went to the leader and to Gemini rather than being
  * left unallocated: an unclaimed slice is not saved time, it is time the phases
  * that remain are forbidden from using.
  *
- * The leader takes the largest share because it is the only phase expected to succeed and
- * because two models share it, one of which is `404` by policy today and returns
- * in a round trip. Gemini keeps a real but small slice: it has hard-failed with
+ * The leader takes the largest share because it is the only phase expected to
+ * succeed, and because the two models sharing it are not given fixed slices:
+ * whichever answers first writes inside this one window. Gemini keeps a real
+ * but small slice: it has hard-failed with
  * `429` since 2026-08-31, and a quota-blocked provider needs enough time to say
  * so and no more. The free tier keeps the smallest slice, unchanged in spirit
  * from when it was 0.1 - it is decoration, and the honest alternative to it is
@@ -394,37 +407,51 @@ export const PHASE_END_SHARE = {
 } as const;
 
 /**
- * What a model in front of the last one in the paid phase gets.
+ * Per-model deadlines for the paid OpenRouter phase, as offsets from the phase
+ * start. Every model is bounded by the phase end and nothing else.
  *
- * The phase used to be cut into equal slices by model index. That is the
- * arithmetic that broke production: two models, 84s, 42s each, against a
- * chapter that takes 70s, producing `[timeout, timeout, timeout, timeout]` and
- * a refund every single time. Halving a window that can only just hold one
- * chapter guarantees that neither half can hold one.
+ * **Why there are no sub-slices.** Under the gateway's 150s ceiling exactly one
+ * model can be given a chapter's worth of time - the worst measured chapter is
+ * 76.4s against a 115s window - so the phase has one writer and the rest are
+ * reachable only when the writer fails *fast*. The question is which model that
+ * writer is, and the answer has to survive the account changing under it.
  *
- * The window is now shaped by which model is expected to *write*. Under a 150s
- * gateway exactly one model can be given a chapter's worth of time, so the
- * **last** model in `OPENROUTER_MODELS` gets the whole window and every model
- * in front of it gets a probe: long enough for a round trip and a refusal,
- * short enough that it cannot spend the writer's time. That fits the account
- * as it actually is - `meta/muse-spark-1.3-contributor` is 17x cheaper but
- * answers `404` in well under a second because the privacy setting blocks
- * training-tier endpoints, so probing it costs almost nothing and paying for
- * it costs almost nothing either.
+ * Two earlier shapes both failed on that:
  *
- * **If the contributor tier is ever enabled, reorder the models rather than
- * widening this.** A chapter does not fit in a probe, so a healthy contributor
- * tier would time out here and the standard model would serve anyway - which
- * works, but pays 17x. The fix is to put the model that should write last.
+ * - An **even split** by model index. Two models, 84s, 42s each, against a 70s
+ *   chapter: `[timeout, timeout, timeout, timeout]` and a refund every time.
+ *   Halving a window that can only just hold one chapter guarantees neither
+ *   half can hold one.
+ * - A **fixed 8s probe** in front of a writer pinned to the *last* index. That
+ *   was correct only while `OPENROUTER_MODEL` answered `404` by data policy in
+ *   under a second, which made the probe nearly free. When the account's
+ *   privacy setting changed the probe stopped being free and started being the
+ *   bug: the contributor tier began accepting the request and writing a
+ *   chapter, and was aborted at 8s, every single generation. Measured in
+ *   production on 2026-09-25, four attempts, `[timeout, malformed_response,
+ *   timeout, malformed_response]`, credit refunded - with a model in the list
+ *   that writes a schema-valid 1,504-word chapter in 38.7s when it is allowed
+ *   to finish.
  *
- * Capped at an equal share for small windows, so a 20s window across two
- * models does not hand its leader the entire thing.
- */
-export const OPENROUTER_PROBE_MS = 8_000;
-
-/**
- * Per-model deadlines for the paid OpenRouter phase, as offsets from the
- * phase start. Exported for `llm.test.ts` and `llm-deadline.test.ts`.
+ * So the writer is whichever model is **first** and able to serve, and it gets
+ * the whole window. A model that fails fast costs only its own failure, and the
+ * next model inherits everything it did not spend. That is right under both
+ * states of the account setting this chain keeps being caught by:
+ *
+ * | account state                        | what happens                        |
+ * |--------------------------------------|-------------------------------------|
+ * | training allowed (today)             | the contributor tier writes, 38.7s, 17x cheaper |
+ * | training refused (the D1 remedy)     | it `404`s in <1s and `meta/muse-spark-1.3` inherits ~114s and writes in 48.1s |
+ *
+ * Both measured against the real `STORY_OUTPUT_JSON_SCHEMA` with `strict: true`
+ * on 2026-09-25. Neither path spends a fixed slice on a model that cannot use
+ * it.
+ *
+ * The cost of dropping the probe is that a leading model which neither serves
+ * nor fails fast holds the window until its own `OPENROUTER_TIMEOUT_MS` socket
+ * timeout (90s), leaving 25s - not a chapter. That was already true of the
+ * writer in the previous shape; it is the 150s gateway, not this function, and
+ * `GENERATION_DEADLINE_MS` is what to revisit if it starts happening.
  */
 export function openRouterPhaseDeadlines(
   windowMs: number,
@@ -432,11 +459,7 @@ export function openRouterPhaseDeadlines(
 ): number[] {
   const window = Math.max(0, Math.floor(windowMs));
   if (models <= 0) return [];
-  const probe = Math.min(OPENROUTER_PROBE_MS, Math.floor(window / models));
-  return Array.from(
-    { length: models },
-    (_, index) => index === models - 1 ? window : probe * (index + 1),
-  );
+  return Array.from({ length: models }, () => window);
 }
 
 interface GenerationResult {
@@ -629,15 +652,15 @@ const FAST_OPENROUTER_SHARE = 1;
  *
  * The window used to be cut into equal slices by model index, and that is a
  * bad shape for a two-model phase where only one of them is expected to
- * answer. `OPENROUTER_MODELS[0]` returns `404` by account data policy today,
- * so it costs a round trip and `[1]` inherits nearly the whole window - the
- * arrangement the measured 11s median was taken against. The moment that
- * account setting is changed at https://openrouter.ai/settings/privacy, `[0]`
- * starts serving and an even split hands it half: 13.5s of onboarding's 45s
- * against an 11s median, so a normal-length request would abort near the
- * finish and be re-run from scratch on `[1]`. Latency roughly doubles because
- * somebody flipped a checkbox, with no deploy and nothing in this repo
- * changing.
+ * answer. When `OPENROUTER_MODELS[0]` was `404` by account data policy it cost
+ * a round trip and `[1]` inherited nearly the whole window - the arrangement
+ * the measured 11s median was taken against. That setting has since been
+ * changed at https://openrouter.ai/settings/privacy and `[0]` serves, which is
+ * exactly the case an even split handles worst: it would hand the leader half,
+ * 13.5s of onboarding's 45s against an 11s median, so a normal-length request
+ * would abort near the finish and be re-run from scratch on `[1]`. Latency
+ * roughly doubles because somebody flipped a checkbox, with no deploy and
+ * nothing in this repo changing. The reserve below is what prevents that.
  *
  * So the leader gets the window minus this reserve, and the reserve is what
  * keeps the original guarantee: a stalled leader still cannot abort the
@@ -866,12 +889,11 @@ async function runProviderChain(
   }
 
   // OpenRouter leads. The default model is configured in `OPENROUTER_MODEL` and
-  // the standard tier stands immediately behind it, because the contributor tier
-  // is `404`-by-data-policy on this account until the privacy setting changes -
-  // see the constant. The window is NOT split evenly: under the gateway's 150s
-  // ceiling only one model can be given a chapter's worth of time, so the last
-  // model owns the window and the ones in front of it get a probe. See
-  // `OPENROUTER_PROBE_MS`.
+  // the standard tier stands immediately behind it. Under the gateway's 150s
+  // ceiling only one model can be given a chapter's worth of time, so the phase
+  // is not sliced: every model is bounded by the phase end, the first one able
+  // to serve writes, and a model that fails fast hands the remainder to the
+  // next. See `openRouterPhaseDeadlines`.
   const openRouterModels = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_MODELS;

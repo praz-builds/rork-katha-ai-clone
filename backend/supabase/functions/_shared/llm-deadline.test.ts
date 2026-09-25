@@ -25,7 +25,6 @@ import {
   EDGE_REQUEST_IDLE_TIMEOUT_MS,
   GENERATION_DEADLINE_MS,
   OPENROUTER_MODELS,
-  OPENROUTER_PROBE_MS,
   openRouterPhaseDeadlines,
   PHASE_END_SHARE,
 } from "./llm.ts";
@@ -71,21 +70,25 @@ Deno.test("the model that actually writes gets a chapter's worth of time", () =>
   assertEquals(writer, window);
 });
 
-Deno.test("a model in front of the writer gets a probe, not a slice of the chapter", () => {
+Deno.test("no model is capped below a chapter, whatever its position", () => {
+  // The bug this replaces: `OPENROUTER_MODELS[0]` held an 8s probe deadline
+  // that was justified by "it 404s in under a second". When the account's
+  // privacy setting changed it started writing instead, and was aborted at 8s
+  // on every generation. A position must either get a chapter's worth of time
+  // or not be asked to write at all -- and a fast failure costs only itself.
   const window = Math.floor(
     GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
   );
   const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
-  for (let index = 0; index < deadlines.length - 1; index += 1) {
-    const slice = index === 0
-      ? deadlines[0]
-      : deadlines[index] - deadlines[index - 1];
-    // Long enough for a round trip and a `404`...
-    assert(slice >= 5_000, `probe ${index} is only ${slice}ms`);
-    // ...and nowhere near long enough to be mistaken for an attempt.
+  for (const [index, deadline] of deadlines.entries()) {
+    assertEquals(
+      deadline,
+      window,
+      `model ${index} is bounded at ${deadline}ms, not the phase end`,
+    );
     assert(
-      slice < WORST_MEASURED_CHAPTER_MS / 2,
-      `probe ${index} holds ${slice}ms it cannot use`,
+      deadline >= WORST_MEASURED_CHAPTER_MS,
+      `model ${index} gets ${deadline}ms against a ${WORST_MEASURED_CHAPTER_MS}ms chapter`,
     );
   }
 });
@@ -110,14 +113,21 @@ Deno.test("the tail phases are sized for a refusal, not a chapter, and are hones
   );
 });
 
-Deno.test("the paid phase is not split evenly, and a small window degrades to an equal share", () => {
-  // 115s across two models: an 8s probe, then the writer with the whole window.
-  assertEquals(openRouterPhaseDeadlines(115_000, 2), [8_000, 115_000]);
-  // Probes accumulate; the last model still owns the window.
-  assertEquals(openRouterPhaseDeadlines(100_000, 3), [8_000, 16_000, 100_000]);
-  // A window too small to probe from falls back to equal slices.
-  assertEquals(openRouterPhaseDeadlines(10_000, 2), [5_000, 10_000]);
+Deno.test("the paid phase is not sliced: every model is bounded by the phase end", () => {
+  // Every model may run until the phase ends. The first able to serve writes;
+  // one that fails fast leaves the remainder to the next, which is what makes
+  // the chain correct whether or not the training tier is allowed to answer.
+  assertEquals(openRouterPhaseDeadlines(115_000, 2), [115_000, 115_000]);
+  assertEquals(openRouterPhaseDeadlines(100_000, 3), [
+    100_000,
+    100_000,
+    100_000,
+  ]);
+  // A window too small for anyone is still shared, not subdivided.
+  assertEquals(openRouterPhaseDeadlines(10_000, 2), [10_000, 10_000]);
   assertEquals(openRouterPhaseDeadlines(0, 2), [0, 0]);
   assertEquals(openRouterPhaseDeadlines(10_000, 0), []);
-  assertEquals(OPENROUTER_PROBE_MS, 8_000);
+  // Negative and fractional windows are floored to a usable integer.
+  assertEquals(openRouterPhaseDeadlines(-5_000, 2), [0, 0]);
+  assertEquals(openRouterPhaseDeadlines(1_500.9, 1), [1_500]);
 });

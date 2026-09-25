@@ -7,6 +7,116 @@
 
 ---
 
+## 2026-09-25 UTC — Production generation was failing on a probe deadline, and the launch deploy is now on the record
+
+**Session:** picking the Play launch push back up after the 2026-09-25 usage
+limit stopped every agent mid-verification. Branch
+`codex/generation-writer-window`.
+
+### The deploy record the push never wrote
+
+The six launch lanes (#138-#143) were merged and **the deploy did run** — it was
+the record that was missing. Verified against project `iafeuxgoiknncgyjmugd`:
+
+- Migrations `00097_content_reports_open` and `00098_app_feedback` are applied
+  remotely; `supabase migration list --linked` shows local and remote aligned
+  `00001`-`00098` with nothing pending.
+- Functions deployed 05:22 and 05:55 UTC: `profile`, `library`, `app-feedback`
+  (new, version 1), `revenuecat-webhook`, `refresh-subscription-grants`,
+  `reviewer-signin`, `seed-voice-previews`.
+
+**Drift audit: 89 of 89 live files are byte-identical to main.** Every live
+bundle was downloaded (`supabase functions download <fn> --workdir <scratch>`,
+outside the repo, because it overwrites the source) and `cmp`-ed file by file
+against `main`. The one file that is in the repo and in no bundle is
+`_shared/prompts.ts`, which has **zero importers** — it is dead code, not drift,
+and it is left alone here rather than deleted behind a generation fix.
+
+### The bug that made every story fail
+
+`backend/scripts/smoke-app-surface.py` re-run: **26 passed, 1 failed**, the same
+failure the interrupted session had found and not diagnosed —
+`2.1 generate-story 200` answering `HTTP 500`, `"Story generation failed. Credit
+refunded."`. `error_events` gave the chain: `all_providers_failed`, four
+attempts, `[timeout, malformed_response, timeout, malformed_response]`, no
+provider ever reached past OpenRouter.
+
+The cause was a deadline, not a provider. `openRouterPhaseDeadlines` gave the
+**last** model in `OPENROUTER_MODELS` the whole 115s window and every model in
+front of it an 8s probe (`OPENROUTER_PROBE_MS`). That was correct only while
+`OPENROUTER_MODEL` — the contributor tier at index 0 — answered `404` by account
+data policy in under a second, which made the probe nearly free. **That premise
+expired on 2026-09-09** and was flagged in this log and in AGENTS.md as needing
+a generation-chain change. This is that change.
+
+Measured live, both against the real `STORY_OUTPUT_JSON_SCHEMA` with
+`strict: true`, 32,000-token budget, `reasoning: { effort: "low" }`:
+
+| model                             | result                                    |
+|-----------------------------------|-------------------------------------------|
+| `meta/muse-spark-1.3-contributor` | `200`, `stop`, valid JSON, 1,504 words, **38.7s** |
+| `meta/muse-spark-1.3`             | `200`, `stop`, valid JSON, 1,222 words, **48.1s** |
+
+So the contributor tier accepts the request and writes a chapter — and was being
+aborted at 8s, every single generation, by a probe sized for a model that no
+longer fails fast.
+
+### The fix: the paid phase stops slicing its window
+
+The earlier note here said "the right fix is to reorder `OPENROUTER_MODELS`".
+Reordering would have worked today and broken again the moment the founder acts
+on `store/android/data-safety.md` D1 and turns training off, because then the
+model in the probe slot is the one that has to write. So the slices are gone
+instead: **every model in the paid phase is bounded by the phase end and nothing
+else.** The first model able to serve writes; a model that fails fast costs only
+its own failure and the next model inherits the remainder.
+
+That is correct under both states of the account setting this chain keeps being
+caught by:
+
+| account state                    | what happens                                |
+|----------------------------------|---------------------------------------------|
+| training allowed (today)         | the contributor tier writes, 38.7s, ~17x cheaper |
+| training refused (the D1 remedy) | it `404`s in <1s, `meta/muse-spark-1.3` inherits ~114s and writes in 48.1s |
+
+`OPENROUTER_PROBE_MS` is deleted, with no reference left in code, tests or docs.
+What is deliberately *not* changed: `GENERATION_DEADLINE_MS` (125s),
+`PHASE_END_SHARE`, the model order, and `FAST_OPENROUTER_RESERVE_MS` — the
+onboarding fast path still reserves a tail for a fast failure and still carries
+the old premise, now said plainly in its comment rather than implied.
+
+The cost of dropping the probe, stated so it is not a surprise: a leading model
+that neither serves nor fails fast holds the window until its own 90s socket
+timeout, leaving 25s — not a chapter. That was already true of the writer in the
+previous shape. It is the 150s gateway, and `GENERATION_DEADLINE_MS` is what to
+revisit if it starts happening.
+
+### Docs corrected rather than annotated
+
+Eight passages in `_shared/llm.ts` and three in `AGENTS.md` still reasoned from
+"`OPENROUTER_MODELS[0]` fails in a round trip and costs nothing". They now say
+what is measured, including that the contributor tier trains on what it is sent
+and that whether to keep using it is a data decision, not a code one — the same
+decision `store/android/data-safety.md` D1 answers as *shared* for Play.
+
+### Gates
+
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1099
+passed, 0 failed.** `deno check` and `deno fmt --check` clean on both touched
+files. The two deadline tests that asserted the probe shape were rewritten to
+assert the invariant that replaces it — no model is capped below a chapter
+whatever its position — and each was run against the unfixed code, where both
+fail.
+
+### Deploy
+
+`_shared/llm.ts` is in the dependency graph of six functions, all of which must
+ship together (`deno info --json` per function): `generate-story`,
+`generate-story-stream`, `continue-story`, `edit-story`, `reimagine-chapter`,
+`shape-story`. No migration.
+
+---
+
 ## 2026-09-25 UTC — Android purchases need only the key, and the paywall meets the Subscriptions policy
 
 **Session:** Lane D of the Play launch push (`codex/paywall-play-ready`). Goal:
