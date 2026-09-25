@@ -163,10 +163,20 @@ position and a timeout cannot be folded back into one code.
 
 ### Deploy
 
-`_shared/llm.ts` is in the dependency graph of six functions, all of which must
-ship together (`deno info --json` per function): `generate-story`,
-`generate-story-stream`, `continue-story`, `edit-story`, `reimagine-chapter`,
-`shape-story`. No migration.
+`_shared/llm.ts` is in the dependency graph of six functions
+(`deno info --json` per function): `generate-story`, `generate-story-stream`,
+`continue-story`, `edit-story`, `reimagine-chapter`, `shape-story`. This change
+carries no migration.
+
+**But it is not deployed alone.** #144 merged to main while this branch was in
+review and is also undeployed, changing `_shared/story-prompts.ts`,
+`story-shape.ts`, `types.ts` and `validation.ts` plus migration
+`00099_feature_votes`. Recomputed across both, the set that must ship together is
+**eight** functions — the six above plus `generate-character-image` and
+`regenerate-cover`, which reach `types.ts` and which neither PR touched by
+folder. Migration `00099` first, then the eight, then the drift audit. Deploying
+only the folders these two PRs edited is the exact mistake that left 16 functions
+behind main on 2026-09-24.
 ## 2026-09-25 UTC — Final go-live feedback: Story world, vote on what's next, reader Night mode, Explore tags, PDF plan gate
 
 **Session:** isolated `codex/go-live-final-feedback` worktree. Nothing deployed,

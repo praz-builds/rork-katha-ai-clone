@@ -29,11 +29,10 @@ browser — that is a limit of the change, not a gap in the check.
 This is the one to try first. Before this fix, every story you asked for failed
 and refunded the credit.
 
-> **Needs the deploy first.** This one is not live until `generate-story`,
-> `generate-story-stream`, `continue-story`, `edit-story`, `reimagine-chapter`
-> and `shape-story` have been deployed — they all import the file that changed.
-> Run A1 before that and it will still answer "Story generation failed. Credit
-> refunded.", and that is the old code, not a new bug.
+> **Needs the deploy first.** This one is not live until the eight functions
+> listed in `backend/build-log.md` have been deployed — they all reach a file
+> that changed. Run A1 before that and it will still answer "Story generation
+> failed. Credit refunded.", and that is the old code, not a new bug.
 
 - [ ] Open Create, write one sentence, press Create. A chapter arrives. It does
       **not** say "Story generation failed. Credit refunded."
