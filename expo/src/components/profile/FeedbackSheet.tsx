@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -69,6 +69,19 @@ export default function FeedbackSheet({
     onClose();
   }, [onClose, status]);
 
+  // Closing mid-send keeps "sending", and the answer can land while the sheet
+  // is hidden. Opening again must start a new message, not show "Thank you"
+  // for one the person has forgotten.
+  useEffect(() => {
+    if (!visible || status !== "sent") return;
+    setMessage("");
+    setCategory(null);
+    requestIdRef.current = null;
+    setStatus("idle");
+    // Only on opening: `status` changing while open is the sheet's own flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   const trimmed = message.trim();
   const canSend = trimmed.length > 0 && status !== "sending";
 
@@ -137,9 +150,15 @@ export default function FeedbackSheet({
                     <Pressable
                       key={key}
                       // A second tap clears it: the category is optional.
-                      onPress={() => setCategory(selected ? null : key)}
+                      onPress={() => {
+                        setCategory(selected ? null : key);
+                        // Like an edited message, a new category is a new
+                        // request: reusing the id would replay the old one.
+                        requestIdRef.current = null;
+                        if (status === "failed" || status === "rate_limited") setStatus("idle");
+                      }}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected }}
+                      accessibilityState={{ checked: selected }}
                       testID={`feedback-category-${key}`}
                       style={[styles.chip, selected && styles.chipSelected]}
                     >
@@ -163,7 +182,7 @@ export default function FeedbackSheet({
                 }}
                 placeholder={t("placeholder")}
                 placeholderTextColor={colors.tertiary}
-                accessibilityLabel={t("title")}
+                accessibilityLabel={t("messageLabel")}
                 multiline
                 maxLength={APP_FEEDBACK_MAX_LENGTH}
                 textAlignVertical="top"
@@ -171,7 +190,7 @@ export default function FeedbackSheet({
                 testID="feedback-message"
               />
               <Text style={styles.count}>
-                {t("count", { count: message.length, max: APP_FEEDBACK_MAX_LENGTH })}
+                {t("counter", { length: message.length, max: APP_FEEDBACK_MAX_LENGTH })}
               </Text>
 
               {status === "failed" || status === "rate_limited"

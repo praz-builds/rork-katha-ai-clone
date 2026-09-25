@@ -162,3 +162,40 @@ it("a thrown call is a failure, not a success", async () => {
   await send(view);
   await waitFor(() => expect(view.getByTestId("feedback-error")).toBeTruthy());
 });
+
+it("a new category after a failure is a new request", async () => {
+  mockInvoke.mockResolvedValueOnce(httpError(500));
+  const { view } = await openSheet();
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("feedback-category-bug"));
+  });
+  await type(view, "Page 3 was blank.");
+  await send(view);
+  await waitFor(() => expect(view.getByTestId("feedback-error")).toBeTruthy());
+
+  mockInvoke.mockResolvedValueOnce({ data: { sent: true, replayed: false }, error: null });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("feedback-category-idea"));
+  });
+  await send(view);
+  expect(sentBody(1).category).toBe("idea");
+  expect(sentBody(1).request_id).not.toBe(sentBody(0).request_id);
+});
+
+it("reopening after a send that finished while closed starts a new message", async () => {
+  let resolve: (value: unknown) => void = () => {};
+  mockInvoke.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+  const onClose = jest.fn();
+  const view = await render(<FeedbackSheet visible onClose={onClose} screen="profile" />);
+  await type(view, "The music is too loud.");
+  await send(view);
+  // Closed mid-send, and the answer lands while the sheet is hidden.
+  await view.rerender(<FeedbackSheet visible={false} onClose={onClose} screen="profile" />);
+  await act(async () => {
+    resolve({ data: { sent: true, replayed: false }, error: null });
+  });
+  await view.rerender(<FeedbackSheet visible onClose={onClose} screen="profile" />);
+
+  expect(view.queryByTestId("feedback-sent")).toBeNull();
+  expect(view.getByTestId("feedback-message").props.value).toBe("");
+});

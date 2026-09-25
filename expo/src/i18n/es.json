@@ -84,7 +84,8 @@
         "other": "Otra cosa"
       },
       "placeholder": "Cu\u00e9ntanos qu\u00e9 pas\u00f3, o qu\u00e9 te gustar\u00eda que hiciera Katha",
-      "count": "{{count}} / {{max}}",
+      "messageLabel": "Tu mensaje",
+      "counter": "{{length}} / {{max}}",
       "send": "Enviar",
       "sending": "Enviando",
       "failed": "No se envi\u00f3. Tu mensaje sigue aqu\u00ed; revisa tu conexi\u00f3n e int\u00e9ntalo de nuevo.",

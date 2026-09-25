@@ -84,7 +84,8 @@
         "other": "Something else"
       },
       "placeholder": "Tell us what happened, or what you wish Katha did",
-      "count": "{{count}} / {{max}}",
+      "messageLabel": "Your message",
+      "counter": "{{length}} / {{max}}",
       "send": "Send",
       "sending": "Sending",
       "failed": "That did not send. Your message is still here, so check your connection and try again.",

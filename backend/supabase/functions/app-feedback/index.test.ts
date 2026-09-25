@@ -98,6 +98,8 @@ Deno.test("the verdict: filed, replayed, rate limited, or a 500", () => {
     { sent: true, replayed: true },
   );
   assertEquals(verdictFrom({ rate_limited: true }).status, 429);
+  // A deleted account files nothing and is told so, never a false "sent".
+  assertEquals(verdictFrom({ gone: true }).status, 403);
   for (const bad of [null, {}, "nope", { rate_limited: false }]) {
     assertEquals(verdictFrom(bad).status, 500, JSON.stringify(bad));
   }

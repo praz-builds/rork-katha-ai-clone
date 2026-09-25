@@ -17,6 +17,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
+import { logError } from "../_shared/errors.ts";
 import { parseRequestId, readJsonObject } from "../_shared/operations.ts";
 
 /** The categories the sheet offers. Mirrors `app_feedback_category_check`. */
@@ -92,6 +93,7 @@ export function parseAppFeedback(
 
 export type SubmitVerdict =
   | { status: 200; body: { sent: true; replayed: boolean } }
+  | { status: 403; body: { error: string } }
   | { status: 429; body: { error: string; rate_limited: true } }
   | { status: 500; body: { error: string } };
 
@@ -107,6 +109,9 @@ export function verdictFrom(data: unknown): SubmitVerdict {
   }
   if (row && typeof row === "object") {
     const record = row as Record<string, unknown>;
+    if (record.gone === true) {
+      return { status: 403, body: { error: "This account has been deleted." } };
+    }
     if (record.rate_limited === true) {
       return {
         status: 429,
@@ -170,7 +175,18 @@ export function createHandler(deps: Deps) {
       const verdict = verdictFrom(data);
       return respond(verdict.body, verdict.status);
     } catch (error) {
-      console.error("app-feedback error:", error);
+      // Never log the error object itself: a check-constraint failure's
+      // DETAIL is Postgres' "Failing row contains (...)", and that row is the
+      // person's message. The code is enough to find it.
+      const code = (error as { code?: unknown } | null)?.code;
+      console.error("app-feedback error:", typeof code === "string" ? code : "unknown");
+      await logError({
+        bucket: "feedback",
+        severity: "medium",
+        errorCode: "app_feedback_failed",
+        error,
+        context: { code: typeof code === "string" ? code : undefined },
+      });
       return respond({ error: "Internal server error" }, 500);
     }
   };

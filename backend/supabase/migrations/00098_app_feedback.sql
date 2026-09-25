@@ -85,6 +85,7 @@ grant select, insert, delete on table public.app_feedback to service_role;
  *   {"id": <uuid>, "replayed": false, "rate_limited": false}  -- filed now
  *   {"id": <uuid>, "replayed": true,  "rate_limited": false}  -- a retry of a filed one
  *   {"rate_limited": true}                                    -- over the bound, nothing filed
+ *   {"gone": true}                                            -- the account is deleted, nothing filed
  *
  * Invalid input raises (check constraint 23514 / KTH01): the edge function
  * validates first, so reaching one of those is a bug, not a user error.
@@ -116,8 +117,20 @@ begin
     -- One submitter at a time per user, so two parallel requests cannot both
     -- read "4 this hour" and both insert the fifth and sixth.
     perform pg_catalog.pg_advisory_xact_lock(
-        pg_catalog.hashtext('app_feedback:' || p_user_id::text)
+        pg_catalog.hashtextextended('app_feedback:' || p_user_id::text, 0)
     );
+
+    -- A deleted account can still hold a valid access token for a while
+    -- (sign-out on the device is local), but its feedback rows were erased by
+    -- the trigger below when it was deleted. Filing a new one would outlive
+    -- the deletion, so a tombstoned account files nothing. A guest with no
+    -- profile row yet is not deleted, and may file.
+    if exists (
+        select 1 from public.profiles
+        where id = p_user_id and deleted_at is not null
+    ) then
+        return pg_catalog.jsonb_build_object('gone', true);
+    end if;
 
     select id into v_existing
     from public.app_feedback

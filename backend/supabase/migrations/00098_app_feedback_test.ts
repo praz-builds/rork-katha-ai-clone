@@ -230,3 +230,25 @@ Deno.test("deleting the account erases its feedback and nobody else's", async ()
     await db.close();
   }
 });
+
+Deno.test("a deleted account with a still-valid token files nothing", async () => {
+  const db = await createDatabase();
+  try {
+    await seed(db);
+    await db.query("select public.delete_account($1, 'privacy', null)", [
+      WRITER,
+    ]);
+    // Sign-out on the device is local, so the old token can still reach the
+    // function after the erase trigger has fired.
+    const late = await db.query<{ result: Record<string, unknown> }>(
+      `select submit_app_feedback($1, 'late-1', 'bug', 'Still here?', '1.0.0',
+         'android', 'profile') as result`,
+      [WRITER],
+    );
+    assertEquals(late.rows[0].result, { gone: true });
+    assertEquals(await count(db, WRITER), 0);
+    assertEquals((await submit(db, OTHER, "o-1")).rate_limited, false);
+  } finally {
+    await db.close();
+  }
+});

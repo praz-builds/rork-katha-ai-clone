@@ -55,6 +55,13 @@ through `music-storage.ts`, the same preference as the reader's mute. It has a
 
 1. `supabase db push` to apply `00098_app_feedback` (renumbered from 00097, which #141's
    report-queue view took first).
+
+**Language, decided in review:** `expo/src/i18n/index.ts` now pins English
+(`FOLLOW_DEVICE_LOCALE = false`). These are the first components that read the
+locale files, and following the device would put two Portuguese or Spanish rows
+between English ones on the You tab, including in the build Play reviews. Flip
+the flag in the release that wires the rest of the app.
+`i18n-english-pin.test.ts` holds it.
 2. `supabase functions deploy app-feedback`. This is a new function and needs no
    `config.toml` entry because it verifies the JWT.
 3. Ship the client (OTA is fine). Until step 2 is done, the sheet shows its
