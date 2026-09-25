@@ -46,20 +46,27 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
     if (entry.name === '__tests__' || entry.name === '__mocks__') continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) sourceFiles(full, out);
-    else if (/\.(tsx|jsx)$/.test(entry.name)) out.push(full);
+    else if (/\.(tsx|jsx|ts)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) out.push(full);
   }
   return out;
 }
 
 it('no screen draws "Kids" or "PIN" as text or as an accessibility name', () => {
   const offending: string[] = [];
-  for (const file of sourceFiles(path.join(__dirname, '..'))) {
+  // Every source file under src/ (screens, and the .ts data files they
+  // render, such as voice descriptions), plus App.tsx at the root.
+  const files = [...sourceFiles(path.join(__dirname, '..')), path.join(__dirname, '..', '..', 'App.tsx')];
+  for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
-    // JSX text between tags, and any double-quoted string literal (labels,
-    // hints, titles). Comments and identifiers are not user-visible.
+    // JSX text between tags, and every string literal in any quote style
+    // (labels, hints, titles, data). Comments and identifiers are not
+    // user-visible, and the check is case-sensitive, so the internal
+    // `'kids'` audience value never trips it.
     const texts = [
       ...source.matchAll(/>([^<>{}\n]+)</g),
       ...source.matchAll(/"([^"\n]*)"/g),
+      ...source.matchAll(/'([^'\n]*)'/g),
+      ...source.matchAll(/`([^`]*)`/g),
     ].map((match) => match[1]);
     for (const text of texts) {
       if (/\bKids\b|\bPIN\b|Parental/.test(text)) offending.push(`${file}: ${text}`);

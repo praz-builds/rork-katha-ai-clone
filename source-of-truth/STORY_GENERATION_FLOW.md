@@ -379,9 +379,11 @@ screen. Balance stays in the header, and the button carries the price per
 
 ## 3. Kids mode (labelled "All-ages")
 
-**The label is "All-ages", in every locale and every accessibility name**
-(`All-ages` / `Todas las edades` / `Todas as idades`). It was "Kids Mode" until
-2026-09-25. Katha's Play listing targets 18+ only, and a control named "Kids"
+**The label is "All-ages", on screen and in its accessibility name.** The
+Create switch is English today (`CreateBriefFlow.tsx`), like the rest of Create,
+because no Create component reads the locale files yet. The locale files already
+carry the three strings (`All-ages` / `Todas las edades` / `Todas as idades`, key
+`genres.kids`) for when i18n is wired. It was "Kids Mode" until 2026-09-25. Katha's Play listing targets 18+ only, and a control named "Kids"
 invites a Families-policy review of the whole app; the mode describes a story
 suitable for every age, not an audience of children holding the phone. The
 rename is copy only: `audienceMode: "kids"`, `audience_mode = 'kids'`,

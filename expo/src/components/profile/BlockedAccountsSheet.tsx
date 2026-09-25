@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -17,7 +17,7 @@ import {
   unblockAuthorEverywhere,
   type BlockedAccount,
 } from "@/lib/blocks";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, radius, spacing, type } from "@/theme";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -44,9 +44,14 @@ export default function BlockedAccountsSheet({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [failedId, setFailedId] = useState<string | null>(null);
 
+  // Reopening the sheet, or Retry, while a load is still in flight starts a
+  // second one; only the newest may write, or an older answer lands last.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setState("loading");
     const result = await fetchBlockedAccounts();
+    if (seq !== loadSeq.current) return;
     if (result.ok) {
       setAccounts(result.accounts);
       setState("ready");
@@ -191,10 +196,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   title: {
+    // The 20pt step of the ramp, in the UI face like the other sheet titles.
+    ...type.titleSmall,
     fontFamily: fonts.ui,
     fontWeight: "700",
     color: colors.ink,
-    fontSize: 20,
   },
   close: {
     width: 36,

@@ -27,6 +27,19 @@ let blocked: ReadonlySet<string> = new Set();
  * previous identity cannot write into the next one.
  */
 let epoch = 0;
+/**
+ * Every block or unblock recorded in this session, stamped with a sequence
+ * number, so a server read that started BEFORE the change can be reconciled
+ * with it rather than overwrite it.
+ *
+ * The case this exists for: the boot read of `user_blocks` is in flight, the
+ * reader blocks a writer from a Home card, and then the boot read lands with
+ * the list as it was before the block. Publishing it as-is would put the
+ * blocked writer's cards straight back -- the "the button did nothing" moment
+ * this whole store is here to prevent.
+ */
+let mutationSeq = 0;
+const localChanges = new Map<string, { seq: number; blocked: boolean }>();
 const listeners = new Set<() => void>();
 
 function publish(next: ReadonlySet<string>): void {
@@ -56,12 +69,18 @@ export function getBlockedAuthorIds(): ReadonlySet<string> {
 
 /** Record a block the server has confirmed. */
 export function rememberBlocked(authorId: string): void {
-  if (!authorId || blocked.has(authorId)) return;
+  if (!authorId) return;
+  mutationSeq += 1;
+  localChanges.set(authorId, { seq: mutationSeq, blocked: true });
+  if (blocked.has(authorId)) return;
   publish(new Set([...blocked, authorId]));
 }
 
 /** Record an unblock the server has confirmed. */
 export function forgetBlocked(authorId: string): void {
+  if (!authorId) return;
+  mutationSeq += 1;
+  localChanges.set(authorId, { seq: mutationSeq, blocked: false });
   if (!blocked.has(authorId)) return;
   const next = new Set(blocked);
   next.delete(authorId);
@@ -71,7 +90,24 @@ export function forgetBlocked(authorId: string): void {
 /** The account is gone (sign-out, deletion, a different sign-in). */
 export function clearBlockedAuthors(): void {
   epoch += 1;
+  localChanges.clear();
   if (blocked.size > 0) publish(new Set());
+}
+
+/**
+ * Publish a server snapshot read since `startedAtSeq`, with every local block
+ * or unblock made after that point laid over it. The server list is the truth
+ * as of when it was read; a change the reader made while it was in flight is
+ * newer than that, so it wins.
+ */
+function publishServerSnapshot(ids: Iterable<string>, startedAtSeq: number): void {
+  const next = new Set(ids);
+  for (const [id, change] of localChanges) {
+    if (change.seq <= startedAtSeq) continue;
+    if (change.blocked) next.add(id);
+    else next.delete(id);
+  }
+  publish(next);
 }
 
 /**
@@ -131,6 +167,7 @@ async function currentUserId(): Promise<string | null> {
 export async function refreshBlockedAuthors(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   const startedIn = epoch;
+  const startedAtSeq = mutationSeq;
   const userId = await currentUserId();
   if (!userId) return true;
   try {
@@ -140,12 +177,11 @@ export async function refreshBlockedAuthors(): Promise<boolean> {
       .eq("blocker_id", userId);
     if (error || !Array.isArray(data)) return false;
     if (startedIn !== epoch) return false;
-    publish(
-      new Set(
-        data
-          .map((row) => (row as Record<string, unknown>).blocked_id)
-          .filter((id): id is string => typeof id === "string"),
-      ),
+    publishServerSnapshot(
+      data
+        .map((row) => (row as Record<string, unknown>).blocked_id)
+        .filter((id): id is string => typeof id === "string"),
+      startedAtSeq,
     );
     return true;
   } catch {
@@ -173,6 +209,8 @@ export async function fetchBlockedAccounts(): Promise<
   { ok: true; accounts: BlockedAccount[] } | { ok: false }
 > {
   if (!isSupabaseConfigured) return { ok: true, accounts: [] };
+  const startedIn = epoch;
+  const startedAtSeq = mutationSeq;
   const userId = await currentUserId();
   if (!userId) return { ok: true, accounts: [] };
   try {
@@ -190,8 +228,12 @@ export async function fetchBlockedAccounts(): Promise<
         id: row.blocked_id as string,
         blockedAt: typeof row.created_at === "string" ? row.created_at : null,
       }));
-    // The list is the record, so the store follows it.
-    publish(new Set(order.map((row) => row.id)));
+    // The list is the record, so the store follows it -- published before
+    // the names are looked up on purpose: the block set is the server's list
+    // of ids and is authoritative whether or not a name resolves.
+    if (startedIn === epoch) {
+      publishServerSnapshot(order.map((row) => row.id), startedAtSeq);
+    }
     if (order.length === 0) return { ok: true, accounts: [] };
 
     const { data: people, error: peopleError } = await supabase

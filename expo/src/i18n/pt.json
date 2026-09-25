@@ -237,5 +237,24 @@
     "morePoetic": "Mais poetico",
     "moreDramatic": "Mais dramatico",
     "simpler": "Mais simples"
+  },
+  "blocks": {
+    "confirmTitle": "Bloquear {{name}}?",
+    "confirmBody": "Você não verá mais as histórias nem os comentários de {{name}}. Dá para desbloquear em Perfil, em Contas bloqueadas.",
+    "confirm": "Bloquear",
+    "confirming": "Bloqueando...",
+    "confirmA11y": "Confirmar bloqueio de {{name}}",
+    "cancel": "Cancelar",
+    "failed": "O bloqueio não foi salvo. Verifique sua conexão e tente de novo.",
+    "menuItem": "Bloquear {{name}}",
+    "listTitle": "Contas bloqueadas",
+    "listEmpty": "Você não bloqueou ninguém.",
+    "listError": "Não foi possível carregar suas contas bloqueadas.",
+    "retry": "Tentar de novo",
+    "unblock": "Desbloquear",
+    "unblockA11y": "Desbloquear {{name}}",
+    "unblockFailed": "Não foi salvo. Tente de novo.",
+    "authorBlockedTitle": "Você bloqueou este escritor",
+    "authorBlockedBody": "As histórias e os comentários dessa pessoa ficam ocultos para você."
   }
 }

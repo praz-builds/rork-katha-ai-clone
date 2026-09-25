@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
+import { Button } from "@/components/Button";
 import { colors, radius, spacing, type } from "@/theme";
 
 /**
@@ -53,14 +54,7 @@ export default function BlockConfirm({
         </Text>
       </Pressable>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Pressable
-        onPress={onCancel}
-        style={styles.cancelButton}
-        accessibilityRole="button"
-        accessibilityLabel="Cancel"
-      >
-        <Text style={styles.cancelLabel}>Cancel</Text>
-      </Pressable>
+      <Button label="Cancel" variant="ghost" size="sm" onPress={onCancel} />
     </>
   );
 }
@@ -95,15 +89,5 @@ const styles = StyleSheet.create({
   error: {
     ...type.caption,
     color: colors.accentPressed,
-  },
-  cancelButton: {
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.muted,
   },
 });

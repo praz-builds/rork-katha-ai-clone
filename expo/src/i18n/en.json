@@ -237,5 +237,24 @@
     "morePoetic": "More poetic",
     "moreDramatic": "More dramatic",
     "simpler": "Simpler"
+  },
+  "blocks": {
+    "confirmTitle": "Block {{name}}?",
+    "confirmBody": "You won't see {{name}}'s stories or comments anymore. You can unblock them from Profile, under Blocked accounts.",
+    "confirm": "Block",
+    "confirming": "Blocking...",
+    "confirmA11y": "Confirm block {{name}}",
+    "cancel": "Cancel",
+    "failed": "That block did not save. Check your connection and try again.",
+    "menuItem": "Block {{name}}",
+    "listTitle": "Blocked accounts",
+    "listEmpty": "You haven't blocked anyone.",
+    "listError": "Your blocked accounts could not be loaded.",
+    "retry": "Try again",
+    "unblock": "Unblock",
+    "unblockA11y": "Unblock {{name}}",
+    "unblockFailed": "That did not save. Try again.",
+    "authorBlockedTitle": "You blocked this writer",
+    "authorBlockedBody": "Their stories and comments are hidden from you."
   }
 }
