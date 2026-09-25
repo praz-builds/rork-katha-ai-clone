@@ -87,6 +87,28 @@ From CodeAnt on the PR (four threads):
   before the draw resolves (it mirrors `portraitKey`, and `redraw` clears the
   old face at once).
 
+From the standing reviewer (cloud routine, head `b46cc50`). Worked by this
+session and a concurrent agent in the same worktree; its tests are kept
+alongside these:
+
+- **Fixed (asked before merge).** The CTA at the reimagine cap went to the
+  paywall with the undrawn edit still in state, and `finish` handed on the
+  new name with the old face. It now restores the drawn sheet as Back does.
+- **Fixed.** Every server refusal on Save read "check your connection".
+  `saveReaderPreferences` now returns `saved` / `refused` (the server's own
+  400 message, or a deleted-account line for 404) / `failed`, and the sheet
+  shows the reason. A client one language ahead of a deployed function now
+  says so instead of looking like an outage.
+- **Fixed.** Android Back on the paywall was a dead key. `backFrom("paywall")`
+  is `"dismiss"`, the × path; `leavePaywall` is now one-shot so two exits
+  cannot raise two permission prompts. Welcome stays inert.
+- **Fixed.** You read preferences on every mount. They are held in memory for
+  the session (`READER_PREFERENCES_FRESH_MS`, 5 min, never AsyncStorage),
+  drawn at once on return, replaced on save, and dropped by `clearOwnProfile`
+  and on an account switch.
+- Left as is: the over-length branch in `normalizeHomePlace` is unreachable
+  from the sheet (`maxLength`), but it is the server-mirroring rule.
+
 Found before the review:
 
 - `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`
@@ -107,7 +129,7 @@ Found before the review:
 `index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
 passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
 `pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
-files), `jest --ci` 1610 passed across 153 suites (after the review fixes), `expo-doctor` 18/18, web
+files), `jest --ci` 1615 passed across 153 suites (after both review rounds), `expo-doctor` 18/18, web
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.

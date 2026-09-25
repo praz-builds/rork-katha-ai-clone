@@ -19,6 +19,8 @@ jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn(() => Promise.resolve
 
 /* eslint-disable import/first */
 import {
+  cachedReaderPreferences,
+  clearReaderPreferencesCache,
   fetchReaderPreferences,
   homePlaceProblem,
   MAX_SPOKEN_LANGUAGES,
@@ -73,14 +75,14 @@ it("summarises the row in the reader's own terms", () => {
     .toBe("Lagos");
 });
 
-it("saves through the profile function and reports a failed write as null", async () => {
+it("saves through the profile function, and tells a refusal from a failure", async () => {
   mockInvoke.mockResolvedValueOnce({
     data: { spokenLanguages: ["ta"], homePlace: "Chennai" },
     error: null,
   });
   await expect(
     saveReaderPreferences({ spokenLanguages: ["ta"], homePlace: " Chennai " }),
-  ).resolves.toEqual({ spokenLanguages: ["ta"], homePlace: "Chennai" });
+  ).resolves.toEqual({ saved: { spokenLanguages: ["ta"], homePlace: "Chennai" } });
   expect(mockInvoke).toHaveBeenCalledWith("profile", {
     body: { action: "set_preferences", spokenLanguages: ["ta"], homePlace: "Chennai" },
   });
@@ -88,7 +90,65 @@ it("saves through the profile function and reports a failed write as null", asyn
   mockInvoke.mockResolvedValueOnce({ data: null, error: new Error("offline") });
   await expect(
     saveReaderPreferences({ spokenLanguages: [], homePlace: null }),
-  ).resolves.toBeNull();
+  ).resolves.toEqual({ failed: true });
+
+  // A client one language ahead of the deployed function: the server's words,
+  // not "check your connection".
+  mockInvoke.mockResolvedValueOnce({
+    data: null,
+    error: Object.assign(new Error("fn"), {
+      context: {
+        status: 400,
+        json: () => Promise.resolve({ error: "spokenLanguages has an unknown language" }),
+      },
+    }),
+  });
+  await expect(
+    saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null }),
+  ).resolves.toEqual({ refused: "spokenLanguages has an unknown language" });
+
+  mockInvoke.mockResolvedValueOnce({
+    data: null,
+    error: Object.assign(new Error("fn"), { context: { status: 404 } }),
+  });
+  const gone = await saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null });
+  expect(gone).toHaveProperty("refused");
+});
+
+it("holds the last value for a return visit, and forgets it when the account changes", async () => {
+  clearReaderPreferencesCache();
+  mockInvoke.mockResolvedValueOnce({
+    data: { spokenLanguages: ["hi"], homePlace: "Pune" },
+    error: null,
+  });
+  await fetchReaderPreferences();
+  expect(cachedReaderPreferences()).toEqual({ spokenLanguages: ["hi"], homePlace: "Pune" });
+  mockInvoke.mockClear();
+  await expect(fetchReaderPreferences({ maxAgeMs: 60_000 })).resolves.toEqual({
+    spokenLanguages: ["hi"],
+    homePlace: "Pune",
+  });
+  expect(mockInvoke).not.toHaveBeenCalled();
+
+  clearReaderPreferencesCache();
+  expect(cachedReaderPreferences()).toBeNull();
+});
+
+it("drops an in-flight answer when the account changes", async () => {
+  clearReaderPreferencesCache();
+  let answer: ((value: unknown) => void) | undefined;
+  mockInvoke.mockReturnValueOnce(new Promise((resolve) => {
+    answer = resolve;
+  }));
+  const pending = fetchReaderPreferences();
+  await Promise.resolve();
+  await Promise.resolve();
+  // The request belongs to the account that just left. It may finish, but it
+  // must neither fill nor return a city into the next Profile session.
+  clearReaderPreferencesCache();
+  answer!({ data: { spokenLanguages: ["hi"], homePlace: "Pune" }, error: null });
+  await expect(pending).resolves.toBeNull();
+  expect(cachedReaderPreferences()).toBeNull();
 });
 
 it("reads the saved preferences, dropping ids this build does not know", async () => {

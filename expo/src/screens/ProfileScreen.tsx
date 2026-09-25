@@ -55,8 +55,10 @@ import {
   useStoryWorld,
 } from "@/lib/story-world";
 import {
+  cachedReaderPreferences,
   EMPTY_READER_PREFERENCES,
   fetchReaderPreferences,
+  READER_PREFERENCES_FRESH_MS,
   type ReaderPreferences,
   readerPreferencesSummary,
 } from "@/lib/reader-preferences";
@@ -166,8 +168,10 @@ export default function ProfileScreen({
   // Languages and home, from the account. The same rule as the music switch:
   // a save made while the first read is still in flight must not be undone
   // when that read lands with the older value.
+  // Drawn from the session's held value at once on a return visit; the read
+  // below only goes to the server when that is stale.
   const [readerPrefs, setReaderPrefs] = useState<ReaderPreferences>(
-    EMPTY_READER_PREFERENCES,
+    () => cachedReaderPreferences() ?? EMPTY_READER_PREFERENCES,
   );
   const [readerContextOpen, setReaderContextOpen] = useState(false);
   // The sheet saves BOTH fields, so it may only be edited once the saved
@@ -175,7 +179,7 @@ export default function ProfileScreen({
   // read would erase the city and languages the reader already had.
   const [readerPrefsStatus, setReaderPrefsStatus] = useState<
     "loading" | "ready" | "failed"
-  >("loading");
+  >(() => (cachedReaderPreferences() ? "ready" : "loading"));
   const readerPrefsChosenByUserRef = useRef(false);
   const aliveRef = useRef(true);
   useEffect(() => {
@@ -184,16 +188,22 @@ export default function ProfileScreen({
       aliveRef.current = false;
     };
   }, []);
-  const loadReaderPrefs = useCallback(() => {
-    setReaderPrefsStatus("loading");
-    void fetchReaderPreferences().then((prefs) => {
+  const loadReaderPrefs = useCallback((maxAgeMs = 0) => {
+    // A held value stays on screen while it refreshes; "Loading…" is only for
+    // a first read.
+    if (!cachedReaderPreferences()) setReaderPrefsStatus("loading");
+    void fetchReaderPreferences({ maxAgeMs }).then((prefs) => {
       if (!aliveRef.current || readerPrefsChosenByUserRef.current) return;
       if (prefs) setReaderPrefs(prefs);
-      setReaderPrefsStatus(prefs ? "ready" : "failed");
+      // A failed refresh behind a held value leaves the held value editable:
+      // it IS what was saved this session.
+      setReaderPrefsStatus(
+        prefs || cachedReaderPreferences() ? "ready" : "failed",
+      );
     });
   }, []);
   useEffect(() => {
-    loadReaderPrefs();
+    loadReaderPrefs(READER_PREFERENCES_FRESH_MS);
   }, [loadReaderPrefs]);
   const saveReaderPrefs = useCallback((next: ReaderPreferences) => {
     readerPrefsChosenByUserRef.current = true;
@@ -634,7 +644,7 @@ export default function ProfileScreen({
         visible={readerContextOpen}
         value={readerPrefs}
         status={readerPrefsStatus}
-        onRetry={loadReaderPrefs}
+        onRetry={() => loadReaderPrefs()}
         onSaved={saveReaderPrefs}
         onClose={() => setReaderContextOpen(false)}
       />

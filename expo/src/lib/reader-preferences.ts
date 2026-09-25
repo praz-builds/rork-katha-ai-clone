@@ -128,30 +128,98 @@ function fromResponse(data: unknown): ReaderPreferences | null {
   return { spokenLanguages: languages, homePlace: place };
 }
 
-/** The saved preferences, or null when they could not be read. */
-export async function fetchReaderPreferences(): Promise<ReaderPreferences | null> {
+/**
+ * The last value read or saved this session, so You draws the row at once on
+ * a return visit instead of showing "Loading…" for something that changes
+ * about once ever. Memory only (a city never goes to the device), and
+ * `clearReaderPreferencesCache` drops it whenever the account changes --
+ * `clearOwnProfile` and a profile for a different user both call it -- so one
+ * account's city is never drawn for the next. `epoch` makes a read started
+ * for the previous account land nowhere.
+ */
+let cache: { prefs: ReaderPreferences; at: number } | null = null;
+let epoch = 0;
+
+/** How long a held value is fresh enough to skip the read. */
+export const READER_PREFERENCES_FRESH_MS = 5 * 60 * 1000;
+
+export function cachedReaderPreferences(): ReaderPreferences | null {
+  return cache?.prefs ?? null;
+}
+
+export function clearReaderPreferencesCache(): void {
+  cache = null;
+  epoch += 1;
+}
+
+/**
+ * The saved preferences, or null when they could not be read. A value held
+ * for less than `maxAgeMs` is returned without asking the server.
+ */
+export async function fetchReaderPreferences(
+  { maxAgeMs = 0 }: { maxAgeMs?: number } = {},
+): Promise<ReaderPreferences | null> {
+  if (cache && Date.now() - cache.at < maxAgeMs) return cache.prefs;
   if (!isSupabaseConfigured) return null;
+  const startedIn = epoch;
   try {
     await bootstrapUser();
     const { data, error } = await supabase.functions.invoke("profile", {
       body: { action: "preferences" },
     });
     if (error) return null;
-    return fromResponse(data);
+    const prefs = fromResponse(data);
+    // A profile/account switch while this request was in flight makes both
+    // the cache write AND this answer stale. Returning the old value would
+    // still let a newly mounted Profile draw another account's city.
+    if (startedIn !== epoch) return null;
+    if (prefs) cache = { prefs, at: Date.now() };
+    return prefs;
+  } catch {
+    return null;
+  }
+}
+
+/** What a save came back with. */
+export type SaveReaderPreferencesResult =
+  | { saved: ReaderPreferences }
+  /** The server refused it, and said why in words the reader can act on. */
+  | { refused: string }
+  /** Nothing came back: the network, or a server that did not answer. */
+  | { failed: true };
+
+/** The server's own message for a refusal, when it sent one. */
+async function refusalMessage(error: unknown): Promise<string | null> {
+  const context = error && typeof error === "object"
+    ? (error as {
+      context?: { status?: number; json?: () => Promise<unknown> };
+    }).context
+    : undefined;
+  const status = context?.status;
+  if (status === 404) {
+    return "This account has been deleted, so nothing can be saved to it.";
+  }
+  if (status !== 400 || typeof context?.json !== "function") return null;
+  try {
+    const body = await context.json() as { error?: unknown } | null;
+    return typeof body?.error === "string" && body.error.trim()
+      ? body.error
+      : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Save both fields. Returns what the server stored, or null when the write
- * did not happen -- the caller keeps the sheet open and says so rather than
- * showing a value that was never saved.
+ * Save both fields. A refusal carries the server's reason -- a language this
+ * build offers that the deployed function does not know yet reads as that,
+ * not as "check your connection" -- and only a missing answer is `failed`.
  */
 export async function saveReaderPreferences(
   prefs: ReaderPreferences,
-): Promise<ReaderPreferences | null> {
-  if (!isSupabaseConfigured) return null;
+): Promise<SaveReaderPreferencesResult> {
+  if (!isSupabaseConfigured) return { failed: true };
+  const startedIn = epoch;
   try {
     await bootstrapUser();
     const { data, error } = await supabase.functions.invoke("profile", {
@@ -161,9 +229,15 @@ export async function saveReaderPreferences(
         homePlace: prefs.homePlace?.trim() ? prefs.homePlace.trim() : null,
       },
     });
-    if (error) return null;
-    return fromResponse(data);
+    if (error) {
+      const refused = await refusalMessage(error);
+      return refused ? { refused } : { failed: true };
+    }
+    const saved = fromResponse(data);
+    if (!saved) return { failed: true };
+    if (startedIn === epoch) cache = { prefs: saved, at: Date.now() };
+    return { saved };
   } catch {
-    return null;
+    return { failed: true };
   }
 }

@@ -844,11 +844,18 @@ it closed the app mid-onboarding with a portrait in flight.
 | W5 | W4 | -- |
 | code | W5 | -- |
 | W6 | -- | W4 |
-| W7 paywall, welcome | nothing (hardware Back is swallowed) | nothing |
+| W7 paywall | dismisses through the same path as × | dismisses through the same path as × |
+| welcome | nothing (hardware Back is swallowed) | nothing |
 
 **After the code has verified, nothing before it is reachable.** The email
 box, the code screen, W3's pitch and the questionnaire are for somebody not yet
 signed in; W4 and W6 point at each other and at nothing earlier.
+
+**An undrawn edit never leaves W4.** Every exit from W4 that is not a draw --
+Back to W6, and the CTA at the reimagine cap, which goes to the paywall --
+restores the sheet the current portrait was drawn from, so Meet and the
+hand-off always pair a name with its own face. Android's Back on the paywall
+takes the same one-shot path as its ×.
 
 **Instrumentation:** `onboarding_character_cta_shown { purpose }`;
 `onboarding_character_cta_tapped { purpose }`.

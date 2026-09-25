@@ -36,6 +36,9 @@ import { colors, fonts, radius, spacing } from "@/theme";
  * adds Hindi and then gets a chapter in Hindi they cannot read would never
  * touch this again.
  */
+const CONNECTION_FAILURE =
+  "That did not save. Check your connection and try again.";
+
 export default function ReaderContextSheet({
   visible,
   value,
@@ -59,7 +62,11 @@ export default function ReaderContextSheet({
   const [languages, setLanguages] = useState(value.spokenLanguages);
   const [place, setPlace] = useState(value.homePlace ?? "");
   const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
+  /**
+   * Why the last save did not happen: the server's own reason for a refusal,
+   * or the connection line when nothing came back. Null when it did not fail.
+   */
+  const [failed, setFailed] = useState<string | null>(null);
 
   // Each opening starts from what is saved, not from an abandoned edit --
   // seeded once per opening, when the saved value is known, so a read that
@@ -80,7 +87,7 @@ export default function ReaderContextSheet({
     seeded.current = true;
     setLanguages(value.spokenLanguages);
     setPlace(value.homePlace ?? "");
-    setFailed(false);
+    setFailed(null);
   }, [status, value, visible]);
 
   const placeProblem = homePlaceProblem(place);
@@ -90,18 +97,22 @@ export default function ReaderContextSheet({
     if (placeProblem || saving) return;
     const startedIn = opening.current;
     setSaving(true);
-    setFailed(false);
-    const saved = await saveReaderPreferences({
+    setFailed(null);
+    const result = await saveReaderPreferences({
       spokenLanguages: languages,
       homePlace: place.trim() ? place : null,
     });
     setSaving(false);
     const current = startedIn === opening.current;
-    if (!saved) {
-      if (current) setFailed(true);
+    if (!("saved" in result)) {
+      if (current) {
+        setFailed(
+          "refused" in result ? result.refused : CONNECTION_FAILURE,
+        );
+      }
       return;
     }
-    onSaved(saved);
+    onSaved(result.saved);
     if (current) onClose();
   };
 
@@ -205,7 +216,7 @@ export default function ReaderContextSheet({
                 value={place}
                 onChangeText={(next) => {
                   setPlace(next);
-                  if (failed) setFailed(false);
+                  if (failed) setFailed(null);
                 }}
                 placeholder="e.g. Pune, Lagos or São Paulo"
                 placeholderTextColor={colors.tertiary}
@@ -241,7 +252,7 @@ export default function ReaderContextSheet({
                     accessibilityLiveRegion="polite"
                     testID="reader-context-error"
                   >
-                    That did not save. Check your connection and try again.
+                    {failed}
                   </Text>
                 )
                 : null}

@@ -178,7 +178,7 @@ export type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
 export function backFrom(
   step: Step,
   emailVerified: boolean,
-): Step | "exit" | null {
+): Step | "exit" | "dismiss" | null {
   switch (step) {
     case "w3":
       return "exit";
@@ -190,6 +190,10 @@ export function backFrom(
       return "w5";
     case "w6":
       return "w4";
+    // The paywall is dismissible, and on Android Back IS that gesture: the
+    // same path as its own close (`leavePaywall`).
+    case "paywall":
+      return "dismiss";
     default:
       return null;
   }
@@ -455,6 +459,14 @@ export default function CharacterOnboarding(
    * name would sit beside a portrait (and a library row) drawn for the old one.
    */
   const drawnSheet = useRef<{ name: string; appearance: string } | null>(null);
+  /** Put the drawn sheet back: every exit from W4 that is not a submit. */
+  const restoreDrawnSheet = useCallback(() => {
+    if (!drawnSheet.current) return;
+    setName(drawnSheet.current.name);
+    setAppearance(drawnSheet.current.appearance);
+  }, []);
+  /** `leavePaywall` is defined further down; Back reaches it through this. */
+  const dismissPaywall = useRef<() => void>(() => {});
 
   /** Back, by the table. See `backFrom`. */
   const back = useCallback(() => {
@@ -463,14 +475,15 @@ export default function CharacterOnboarding(
       onExit?.();
       return;
     }
-    if (!target) return;
-    if (step === "w4" && target === "w6" && drawnSheet.current) {
-      // Back is "never mind", not "submit": put the drawn sheet back.
-      setName(drawnSheet.current.name);
-      setAppearance(drawnSheet.current.appearance);
+    if (target === "dismiss") {
+      dismissPaywall.current();
+      return;
     }
+    if (!target) return;
+    // Back is "never mind", not "submit": put the drawn sheet back.
+    if (step === "w4" && target === "w6") restoreDrawnSheet();
     go(target);
-  }, [emailVerified, go, onExit, step]);
+  }, [emailVerified, go, onExit, restoreDrawnSheet, step]);
 
   /*
     Android's hardware Back follows the same table as the arrow. Unhandled, it
@@ -711,6 +724,9 @@ export default function CharacterOnboarding(
     }
     if (emailVerified) {
       if (reimaginesUsed >= REIMAGINE_BUDGET) {
+        // Not drawn, so not kept: the paywall leads to `finish`, which hands
+        // on the name beside the face, and the face is the drawn sheet's.
+        restoreDrawnSheet();
         go("paywall");
         return;
       }
@@ -730,6 +746,7 @@ export default function CharacterOnboarding(
     portraitKey,
     redraw,
     reimaginesUsed,
+    restoreDrawnSheet,
     saveCharacter,
     sheetReady,
   ]);
@@ -780,7 +797,12 @@ export default function CharacterOnboarding(
    * dismissed. The second case is the one that actually happened; see the
    * bounded wait below.
    */
+  const leavingPaywall = useRef(false);
   const leavePaywall = useCallback(async () => {
+    // One leave: the ×, the dismiss path and Android's Back can all fire, and
+    // each would otherwise raise its own permission request.
+    if (leavingPaywall.current) return;
+    leavingPaywall.current = true;
     /*
       A permission request can HANG, not only throw.
 
@@ -815,6 +837,9 @@ export default function CharacterOnboarding(
     setNotificationsEnabled(granted);
     go("welcome");
   }, [go]);
+  dismissPaywall.current = () => {
+    void leavePaywall();
+  };
 
   /* ── Exit ───────────────────────────────────────────────────────────── */
 
