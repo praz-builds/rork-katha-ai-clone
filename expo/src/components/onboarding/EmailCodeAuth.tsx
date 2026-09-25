@@ -9,6 +9,7 @@ import {
 import { Primary, StepScroll } from "@/components/onboarding/primitives";
 import i18n from "@/i18n";
 import { isCompleteOtp, normaliseOtpInput, OTP_LENGTH } from "@/lib/otp";
+import { LegalConsentLine } from "@/components/onboarding/LegalConsentLine";
 import { reviewerSignIn, sendEmailCode, verifyEmailCode } from "@/lib/session";
 import {
   colors,
@@ -338,9 +339,7 @@ export function EmailCodeAuth({
         disabled={!EMAIL_PATTERN.test(email.trim())}
         onPress={submitEmail}
       />
-      <Text style={styles.legal}>
-        By continuing you agree to our Terms and Privacy Policy.
-      </Text>
+      <LegalConsentLine style={styles.legal} />
     </StepScroll>
   );
 }

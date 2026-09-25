@@ -21,6 +21,7 @@ import type { ContinuationOption, DirectionStatus } from "@/components/Direction
 import { toDirection } from "@/lib/directions";
 import { CHAPTER_TEXT_CREDITS } from "@/lib/pricing-limits";
 import { colors, radius, spacing, type } from "@/theme";
+import type { ReaderTheme } from "@/lib/reading-themes";
 import type { Chapter, DirectionChooser, Story } from "@/types/domain";
 
 /**
@@ -238,6 +239,8 @@ export type ChapterEndProps = {
    * missing gate this prop exists to close.
    */
   credits: number;
+  /** The active reader palette. Omitted by isolated tests and non-reader callers. */
+  readerTheme?: ReaderTheme;
 };
 
 export default function ChapterEnd({
@@ -248,6 +251,7 @@ export default function ChapterEnd({
   onReimagine,
   reimagineLabel = "Reimagine this story",
   credits,
+  readerTheme,
 }: ChapterEndProps) {
   const reduceMotion = useReducedMotion();
   const isSeries = story.storyMode === "series";
@@ -547,6 +551,7 @@ export default function ChapterEnd({
         <DirectionChoices
           readOnly
           heading="The paths from here"
+          readerTheme={readerTheme}
           options={paths}
           chosen={chosen}
           attribution={attributionFor(continuation?.directionChosenBy, story)}
@@ -579,8 +584,8 @@ export default function ChapterEnd({
       >
         {isSeries ? (
           <>
-            <Text style={styles.heading}>The story is complete</Text>
-            <Text style={styles.body}>
+            <Text style={[styles.heading, readerTheme && { color: readerTheme.text }]}>The story is complete</Text>
+            <Text style={[styles.body, readerTheme && { color: readerTheme.muted }]}>
               This story has reached its planned ending. There is no further
               chapter to write.
             </Text>
@@ -650,10 +655,10 @@ export default function ChapterEnd({
       && (inFlight || autoStarted || status === "loading");
     return (
       <View style={styles.wrap} testID="chapter-end-auto">
-        <Text style={styles.heading}>
+        <Text style={[styles.heading, readerTheme && { color: readerTheme.text }]}>
           {pending ? "Katha is writing on" : "Chapter " + nextChapterNumber + " didn't start"}
         </Text>
-        <Text style={styles.body}>
+        <Text style={[styles.body, readerTheme && { color: readerTheme.muted }]}>
           {pending
             ? `You chose to let Katha pick what happens next. Chapter ${nextChapterNumber} is being written.`
             : "Something stopped the next chapter from starting. Nothing was charged for it."}
@@ -693,6 +698,7 @@ export default function ChapterEnd({
     <View style={styles.wrap}>
       <DirectionChoices
         heading={extendable ? "Keep it going?" : "What's next?"}
+        readerTheme={readerTheme}
         priceNote={extendable
           // Said out loud, because this chapter is past what the writer
           // planned and paid attention to. A reader who thought the story was

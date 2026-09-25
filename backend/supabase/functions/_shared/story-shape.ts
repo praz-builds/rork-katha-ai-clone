@@ -4,10 +4,13 @@ import {
   type ChapterLength,
   characterAppearance,
   type CharacterInput,
+  CULTURAL_SETTINGS,
+  type CulturalSetting,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_BY_NORMALIZED_KEY,
   GENRE_MIGRATION_MAP,
+  isCulturalSetting,
   isPlannedChapterCount,
   MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
@@ -56,6 +59,13 @@ export type StoryShapePromptBrief = {
   avoid?: string;
   chapterLength?: ChapterLength;
   plannedChapterCount?: PlannedChapterCount;
+  /**
+   * The reader's standing Story world. Shaping is where the setting and the
+   * cast's names are first inferred, and generation later treats both as the
+   * brief -- so a shaper that ignored the preference would write a world that
+   * then overrides it. See `buildStoryWorldBlock` in story-prompts.ts.
+   */
+  culturalSetting?: CulturalSetting;
 };
 
 /** Compact schema for the free Idea -> Shape scaffolding request. */
@@ -215,6 +225,13 @@ export function buildStoryShapePrompt(
       `The creator chose ${brief.chapterLength} chapter length. Pace the preview and beats for that reading density.`,
     );
   }
+  if (isCulturalSetting(brief.culturalSetting)) {
+    parts.push(
+      `The creator prefers stories rooted in ${
+        CULTURAL_SETTINGS[brief.culturalSetting]
+      }. Where the idea does not name a place, a culture or its people, set whereAndWhen there and give any characters you infer names from there. If the idea points anywhere else, follow the idea; creator-supplied names are never changed.`,
+    );
+  }
   if (brief.characters?.length) {
     parts.push("Creator-supplied characters. Preserve these names exactly:");
     for (const character of brief.characters.slice(0, MAX_CAST_SIZE)) {
@@ -264,8 +281,12 @@ export function normalizeStoryShapeBrief(input: {
   avoid?: unknown;
   chapterLength?: unknown;
   plannedChapterCount?: unknown;
+  culturalSetting?: unknown;
 }): StoryShapePromptBrief {
   return {
+    ...(isCulturalSetting(input.culturalSetting)
+      ? { culturalSetting: input.culturalSetting }
+      : {}),
     characters: normalizeCharacters(input.characters),
     moments: normalizeTextList(input.moments, MAX_MOMENTS),
     writingStyle: normalizeText(input.writingStyle),

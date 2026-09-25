@@ -8,6 +8,7 @@ import {
   buildContinuationUserPrompt,
   buildStoryProsePrompt,
   buildStorySystemPrompt,
+  buildStoryWorldBlock,
   buildUsedChapterTitlesBlock,
   buildUserPrompt,
   type ContinuationPromptInput,
@@ -2322,4 +2323,33 @@ Deno.test("the finale is told the truth is what it must pay off", () => {
     storyBible: bible,
   });
   assertStringIncludes(finale, "this is what the ending must pay off");
+});
+
+Deno.test("the story-world preference is a fixed phrase that yields to the brief", () => {
+  const prompt = buildUserPrompt({
+    primaryGenre: "romance",
+    seed: "Two rivals share a train compartment.",
+    culturalSetting: "latin_american",
+  });
+  assertStringIncludes(prompt, "Story world preference:");
+  assertStringIncludes(prompt, "rooted in Latin America");
+  assertStringIncludes(prompt, "If the brief points anywhere else, follow the brief");
+
+  const none = buildUserPrompt({
+    primaryGenre: "romance",
+    seed: "Two rivals share a train compartment.",
+  });
+  assert(!none.includes("Story world preference"));
+  assertEquals(buildStoryWorldBlock(undefined), "");
+  // A value that bypassed the validator still reaches nothing it did not pick,
+  // including a key every object inherits.
+  for (const bogus of ["atlantis", "constructor", "toString"]) {
+    assertEquals(
+      buildStoryWorldBlock(
+        bogus as unknown as Parameters<typeof buildStoryWorldBlock>[0],
+      ),
+      "",
+      bogus,
+    );
+  }
 });

@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Ban, Check, Download, Flag } from "lucide-react-native";
+import { Ban, Check, Download, Flag, Lock } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
 import { Button } from "@/components/Button";
@@ -41,6 +41,7 @@ export default function StoryActionsSheet({
   onBlockAuthor,
   onSubmitReport,
   onDownloadPdf,
+  onRequireSubscription,
   canBlockAuthor = true,
 }: {
   visible: boolean;
@@ -63,6 +64,8 @@ export default function StoryActionsSheet({
   ) => Promise<void> | void;
   /** "Download as PDF". The sheet closes first; the platform's dialog takes over. Absent hides the row. */
   onDownloadPdf?: () => void;
+  /** Opens the plan surface when PDF export is not included in this account. */
+  onRequireSubscription?: () => void;
   /** False for the story's own author - you cannot block yourself, so the row is not offered. */
   canBlockAuthor?: boolean;
 }) {
@@ -185,6 +188,21 @@ export default function StoryActionsSheet({
                   accessibilityLabel="Download as PDF"
                 >
                   <Download size={18} color={colors.strong} />
+                  <Text style={styles.optionLabel}>Download as PDF</Text>
+                </Pressable>
+              ) : null}
+
+              {!onDownloadPdf && onRequireSubscription ? (
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    onRequireSubscription();
+                  }}
+                  style={styles.optionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel="Unlock PDF download with a Katha plan"
+                >
+                  <Lock size={18} color={colors.premium} />
                   <Text style={styles.optionLabel}>Download as PDF</Text>
                 </Pressable>
               ) : null}

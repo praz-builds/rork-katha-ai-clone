@@ -202,6 +202,7 @@ export async function handleRequest(
       avoid: body?.avoid,
       chapterLength: body?.chapter_length,
       plannedChapterCount: body?.planned_chapter_count,
+      culturalSetting: body?.cultural_setting,
     });
 
     /**

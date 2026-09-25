@@ -7,6 +7,91 @@
 
 ---
 
+## 2026-09-25 UTC — Final go-live feedback: Story world, vote on what's next, reader Night mode, Explore tags, PDF plan gate
+
+**Session:** isolated `codex/go-live-final-feedback` worktree. Nothing deployed,
+no secret touched, no production data written. Migration 00099 and the
+generation functions below are **merged-not-deployed** until someone runs the
+deploy.
+
+- **Reader Night mode, chapter end.** The reader hands its palette through the
+  `renderChapterEnd` seam; the choices, composer, loading and helper text use
+  the page's text, muted, card and field values. They were app-light cards on a
+  dark page. Regression test proven to fail with the palette dropped.
+- **Legal links.** "Terms" and "Privacy Policy" on the email step and in the
+  character flow are real, separately-labelled links, from one
+  `LegalConsentLine` over `lib/legal-links.ts` (the module #142 made for You and the paywall).
+  Link colour is ink-and-underline: accent orange on cream is under 3:1.
+- **PDF export is a plan feature** (already canonical: CREDITS_AND_PRICING
+  §Plans, ONBOARDING_FLOW paywall rows). Members keep the action; a free
+  account sees a locked row that opens the paywall. Export is still
+  device-local, so this is a product gate, not a security boundary; a
+  server-side export is the follow-up if that ever matters.
+- **Story world (cultural preference).** You → *Story world*: Anywhere or one
+  of ten regions, device-local, sent as `cultural_setting`. Server: a closed
+  list in `_shared/types.ts`, normalised never rejected (prototype keys
+  included, test proven), one fixed sentence after the setting layer that
+  yields to the brief. Chapter one only, not stored; continuity comes from the
+  bible. A jest test reads the backend list so the two id sets cannot drift.
+  **Shaping gets it too** (found in review): `shape-story` pre-fills the
+  setting and names that generation then treats as the brief, so without the
+  preference there the shaper's guess overrode it on most stories.
+  **Deploy:** every function that imports the changed `_shared` files, per
+  `deno info --json`: `generate-story-stream`, `generate-story`,
+  `continue-story`, `reimagine-chapter`, `edit-story`, `shape-story`,
+  `regenerate-cover`, `generate-character-image`. The first two and
+  `shape-story` change behaviour; the rest must still be redeployed so their
+  bundles match main.
+  Until then the field is ignored.
+- **Vote on what's next (migration 00099).** You → *Vote on what's next*: one
+  vote per reader on a curated, team-written topic list (`feedback_topics`;
+  counts via `feedback_topic_tallies()`, which returns no identities; shipped
+  topics are closed). Anonymous sessions cannot vote (`caller_is_named()`
+  reads the JWT's `is_anonymous`), because a free-to-mint identity would make
+  the tally meaningless. No public user text, so no new moderation surface.
+  Votes cascade on auth-user deletion. No credits. **Deploy:** `supabase db
+  push` only; there is no function.
+  *This lane first built bug reporting too.* #140 merged its own Send feedback
+  (`app_feedback`, 00098, the `app-feedback` function) while this PR was in
+  review, so the report half was removed here, not merged beside it: one way to
+  report, and this PR adds only the vote.
+- **Explore.** Live search now selects `themes` and maps them to tags, so the
+  tag filter works on real results (it was `[]`); cards carry a genre pill on
+  the cover (labels a gradient placeholder too) and an accessibility hint.
+- **You.** The version line reads the build's version (it said v0.1.0 on a
+  1.0.0 app).
+- Fixed an existing Profile test that fired un-awaited presses and leaked an
+  `act()` scope into whatever test ran next.
+
+Reviewed by a Fable subagent, CodeAnt-style. Fixed from it: the shaping gap
+above (HIGH), anonymous writes, a missing tally shown as zero votes, a restore
+that could undo a return to Anywhere, a synopsis-length accessibility hint,
+the genre pill's contrast, dropped taps during a vote, the report fine print,
+and a version test that asserted nothing.
+
+CodeAnt round 1 on PR #144, fixed: generation and shaping now await the stored
+Story world, so a story in the first second of a session no longer goes out
+as Anywhere; the feedback sheet ignores a report or vote that resolves after it
+was closed (the report half has since been removed; see above); a duplicate vote reloads the counts instead of counting twice; the
+rate-limit copy says "the last 24 hours", not "tomorrow"; and the vote and
+rate-limit tests now assert the selection state and the rendered notice.
+Answered without change: read-only path cards are transparent by design in
+both themes, the reader's ⋮ menu has never offered PDF, and the chapter-end
+test reads the host view's resolved style (it fails with the fix reverted).
+
+Verification: `pnpm typecheck`, `pnpm lint` (0 errors), full Jest 138 suites /
+1483 tests, `expo-doctor` 18/18, `expo export --platform web`; Deno:
+`validation.test.ts` + `story-prompts.test.ts` 204 passed, the feature-vote
+PGlite suite passed and was shown to fail with its RLS and anonymous guard
+mutated.
+
+**Not addressed here, needs the feedback text itself:** public-profile/handle
+and credit-feedback changes, and reader continuity beyond the chapter-end
+palette -- the lane brief named the areas but this worktree carries no item
+list for them, and inventing product changes is out of bounds.
+
+---
+
 ## 2026-09-25 UTC — Android purchases need only the key, and the paywall meets the Subscriptions policy
 
 **Session:** Lane D of the Play launch push (`codex/paywall-play-ready`). Goal:

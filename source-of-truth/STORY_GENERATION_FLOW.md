@@ -627,6 +627,15 @@ mostly write one line and leave. A user faced with four boxes Katha already
 filled will fix the two that are wrong — and the resulting character is far
 richer than the one they would have written from empty.
 
+**Story world is a standing preference, not a Create field (2026-09-25).** The
+reader sets it once on You (*Story world*: Anywhere or one of ten regions) and
+every new story's request -- and the shaping call that pre-fills *Where and
+when* and the cast -- carries it as `cultural_setting`, omitted for
+Anywhere. Create does not ask it and shows no chip for it: it is the default
+for what the brief leaves open, and the brief -- idea, *Where and when*, the
+cast's names -- always overrides it. Contract and prompt wording:
+`STORY_PROMPT_SYSTEM.md` *Story world*.
+
 ---
 
 ## 7. See an example
