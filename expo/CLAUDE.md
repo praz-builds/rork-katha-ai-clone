@@ -56,13 +56,14 @@ PR #97 (2026-09-14). What is actually there:
 
 ## Production infrastructure (2026-08-23)
 
-- All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`.
-- API keys are read from `Constants.expoConfig.extra` (configured in app.json, populated via env vars or EAS secrets). Convert to `app.config.ts` to map `EXPO_PUBLIC_*` env vars before production.
-- Firebase requires `google-services.json` in `expo/` and `@react-native-firebase/app` in app.json plugins with `android.googleServicesFile` path set.
+- All SDK initialization runs in App.tsx useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`, `configureAudioSession()`.
+- API keys are read from `Constants.expoConfig.extra`. `app.json` is the static record; `app.config.ts` fills the build-time values from the environment (`SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `APP_ENV`) and derives `updates.url` from `extra.eas.projectId`. See *Release build config* in `../AGENTS.md`.
+- **There is no Firebase in the app** (removed 2026-09-25): the packages were unconfigured and pulled in the `AD_ID` permission. Push (P1) brings it back with `google-services.json` and the `@react-native-firebase/app` plugin.
+- `src/lib/audio-session.ts`: `configureAudioSession()` sets the one process-wide expo-av audio mode (background playback, iOS silent switch) from `App.tsx`'s start-up effect. Every `Audio.Sound` plays under it; do not set a second mode per screen.
+- `src/lib/photo-access.ts`: `ensurePhotoLibraryAccess()` is the only gate before `launchImageLibraryAsync`. Android returns true without asking: the system photo picker needs no permission, and the storage permissions it would ask for are blocked.
 - `src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
 - `src/lib/revenuecat.ts`: RevenueCat Purchases with offerings/packages, managed paywalls, and Customer Center.
 - `src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
-- `src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports. Use `AppEvents.*` helpers.
 - `src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
 - `src/i18n/`: i18next with EN/ES/PT. Not yet wired to components (follow-up task).
 - All SDKs gracefully no-op when API keys are empty.

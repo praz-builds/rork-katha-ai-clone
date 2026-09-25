@@ -1399,8 +1399,7 @@ The VS Code agent should inspect and update these areas together:
 - `expo/src/theme/theme.ts`
 - `expo/src/data/seed.ts`
 - onboarding preference capture in `expo/src/screens/KathaOnboardingFlowV2.jsx`
-- analytics events in `expo/src/lib/analytics.ts` and
-  `expo/src/lib/firebase-analytics.ts`
+- analytics events in `expo/src/lib/analytics.ts`
 - cover image docs in `backend/COVER_IMAGES.md`
 - strategic decision docs if taxonomy or adult gating changes
 

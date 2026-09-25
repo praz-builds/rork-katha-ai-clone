@@ -68,6 +68,94 @@ from ROADMAP § *Play Store go-live*.
 2. `supabase functions deploy library profile`.
 3. Read the bundles back: `library` contains `user_blocks`, `profile` contains
    `viewerBlocked`.
+## 2026-09-25 UTC — The Play Store pack: listing, graphics, Data Safety and content rating, drafted
+
+**Session:** Lane F of the go-live push. Nothing was submitted to Google and nothing was deployed.
+
+New `store/android/`: listing copy in EN / PT-BR / ES-419 (fastlane `supply` layout, checked by
+`check-listing.mjs`), the 512 icon and a 1024×500 feature graphic per language rendered from HTML
+by `graphics/render.mjs` (local fonts and Originals covers only; two runs give identical bytes),
+`data-safety.md` with a code citation on every answer, `content-rating.md` (IARC, 18+, no ads, App
+access paste text) and `screenshot-plan.md`.
+
+What the audit found that the roadmap row did not say:
+- **The OpenRouter contributor tier makes story text "shared"** under Play's definition while it
+  serves, because that provider trains on what it receives. Turn it off, or tick Shared.
+- PostHog derives a city from the event's IP unless the project discards IPs: that is Approximate
+  location unless the setting is flipped.
+- `identifyUser` is never called, so PostHog and Sentry never see the account id.
+- The reviewer account's credits are seeded by hand and it earns none; top it up before review.
+- "Block author" is already wired from the story ⋮ menus (`StoryActionsSheet`), which the P0 row
+  does not reflect. There is no in-app delete or unpublish for a story or a comment.
+
+Katha's own privacy policy, terms and a product landing page are drafted on
+`thetractionlabs-site` branch `katha-legal-v2` (PR praz-builds/thetractionlabs-site#1), not merged.
+## 2026-09-25 UTC — The release build config is done in code, and a release AAB compiles locally
+
+**Session:** Lane A of the Play launch push, branch `codex/android-build-config`.
+Every pre-push build-config row that needs no founder account.
+
+### What changed
+
+- `expo/app.json`: `version` 1.0.0 (`runtimeVersion` was already
+  `{ policy: appVersion }`); `ios.infoPlist.UIBackgroundModes: ["audio"]`;
+  `android.blockedPermissions` for `RECORD_AUDIO`, `CAMERA`,
+  `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`, `AD_ID`; the image picker
+  plugin gets `cameraPermission: false`, `microphonePermission: false`.
+- `expo/app.config.ts` (new): derives `updates.url` from `extra.eas.projectId`,
+  reads `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `APP_ENV` from the build
+  environment. `eas init` still writes to `app.json` (Expo's writer handles a
+  function config that spreads it).
+- `expo/eas.json`: `channel` on production / preview / development; preview sets
+  `SENTRY_DISABLE_AUTO_UPLOAD=true`.
+- Firebase removed: both packages, `src/lib/firebase-analytics.ts` (no callers),
+  two `allowBuilds` entries only its tree needed, and the doc references.
+- `src/lib/audio-session.ts`: one `Audio.setAudioModeAsync` at start-up
+  (background, silent switch, duck others). Every narration and music sound is an
+  expo-av `Audio.Sound`, and the mode is process-wide, so one call covers them.
+- `src/lib/photo-access.ts`: **the finding worth keeping.** Both photo pickers
+  called `requestMediaLibraryPermissionsAsync` first. On Android below 13 that
+  asks for READ/WRITE_EXTERNAL_STORAGE, so blocking them would have made every
+  avatar and character-reference pick on Android 12 and below end at "Photo
+  access needed". The system photo picker needs no permission, so Android now
+  goes straight to it; iOS still asks.
+
+### Proof: a local release build
+
+`npx expo prebuild --platform android --clean` then, in `expo/android`,
+`SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew bundleRelease` (JDK 17, all four ABIs,
+debug signing): **BUILD SUCCESSFUL in 32m 42s**, `app-release.aab` **93,903,148
+bytes** (four ABIs; Play serves per-device splits). versionName 1.0.0. The Hermes
+bundle inside contains the new audio-session code and no Firebase.
+
+`<uses-permission>` in the merged release manifest (the AAB's own proto manifest
+agrees): `INTERNET`, `ACCESS_NETWORK_STATE`, `POST_NOTIFICATIONS`, `VIBRATE`,
+`WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `MODIFY_AUDIO_SETTINGS`,
+`c2dm.permission.RECEIVE`, `USE_BIOMETRIC`, `USE_FINGERPRINT`,
+`com.android.vending.BILLING`, `BIND_GET_INSTALL_REFERRER_SERVICE`,
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, `READ_APP_BADGE` and the launcher
+badge permissions (Samsung, HTC, Sony, Huawei, Oppo, etc.). **None of
+`RECORD_AUDIO`, `CAMERA`, `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`,
+`AD_ID` is present.** None of the remaining ones is a dangerous
+permission except `POST_NOTIFICATIONS`, which the app asks for on purpose.
+
+A release build with no `SENTRY_AUTH_TOKEN` fails at the source-map upload,
+which is why the local build needed `SENTRY_DISABLE_AUTO_UPLOAD`. The founder's
+production build needs the token as an EAS secret.
+
+### Verification
+
+`pnpm typecheck` clean; `pnpm lint` 0 errors (32 pre-existing warnings, none in
+changed files); `expo-doctor` 18/18; full jest 136 suites / 1466 tests.
+Regression checks: with the Android branch of `ensurePhotoLibraryAccess` and
+the `App.tsx` call removed, `photo-access.test.ts` (2) and `app-root.test.tsx`
+(1) fail; restored, they pass.
+
+### Left for the founder
+
+`eas init`; Sentry project, then `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT`
+/ `SENTRY_AUTH_TOKEN` as EAS environment variables; `eas build -p android
+--profile production`; the lock-screen audio check on a real phone.
 
 ---
 

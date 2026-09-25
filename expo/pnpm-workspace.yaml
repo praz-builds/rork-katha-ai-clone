@@ -7,12 +7,10 @@
 # as each value, which is not a boolean and approves nothing, so the exit code
 # survives. That stub was sitting in this file and is why CI failed at install.
 #
-# All four are build-time only: native bindings and postinstall codegen. None of
+# Both are build-time only: native bindings and postinstall codegen. None of
 # them ships code into the app bundle.
 allowBuilds:
-  '@firebase/util': true
   '@sentry/cli': true
-  protobufjs: true
   unrs-resolver: true
 overrides:
   "@expo/plist>@xmldom/xmldom": 0.8.15

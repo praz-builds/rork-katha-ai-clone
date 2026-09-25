@@ -229,8 +229,8 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
-| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets | Not yet wired |
-| **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend) + `sentryDsn` in `expo/app.json` (client) | Not yet set |
+| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets. The RNFB packages were removed from the app on 2026-09-25 and come back with push | Not yet wired |
+| **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend); client DSN, org and project from EAS env vars through `expo/app.config.ts` (see *Release build config*) | Not yet set |
 | **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
 
 ### LLM Fallback Chain
@@ -1218,12 +1218,11 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 
 ### Production SDK Initialization
 
-All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`. All SDKs gracefully no-op when API keys are empty.
+All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`, `configureAudioSession()`. All SDKs gracefully no-op when API keys are empty.
 
 - `expo/src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
 - `expo/src/lib/revenuecat.ts`: RevenueCat Purchases. Use offerings/packages, managed paywalls, and Customer Center.
 - `expo/src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
-- `expo/src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports.
 - `expo/src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
 
 ### Design System
@@ -1231,7 +1230,7 @@ All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog
 - Fonts: `BricolageGrotesque`, `HankenGrotesk`, `Baloo2` (bundled locally).
 - Assets: `expo/assets/covers` and `expo/assets/avatars`. Do not recreate `assets/images` (removed as duplicate).
 - i18n: `expo/src/i18n/` -- i18next with EN/ES/PT. Not yet wired to components.
-- API keys via `Constants.expoConfig.extra` (app.json); convert to `app.config.ts` for `EXPO_PUBLIC_*` env vars before production.
+- API keys via `Constants.expoConfig.extra`: `app.json` is the static record and `expo/app.config.ts` fills build-time values from the environment.
 
 ## Build & Deploy
 
@@ -1254,10 +1253,53 @@ supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-gene
 cd expo && pnpm install                        # Install dependencies
 pnpm typecheck                                 # TypeScript check
 pnpm exec expo-doctor                          # Expo health check
-pnpm approve-builds                            # Needed for @firebase/util, @sentry/cli, protobufjs
+pnpm approve-builds                            # Build scripts are allow-listed in pnpm-workspace.yaml
 ```
 
 Node v22.23.0 for typecheck (v24 has tsc shim issues).
+
+### Release build config
+
+What the store binary bakes in, and so cannot be changed by an OTA update.
+`expo/src/__tests__/release-config.test.ts` pins all of it.
+
+- **Version and runtime.** `expo.version` is the versionName users see (1.0.0 at
+  launch); `versionCode` is EAS's (`appVersionSource: remote`, `autoIncrement`).
+  `runtimeVersion` is `{ "policy": "appVersion" }`: an OTA reaches only binaries
+  of the same `version`, so **bump `version` for any native change** (a new
+  native module, a permission, a plugin option) and never for a JS-only one.
+- **Two values `eas init` fills, one of them for you.** `eas init` writes
+  `extra.eas.projectId` into `app.json` (Expo edits `app.json` when the
+  function-style `app.config.ts` spreads it, then re-reads to check). The second,
+  `updates.url`, stays the placeholder `https://u.expo.dev/UPDATE_PROJECT_ID` in
+  `app.json` and `app.config.ts` derives `https://u.expo.dev/<projectId>` from the
+  first; a real URL written there by `eas update:configure` is left alone. The
+  `channel` comes from the build profile in `eas.json` (`production`, `preview`,
+  `development`), and `eas update --channel production` targets it.
+- **Sentry is environment, not files.** Set as EAS environment variables:
+  `SENTRY_DSN` (read into `extra.sentryDsn`), `SENTRY_ORG` and `SENTRY_PROJECT`
+  (written into the `@sentry/react-native/expo` plugin), and the secret
+  `SENTRY_AUTH_TOKEN`, which only the Sentry Gradle/Xcode step reads and which
+  must never be put in the plugin config (the plugin config is packaged). **A
+  release build without `SENTRY_AUTH_TOKEN` fails at the source-map upload**;
+  the `preview` profile sets `SENTRY_DISABLE_AUTO_UPLOAD=true`, and a local
+  `./gradlew bundleRelease` needs the same.
+- **Android permissions are an allow-list in effect.** `android.blockedPermissions`
+  removes `RECORD_AUDIO`, `CAMERA`, `SYSTEM_ALERT_WINDOW`,
+  `READ/WRITE_EXTERNAL_STORAGE` and `AD_ID`, which libraries and the prebuild
+  template add and the app never uses. A new library that needs one of them has
+  to be justified against the Data Safety form first. **Do not ask for photo
+  permission on Android**: `requestMediaLibraryPermissionsAsync` asks for the
+  blocked storage permissions below Android 13 and is always refused; the photo
+  picker needs none (`ensurePhotoLibraryAccess` in `expo/src/lib/photo-access.ts`).
+- **Background audio** is `UIBackgroundModes: ["audio"]` plus one
+  `Audio.setAudioModeAsync` at start-up (`expo/src/lib/audio-session.ts`). It is
+  invisible on the web preview; check it on a device with the screen locked.
+- **Checking the manifest without EAS:** `npx expo prebuild --platform android
+  --clean` (the generated `expo/android/` is git-ignored), then
+  `SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew bundleRelease` in `expo/android`,
+  and read the `<uses-permission>` lines of
+  `app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml`.
 
 ## Build Phases (Roadmap)
 

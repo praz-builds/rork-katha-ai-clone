@@ -25,6 +25,7 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
+import { configureAudioSession } from "@/lib/audio-session";
 import { Alert, Platform, View } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
@@ -452,6 +453,9 @@ export default function App() {
     initPostHog();
     initRevenueCat();
     setupAndroidChannel();
+    // Before any narration or genre music can be created: the mode is
+    // process-wide, and without it both stop when the phone locks.
+    void configureAudioSession();
   }, []);
 
   useEffect(() => {

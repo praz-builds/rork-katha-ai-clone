@@ -16,6 +16,8 @@ SESSION_HANDOFF.md
 *.jks
 *.keystore
 google-services.json
+# Play Console service-account key for `eas submit` (expo/eas.json submit.production)
+google-service-account.json
 GoogleService-Info.plist
 
 # Agent working artifacts (research memos, design specs) — local only
