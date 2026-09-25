@@ -29,7 +29,11 @@ interface Recorded {
  */
 async function get(
   query: string,
-  options: { authenticated: boolean } = { authenticated: true },
+  options: {
+    authenticated: boolean;
+    /** The caller's `user_blocks` rows, or "error" for a read that fails. */
+    blocked?: string[] | "error";
+  } = { authenticated: true },
 ): Promise<{ status: number; requests: Recorded[] }> {
   const requests: Recorded[] = [];
   const originalFetch = globalThis.fetch;
@@ -57,6 +61,21 @@ async function get(
           user_metadata: {},
           created_at: new Date().toISOString(),
         }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (request.url.includes("/rest/v1/user_blocks")) {
+      if (options.blocked === "error") {
+        return new Response(
+          JSON.stringify({ code: "42501", message: "permission denied" }),
+          { status: 403, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify(
+          (options.blocked ?? []).map((id) => ({ blocked_id: id })),
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -152,6 +171,55 @@ Deno.test("scope=public is accepted and behaves as the default", async () => {
   assert(query);
   assert(query.includes("is_public.eq.true"));
   assert(!query.includes("author_id=eq."));
+});
+
+// ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+
+const BLOCKED_AUTHOR = "22222222-2222-4222-8222-222222222222";
+
+Deno.test("a signed-in browse leaves out every author the caller blocked", async () => {
+  const { status, requests } = await get("?page=1&limit=20", {
+    authenticated: true,
+    blocked: [BLOCKED_AUTHOR],
+  });
+  assertEquals(status, 200);
+  const query = storiesQuery(requests);
+  assert(query);
+  assert(
+    decodeURIComponent(query).includes(`author_id=not.in.(${BLOCKED_AUTHOR})`),
+    `a blocked author's stories were still requested: ${query}`,
+  );
+  // The block list was read with the caller's own filter, not everyone's.
+  const blockRead = requests.find((r) => r.url.includes("/rest/v1/user_blocks"));
+  assert(blockRead);
+  assert(blockRead.url.includes(`blocker_id=eq.${USER_ID}`));
+});
+
+Deno.test("a block list that cannot be read fails the browse, not the block", async () => {
+  const { status, requests } = await get("?page=1&limit=20", {
+    authenticated: true,
+    blocked: "error",
+  });
+  assertEquals(status, 500);
+  assertEquals(storiesQuery(requests), undefined);
+});
+
+Deno.test("a writer's own shelf is not filtered by their block list", async () => {
+  const { requests } = await get("?scope=mine", {
+    authenticated: true,
+    blocked: [BLOCKED_AUTHOR],
+  });
+  const query = storiesQuery(requests);
+  assert(query);
+  assert(!query.includes("author_id=not.in."));
+  assert(!requests.some((r) => r.url.includes("/rest/v1/user_blocks")));
+});
+
+Deno.test("a signed-out browse has no block list to read", async () => {
+  const { requests } = await get("?page=1&limit=20", { authenticated: false });
+  assert(!requests.some((r) => r.url.includes("/rest/v1/user_blocks")));
 });
 
 // ---------------------------------------------------------------------------

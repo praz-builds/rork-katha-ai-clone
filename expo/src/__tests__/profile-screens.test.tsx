@@ -51,6 +51,11 @@ import ProfileScreen, { PRIVACY_URL, TERMS_URL } from "@/screens/ProfileScreen";
 import FollowButton from "@/components/profile/FollowButton";
 import { ownProfile } from "@/test-support/profileFixtures";
 import { resetProfileStoreForTests } from "@/lib/profile-store";
+import {
+  clearBlockedAuthors,
+  getBlockedAuthorIds,
+  rememberBlocked,
+} from "@/lib/blocks";
 
 const AUTHOR = "11111111-1111-4111-8111-111111111111";
 
@@ -107,6 +112,7 @@ beforeEach(() => {
   mockFetchOwnProfile.mockResolvedValue(null);
   // The profile is held app-wide now; each test starts from a cold boot.
   resetProfileStoreForTests();
+  clearBlockedAuthors();
 });
 
 afterEach(cleanup);
@@ -415,7 +421,64 @@ const profileProps = () => ({
   onDeleted: jest.fn(),
 });
 
+describe("an author the reader has blocked", () => {
+  it("shows none of their work, says why, and offers Unblock", async () => {
+    mockFetchPublicProfile.mockResolvedValue({
+      profile: publicProfile,
+      stories: [publicStory],
+    });
+    mockFetchProfileComments.mockResolvedValue([
+      {
+        id: "c1",
+        storyId: "s1",
+        storyTitle: "The Night Cartographer",
+        chapterNumber: 2,
+        content: "A comment by the blocked writer.",
+        score: 0,
+        createdAt: "2026-09-01T00:00:00Z",
+      },
+    ]);
+    rememberBlocked(AUTHOR);
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        canEngage
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("author-blocked"));
+    expect(view.getByText("You blocked this writer")).toBeTruthy();
+    expect(view.queryByText("A Public Story")).toBeNull();
+    expect(view.queryByText("A comment by the blocked writer.")).toBeNull();
+    expect(view.queryByText("Followers")).toBeNull();
+
+    // Unblocking puts the page back without leaving it.
+    await act(async () => {
+      fireEvent.press(view.getByTestId("author-unblock"));
+    });
+    await waitFor(() => view.getByText("A Public Story"));
+    expect(view.queryByTestId("author-blocked")).toBeNull();
+    expect(getBlockedAuthorIds().has(AUTHOR)).toBe(false);
+  });
+});
+
 describe("the reader's own profile", () => {
+  it("lists blocked accounts behind their own row", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+
+    await waitFor(() => view.getByTestId("profile-blocked"));
+    fireEvent.press(view.getByTestId("profile-blocked"));
+    await waitFor(() => view.getByTestId("blocked-accounts-sheet"));
+    // No backend in this suite, so the list is honestly empty.
+    await waitFor(() => view.getByTestId("blocked-accounts-empty"));
+    expect(view.getByText("You haven't blocked anyone.")).toBeTruthy();
+  });
+
   // D1: onboarding forces email before Home, so there is nobody anonymous to
   // show a "sign in to keep this" card to. The card, its button and the
   // `isAnonymous`/`onSignIn` props that drove it are all gone.

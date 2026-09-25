@@ -62,12 +62,39 @@
       "readingPrefsDesc": "Tema, tamanho da fonte, idioma",
       "kathaPlus": "Katha Plus",
       "kathaPlusDesc": "Assinatura, vozes, sem anuncios",
-      "parentalControls": "Controle dos pais",
-      "parentalControlsDesc": "Modo infantil e PIN de acesso",
       "feedback": "Feedback",
       "feedbackDesc": "Comentarios, avaliacao, suporte"
     },
-    "legal": "Politica de Privacidade - Termos de Servico - v{{version}}"
+    "legal": "Politica de Privacidade - Termos de Servico - v{{version}}",
+    "music": {
+      "title": "M\u00fasica de fundo",
+      "desc": "Toca baixinho enquanto voc\u00ea l\u00ea",
+      "toggle": "M\u00fasica de fundo durante a leitura"
+    },
+    "feedbackSheet": {
+      "row": "Enviar feedback",
+      "rowDesc": "Conte o que funciona e o que n\u00e3o funciona",
+      "title": "Enviar feedback",
+      "lead": "Algo quebrado, uma ideia, uma hist\u00f3ria que voc\u00ea quer ler: conte com suas palavras.",
+      "about": "Sobre",
+      "categories": {
+        "bug": "Algo quebrou",
+        "idea": "Uma ideia",
+        "story": "Uma hist\u00f3ria",
+        "other": "Outra coisa"
+      },
+      "placeholder": "Conte o que aconteceu, ou o que voc\u00ea gostaria que o Katha fizesse",
+      "messageLabel": "Sua mensagem",
+      "counter": "{{length}} / {{max}}",
+      "send": "Enviar",
+      "sending": "Enviando",
+      "failed": "N\u00e3o foi enviado. Sua mensagem continua aqui; verifique sua conex\u00e3o e tente de novo.",
+      "rateLimited": "Voc\u00ea enviou muitos feedbacks recentemente. Sua mensagem continua aqui; tente de novo daqui a pouco.",
+      "sentTitle": "Obrigado",
+      "sentBody": "Sua mensagem chegou at\u00e9 n\u00f3s.",
+      "done": "Concluir",
+      "close": "Fechar"
+    }
   },
   "reader": {
     "narration": "Narracao",
@@ -80,7 +107,7 @@
   "credits": {
     "title": "{{count}} cr\u00e9ditos dispon\u00edveis",
     "heroTitle": "Cr\u00e9ditos criam hist\u00f3rias e cap\u00edtulos",
-    "heroDescription": "Compras e assinaturas s\u00e3o sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
+    "heroDescription": "Compras e assinaturas são sincronizadas com Supabase e RevenueCat em builds de desenvolvimento nativos.",
     "history": "Hist\u00f3rico"
   },
   "create": {
@@ -221,7 +248,7 @@
     "fantasy": "Fantasia",
     "historical": "Hist\u00f3rico",
     "horror": "Terror",
-    "kids": "Infantil",
+    "kids": "Todas as idades",
     "lgbtq": "LGBTQ+",
     "motivational": "Motivacional",
     "mystery": "Misterio",
@@ -240,15 +267,34 @@
     "moreDramatic": "Mais dramatico",
     "simpler": "Mais simples"
   },
+  "blocks": {
+    "confirmTitle": "Bloquear {{name}}?",
+    "confirmBody": "Você não verá mais as histórias nem os comentários de {{name}}. Dá para desbloquear em Perfil, em Contas bloqueadas.",
+    "confirm": "Bloquear",
+    "confirming": "Bloqueando...",
+    "confirmA11y": "Confirmar bloqueio de {{name}}",
+    "cancel": "Cancelar",
+    "failed": "O bloqueio não foi salvo. Verifique sua conexão e tente de novo.",
+    "menuItem": "Bloquear {{name}}",
+    "listTitle": "Contas bloqueadas",
+    "listEmpty": "Você não bloqueou ninguém.",
+    "listError": "Não foi possível carregar suas contas bloqueadas.",
+    "retry": "Tentar de novo",
+    "unblock": "Desbloquear",
+    "unblockA11y": "Desbloquear {{name}}",
+    "unblockFailed": "Não foi salvo. Tente de novo.",
+    "authorBlockedTitle": "Você bloqueou este escritor",
+    "authorBlockedBody": "As histórias e os comentários dessa pessoa ficam ocultos para você."
+  },
   "paywall": {
     "renews": {
-      "weekly": "{{price}} por semana, renova\u00e7\u00e3o autom\u00e1tica at\u00e9 voc\u00ea cancelar.",
-      "yearly": "{{price}} por ano, renova\u00e7\u00e3o autom\u00e1tica at\u00e9 voc\u00ea cancelar."
+      "weekly": "{{price}} por semana, renovação automática até você cancelar.",
+      "yearly": "{{price}} por ano, renovação automática até você cancelar."
     },
     "cancel": {
       "android": "Cancele quando quiser no Google Play.",
       "ios": "Cancele quando quiser nos ajustes da App Store.",
-      "other": "Cancele quando quiser na loja em que voc\u00ea assinou."
+      "other": "Cancele quando quiser na loja em que você assinou."
     },
     "restore": "Restaurar compras",
     "manage": "Gerenciar assinaturas",
@@ -256,8 +302,19 @@
     "privacy": "Privacidade",
     "restored": "Seu plano foi restaurado.",
     "nothingToRestore": "Nenhum plano ativo nesta conta da loja.",
-    "restoreFailed": "N\u00e3o foi poss\u00edvel restaurar agora. Tente de novo.",
-    "webOnly": "Compras e restaura\u00e7\u00f5es funcionam no app Katha.",
-    "unavailable": "As assinaturas ainda n\u00e3o est\u00e3o dispon\u00edveis nesta vers\u00e3o do app. Ler continua gr\u00e1tis."
+    "restoreFailed": "Não foi possível restaurar agora. Tente de novo.",
+    "webOnly": "Compras e restaurações funcionam no app Katha.",
+    "unavailable": "As assinaturas ainda não estão disponíveis nesta versão do app. Ler continua grátis.",
+    "storeOffline": "Não foi possível acessar a loja. Verifique sua conexão e tente de novo.",
+    "manageInStore": {
+      "android": "Gerenciar ou cancelar no Google Play",
+      "ios": "Gerenciar ou cancelar na App Store"
+    },
+    "packs": {
+      "webOnly": "As compras funcionam no app",
+      "storeUnavailable": "As compras ainda não estão disponíveis nesta versão",
+      "storeOffline": "Não foi possível acessar a loja agora",
+      "packUnavailable": "Este pacote não está disponível agora"
+    }
   }
 }

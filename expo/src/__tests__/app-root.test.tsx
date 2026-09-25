@@ -10,6 +10,7 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 
 const mockMountedProvider = jest.fn();
+const mockSetAudioMode = jest.fn((..._mode: unknown[]) => Promise.resolve());
 
 jest.mock("react-native-safe-area-context", () => {
   const actual = jest.requireActual("react-native-safe-area-context");
@@ -37,7 +38,9 @@ jest.mock("expo-secure-store", () => ({
 jest.mock("expo-font", () => ({ loadAsync: () => Promise.resolve() }));
 jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
-jest.mock("expo-av", () => ({ Audio: { Sound: class {} } }));
+jest.mock("expo-av", () => ({
+  Audio: { Sound: class {}, setAudioModeAsync: (...args: unknown[]) => mockSetAudioMode(...args) },
+}));
 jest.mock("@/lib/analytics", () => ({
   initPostHog: jest.fn(),
   initSentry: jest.fn(),
@@ -87,4 +90,13 @@ it("mounts a SafeAreaProvider above every screen", async () => {
   // the assertion is that App mounted it at all. Without it, every screen
   // reading insets renders blank with nothing in the Metro log.
   expect(mockMountedProvider).toHaveBeenCalled();
+});
+
+it("sets the background audio mode at start-up, before any sound exists", async () => {
+  await render(<App />);
+  // Without this, narration and genre music stop the moment the phone locks.
+  // `audio-session.test.ts` pins the mode itself; this pins that App sets it.
+  expect(mockSetAudioMode).toHaveBeenCalledWith(
+    expect.objectContaining({ staysActiveInBackground: true, playsInSilentModeIOS: true }),
+  );
 });

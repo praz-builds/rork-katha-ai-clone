@@ -62,12 +62,39 @@
       "readingPrefsDesc": "Theme, font size, language",
       "kathaPlus": "Katha Plus",
       "kathaPlusDesc": "Subscription, voices, ad-free",
-      "parentalControls": "Parental controls",
-      "parentalControlsDesc": "Kids mode and PIN gate",
       "feedback": "Feedback",
       "feedbackDesc": "Comments, rating, support"
     },
-    "legal": "Privacy Policy - Terms of Service - v{{version}}"
+    "legal": "Privacy Policy - Terms of Service - v{{version}}",
+    "music": {
+      "title": "Background music",
+      "desc": "Plays softly while you read",
+      "toggle": "Background music while reading"
+    },
+    "feedbackSheet": {
+      "row": "Send feedback",
+      "rowDesc": "Tell us what works and what does not",
+      "title": "Send feedback",
+      "lead": "Something broken, an idea, a story you want to read: tell us in your own words.",
+      "about": "About",
+      "categories": {
+        "bug": "Something broke",
+        "idea": "An idea",
+        "story": "A story",
+        "other": "Something else"
+      },
+      "placeholder": "Tell us what happened, or what you wish Katha did",
+      "messageLabel": "Your message",
+      "counter": "{{length}} / {{max}}",
+      "send": "Send",
+      "sending": "Sending",
+      "failed": "That did not send. Your message is still here, so check your connection and try again.",
+      "rateLimited": "You have sent a lot of feedback recently. Your message is still here; try again in a little while.",
+      "sentTitle": "Thank you",
+      "sentBody": "Your message reached us.",
+      "done": "Done",
+      "close": "Close"
+    }
   },
   "reader": {
     "narration": "Narration",
@@ -221,7 +248,7 @@
     "fantasy": "Fantasy",
     "historical": "Historical",
     "horror": "Horror",
-    "kids": "Kids",
+    "kids": "All-ages",
     "lgbtq": "LGBTQ+",
     "motivational": "Motivational",
     "mystery": "Mystery",
@@ -239,6 +266,25 @@
     "morePoetic": "More poetic",
     "moreDramatic": "More dramatic",
     "simpler": "Simpler"
+  },
+  "blocks": {
+    "confirmTitle": "Block {{name}}?",
+    "confirmBody": "You won't see {{name}}'s stories or comments anymore. You can unblock them from Profile, under Blocked accounts.",
+    "confirm": "Block",
+    "confirming": "Blocking...",
+    "confirmA11y": "Confirm block {{name}}",
+    "cancel": "Cancel",
+    "failed": "That block did not save. Check your connection and try again.",
+    "menuItem": "Block {{name}}",
+    "listTitle": "Blocked accounts",
+    "listEmpty": "You haven't blocked anyone.",
+    "listError": "Your blocked accounts could not be loaded.",
+    "retry": "Try again",
+    "unblock": "Unblock",
+    "unblockA11y": "Unblock {{name}}",
+    "unblockFailed": "That did not save. Try again.",
+    "authorBlockedTitle": "You blocked this writer",
+    "authorBlockedBody": "Their stories and comments are hidden from you."
   },
   "paywall": {
     "renews": {
@@ -258,6 +304,17 @@
     "nothingToRestore": "No active plan on this store account.",
     "restoreFailed": "Couldn't restore right now. Try again.",
     "webOnly": "Purchases and restores work in the Katha app.",
-    "unavailable": "Subscriptions aren't available in this version of the app yet. Reading stays free."
+    "unavailable": "Subscriptions aren't available in this version of the app yet. Reading stays free.",
+    "storeOffline": "Couldn't reach the store. Check your connection and try again.",
+    "manageInStore": {
+      "android": "Manage or cancel in Google Play",
+      "ios": "Manage or cancel in the App Store"
+    },
+    "packs": {
+      "webOnly": "Purchases work in the app",
+      "storeUnavailable": "Purchases aren't available in this version yet",
+      "storeOffline": "Can't reach the store right now",
+      "packUnavailable": "This pack isn't available right now"
+    }
   }
 }

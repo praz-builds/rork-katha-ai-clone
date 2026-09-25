@@ -55,7 +55,7 @@ export const voices: Voice[] = [
     gender: 'male',
     description: 'Bright and animated',
     personality: 'Lively, expressive, full of character',
-    bestFor: ['Comedy', 'Kids', 'Fantasy', 'Adventure'],
+    bestFor: ['Comedy', 'All-ages', 'Fantasy', 'Adventure'],
     previewText: 'The dragon sneezed, and three hundred fireflies scattered into the night.',
   },
   {

@@ -306,6 +306,12 @@ Strategic placement across the app:
 
 ## 10. Kids mode & parental controls
 
+> **Superseded.** None of this section shipped. The product has a per-draft
+> Create switch labelled **All-ages** (`audienceMode: "kids"` internally), no
+> Settings entry, no PIN and no parental controls, and the Play listing
+> targets 18+ only. `source-of-truth/STORY_GENERATION_FLOW.md` §3 is the
+> record.
+
 - **Kids mode is off by default.**
 - Enabled from Settings → Parental Controls → PIN-gated.
 - When on: hides Erotica genre entirely, hides content with adult LLM-generated themes (violence, substance, sexual), locks the create wizard's genre picker to a safe subset, disables comments (or restricts to moderated), and disables social share.

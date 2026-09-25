@@ -40,6 +40,7 @@ import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
 import type { DropdownOption } from "@/components/create/Dropdown";
 import DirectionStep from "@/components/create/DirectionStep";
 import { GENRE_EMOJI } from "@/lib/genre-content";
+import { ensurePhotoLibraryAccess } from "@/lib/photo-access";
 import * as storyApi from "@/lib/api";
 import {
   useCharacterImageBalance,
@@ -181,8 +182,7 @@ const MAX_REFERENCE_IMAGE_CHARS = 6 * 1024 * 1024;
  * portrait request and is dropped as soon as it has been used.
  */
 export async function pickReferenceImage(): Promise<PickedReferenceImage | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
+  if (!(await ensurePhotoLibraryAccess())) {
     Alert.alert(
       "Photo access needed",
       "Katha needs permission to open your photos so you can attach a reference.",
@@ -422,7 +422,7 @@ const LANGUAGE_OPTIONS: DropdownOption<CreationLanguage>[] = [
  *
  * The four toggles on this screen used React Native's `Switch` with a spread
  * of colour props. `Switch` paints its thumb and its off-state fill from the
- * PLATFORM palette, so the Kids Mode row shipped an orange track under an iOS
+ * PLATFORM palette, so the All-ages row shipped an orange track under an iOS
  * GREEN thumb -- a colour that appears in no token file in this repository.
  * They are all `@/components/Toggle` now, which draws every pixel from
  * `@/theme` and has no platform fallback to fall back to.
@@ -1020,13 +1020,13 @@ function StorySetupScreen({
       </View>
       <View style={styles.parentControls}>
         <View style={styles.kidsMode}>
-          <Toggle value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} accessibilityLabel="Kids Mode" accessibilityHint="Keeps the story safe for children and limits the genres offered." />
+          <Toggle value={draft.audienceMode === "kids"} onValueChange={(enabled) => onAudience(enabled ? "kids" : "adult")} accessibilityLabel="All-ages" accessibilityHint="Keeps the story suitable for every age and limits the genres offered." />
           {/* No icon. Sparkles means credits in this app and nothing else
               (DESIGN.md, "Icons"), and a switch that keeps a story safe for
               children spends none. The switch and the words are the whole
               control. */}
           <View style={styles.kidsModeLabel}>
-            <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>Kids Mode</Text>
+            <Text style={[styles.kidsModeText, draft.audienceMode === "kids" && styles.kidsModeTextActive]}>All-ages</Text>
           </View>
         </View>
         <Dropdown

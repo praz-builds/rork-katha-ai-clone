@@ -7,10 +7,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { ChevronUp, Flag, MessageCircle, MoreHorizontal } from "lucide-react-native";
+import { Ban, ChevronUp, Flag, MessageCircle, MoreHorizontal } from "lucide-react-native";
 
 import { colors, fonts, radius, shadows, spacing, type } from "@/theme";
 import { Button } from "@/components/Button";
+import BlockConfirm, { BLOCK_FAILED_MESSAGE } from "@/components/moderation/BlockConfirm";
 import type { CommentNode, ReportReason } from "./types";
 import { REPORT_REASONS, countDescendants, displayScore } from "./types";
 
@@ -102,6 +103,18 @@ export interface CommentRowProps {
     reason: ReportReason,
     details: string,
   ) => Promise<void> | void;
+  /**
+   * Block the person who wrote a comment. Resolves once the block is saved or
+   * was not attempted (a guest is sent to sign in instead), and rejects when
+   * the write failed -- the menu then says so and stays open. Absent hides
+   * the row.
+   */
+  onBlock?: (authorId: string) => Promise<void>;
+  /**
+   * The viewer's own id. Their own comments do not offer Block: you cannot
+   * block yourself, and the server would refuse it.
+   */
+  viewerId?: string | null;
 }
 
 export default function CommentRow({
@@ -118,6 +131,8 @@ export default function CommentRow({
   onToggleCollapse,
   onAuthorPress,
   onReport,
+  onBlock,
+  viewerId,
 }: CommentRowProps) {
   const [threadExpanded, setThreadExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -133,6 +148,7 @@ export default function CommentRow({
   const palette = COMMENT_PALETTES[tone];
   const authorId = node.authorId;
   const canOpenAuthor = Boolean(onAuthorPress && authorId);
+  const canBlock = Boolean(onBlock && authorId && authorId !== viewerId);
 
   const openAuthor = () => {
     if (onAuthorPress && authorId) onAuthorPress(authorId);
@@ -364,6 +380,8 @@ export default function CommentRow({
                       onToggleCollapse={onToggleCollapse}
                       onAuthorPress={onAuthorPress}
                       onReport={onReport}
+                      onBlock={onBlock}
+                      viewerId={viewerId}
                     />
                   ))
                 )
@@ -381,6 +399,9 @@ export default function CommentRow({
           setMenuOpen(false);
           setReportOpen(true);
         }}
+        onBlock={canBlock && onBlock && authorId
+          ? () => onBlock(authorId)
+          : undefined}
       />
 
       <ReportCommentSheet
@@ -394,18 +415,55 @@ export default function CommentRow({
   );
 }
 
-/** The three-dot menu. One item today; it is a menu so Report is never one tap away. */
+/**
+ * The three-dot menu: Report, and Block the person who wrote it.
+ *
+ * It is a menu so neither is one tap away. Block confirms inside the sheet
+ * before anything is written, with the same confirmation the story's ⋮ sheet
+ * uses (`BlockConfirm`).
+ */
 function CommentOverflowMenu({
   visible,
   authorName,
   onClose,
   onReport,
+  onBlock,
 }: {
   visible: boolean;
   authorName: string;
   onClose: () => void;
   onReport: () => void;
+  /** Absent for the viewer's own comment, or a comment with no author id. */
+  onBlock?: () => Promise<void>;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Every reopen starts at the menu, never on a half-finished confirmation.
+  useEffect(() => {
+    if (visible) {
+      setConfirming(false);
+      setBusy(false);
+      setError(null);
+    }
+  }, [visible]);
+
+  const confirmBlock = async () => {
+    if (!onBlock || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onBlock();
+      onClose();
+    } catch {
+      // The block did not save, so nothing was hidden. Say so and stay here.
+      setError(BLOCK_FAILED_MESSAGE);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={sheetStyles.root}>
@@ -416,26 +474,55 @@ function CommentOverflowMenu({
           accessibilityLabel="Dismiss menu"
         />
         <View style={sheetStyles.sheet}>
-          <Text style={sheetStyles.title} numberOfLines={1}>
-            {authorName}&apos;s comment
-          </Text>
-          <Pressable
-            onPress={onReport}
-            style={sheetStyles.optionRow}
-            accessibilityRole="button"
-            accessibilityLabel="Report comment"
-          >
-            <Flag size={18} color={colors.strong} />
-            <Text style={sheetStyles.optionLabel}>Report</Text>
-          </Pressable>
-          <Pressable
-            onPress={onClose}
-            style={sheetStyles.cancelButton}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-          >
-            <Text style={sheetStyles.cancelLabel}>Cancel</Text>
-          </Pressable>
+          {confirming ? (
+            <BlockConfirm
+              name={authorName}
+              busy={busy}
+              error={error}
+              onConfirm={() => void confirmBlock()}
+              onCancel={() => setConfirming(false)}
+            />
+          ) : (
+            <>
+              <Text style={sheetStyles.title} numberOfLines={1}>
+                {authorName}&apos;s comment
+              </Text>
+              <Pressable
+                onPress={onReport}
+                style={sheetStyles.optionRow}
+                accessibilityRole="button"
+                accessibilityLabel="Report comment"
+              >
+                <Flag size={18} color={colors.strong} />
+                <Text style={sheetStyles.optionLabel}>Report</Text>
+              </Pressable>
+              {onBlock ? (
+                <Pressable
+                  onPress={() => setConfirming(true)}
+                  style={sheetStyles.optionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Block ${authorName}`}
+                  testID="comment-menu-block"
+                >
+                  <Ban size={18} color={colors.premium} />
+                  <Text
+                    style={[sheetStyles.optionLabel, sheetStyles.destructiveLabel]}
+                    numberOfLines={1}
+                  >
+                    Block {authorName}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={onClose}
+                style={sheetStyles.cancelButton}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
+                <Text style={sheetStyles.cancelLabel}>Cancel</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -793,9 +880,13 @@ const sheetStyles = StyleSheet.create({
   },
   optionLabel: {
     ...type.body,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: "600",
     color: colors.ink,
+  },
+  destructiveLabel: {
+    color: colors.premium,
   },
   reasonRow: {
     flexDirection: "row",

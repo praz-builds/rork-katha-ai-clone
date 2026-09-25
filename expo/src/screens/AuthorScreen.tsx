@@ -14,9 +14,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";
 import { formatNumber, StoryCard } from "@/components/KathaPrimitives";
+import { Button } from "@/components/Button";
 import FollowButton from "@/components/profile/FollowButton";
 import ActivityGrid from "@/components/profile/ActivityGrid";
 import { authorFor } from "@/data/seed";
+import { unblockAuthorEverywhere, useBlockedAuthorIds } from "@/lib/blocks";
 import {
   fetchActivityCalendar,
   fetchProfileComments,
@@ -51,6 +53,11 @@ import { sharedStyles } from "@/screens/shared";
  * A visitor cannot tell from this page whether the author has drafts at all.
  * That is the intended property. "3 published, 11 total" would be flattering
  * and would also disclose the existence of eight private stories.
+ *
+ * SOMEBODY THE READER BLOCKED. The page still opens -- a name has to lead
+ * somewhere -- but it shows none of their work, says why, and offers Unblock
+ * right there. The server agrees: `profile`'s public read returns no stories
+ * for a viewer who blocked the author.
  *
  * SEEDED AUTHORS. The bundled sample stories have fixture author ids that are
  * not UUIDs and have no row anywhere. `isRealAuthorId` separates them, and they
@@ -92,6 +99,28 @@ export default function AuthorScreen({
   const [profileState, setProfileState] = useState<"loading" | "ready" | "error">(
     held ? "ready" : "loading",
   );
+  const blockedIds = useBlockedAuthorIds();
+  const isBlocked = real && blockedIds.has(authorId);
+  const [unblocking, setUnblocking] = useState(false);
+  const [unblockError, setUnblockError] = useState<string | null>(null);
+  /**
+   * Bumped by an unblock. The page was read while the block stood, so the
+   * server answered with no stories; it has to be asked again.
+   */
+  const [readEpoch, setReadEpoch] = useState(0);
+
+  const unblock = async () => {
+    setUnblocking(true);
+    setUnblockError(null);
+    try {
+      await unblockAuthorEverywhere(authorId);
+      setReadEpoch((value) => value + 1);
+    } catch {
+      setUnblockError("That did not save. Check your connection and try again.");
+    } finally {
+      setUnblocking(false);
+    }
+  };
 
   useEffect(() => {
     if (!real) return;
@@ -141,7 +170,7 @@ export default function AuthorScreen({
     return () => {
       alive = false;
     };
-  }, [authorId, real]);
+  }, [authorId, real, readEpoch]);
 
   // Their own calendar, held app-wide, until this page's own read lands.
   const shownDays = days ?? (isOwnPage ? own.calendar : null);
@@ -219,7 +248,28 @@ export default function AuthorScreen({
             ? <Text style={styles.since}>Writing since {since}</Text>
             : null}
 
-          {real && profile
+          {isBlocked
+            ? (
+              <View style={styles.blockedCard} testID="author-blocked">
+                <Text style={styles.blockedTitle}>You blocked this writer</Text>
+                <Text style={styles.blockedBody}>
+                  Their stories and comments are hidden from you.
+                </Text>
+                <Button
+                  label="Unblock"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => void unblock()}
+                  loading={unblocking}
+                  accessibilityLabel={`Unblock ${displayName}`}
+                  testID="author-unblock"
+                />
+                {unblockError
+                  ? <Text style={styles.blockedError}>{unblockError}</Text>
+                  : null}
+              </View>
+            )
+            : real && profile
             ? (
               <View style={styles.followWrap}>
                 <FollowButton
@@ -262,7 +312,9 @@ export default function AuthorScreen({
           relationship, and they are the pair a stranger actually uses to
           decide whether this is somebody worth following.
         */}
-        {real && profile
+        {isBlocked
+          ? null
+          : real && profile
           ? (
             <View style={styles.statsWrap}>
               <View style={styles.followCounts}>
@@ -307,7 +359,9 @@ export default function AuthorScreen({
           : null}
 
         <View style={styles.stack}>
-          {real
+          {isBlocked
+            ? null
+            : real
             ? (published ?? []).map((story) => (
               <StoryCard
                 key={story.id}
@@ -326,7 +380,7 @@ export default function AuthorScreen({
             ))}
         </View>
 
-        {real && published !== null && published.length === 0
+        {!isBlocked && real && published !== null && published.length === 0
           ? (
             <Text style={styles.empty} testID="author-no-stories">
               Nothing published yet.
@@ -346,7 +400,7 @@ export default function AuthorScreen({
           private or gated story never reaches here, so this page can never
           become a way to read around a story nobody was meant to see.
         */}
-        {real && comments.length > 0
+        {!isBlocked && real && comments.length > 0
           ? (
             <View style={styles.commentsSection} testID="author-comments">
               <Text style={styles.commentsHeading}>Comments</Text>
@@ -416,6 +470,35 @@ function asCard(story: PublicStorySummary, authorId: string): Story {
 const styles = {
   ...sharedStyles,
   ...StyleSheet.create({
+    blockedCard: {
+      alignSelf: "stretch",
+      marginTop: spacing.lg,
+      padding: spacing.lg,
+      gap: spacing.sm,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+    },
+    blockedTitle: {
+      fontFamily: fonts.ui,
+      fontWeight: "700",
+      fontSize: 16,
+      color: colors.ink,
+    },
+    blockedBody: {
+      fontFamily: fonts.ui,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.muted,
+      textAlign: "center",
+      marginBottom: spacing.xs,
+    },
+    blockedError: {
+      fontFamily: fonts.ui,
+      fontSize: 13,
+      color: colors.accentPressed,
+      textAlign: "center",
+    },
     authorHeader: {
       alignItems: "center",
       gap: spacing.sm,

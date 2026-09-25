@@ -5,6 +5,12 @@ import { useSharedValue } from "react-native-reanimated";
 import { captureError, initPostHog, initSentry } from "@/lib/analytics";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
+import {
+  clearBlockedAuthors,
+  refreshBlockedAuthors,
+  useBlockedAuthorIds,
+  withoutBlockedAuthors,
+} from "@/lib/blocks";
 import { MAX_PLANNED_CHAPTER_COUNT } from "@/types/domain";
 import {
   bootstrapUser,
@@ -19,6 +25,7 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
+import { configureAudioSession } from "@/lib/audio-session";
 import { Alert, Platform, View } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
@@ -446,6 +453,9 @@ export default function App() {
     initPostHog();
     initRevenueCat();
     setupAndroidChannel();
+    // Before any narration or genre music can be created: the mode is
+    // process-wide, and without it both stop when the phone locks.
+    void configureAudioSession();
   }, []);
 
   useEffect(() => {
@@ -477,6 +487,10 @@ export default function App() {
         void fetchReadingStreak().then((streak) => {
           if (active) setStreakDays(streak?.current ?? null);
         });
+
+        // Who this reader has blocked, so Home, Explore, a profile and the
+        // Starred shelf can leave those writers out (`lib/blocks.ts`).
+        void refreshBlockedAuthors();
 
         // Cache first, then the record. Both are allowed to be null: a reader
         // who never gave a name is greeted by the time of day alone rather
@@ -748,6 +762,20 @@ export default function App() {
         seed: stories,
       }),
     [generatedStories, discoveredStories, curatedStories],
+  );
+
+  /**
+   * What the lists show: `allStories` without anyone the reader has blocked.
+   *
+   * Only the browsing surfaces read this (Home, Explore, an author's page).
+   * Opening a story by id still resolves against `allStories`, so the story
+   * page and the reader a block is made FROM never lose their story mid-exit;
+   * they leave on their own the moment the block saves.
+   */
+  const blockedAuthorIds = useBlockedAuthorIds();
+  const browsableStories = useMemo(
+    () => withoutBlockedAuthors(allStories, blockedAuthorIds),
+    [allStories, blockedAuthorIds],
   );
 
   /**
@@ -1105,6 +1133,9 @@ export default function App() {
     // thing whenever the bootstrap answered; the fallback is for when it did not.
     setIsAnonymous(user?.isAnonymous ?? false);
     void fetchReadingStreak().then((streak) => setStreakDays(streak?.current ?? null));
+    // A different account has a different block list.
+    clearBlockedAuthors();
+    void refreshBlockedAuthors();
     const profile = await refreshOwnProfile().catch(() => null);
     if (profile) {
       setDisplayName(profile.displayName);
@@ -1128,6 +1159,7 @@ export default function App() {
     setCredits(0);
     setStreakDays(null);
     clearOwnProfile();
+    clearBlockedAuthors();
     setEntitlementOverride(null);
     setTab("home");
     // `required`: there is no session behind this screen, so it has no back
@@ -1162,7 +1194,7 @@ export default function App() {
             // "Tonight only", so it lives for this session and no longer.
             mood={onboardingEntry?.mood ?? null}
             generatedStories={generatedStories}
-            stories={allStories}
+            stories={browsableStories}
             onStory={openStory}
             onProfile={() => goTabs("profile")}
             onCreate={() => goTabs("create")}
@@ -1175,7 +1207,7 @@ export default function App() {
       case "explore":
         return (
           <ExploreScreen
-            stories={allStories}
+            stories={browsableStories}
             onStory={openStory}
             onOpenStory={(story) => void openDiscoveredStory(story)}
             onProfile={() => goTabs("profile")}
@@ -1510,7 +1542,7 @@ export default function App() {
         ? (
           <AuthorScreen
             authorId={screen.authorId}
-            stories={allStories}
+            stories={browsableStories}
             canEngage={!isAnonymous}
             onRequireSignIn={() => setScreen({ name: "onboarding" })}
             onBack={() => {
