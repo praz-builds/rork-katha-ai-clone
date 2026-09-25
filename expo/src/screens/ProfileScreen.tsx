@@ -506,7 +506,11 @@ export default function ProfileScreen({
           <Row
             icon={Languages}
             title="Languages and home"
-            subtitle={readerPreferencesSummary(readerPrefs)}
+            subtitle={readerPrefsStatus === "ready"
+              ? readerPreferencesSummary(readerPrefs)
+              : readerPrefsStatus === "loading"
+              ? "Loading…"
+              : "Could not load. Open to try again."}
             onPress={() => setReaderContextOpen(true)}
             testID="profile-reader-context"
             grouped
