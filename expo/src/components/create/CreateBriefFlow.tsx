@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react-native";
 import { CreditPill } from "@/components/KathaPrimitives";
+import { MOMENT_DISPLAY_CHARS, truncateForDisplay } from "@/lib/moment-display";
 import { Toggle } from "@/components/Toggle";
 import { IdeasSheet } from "@/components/create/IdeasSheet";
 import { Dropdown, DropdownGroup } from "@/components/create/Dropdown";
@@ -436,17 +437,6 @@ const LANGUAGE_OPTIONS: DropdownOption<CreationLanguage>[] = [
  * after the user believed they had written the whole thing.
  */
 const MAX_MOMENT_CHARS = 300;
-/**
- * How much of a moment's text a chip shows before an ellipsis. Purely cosmetic -- it is a display cap, not a data cap. The full
- * text, up to `MAX_MOMENT_CHARS`, is still what gets sent.
- */
-const MOMENT_DISPLAY_CHARS = 60;
-
-function truncateForDisplay(text: string, max: number) {
-  const trimmed = text.trim();
-  return trimmed.length > max ? `${trimmed.slice(0, max).trimEnd()}…` : trimmed;
-}
-
 /**
  * How a character sheet is compared against the state it was opened in.
  *
@@ -1262,7 +1252,7 @@ function MoreOptions({
       </Text>
     ) : null}
     {namedCharacters.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.characterTokens}>{namedCharacters.map((character) => <Pressable key={character.name} accessibilityRole="button" accessibilityLabel={`Add ${character.name.trim()} to this moment`} onPress={() => appendCharacterName(character.name)} style={styles.nameToken}><Text style={styles.nameTokenText}>@{character.name.trim()}</Text></Pressable>)}</ScrollView> : null}
-    <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
+    <View style={styles.wrapChips}>{moments.map((moment) => <Pressable key={moment} accessibilityRole="button" accessibilityLabel={`Remove moment: ${moment}`} onPress={() => { update({ moments: moments.filter((item) => item !== moment) }); onSelect(); }} style={styles.momentChip}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.momentText}>{truncateForDisplay(moment, MOMENT_DISPLAY_CHARS)}</Text><X size={14} color={colors.accent} /></Pressable>)}</View>
     {moments.length < maxMoments ? <View style={styles.momentComposer}><TextInput value={momentInput} onChangeText={onMomentInput} onSubmitEditing={() => onAddMoment(momentInput)} returnKeyType="done" maxLength={MAX_MOMENT_CHARS} placeholder="Moments to include in general or between characters" placeholderTextColor={colors.tertiary} style={styles.momentInput} /><Pressable accessibilityRole="button" accessibilityLabel="Add moment" onPress={() => onAddMoment(momentInput)} style={styles.momentAddButton}><Plus size={18} color={colors.surface} /></Pressable></View> : null}
 
     {/* Writing style and Avoid are both craft constraints on the prose, so

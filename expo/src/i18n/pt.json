@@ -267,6 +267,16 @@
     "moreDramatic": "Mais dramatico",
     "simpler": "Mais simples"
   },
+  "auth": {
+    "codeTitle": "Confira seu e-mail",
+    "codeSub": "Digite o c\u00f3digo de {{count}} d\u00edgitos que enviamos para {{email}}.",
+    "codeHint": "Digite o c\u00f3digo de {{count}} d\u00edgitos",
+    "codeTooLong": "Tem mais de {{count}} d\u00edgitos. Cole s\u00f3 o c\u00f3digo de {{count}} d\u00edgitos do e-mail mais recente.",
+    "codeMismatch": "Esse c\u00f3digo n\u00e3o confere. Tente de novo ou pe\u00e7a outro.",
+    "verify": "Verificar e continuar",
+    "resend": "Reenviar c\u00f3digo",
+    "differentEmail": "Usar outro e-mail"
+  },
   "blocks": {
     "confirmTitle": "Bloquear {{name}}?",
     "confirmBody": "Você não verá mais as histórias nem os comentários de {{name}}. Dá para desbloquear em Perfil, em Contas bloqueadas.",

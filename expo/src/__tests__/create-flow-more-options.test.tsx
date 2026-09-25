@@ -156,7 +156,7 @@ describe("More options -- moments display cap vs. data cap", () => {
     await fillIdea(view);
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
 
-    const longMoment = "A ".repeat(90).trim(); // 179 chars: over the 60-char display cap, under the 300-char data cap
+    const longMoment = "A ".repeat(90).trim(); // 179 chars: over the 40-char display cap, under the 300-char data cap
     const composer = view.getByPlaceholderText(
       "Moments to include in general or between characters",
     );

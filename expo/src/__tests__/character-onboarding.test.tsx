@@ -257,8 +257,9 @@ async function submitSave(view: View) {
 }
 
 async function verify(view: View) {
+  // The sixth digit verifies on its own; the screen has moved on before a
+  // Verify tap could land.
   await fireEvent.changeText(view.getByLabelText("Verification code"), "123456");
-  await fireEvent.press(view.getByLabelText("Verify and continue"));
 }
 
 /** The requestId every portrait call was fired with, in order. */
