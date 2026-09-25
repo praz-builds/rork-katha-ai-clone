@@ -22,12 +22,16 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  AllProvidersFailedError,
+  classifyLlmError,
   EDGE_REQUEST_IDLE_TIMEOUT_MS,
+  generateFastStructuredText,
   GENERATION_DEADLINE_MS,
+  moderationRetryCost,
   OPENROUTER_MODELS,
-  OPENROUTER_PROBE_MS,
   openRouterPhaseDeadlines,
   PHASE_END_SHARE,
+  ProviderSkippedNoTimeError,
 } from "./llm.ts";
 
 /** The slowest chapter measured against production, 2026-09-09. */
@@ -56,36 +60,26 @@ Deno.test("the whole blocking generation fits inside the gateway idle timeout", 
   );
 });
 
-Deno.test("the model that actually writes gets a chapter's worth of time", () => {
+Deno.test("no model is capped below a chapter, whatever its position", () => {
+  // The bug this replaces: `OPENROUTER_MODELS[0]` held an 8s probe deadline
+  // that was justified by "it 404s in under a second". When the account's
+  // privacy setting changed it started writing instead, and was aborted at 8s
+  // on every generation. A position must either get a chapter's worth of time
+  // or not be asked to write at all -- and a fast failure costs only itself.
   const window = Math.floor(
     GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
   );
   const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
   assertEquals(deadlines.length, OPENROUTER_MODELS.length);
-  const writer = deadlines[deadlines.length - 1];
-  assert(
-    writer >= WORST_MEASURED_CHAPTER_MS,
-    `the writing model gets ${writer}ms against a ${WORST_MEASURED_CHAPTER_MS}ms chapter`,
-  );
-  // The last model owns the whole window: nothing is left unspendable.
-  assertEquals(writer, window);
-});
-
-Deno.test("a model in front of the writer gets a probe, not a slice of the chapter", () => {
-  const window = Math.floor(
-    GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
-  );
-  const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
-  for (let index = 0; index < deadlines.length - 1; index += 1) {
-    const slice = index === 0
-      ? deadlines[0]
-      : deadlines[index] - deadlines[index - 1];
-    // Long enough for a round trip and a `404`...
-    assert(slice >= 5_000, `probe ${index} is only ${slice}ms`);
-    // ...and nowhere near long enough to be mistaken for an attempt.
+  for (const [index, deadline] of deadlines.entries()) {
+    assertEquals(
+      deadline,
+      window,
+      `model ${index} is bounded at ${deadline}ms, not the phase end`,
+    );
     assert(
-      slice < WORST_MEASURED_CHAPTER_MS / 2,
-      `probe ${index} holds ${slice}ms it cannot use`,
+      deadline >= WORST_MEASURED_CHAPTER_MS,
+      `model ${index} gets ${deadline}ms against a ${WORST_MEASURED_CHAPTER_MS}ms chapter`,
     );
   }
 });
@@ -110,14 +104,221 @@ Deno.test("the tail phases are sized for a refusal, not a chapter, and are hones
   );
 });
 
-Deno.test("the paid phase is not split evenly, and a small window degrades to an equal share", () => {
-  // 115s across two models: an 8s probe, then the writer with the whole window.
-  assertEquals(openRouterPhaseDeadlines(115_000, 2), [8_000, 115_000]);
-  // Probes accumulate; the last model still owns the window.
-  assertEquals(openRouterPhaseDeadlines(100_000, 3), [8_000, 16_000, 100_000]);
-  // A window too small to probe from falls back to equal slices.
-  assertEquals(openRouterPhaseDeadlines(10_000, 2), [5_000, 10_000]);
+Deno.test("the paid phase is not sliced: every model is bounded by the phase end", () => {
+  // Every model may run until the phase ends. The first able to serve writes;
+  // one that fails fast leaves the remainder to the next, which is what makes
+  // the chain correct whether or not the training tier is allowed to answer.
+  assertEquals(openRouterPhaseDeadlines(115_000, 2), [115_000, 115_000]);
+  assertEquals(openRouterPhaseDeadlines(100_000, 3), [
+    100_000,
+    100_000,
+    100_000,
+  ]);
+  // A window too small for anyone is still shared, not subdivided.
+  assertEquals(openRouterPhaseDeadlines(10_000, 2), [10_000, 10_000]);
   assertEquals(openRouterPhaseDeadlines(0, 2), [0, 0]);
   assertEquals(openRouterPhaseDeadlines(10_000, 0), []);
-  assertEquals(OPENROUTER_PROBE_MS, 8_000);
+  // Negative and fractional windows are floored to a usable integer.
+  assertEquals(openRouterPhaseDeadlines(-5_000, 2), [0, 0]);
+  assertEquals(openRouterPhaseDeadlines(1_500.9, 1), [1_500]);
+});
+
+Deno.test("the paid phase spends its whole share and none of the next phase's", () => {
+  // Two properties, and the old probe shape satisfied neither: every model may
+  // run to the phase end (so nothing in the window is unspendable), and no model
+  // may run past it (so "no slices" does not become "no bound" and the tail
+  // phases are still reachable).
+  const window = Math.floor(
+    GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
+  );
+  const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
+  for (const [index, deadline] of deadlines.entries()) {
+    assertEquals(
+      deadline,
+      window,
+      `model ${index} may run to ${deadline}ms, not the ${window}ms phase end`,
+    );
+  }
+  assert(
+    window < GENERATION_DEADLINE_MS,
+    "the paid phase claims the entire generation deadline",
+  );
+});
+
+Deno.test("a position reached with no time left is skipped, not recorded as a timeout", async () => {
+  // The telemetry half of dropping the probe. A leader that stalls to the phase
+  // end leaves the next model no time, and `remainingDuration` refuses to open
+  // a socket. If that were classified `timeout`, `error_events` would read
+  // `[timeout, timeout]` - byte-for-byte the signature of the 2026-09-05 even
+  // split and the 2026-09-09 probe, both of which were diagnosed from exactly
+  // this field.
+  //
+  // Driven through the fast path because it is the only exported entry point
+  // that takes a deadline, but `remainingDuration` is shared with the paid
+  // phase, which is where this now happens.
+  const originalFetch = globalThis.fetch;
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
+  Deno.env.set("LLM_DISABLED_PROVIDERS", "gemini");
+  let fetched = false;
+  globalThis.fetch = () => {
+    fetched = true;
+    return Promise.reject(new Error("fetch must not be called"));
+  };
+  try {
+    await generateFastStructuredText(
+      "system",
+      "user",
+      { name: "probe", schema: { type: "object" } },
+      900,
+      -1,
+    );
+    throw new Error("the chain resolved with no time left");
+  } catch (error) {
+    assert(
+      error instanceof AllProvidersFailedError,
+      `expected AllProvidersFailedError, got ${error}`,
+    );
+    assertEquals(fetched, false, "a skipped position opened a socket");
+    for (const failure of error.failures) {
+      assertEquals(failure.code, "skipped_no_time");
+      assertEquals(failure.retryable, true);
+    }
+    assert(error.failures.length > 0, "no failure was recorded");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) Deno.env.delete("OPENROUTER_API_KEY");
+    else Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    Deno.env.delete("LLM_DISABLED_PROVIDERS");
+  }
+});
+
+Deno.test("a skipped position and a timeout are different codes", () => {
+  // Guards the mapping itself, so a future refactor cannot quietly fold
+  // ProviderSkippedNoTimeError back into the AbortError branch.
+  const skipped = classifyLlmError(
+    new ProviderSkippedNoTimeError("no time"),
+    "openrouter",
+    "meta/muse-spark-1.3",
+  );
+  assertEquals(skipped.code, "skipped_no_time");
+  const timedOut = classifyLlmError(
+    new DOMException("Timeout after 90000ms", "AbortError"),
+    "openrouter",
+    "meta/muse-spark-1.3",
+  );
+  assertEquals(timedOut.code, "timeout");
+});
+
+/**
+ * Drive the OpenRouter position with a provider that always answers
+ * `content_filter`, through the one exported entry point that takes a deadline.
+ *
+ * Returns how many requests were made and the failure codes recorded, which is
+ * what the moderation-retry bound is actually about. `attemptMs` is how long the
+ * stubbed provider pretends each generation took -- the bound is measured
+ * against the previous attempt's own duration, so a test cannot exercise it with
+ * an instant mock.
+ */
+async function moderationRun(
+  deadlineMs: number,
+  attemptMs: number,
+): Promise<{ requests: number; codes: string[] }> {
+  const originalFetch = globalThis.fetch;
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
+  Deno.env.set("LLM_DISABLED_PROVIDERS", "gemini");
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    await new Promise((resolve) => setTimeout(resolve, attemptMs));
+    return new Response(
+      JSON.stringify({
+        choices: [{
+          finish_reason: "content_filter",
+          message: { content: "" },
+        }],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+  try {
+    await generateFastStructuredText(
+      "system",
+      "user",
+      { name: "probe", schema: { type: "object" } },
+      900,
+      deadlineMs,
+    );
+    throw new Error("the chain resolved on a content_filter");
+  } catch (error) {
+    assert(
+      error instanceof AllProvidersFailedError,
+      `expected AllProvidersFailedError, got ${error}`,
+    );
+    return { requests, codes: error.failures.map((f) => f.code) };
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) Deno.env.delete("OPENROUTER_API_KEY");
+    else Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    Deno.env.delete("LLM_DISABLED_PROVIDERS");
+  }
+}
+
+Deno.test("a moderation retry that would starve the fallback is refused, and says why", async () => {
+  // The leader is given a window that holds its first attempt and little else,
+  // so not even one more attempt fits and the retry is refused. This drives the
+  // fast path, which passes `isLastModel: true` for every model because it
+  // reserves structurally, so what is exercised here is the one-attempt bound and
+  // the code it reports -- `moderationRetryCost` pins the two-case reserve
+  // separately. The code matters on its own: "gave up for time" and "softened it
+  // twice and was still refused" are different incidents.
+  const run = await moderationRun(2_000, 900);
+  // One request per position and not one more: no position retried.
+  assertEquals(
+    run.requests,
+    run.codes.length,
+    `${run.requests} requests across ${run.codes.length} positions means one retried`,
+  );
+  assert(
+    run.codes.includes("moderation_retry_no_time"),
+    `expected moderation_retry_no_time, got ${run.codes.join(", ")}`,
+  );
+  assert(
+    !run.codes.includes("moderation_blocked"),
+    "a retry refused for time was logged as a moderation rejection",
+  );
+});
+
+Deno.test("a moderation retry that fits is still taken", async () => {
+  // The guard must not become a ban on retrying. With room for three attempts
+  // and a fallback, every attempt runs -- the softened prompt is the useful
+  // behaviour the bound exists to protect, not to prevent.
+  const run = await moderationRun(20_000, 50);
+  assert(
+    run.requests > 1,
+    `the bound refused a retry that fit (${run.requests} request(s))`,
+  );
+  assert(
+    run.codes.includes("moderation_blocked"),
+    `expected an exhausted moderation rejection, got ${run.codes.join(", ")}`,
+  );
+});
+
+Deno.test("a model with a fallback behind it reserves for it; the last model does not", () => {
+  // The round-1 bound was `lastAttemptMs` for everyone, and that is what let the
+  // leader take the whole phase: 38s attempts in a 115s window satisfy "one more
+  // attempt fits" three times over, so the comment claimed a protection the code
+  // did not give. A model with something behind it must reserve the fallback's
+  // attempt too.
+  assertEquals(moderationRetryCost(38_000, false), 76_000);
+  // 115s window, leader has used 38s: 77s remain, 76s needed - the retry runs.
+  // After it, 39s remain and 76s would be needed, so the second retry is refused
+  // and the model behind it inherits a full attempt's worth.
+  assert(115_000 - 38_000 >= moderationRetryCost(38_000, false));
+  assert(115_000 - 76_000 < moderationRetryCost(38_000, false));
+  // The last model in a phase has nothing to reserve for, so reserving would
+  // strand time nobody can spend.
+  assertEquals(moderationRetryCost(38_000, true), 38_000);
+  assertEquals(moderationRetryCost(0, false), 0);
 });

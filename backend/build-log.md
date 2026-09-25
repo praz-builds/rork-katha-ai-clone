@@ -7,6 +7,329 @@
 
 ---
 
+## 2026-09-25 UTC — The buffered generation chain was failing on a probe deadline, and the launch deploy is now on the record
+
+**Session:** picking the Play launch push back up after the 2026-09-25 usage
+limit stopped every agent mid-verification. Branch
+`codex/generation-writer-window`.
+
+### The deploy record the push never wrote
+
+The six launch lanes (#138-#143) were merged and **the deploy did run** — it was
+the record that was missing. Verified against project `iafeuxgoiknncgyjmugd`:
+
+- Migrations `00097_content_reports_open` and `00098_app_feedback` are applied
+  remotely; `supabase migration list --linked` shows local and remote aligned
+  `00001`-`00098` with nothing pending.
+- Functions deployed 05:22 and 05:55 UTC: `profile`, `library`, `app-feedback`
+  (new, version 1), `revenuecat-webhook`, `refresh-subscription-grants`,
+  `reviewer-signin`, `seed-voice-previews`.
+
+**Drift audit: 89 of 89 live files are byte-identical to main.** Every live
+bundle was downloaded (`supabase functions download <fn> --workdir <scratch>`,
+outside the repo, because it overwrites the source) and `cmp`-ed file by file
+against `main`. The one file that is in the repo and in no bundle is
+`_shared/prompts.ts`, which has **zero importers** — it is dead code, not drift,
+and it is left alone here rather than deleted behind a generation fix.
+
+### The bug, and exactly what it did and did not break
+
+**Scope first, because the obvious headline is wrong.** This is the *buffered*
+chain — `runProviderChain`, reached by `generateStoryText` and `editParagraph`.
+The Expo Create flow does not use it: pressing Create calls
+`generateStoryStreaming` → `generate-story-stream` → `streamChapterProse`, which
+has its own model list (`OPENROUTER_STREAM_MODELS`), its own flat
+`STREAM_DEADLINE_MS` of 180s, and no `openRouterPhaseDeadlines` anywhere in it.
+`generateStory` in `expo/src/lib/api.ts` has no non-test caller, and neither does
+the buffered `continueStory`.
+
+**Pushed further on review: `runProviderChain` is not reachable from the app at
+all.** Its three entry points are `generate-story` (no client caller), the
+buffered `continue-story` (no client caller, and nothing degrades from streaming
+to buffered — every client path sends `stream: true`), and `editParagraph`, whose
+client functions `editParagraph` and `editParagraphStreaming` appear only as jest
+mocks. The reader's Edit control is a notepad: it saves a whole chapter, and
+`edit-story/index.ts:111` handles `chapter_body` *before* any paragraph-edit
+validation, so that tap never reaches the model.
+
+So the cost of this bug was exactly one thing, and it is worth being plain about
+it: **`smoke-app-surface.py` step 2.1 failed, and because the suite is sequential
+the 16 checks after it stopped running.** That is the gate this repo trusts before
+calling main deployable. No reader's story ever failed because of it — the app
+streams.
+
+The fix is still right to make: the buffered chain is the documented endpoint, it
+is the gate, and the per-paragraph rewrite is wired on the server and waiting for
+a client. But nobody should read this entry later and conclude users could not
+write stories.
+
+`backend/scripts/smoke-app-surface.py` re-run: **26 passed, 1 failed**, the same
+failure the interrupted session had found and not diagnosed —
+`2.1 generate-story 200` answering `HTTP 500`, `"Story generation failed. Credit
+refunded."`. `error_events` gave the chain: `all_providers_failed`, four
+attempts, `[timeout, malformed_response, timeout, malformed_response]`, no
+provider ever reached past OpenRouter.
+
+The cause was a deadline, not a provider. `openRouterPhaseDeadlines` gave the
+**last** model in `OPENROUTER_MODELS` the whole 115s window and every model in
+front of it an 8s probe (`OPENROUTER_PROBE_MS`). That was correct only while
+`OPENROUTER_MODEL` — the contributor tier at index 0 — answered `404` by account
+data policy in under a second, which made the probe nearly free. **That premise
+expired on 2026-09-09** and was flagged in this log and in AGENTS.md as needing
+a generation-chain change. This is that change.
+
+Measured live, both against the real `STORY_OUTPUT_JSON_SCHEMA` with
+`strict: true`, 32,000-token budget, `reasoning: { effort: "low" }`:
+
+| model                             | result                                    |
+|-----------------------------------|-------------------------------------------|
+| `meta/muse-spark-1.3-contributor` | `200`, `stop`, valid JSON, 1,504 words, **38.7s** |
+| `meta/muse-spark-1.3`             | `200`, `stop`, valid JSON, 1,222 words, **48.1s** |
+
+So the contributor tier accepts the request and writes a chapter — and was being
+aborted at 8s, every single generation, by a probe sized for a model that no
+longer fails fast.
+
+### The fix: the paid phase stops slicing its window
+
+The earlier note here said "the right fix is to reorder `OPENROUTER_MODELS`".
+Reordering would have worked today and broken again the moment the founder acts
+on `store/android/data-safety.md` D1 and turns training off, because then the
+model in the probe slot is the one that has to write. So the slices are gone
+instead: **every model in the paid phase is bounded by the phase end and nothing
+else.** The first model able to serve writes; a model that fails fast costs only
+its own failure and the next model inherits the remainder.
+
+That is correct under both states of the account setting this chain keeps being
+caught by:
+
+| account state                    | what happens                                |
+|----------------------------------|---------------------------------------------|
+| training allowed (today)         | the contributor tier writes, 38.7s, ~17x cheaper |
+| training refused (the D1 remedy) | it `404`s in <1s, `meta/muse-spark-1.3` inherits ~114s and writes in 48.1s |
+
+`OPENROUTER_PROBE_MS` is deleted. No live reference to it remains in code or
+tests; `AGENTS.md` still names it twice, deliberately, as the history of a
+constant that broke production — a reader who greps for it should find out what
+happened to it rather than nothing. What is deliberately *not* changed: `GENERATION_DEADLINE_MS` (125s),
+`PHASE_END_SHARE`, the model order, and `FAST_OPENROUTER_RESERVE_MS` — the
+onboarding fast path still reserves a tail for a fast failure and still carries
+the old premise, now said plainly in its comment rather than implied.
+
+The cost of dropping the probe, stated so it is not a surprise: a leading model
+that neither serves nor fails fast holds the window until its own 90s socket
+timeout, leaving 25s — not a chapter. That was already true of the writer in the
+previous shape. It is the 150s gateway, and `GENERATION_DEADLINE_MS` is what to
+revisit if it starts happening.
+
+### Docs corrected rather than annotated
+
+Eight passages in `_shared/llm.ts` and three in `AGENTS.md` still reasoned from
+"`OPENROUTER_MODELS[0]` fails in a round trip and costs nothing". They now say
+what is measured, including that the contributor tier trains on what it is sent
+and that whether to keep using it is a data decision, not a code one — the same
+decision `store/android/data-safety.md` D1 answers as *shared* for Play.
+
+### Gates
+
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1107
+passed, 0 failed.** This branch was 1099, 1101 after review round 1 (one vacuous
+test removed, three added), 1106 after round 2 (two moderation-bound tests, plus
+the three #144 brought with the merge) and 1107 after round 3.
+
+`deno check` clean on every function and on the touched `_shared` files;
+`deno fmt --check` clean on all three `.ts` files this branch changes
+(`llm.ts`, `llm-deadline.test.ts`, `story-stream.ts`).
+
+Two things `deno fmt` does *not* pass, both pre-existing and neither touched
+here: `docs/ACCEPTANCE.md`, and `_shared/story-prompts.test.ts` plus
+`_shared/validation.ts`, which arrived with #144 and fail on `origin/main` too
+(checked against a clean export of main, not assumed). CI's fmt step names its
+own file list in `.github/workflows/ci.yml` and none of these are in it, which is
+why it stays green. Reformatting another PR's files is left out of this one.
+
+Every test added in any round was run against the code it guards, reverted, and
+fails there. The two deadline tests that asserted the probe shape were rewritten to
+assert the invariant that replaces it — no model is capped below a chapter
+whatever its position — and each was run against the unfixed code, where both
+fail.
+
+### Review round 1 (Opus on PR #145)
+
+Requested changes, five findings, all addressed rather than deferred:
+
+- **The leader could spend the whole paid phase on moderation retries.** A
+  `content_filter` is raised *after* a complete generation, and with the slices
+  gone the retry loop's bound is the phase end, so three full attempts on one
+  model could starve every model behind it — where the old 8s probe would have
+  capped the leader and handed the rest ~107s. `generateOpenRouterText` now
+  refuses a retry that does not fit in the time left, measured against the
+  previous attempt's own duration. Self-calibrating, so it needs no constant to
+  guess how long a chapter takes, and it removes only the retry that would have
+  timed out anyway. `EDIT_DEADLINE_MS` (60s) has the same shape and the same
+  bound. `generateGeminiText` is deliberately left alone: its phase is ~5s.
+- **A stalled leader logged telemetry identical to the bug being fixed.** A
+  position reached with no time left threw `AbortError` before opening a socket
+  and was recorded as `timeout`, so `error_events` would read
+  `[timeout, timeout]` — the signature of both previous deadline bugs, and the
+  field from which both were diagnosed. It now throws
+  `ProviderSkippedNoTimeError` and is recorded as `skipped_no_time`.
+- **`OPENROUTER_STREAM_MODELS` contradicted itself.** Half its comment had been
+  updated to say the contributor tier serves and half still explained the order
+  by "it cannot answer", with "on the day the data policy changes it starts
+  working again" now backwards. Rewritten, along with the stale "no contributor
+  probe" in `story-stream.ts`.
+- **Three claims were false as written.** "No reference left in code, tests or
+  docs" (AGENTS.md keeps two, on purpose — the sentence is now accurate);
+  `docs/ACCEPTANCE.md` A1 told the founder to check that story creation works
+  while this fix was neither merged nor deployed (now gated on the deploy, in a
+  callout); and "roughly 40 seconds" rested on one 1,504-word measurement while
+  production chapters have run 55–76s. Round 2 replaced the timing claim
+  entirely — see below.
+- **The 26/27 and 43/43 smoke numbers were unreconciled.** The suite is
+  sequential and its later checks operate on the story 2.1 generates, so a run
+  where generation fails stops at 27 checks rather than 43. Said in AGENTS.md so
+  the next reader does not think 16 checks were dropped.
+
+Also from the review: `AGENTS.md` still claimed "production is current with
+main, file for file", which this PR itself invalidates on merge. That section is
+now dated 2026-09-25, carries the 89/89 audit, and states plainly what production
+is behind by until the deploy below.
+
+### Review round 2 (Opus on PR #145)
+
+Requested changes again, and the first finding was the one that mattered most.
+
+- **The fix was described as something it is not, in the document written for the
+  founder.** The PR was titled "creating a story works again", the entry above was
+  headed "the bug that made every story fail", and `ACCEPTANCE.md` A1 told him to
+  press Create to verify it. None of that is true: `openRouterPhaseDeadlines` has
+  one caller, `runProviderChain`, and the app's Create flow never reaches it — it
+  streams through `generate-story-stream` → `streamChapterProse`, which has its
+  own model list and its own flat 180s deadline. `generateStory` and the buffered
+  `continueStory` have no non-test callers at all. Pressing Create after this
+  deploy would have "verified" nothing, and if Create had failed for an unrelated
+  reason this fix would have been blamed. The scope is now stated first, in this
+  entry and in A1, and A1 checks the smoke suite and paragraph editing instead —
+  the things that do reach the fixed code. What was broken is still worth fixing:
+  it is the production gate, the non-streamed fallbacks, and a wasted 8s on every
+  non-streamed paragraph edit.
+- **The round-1 retry bound was untested, and its telemetry had the same defect
+  round 1 had just fixed elsewhere.** It now throws
+  `ProviderModerationNoTimeError` (`moderation_retry_no_time`) rather than
+  re-throwing the provider's rejection, so "gave up for time" and "softened it
+  twice and was still refused" are different codes in `error_events`. Two tests
+  added, driven through a stubbed provider that answers `content_filter` and
+  takes real time, because the bound measures the previous attempt's duration and
+  an instant mock cannot exercise it. Both were run against the unguarded code;
+  the refusal test fails there.
+- **The bound still let the leader take the whole phase.** "One more attempt of
+  the same size fits" is satisfied three times over a 115s window by 38s
+  attempts, so the comment claimed a protection the code did not provide. A model
+  with anything behind it now reserves a fallback's worth as well
+  (`lastAttemptMs * 2`); the last model in a phase, having nothing to reserve
+  for, keeps the old bound. `isLastModel` is passed at all three call sites.
+- **A refused retry still advanced the safety ladder.** `onModerationRetry` ran
+  before the time check, and it raises the chain-wide `safetyLevel` that every
+  later model inherits — so a retry that never happened handed the next model the
+  most-softened prompt and, at level 2, a single attempt. The check now precedes
+  the call.
+- **One of the three round-1 tests was vacuous.** "The paid phase cannot overrun
+  its share" asserted `deadline <= window`, which the old probe shape also
+  satisfied. Rewritten to assert both halves of the property that is actually new
+  — every model may run to the phase end, and none past it.
+- **The `OPENROUTER_STREAM_MODELS` rationale was thinner than it sounded.** It
+  claimed the order was about first-token latency, while the only TTFT number in
+  the repo is unattributed to a model and the full-completion measurements make
+  the standard tier the slower of the two. The comment now says the order holds
+  that position *constant* rather than fast, and that per-tier TTFT is unmeasured.
+- **A1 pointed into a 4,500-line engineering log for the deploy list**, and its
+  "under two minutes is healthy" threshold sat above `GENERATION_DEADLINE_MS`
+  (125s), so a chapter 7s from a refund would have read as fine. The eight
+  functions are named in A1 and the timing claim is gone with the rewrite.
+
+### Review round 3 (Opus on PR #145)
+
+- **The A1 rewrite repeated the mistake it was written to fix.** Round 2 removed
+  "press Create"; round 2's replacement said "tap Edit, change a word, save",
+  which also reaches no model — the reader's Edit is a notepad, it sends
+  `chapter_body`, and `edit-story/index.ts:111` handles that before any
+  paragraph-edit validation. Pushed on: the per-paragraph rewrite's client
+  functions (`editParagraph`, `editParagraphStreaming`) appear **only as jest
+  mocks**, so `runProviderChain` has no caller in the app by any route. A1 now
+  says there is nothing to tap, gives the smoke command, and asks him to confirm
+  the app is *unchanged*. The scope paragraph above was corrected the same way: it
+  had claimed a "fallback used when streaming is unavailable", and no client path
+  degrades from streaming to buffered.
+- **`isLastModel: false` on the fast path reserved twice.** That phase already
+  reserves structurally — `fastOpenRouterDeadlines` subtracts
+  `FAST_OPENROUTER_RESERVE_MS` per model behind — so asking the retry bound to
+  reserve again stranded the difference: on the grounding pipeline's 9s budget a
+  refusal at t=2000 left 2500ms that the leader could not spend and the fallback
+  did not get. That is the error `FAST_OPENROUTER_SHARE` is documented against.
+  The fast path now passes `true` for every model, with the reason at the call
+  site. The paid and free predicates were confirmed correct: later phases are
+  bounded from the chain start, not from elapsed time, so the last paid model
+  cannot starve Gemini's or the free tier's slices.
+- **The retry bound is now pinned as arithmetic.** Round 2's integration test
+  proved the guard exists but not the two-case reserve, and widening its timing
+  slack made it stop discriminating that at all. The rule is extracted as
+  `moderationRetryCost(lastAttemptMs, isLastModel)` and tested directly, including
+  the round-2 scenario it exists for: 38s attempts in a 115s window satisfy "one
+  more fits" three times, and the reserve is what stops the third. Reverted to the
+  round-1 bound, that test fails.
+- **Four doc corrections.** `ProviderSkippedNoTimeError`'s docstring had been
+  orphaned above the new error class, so it described the wrong one. (Round 3
+  rewrote the wrong block and left the orphan in place; round 4 caught that and
+  it is now actually moved.) The
+  `openRouterPhaseDeadlines` explainer still described only half the bound. The
+  `story-stream.ts` pointer asserted a first-token-latency justification that
+  `OPENROUTER_STREAM_MODELS` had just retracted. And the Gates section claimed
+  `deno fmt --check` clean "on all touched files" — it is clean on the three
+  `.ts` files CI names; `docs/ACCEPTANCE.md` does not pass `deno fmt` and did not
+  before this change.
+- **A1 no longer pins an exact smoke total.** Several checks in that suite are
+  conditional, so a legitimate run can pass a different number; it now says
+  around 43 and to judge on zero failures. The command is also copy-pasteable now
+  (`set -a; . backend/.env; set +a`), which it was not.
+
+Still open, and recorded rather than quietly dropped: nothing drives a *slow*
+successful leader through `runProviderChain`, so an off-by-one wiring the
+deadline array to the wrong model would pass the suite. `llm-deadline.test.ts`
+pins the array itself and `llm.test.ts` covers the 404 fallthrough, which is why
+this is a gap and not a hole, but it is the test that would have caught the
+original bug directly. The same pre-`onModerationRetry` ordering also survives in
+`generateGeminiText`; its phase is ~5s and it was out of scope in round 1. And the
+round-3 fast-path change is a literal `true` at a call site: `moderationRetryCost`
+is pinned, but nothing fails if that argument is reverted to
+`index === openRouterModels.length - 1`. Pinning it would mean driving the fast
+path with a stubbed clock, a bigger change than the argument is worth today - but
+it is untested, and this is the note saying so.
+
+Two test findings, both fixed: "the model that actually writes gets a chapter's
+worth of time" passed against the *old* implementation too, so it discriminated
+nothing and is folded into the test that replaced it; and the new design's own
+invariants were untested. Added: the paid phase cannot overrun its share of
+`GENERATION_DEADLINE_MS`; a position reached with no time left is skipped
+without opening a socket and is classified `skipped_no_time`; and that a skipped
+position and a timeout cannot be folded back into one code.
+
+### Deploy
+
+`_shared/llm.ts` is in the dependency graph of six functions
+(`deno info --json` per function): `generate-story`, `generate-story-stream`,
+`continue-story`, `edit-story`, `reimagine-chapter`, `shape-story`. This change
+carries no migration.
+
+**But it is not deployed alone.** #144 merged to main while this branch was in
+review and is also undeployed, changing `_shared/story-prompts.ts`,
+`story-shape.ts`, `types.ts` and `validation.ts` plus migration
+`00099_feature_votes`. Recomputed across both, the set that must ship together is
+**eight** functions — the six above plus `generate-character-image` and
+`regenerate-cover`, which reach `types.ts` and which neither PR touched by
+folder. Migration `00099` first, then the eight, then the drift audit. Deploying
+only the folders these two PRs edited is the exact mistake that left 16 functions
+behind main on 2026-09-24.
 ## 2026-09-25 UTC — Final go-live feedback: Story world, vote on what's next, reader Night mode, Explore tags, PDF plan gate
 
 **Session:** isolated `codex/go-live-final-feedback` worktree. Nothing deployed,

@@ -13,6 +13,135 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 ---
 
+# Round: the Play launch push (#138-#143, plus the generation fix)
+
+Six lanes merged on 2026-09-25 and are deployed. A1 is a seventh change, is
+**only checkable once it is deployed**, and is not an in-app check at all — read
+its first paragraph before looking for a button.
+
+Most of this round is Android and Play Console work, so it splits into what you
+can eyeball on http://localhost:8090 and what genuinely needs a device or the
+Console. Anything below marked **device** or **Console** cannot be judged in the
+browser — that is a limit of the change, not a gap in the check.
+
+## A1. The buffered generation chain works again
+
+**There is nothing to tap for this one, and that is the honest answer.** The code
+that was broken — `runProviderChain` — is not reachable from the app at all.
+Pressing Create streams through `generate-story-stream`, which has its own model
+list and its own deadline. The reader's Edit is a notepad: it saves the whole
+chapter, and `edit-story` handles that before it ever reaches the model. The
+per-paragraph AI rewrite that would use the fixed code has no caller in the app
+yet.
+
+What the bug actually cost: the production smoke suite's story step failed, and
+because that suite is sequential, the 16 checks after it had not run for a while.
+That is the gate this repo trusts before calling main deployable, so it is worth
+fixing — but no story a reader asked for ever failed because of it.
+
+> **Needs the deploy first.** Not live until these eight functions are deployed:
+> `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+> `reimagine-chapter`, `shape-story`, `generate-character-image` and
+> `regenerate-cover`. Migration `00099` goes first.
+
+- [ ] The check, and the only one that exercises this, from the repo root:
+
+      ```
+      set -a; . backend/.env; set +a
+      python3 backend/scripts/smoke-app-surface.py
+      ```
+
+      It should run past step 2.1 and end with **0 failed**. Before this fix it
+      stopped at 2.1 with `HTTP 500`, "Story generation failed. Credit refunded.",
+      and reported 26 passed, 1 failed. The passing total is around 43 — a few
+      checks are conditional, so treat a different total with zero failures as
+      fine and any failure as not.
+- [ ] Everything you can see in the app — creating, continuing, editing, reading —
+      should behave exactly as it did before. **Unchanged, not improved.** If any
+      of it behaves differently after this deploy, that is worth reporting,
+      because nothing here should have touched it.
+
+## A2. "All-ages" replaced "Kids", everywhere
+
+- [ ] The Create toggle says **All-ages**. The word "Kids" appears nowhere — not
+      on the toggle, not on a story page, not in a filter, not in a rating badge.
+- [ ] Turn it on and generate: the story page's rating badge reads All-ages.
+
+## A3. Blocking an author, and the way back
+
+- [ ] Open a story by someone else. Its three-dot menu offers **Block author**.
+- [ ] Block them. Their stories leave the feed, Explore and search, and their
+      comments disappear.
+- [ ] You are not stranded: there is a visible way back to unblock, and
+      unblocking restores their stories and comments.
+- [ ] Block from a *comment's* menu too, not just from the story.
+
+## A4. Reporting goes somewhere
+
+- [ ] Report a comment with a written reason (a reason is required).
+- [ ] The report lands in the report queue rather than vanishing — newest
+      unresolved first. This is the queue that makes Play's UGC answer true.
+
+## A5. Send feedback, and the music switch
+
+- [ ] Profile (You) has **Send feedback**. Write something and send it. It
+      confirms, and the sheet is **empty the next time you open it** rather than
+      still holding what you already sent.
+- [ ] Change the category mid-draft, send, reopen: nothing is carried over.
+- [ ] Profile has a **Background music** switch, and it matches what the reader
+      actually does. The reader itself is mute-only.
+
+## A6. Codes, chips and the intro
+
+- [ ] Paste a 6-digit sign-in code. It fills and **submits itself** — no extra
+      tap.
+- [ ] A long "moment" chip ends in an ellipsis instead of being cut mid-word.
+- [ ] Resize the browser window narrow and wide during the intro animation. It
+      fits at every width and never traps you mid-carousel.
+- [ ] The intro stays smooth while the app is busy (it no longer runs on the JS
+      thread).
+
+## A7. English until it is all translated
+
+- [ ] Switch your device or browser to Spanish or Portuguese. The app stays in
+      **English throughout** rather than showing half-translated screens. This
+      is deliberate for launch; say if you would rather ship the partial
+      translations.
+
+## A8. Subscriptions state their terms
+
+- [ ] The paywall states price, period, renewal and how to cancel — the wording
+      Play's Subscriptions policy requires.
+- [ ] **device / Console:** a real Android purchase crediting the right account
+      cannot be checked here. It needs the Play products created and the
+      `goog_` key pasted; `backend/PLAY_BILLING_SETUP.md` is the order to do it
+      in. The two money bugs this round fixed (every Android subscription
+      webhook answering "Unknown product", and a new yearly subscriber getting
+      up to 100 credits in month one) are covered by tests, not by anything you
+      can see in the browser.
+
+## A9. The store pack and the build
+
+- [ ] **Console:** `store/android/` holds listing copy in English, Spanish and
+      Portuguese, the Data Safety answers, the content-rating answers and the
+      graphics. Read `store/android/README.md` first — it lists what is still
+      waiting on you.
+- [ ] **Decision you own:** `store/android/data-safety.md` item **D1**. Story
+      ideas and generated prose currently go to OpenRouter's training tier,
+      which is why Data Safety answers "shared with third parties". It is ~17x
+      cheaper than the alternative. Turning training off at
+      <https://openrouter.ai/settings/privacy> lets that answer become "not
+      shared" and needs **no deploy** — the generation chain is correct either
+      way as of this round. Your call, and it is a cost decision as much as a
+      privacy one.
+- [ ] **device:** version 1.0.0, no Firebase, background audio and the blocked
+      permissions are in the release config; a release AAB compiled locally.
+      Installing it on a phone is the check that is left.
+
+---
+
+# Still expected to hold from the previous round
+
 ## 1. Writing a story
 
 - [ ] Open Create. The starter ideas are behind a single **View ideas** button, and the list changes with the genre chip.

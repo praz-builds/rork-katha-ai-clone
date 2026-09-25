@@ -37,13 +37,30 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-24)
+## Production state (2026-09-25)
 
-**Production is current with main, file for file.** Verified on 2026-09-24
-rather than assumed: the migration ledger matches main exactly through `00096`
-(no local-only, no remote-only), and every one of the **33** deployed functions
-was downloaded and every `.ts` file in each bundle compared byte for byte with
-main. All 33 are identical. The four phrase functions (`save-phrase`,
+**Production was current with main, file for file, as of 2026-09-25 05:55 UTC,
+and is behind it again.** Two merges landed after that audit and neither has
+shipped: `_shared/llm.ts` (the generation chain) and #144's
+`_shared/story-prompts.ts`, `story-shape.ts`, `types.ts`, `validation.ts` plus
+migration `00099_feature_votes`. Until then production runs the previous chain
+and does not have the feature-votes table.
+
+The deploy set is every function whose dependency graph reaches one of those
+files, which is **eight**, not the three or six either PR touched by folder:
+`generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+`reimagine-chapter`, `shape-story`, `generate-character-image` and
+`regenerate-cover` — the last two only through `types.ts`, which is exactly the
+kind of reach that left 16 functions behind main on 2026-09-24. Migration
+`00099` goes first.
+
+The audit behind that claim, re-run on 2026-09-25 rather than assumed: the
+migration ledger matches main exactly through `00098` (no local-only, no
+remote-only), and every live function bundle was downloaded and every `.ts` file
+in it compared byte for byte with main. **89 of 89 files identical.** The only
+repo file in no bundle is `_shared/prompts.ts`, which has zero importers - dead
+code, not drift. The first such audit, on 2026-09-24, covered 33 functions and
+found all 33 identical. The four phrase functions (`save-phrase`,
 `unsave-phrase`, `phrases`, `record-practice`) were deleted from the project
 after #135.
 
@@ -54,8 +71,12 @@ privacy gate #107 removed. A change to a `_shared/` file reaches every function
 that imports it, and those functions need deploying too. `deno info --json
 <fn>/index.ts` lists what a function imports.
 
-`backend/scripts/smoke-app-surface.py` passed **43/43** against production that
-night: bootstrap, profile, shaping, generation, edit, publish (public on request,
+`backend/scripts/smoke-app-surface.py` passed **43/43** against production on
+2026-09-24. **Read the count, not just the ratio:** the suite is sequential and
+its later checks operate on the story step 2.1 generates, so a run where
+generation fails stops at **27 checks, not 43**. That is what "26 passed, 1
+failed" on 2026-09-25 meant - not that 16 checks were removed. The 43-check run
+covers: bootstrap, profile, shaping, generation, edit, publish (public on request,
 chapters published), the cover served publicly, and audio-status. It cleans
 up after itself and leaves no user behind. `character_image_free_remaining`
 answers 3 for a new account (00096).
@@ -235,7 +256,7 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 
 ### LLM Fallback Chain
 
-OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Gemini 3.1 Pro Preview -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
+OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`; neither is given a fixed slice of the phase) -> Gemini 3.1 Pro Preview -> OpenRouter Free Router. Always refund credit on total failure. Story generation uses direct provider HTTP APIs from Edge Functions; do not add Claude/Anthropic SDKs, CLI calls, or Hostinger dependencies.
 
 **Reordered 2026-09-05.** OpenRouter now leads on all four generation paths (`generate-story`, `continue-story`, `edit-story`, `shape-story`). `OPENROUTER_MODEL` is the single configured default. `PHASE_END_SHARE` is re-balanced whenever a phase moves, because moving a phase without moving its share hands the new leader the old leader's slice and starves whoever now runs last. Cumulative shares are now **openrouter 0.92, gemini 0.96, free 1.0** (they were 0.5 / 0.65 / 0.93 / 1.0 while OpenAI held a position, then 0.7 / 0.9 / 1.0). See the callout below for why the paid phase is no longer split evenly between its two models.
 
@@ -263,17 +284,21 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 >    It does not bind the streamed paths** — a stream's first byte arrives in
 >    seconds and each chunk resets the clock, which is why `STREAM_DEADLINE_MS`
 >    is 180s and is correct.
-> 2. **The paid phase is not split evenly.** Under a 150s ceiling only one model
->    can be given a chapter's worth of time, so the **last** model in
->    `OPENROUTER_MODELS` owns the whole 115s window and every model in front of
->    it gets an 8s probe (`OPENROUTER_PROBE_MS`). This was sized for an account
->    where the contributor tier answered `404` in well under a second, so
->    probing it cost nothing. **That premise expired on 2026-09-09** — the
->    contributor tier is serving (see the note below the callout), so the probe
->    now spends 8s in front of a model that can actually write the chapter.
->    The fix is to **reorder the models** — a chapter does not fit in a probe —
->    rather than to widen the probe. Not done here; it belongs with a
->    generation-chain change, not with the entity-gate fix.
+> 2. **The paid phase is not sliced at all.** Under a 150s ceiling only one
+>    model can be given a chapter's worth of time, so every model in
+>    `OPENROUTER_MODELS` is bounded by the phase end (115s) and nothing else:
+>    the first model able to serve writes, and a model that fails *fast* leaves
+>    the remainder to the next. Fixed 2026-09-25. Until then the last model owned
+>    the window and every model in front of it got an 8s probe
+>    (`OPENROUTER_PROBE_MS`, now deleted), which was sized for an account where
+>    the contributor tier answered `404` in well under a second. **That premise
+>    expired on 2026-09-09** and the probe became the bug: the contributor tier
+>    began writing a chapter and was aborted at 8s on every generation, so
+>    production generation failed outright with `[timeout,
+>    malformed_response, timeout, malformed_response]` and refunded the credit.
+>    Removing the slices is why the chain is now correct whether or not the
+>    account allows the training tier — do not reintroduce a fixed slice for
+>    either model.
 > 3. **There is only one real attempt, and the share table says so.** 125s
 >    cannot hold two 76s generations. Gemini (0.04 share, ~5s) and the free
 >    router (0.04, ~5s) exist to turn a *fast* refusal into a fallback, not to
@@ -301,7 +326,7 @@ OpenRouter (`meta/muse-spark-1.3-contributor`, then `meta/muse-spark-1.3`) -> Ge
 
 **The contributor tier IS serving. Corrected 2026-09-09.** This note previously said `meta/muse-spark-1.3-contributor` was `404` by account data policy (`"Paid model training violation (account settings): 1 endpoint excluded"`) and that `meta/muse-spark-1.3` was the only model that could answer. That is no longer true and the account setting at https://openrouter.ai/settings/privacy has evidently changed: the contributor tier answered a live classification prompt in **23.4s** on 2026-09-09, and it is the model named in the successful chapter-generation timings (55.5-76.4s, 1,846-1,904 words). It is ~17x cheaper because it trains on prompts and completions, which remains a live data decision — users' story ideas and generated prose go to the provider for training — but it is a decision about whether to *keep* using it, not about whether it works.
 
-**What this invalidates.** Anything in this file or in code comments that reasons from "`OPENROUTER_MODELS[0]` fails in a round trip and costs nothing" is now wrong, and two places depended on it: `OPENROUTER_PROBE_MS` (an 8s probe in front of the leader on the generation chain — a chapter does not fit in a probe, so **reorder the models rather than widening it**, as callout item 2 already says) and `FAST_OPENROUTER_RESERVE_MS` (sized for a fast failure). Re-read both before changing either. `meta/muse-spark-1.3` was measured on 2026-09-05 returning schema-valid JSON in ~11s and 25.5s on the classification prompt.
+**What this invalidates.** Anything in this file or in code comments that reasons from "`OPENROUTER_MODELS[0]` fails in a round trip and costs nothing" is now wrong, and two places depended on it. `OPENROUTER_PROBE_MS` (an 8s probe in front of the leader on the generation chain) was **deleted on 2026-09-25** after it broke production generation; the paid phase no longer slices its window at all, so no position depends on which model fails fast. `FAST_OPENROUTER_RESERVE_MS` (the onboarding fast path) is still sized for a fast failure and still holds that premise — re-read it before changing it. Verified live on 2026-09-25 against the real `STORY_OUTPUT_JSON_SCHEMA` with `strict: true`: the contributor tier returned a schema-valid 1,504-word chapter in **38.7s** and `meta/muse-spark-1.3` a 1,222-word chapter in **48.1s**. `meta/muse-spark-1.3` was measured on 2026-09-05 returning schema-valid JSON in ~11s and 25.5s on the classification prompt.
 
 **Credential requirement.** Story generation reads `GEMINI_API_KEY`, then `OPENROUTER_API_KEY`. A missing key is classified as `not_configured` and the chain falls through to the next provider. The old Claude/Anthropic secret names are intentionally ignored, and so are `OPENAI_API_KEY` / `OPENAI_STORY_API_KEY` — see below.
 
