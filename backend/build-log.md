@@ -135,13 +135,21 @@ decision `store/android/data-safety.md` D1 answers as *shared* for Play.
 `deno test --allow-env --allow-net --allow-read supabase/functions/`: **1107
 passed, 0 failed.** This branch was 1099, 1101 after review round 1 (one vacuous
 test removed, three added), 1106 after round 2 (two moderation-bound tests, plus
-the three #144 brought with the merge) and 1107 after round 3. `deno check` clean, and `deno fmt --check`
-clean on the three touched `.ts` files, which is what CI checks
-(`.github/workflows/ci.yml` names them). `deno fmt` does not pass on
-`docs/ACCEPTANCE.md` and did not before this change either; it is not in CI's
-list and is not reformatted here. Every test added in either round was run against the
-code it guards, reverted, and fails there. `deno check` and `deno fmt --check` clean on both touched
-files. The two deadline tests that asserted the probe shape were rewritten to
+the three #144 brought with the merge) and 1107 after round 3.
+
+`deno check` clean on every function and on the touched `_shared` files;
+`deno fmt --check` clean on all three `.ts` files this branch changes
+(`llm.ts`, `llm-deadline.test.ts`, `story-stream.ts`).
+
+Two things `deno fmt` does *not* pass, both pre-existing and neither touched
+here: `docs/ACCEPTANCE.md`, and `_shared/story-prompts.test.ts` plus
+`_shared/validation.ts`, which arrived with #144 and fail on `origin/main` too
+(checked against a clean export of main, not assumed). CI's fmt step names its
+own file list in `.github/workflows/ci.yml` and none of these are in it, which is
+why it stays green. Reformatting another PR's files is left out of this one.
+
+Every test added in any round was run against the code it guards, reverted, and
+fails there. The two deadline tests that asserted the probe shape were rewritten to
 assert the invariant that replaces it — no model is capped below a chapter
 whatever its position — and each was run against the unfixed code, where both
 fail.
@@ -271,7 +279,9 @@ Requested changes again, and the first finding was the one that mattered most.
   more fits" three times, and the reserve is what stops the third. Reverted to the
   round-1 bound, that test fails.
 - **Four doc corrections.** `ProviderSkippedNoTimeError`'s docstring had been
-  orphaned above the new error class, so it described the wrong one. The
+  orphaned above the new error class, so it described the wrong one. (Round 3
+  rewrote the wrong block and left the orphan in place; round 4 caught that and
+  it is now actually moved.) The
   `openRouterPhaseDeadlines` explainer still described only half the bound. The
   `story-stream.ts` pointer asserted a first-token-latency justification that
   `OPENROUTER_STREAM_MODELS` had just retracted. And the Gates section claimed
@@ -289,7 +299,12 @@ deadline array to the wrong model would pass the suite. `llm-deadline.test.ts`
 pins the array itself and `llm.test.ts` covers the 404 fallthrough, which is why
 this is a gap and not a hole, but it is the test that would have caught the
 original bug directly. The same pre-`onModerationRetry` ordering also survives in
-`generateGeminiText`; its phase is ~5s and it was out of scope in round 1.
+`generateGeminiText`; its phase is ~5s and it was out of scope in round 1. And the
+round-3 fast-path change is a literal `true` at a call site: `moderationRetryCost`
+is pinned, but nothing fails if that argument is reverted to
+`index === openRouterModels.length - 1`. Pinning it would mean driving the fast
+path with a stubbed clock, a bigger change than the argument is worth today - but
+it is untested, and this is the note saying so.
 
 Two test findings, both fixed: "the model that actually writes gets a chapter's
 worth of time" passed against the *old* implementation too, so it discriminated

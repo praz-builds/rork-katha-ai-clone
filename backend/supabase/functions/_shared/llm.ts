@@ -554,11 +554,6 @@ export class ProviderHttpError extends Error {
 }
 
 /**
- * A position that was reached with no time left, before any socket was opened.
- *
- * Distinct from an `AbortError` on purpose - see `remainingDuration`.
- */
-/**
  * A moderation retry that was refused because the time left would not hold it.
  *
  * Distinct from `ProviderModerationRejectedError`, which means every attempt ran
@@ -572,6 +567,11 @@ export class ProviderModerationNoTimeError extends Error {
   }
 }
 
+/**
+ * A position that was reached with no time left, before any socket was opened.
+ *
+ * Distinct from an `AbortError` on purpose - see `remainingDuration`.
+ */
 export class ProviderSkippedNoTimeError extends Error {
   constructor(message: string) {
     super(message);
@@ -817,13 +817,19 @@ export async function generateFastStructuredText(
         0,
         () => undefined,
         // `true` for every model here, which is not a mistake. This phase
-        // reserves structurally: `fastOpenRouterDeadlines` already subtracts
-        // `FAST_OPENROUTER_RESERVE_MS` per model behind this one, so the
-        // fallback owns its tail before the leader starts. Asking the retry
-        // bound to reserve again would reserve twice over and strand the
-        // difference - time the leader may not spend and the fallback does not
-        // get, which is the exact error `FAST_OPENROUTER_SHARE` is documented
-        // against. Each model here may use the window it was actually given.
+        // reserves structurally: `fastOpenRouterDeadlines` returns absolute
+        // offsets, so `FAST_OPENROUTER_RESERVE_MS` is already subtracted per
+        // model behind this one and the fallback owns its tail before the leader
+        // starts. Reserving again inside that would reserve twice over.
+        //
+        // It is not that the time would be lost - the offsets are absolute, so a
+        // leader that stops early hands the rest to the fallback either way.
+        // What the double reserve costs is the *retry*: on the grounding
+        // pipeline's 9s budget the leader is capped at 4,500ms, and a refusal at
+        // t=2,000 would need 4,000ms under the doubled bound and so be refused,
+        // when a softened retry inside the leader's own slice is the better bet
+        // and the fallback's 4,500ms is untouched either way. Each model here may
+        // spend the slice it was actually given.
         true,
       );
     } catch (error) {

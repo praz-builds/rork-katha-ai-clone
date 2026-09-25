@@ -266,11 +266,13 @@ async function moderationRun(
 }
 
 Deno.test("a moderation retry that would starve the fallback is refused, and says why", async () => {
-  // The leader is given a window that holds its first attempt and little else.
-  // A model with something behind it must reserve a fallback's worth, so the
-  // retry is refused -- and it is refused with its own code, not the provider's
-  // rejection, because "gave up for time" and "softened it twice and was still
-  // refused" are different incidents.
+  // The leader is given a window that holds its first attempt and little else,
+  // so not even one more attempt fits and the retry is refused. This drives the
+  // fast path, which passes `isLastModel: true` for every model because it
+  // reserves structurally, so what is exercised here is the one-attempt bound and
+  // the code it reports -- `moderationRetryCost` pins the two-case reserve
+  // separately. The code matters on its own: "gave up for time" and "softened it
+  // twice and was still refused" are different incidents.
   const run = await moderationRun(2_000, 900);
   // One request per position and not one more: no position retried.
   assertEquals(
