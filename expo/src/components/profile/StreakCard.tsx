@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Flame } from "lucide-react-native";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import {
   FALLBACK_LADDER,
   nextMilestone,
@@ -132,8 +132,7 @@ const styles = StyleSheet.create({
   iconWrapUrgent: { backgroundColor: colors.accent },
   body: { flex: 1 },
   value: {
-    fontFamily: fonts.ui,
-    fontWeight: "700",
+    ...profileHeading,
     color: colors.ink,
     fontSize: 22,
   },

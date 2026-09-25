@@ -33,7 +33,7 @@ import {
   patchPublicProfile,
   useOwnProfileStore,
 } from "@/lib/profile-store";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { GENRES, type Genre, type Story } from "@/types/domain";
 import { sharedStyles } from "@/screens/shared";
 
@@ -475,8 +475,7 @@ const styles = {
       alignItems: "center",
     },
     blockedTitle: {
-      fontFamily: fonts.ui,
-      fontWeight: "700",
+      ...profileHeading,
       fontSize: 16,
       color: colors.ink,
     },
@@ -518,8 +517,7 @@ const styles = {
     },
     avatarImage: { width: "100%", height: "100%" },
     authorInitial: {
-      fontFamily: fonts.ui,
-      fontWeight: "700",
+      ...profileHeading,
       color: colors.surface,
       fontSize: 42,
     },
@@ -545,8 +543,7 @@ const styles = {
     },
     followCount: { alignItems: "center" },
     followValue: {
-      fontFamily: fonts.ui,
-      fontWeight: "700",
+      ...profileHeading,
       color: colors.ink,
       fontSize: 24,
     },
@@ -564,8 +561,7 @@ const styles = {
     storiesHeading: {
       marginTop: spacing.sm,
       marginBottom: spacing.sm,
-      fontFamily: fonts.ui,
-      fontWeight: "700",
+      ...profileHeading,
       color: colors.ink,
       fontSize: 22,
     },

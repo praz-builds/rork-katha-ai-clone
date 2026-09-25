@@ -9054,6 +9054,11 @@ reverted fix and fail there.
 
 ### Verification
 
+- The original Profile typography regression test used Node `fs`/`path` and
+  `process.cwd`, which Expo's TypeScript environment intentionally does not
+  type. It was replaced with the shared, React-Native-safe `profileHeading`
+  token used by every scoped heading/metric; its test asserts the token is UI
+  font 700 and not display, brand, or reader text.
 - `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing. Existing Expo notification and React `act` warnings remain outside these changes.
 - `pnpm typecheck`: clean. ESLint over every changed Expo source/test file:
   0 errors and two pre-existing `react/no-unescaped-entities` warnings in

@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { Camera, X } from "lucide-react-native";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { Button } from "@/components/Button";
 import { CREATURES, creatureSource } from "@/lib/creatures";
 import {
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl,
     gap: spacing.related,
   },
-  title: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 22 },
+  title: { ...profileHeading, color: colors.ink, fontSize: 22 },
   close: {
     width: 36,
     height: 36,

@@ -2177,6 +2177,9 @@ and `deno check` clean.
 
 ### Verification
 
+- Reworked `profile-typography.test.ts` to test the shared React-Native-safe
+  `profileHeading` token rather than Node-only filesystem APIs. Every scoped
+  heading/metric now consumes that token.
 - `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing.
 - `pnpm typecheck`: clean. ESLint over every changed source/test file: 0 errors
   and two pre-existing `react/no-unescaped-entities` warnings in `MemberSheet`

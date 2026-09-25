@@ -63,7 +63,7 @@ import {
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
 import { revenueCatService } from "@/lib/revenuecat";
 import { signOutToSignIn } from "@/lib/session";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
 /** The legal pages (D12), shared with the paywall. Re-exported for existing callers. */
@@ -675,7 +675,7 @@ const styles = {
       borderRadius: radius.sm,
       backgroundColor: colors.surface2,
     },
-    name: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 22 },
+    name: { ...profileHeading, color: colors.ink, fontSize: 22 },
     meta: {
       marginTop: spacing.tight,
       fontFamily: fonts.ui,

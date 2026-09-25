@@ -14,7 +14,7 @@ import {
   loadFeedbackTopics,
   setFeedbackVote,
 } from "@/lib/feature-votes";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 /**
  * Vote on what's next, from You.
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     maxHeight: "88%",
   },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 24 },
+  title: { ...profileHeading, color: colors.ink, fontSize: 24 },
   close: {
     width: 36,
     height: 36,
