@@ -73,6 +73,20 @@ fixed):
 - The city can shape published stories; the sheet and STORY_PROMPT_SYSTEM.md
   now say so.
 
+From CodeAnt on the PR (four threads):
+
+- **Fixed.** A save racing an account deletion could pass the tombstone
+  check and commit a city beside a deleted account. `set_reader_preferences`
+  now reads the profile `FOR SHARE`, which conflicts with the tombstone
+  UPDATE, so the two serialise.
+- **Fixed.** A save that lands after the sheet was closed and reopened closed
+  the new opening. It now reports the stored value and leaves the new opening
+  alone.
+- **Declined, with reasons on the thread:** reading preferences at request
+  start (a snapshot per request is the contract), and updating `drawnSheet`
+  before the draw resolves (it mirrors `portraitKey`, and `redraw` clears the
+  old face at once).
+
 Found before the review:
 
 - `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`

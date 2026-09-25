@@ -65,9 +65,15 @@ export default function ReaderContextSheet({
   // seeded once per opening, when the saved value is known, so a read that
   // lands while the sheet is open cannot overwrite what is being typed.
   const seeded = useRef(false);
+  // Which opening a save belongs to. A save outlives a close-and-reopen; when
+  // it lands it still reports what the server stored (that is the truth
+  // either way), but it may not close, or mark failed, an opening that did
+  // not start it.
+  const opening = useRef(0);
   useEffect(() => {
     if (!visible) {
       seeded.current = false;
+      opening.current += 1;
       return;
     }
     if (status !== "ready" || seeded.current) return;
@@ -82,6 +88,7 @@ export default function ReaderContextSheet({
 
   const save = async () => {
     if (placeProblem || saving) return;
+    const startedIn = opening.current;
     setSaving(true);
     setFailed(false);
     const saved = await saveReaderPreferences({
@@ -89,12 +96,13 @@ export default function ReaderContextSheet({
       homePlace: place.trim() ? place : null,
     });
     setSaving(false);
+    const current = startedIn === opening.current;
     if (!saved) {
-      setFailed(true);
+      if (current) setFailed(true);
       return;
     }
     onSaved(saved);
-    onClose();
+    if (current) onClose();
   };
 
   return (

@@ -17,7 +17,7 @@
 //      bring it back.
 //   6. Every real function the migration calls is pg_catalog-qualified, and
 //      the four parser constructs (00071) are not.
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { assertRejects } from "https://deno.land/std@0.224.0/assert/assert_rejects.ts";
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
@@ -252,6 +252,18 @@ Deno.test("RLS is on, and service_role can call the function and read the row", 
   } finally {
     await db.close();
   }
+});
+
+Deno.test("the tombstone check locks the profile row against a concurrent deletion", async () => {
+  // PGlite is one connection, so the race itself cannot be staged here; this
+  // pins the lock that closes it. See the comment above the check.
+  const sql = await Deno.readTextFile(
+    new URL("00100_reader_preferences.sql", import.meta.url),
+  );
+  assert(
+    /where p\.id = p_user_id\s+for share;/.test(sql),
+    "set_reader_preferences must read the profile FOR SHARE",
+  );
 });
 
 Deno.test("every real function is pg_catalog-qualified; parser constructs are not", async () => {

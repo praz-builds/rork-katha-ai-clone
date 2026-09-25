@@ -101,6 +101,7 @@ as $$
 declare
     v_languages text[] := coalesce(p_spoken_languages, '{}'::text[]);
     v_place text := nullif(pg_catalog.btrim(p_home_place), '');
+    v_deleted_at timestamptz;
 begin
     if p_user_id is null then
         raise exception 'user is required' using errcode = 'KTH01';
@@ -108,10 +109,20 @@ begin
 
     -- A deleted account can hold a valid token for a while; its row was
     -- erased at deletion and must not come back.
-    if exists (
-        select 1 from public.profiles
-        where id = p_user_id and deleted_at is not null
-    ) then
+    --
+    -- FOR SHARE, not a plain read: the tombstone is an UPDATE of this row,
+    -- and the two lock modes conflict. Without it a save could read "not
+    -- deleted", the deletion could commit and run its trigger (finding no
+    -- row yet), and the save's insert would then commit a city beside a
+    -- deleted account. With it, whichever comes second waits: a deletion
+    -- after the save erases the saved row, and a save after the deletion
+    -- re-reads the tombstone and returns gone. (FOR KEY SHARE, which the
+    -- foreign key takes, does not conflict with a non-key UPDATE.)
+    select p.deleted_at into v_deleted_at
+    from public.profiles p
+    where p.id = p_user_id
+    for share;
+    if v_deleted_at is not null then
         return pg_catalog.jsonb_build_object('gone', true);
     end if;
 

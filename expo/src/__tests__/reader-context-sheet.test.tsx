@@ -70,3 +70,27 @@ it("a read that lands while the sheet is open does not overwrite what is being t
   );
   expect(view.getByTestId("reader-context-place").props.value).toBe("Mumbai");
 });
+
+it("a save that lands after a close-and-reopen does not close the new opening", async () => {
+  let resolveSave: (value: unknown) => void = () => {};
+  mockInvoke.mockReturnValueOnce(new Promise((r) => { resolveSave = r; }));
+  const props = {
+    value: SAVED,
+    status: "ready" as const,
+    onRetry: jest.fn(),
+    onSaved: jest.fn(),
+    onClose: jest.fn(),
+  };
+  const view = await render(<ReaderContextSheet {...props} visible />);
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  await view.rerender(<ReaderContextSheet {...props} visible={false} />);
+  await view.rerender(<ReaderContextSheet {...props} visible />);
+  await act(async () => {
+    resolveSave({ data: { spokenLanguages: ["hi", "en"], homePlace: "Pune" }, error: null });
+  });
+  // The server's answer is still reported; the new opening stays open.
+  expect(props.onSaved).toHaveBeenCalledWith({ spokenLanguages: ["hi", "en"], homePlace: "Pune" });
+  expect(props.onClose).not.toHaveBeenCalled();
+});
