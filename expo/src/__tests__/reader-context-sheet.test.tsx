@@ -110,7 +110,12 @@ it("a pasted city that is too long is explained, not silently cut", async () => 
   await act(async () => {
     fireEvent.changeText(view.getByTestId("reader-context-place"), long);
   });
-  expect(view.getByTestId("reader-context-place").props.value).toBe(long);
+  const place = view.getByTestId("reader-context-place");
+  // React Native's Jest host does not enforce `maxLength`, so asserting only
+  // the value/message would pass even if the native input silently truncated
+  // a pasted city. The prop is the regression: it must stay absent.
+  expect(place.props.maxLength).toBeUndefined();
+  expect(place.props.value).toBe(long);
   view.getByTestId("reader-context-place-error");
   await act(async () => {
     await fireEvent.press(view.getByTestId("reader-context-save"));

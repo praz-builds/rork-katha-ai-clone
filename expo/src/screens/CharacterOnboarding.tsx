@@ -494,8 +494,9 @@ export default function CharacterOnboarding(
     Android's hardware Back follows the same table as the arrow. Unhandled, it
     closed the whole app from the middle of onboarding -- with a portrait in
     flight and, after the code, a signed-in session left on a questionnaire
-    it had already answered. Always consumed: on the paywall and the welcome
-    screen, where `backFrom` answers null, it does nothing rather than exit.
+    it had already answered. Always consumed: on the paywall it dismisses, the
+    same one-shot path as the × (`backFrom` answers "dismiss"); on the welcome
+    screen, where it answers null, it does nothing rather than exit.
   */
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {

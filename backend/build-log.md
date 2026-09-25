@@ -113,6 +113,13 @@ alongside these:
   always settles the status and the row can never stick on "Loading…".
   `drawnSheet`'s comment now says what it holds: the sheet the current
   request was fired for, in step with `portraitKey`.
+- **Fixed (third standing review, of `759b56d`).** A save that landed after
+  an account switch still reached You's state; it now returns `stale` and is
+  reported to nobody, as the read already was. `set_preferences` refusals
+  carry a stable `reason` code and the client words its own copy from it --
+  the reader never sees "spokenLanguages has an unknown language" -- and a
+  404 means "account deleted" only when the body says `account_deleted`, not
+  for a gateway 404. The hardware-Back comment matched the old paywall row.
 
 Found before the review:
 
@@ -134,7 +141,7 @@ Found before the review:
 `index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
 passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
 `pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
-files), `jest --ci` 1617 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
+files), `jest --ci` 1618 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.

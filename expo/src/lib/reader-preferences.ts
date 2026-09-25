@@ -186,9 +186,36 @@ export type SaveReaderPreferencesResult =
   /** The server refused it, and said why in words the reader can act on. */
   | { refused: string }
   /** Nothing came back: the network, or a server that did not answer. */
-  | { failed: true };
+  | { failed: true }
+  /**
+   * The account changed while the save was in flight. The answer belongs to
+   * the account that left, so it is reported to nobody -- the read's rule.
+   */
+  | { stale: true };
 
-/** The server's own message for a refusal, when it sent one. */
+/**
+ * Reader copy for each refusal code (`PreferencesRefusalReason` in the
+ * function). The server's `error` text is for logs and is never shown: it
+ * names JSON fields. A code this build does not know gets the generic line.
+ */
+const REFUSAL_COPY: Record<string, string> = {
+  unknown_language:
+    "One of these languages is not available yet. Remove the one you added last and try again.",
+  too_many_languages: `Pick up to ${MAX_SPOKEN_LANGUAGES} languages.`,
+  place_too_long: `Keep your city to ${HOME_PLACE_MAX} characters or fewer.`,
+  place_invalid:
+    "Use letters, numbers, spaces and . , ' ( ) - for your city.",
+  account_deleted:
+    "This account has been deleted, so nothing can be saved to it.",
+};
+const REFUSAL_FALLBACK = "That could not be saved. Check your choices and try again.";
+
+/**
+ * Reader copy for a refusal, or null when the answer was not one. A 400 is a
+ * refusal whatever its body; a 404 only when the body carries
+ * `account_deleted` -- a gateway 404 for an unrouted function has no reason,
+ * and telling that reader their account is gone would be false.
+ */
 async function refusalMessage(error: unknown): Promise<string | null> {
   const context = error && typeof error === "object"
     ? (error as {
@@ -196,18 +223,21 @@ async function refusalMessage(error: unknown): Promise<string | null> {
     }).context
     : undefined;
   const status = context?.status;
-  if (status === 404) {
-    return "This account has been deleted, so nothing can be saved to it.";
-  }
-  if (status !== 400 || typeof context?.json !== "function") return null;
+  if (status !== 400 && status !== 404) return null;
+  let reason: unknown;
   try {
-    const body = await context.json() as { error?: unknown } | null;
-    return typeof body?.error === "string" && body.error.trim()
-      ? body.error
+    const body = typeof context?.json === "function"
+      ? await context.json() as { reason?: unknown } | null
       : null;
+    reason = body?.reason;
   } catch {
-    return null;
+    reason = undefined;
   }
+  if (status === 404) {
+    return reason === "account_deleted" ? REFUSAL_COPY.account_deleted : null;
+  }
+  return (typeof reason === "string" && REFUSAL_COPY[reason]) ||
+    REFUSAL_FALLBACK;
 }
 
 /**
@@ -229,13 +259,14 @@ export async function saveReaderPreferences(
         homePlace: prefs.homePlace?.trim() ? prefs.homePlace.trim() : null,
       },
     });
+    if (startedIn !== epoch) return { stale: true };
     if (error) {
       const refused = await refusalMessage(error);
       return refused ? { refused } : { failed: true };
     }
     const saved = fromResponse(data);
     if (!saved) return { failed: true };
-    if (startedIn === epoch) cache = { prefs: saved, at: Date.now() };
+    cache = { prefs: saved, at: Date.now() };
     return { saved };
   } catch {
     return { failed: true };

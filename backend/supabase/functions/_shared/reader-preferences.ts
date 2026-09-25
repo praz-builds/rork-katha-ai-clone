@@ -72,6 +72,25 @@ export const HOME_PLACE_MAX = 60;
  */
 const HOME_PLACE_PATTERN = /^[\p{L}\p{M}\p{N} .,'’()\-]+$/u;
 
+/**
+ * Why a save was refused, as a stable code beside the developer message.
+ * The client words its own copy from `reason` and never shows `error`, so the
+ * message can stay precise for logs while the reader sees something they can
+ * act on. `account_deleted` is the tombstone's 404 (00100), and it is the
+ * only 404 that carries a reason: a gateway 404 has none.
+ */
+export type PreferencesRefusalReason =
+  | "unknown_language"
+  | "too_many_languages"
+  | "place_too_long"
+  | "place_invalid"
+  | "account_deleted";
+
+export type PreferencesRefusal = {
+  error: string;
+  reason: PreferencesRefusalReason;
+};
+
 export function isSpokenLanguage(value: unknown): value is SpokenLanguage {
   return typeof value === "string" &&
     Object.prototype.hasOwnProperty.call(SPOKEN_LANGUAGES, value);
@@ -88,16 +107,24 @@ export type ReaderContext = {
  */
 export function normalizeHomePlace(
   value: unknown,
-): { place: string | null } | { error: string } {
+): { place: string | null } | PreferencesRefusal {
   if (value === undefined || value === null) return { place: null };
-  if (typeof value !== "string") return { error: "place must be text" };
+  if (typeof value !== "string") {
+    return { error: "place must be text", reason: "place_invalid" };
+  }
   const place = value.replace(/\s+/g, " ").trim();
   if (place.length === 0) return { place: null };
   if (place.length > HOME_PLACE_MAX) {
-    return { error: `place must be ${HOME_PLACE_MAX} characters or fewer` };
+    return {
+      error: `place must be ${HOME_PLACE_MAX} characters or fewer`,
+      reason: "place_too_long",
+    };
   }
   if (!HOME_PLACE_PATTERN.test(place)) {
-    return { error: "place may use letters, numbers, spaces and . , ' ( ) -" };
+    return {
+      error: "place may use letters, numbers, spaces and . , ' ( ) -",
+      reason: "place_invalid",
+    };
   }
   return { place };
 }
@@ -112,19 +139,28 @@ export function normalizeReaderPreferences(
   body: Record<string, unknown>,
 ):
   | { spokenLanguages: SpokenLanguage[]; homePlace: string | null }
-  | { error: string } {
+  | PreferencesRefusal {
   const raw = body.spokenLanguages ?? [];
-  if (!Array.isArray(raw)) return { error: "spokenLanguages must be a list" };
+  if (!Array.isArray(raw)) {
+    return {
+      error: "spokenLanguages must be a list",
+      reason: "unknown_language",
+    };
+  }
   const spokenLanguages: SpokenLanguage[] = [];
   for (const entry of raw) {
     if (!isSpokenLanguage(entry)) {
-      return { error: "spokenLanguages has an unknown language" };
+      return {
+        error: "spokenLanguages has an unknown language",
+        reason: "unknown_language",
+      };
     }
     if (!spokenLanguages.includes(entry)) spokenLanguages.push(entry);
   }
   if (spokenLanguages.length > MAX_SPOKEN_LANGUAGES) {
     return {
       error: `pick up to ${MAX_SPOKEN_LANGUAGES} languages`,
+      reason: "too_many_languages",
     };
   }
   const place = normalizeHomePlace(body.homePlace);

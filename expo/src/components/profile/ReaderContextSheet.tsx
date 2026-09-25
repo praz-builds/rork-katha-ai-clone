@@ -103,6 +103,12 @@ export default function ReaderContextSheet({
     });
     setSaving(false);
     const current = startedIn === opening.current;
+    // Another account's answer: report it to nobody, and close a sheet that
+    // was showing the previous account's values.
+    if ("stale" in result) {
+      if (current) onClose();
+      return;
+    }
     if (!("saved" in result)) {
       if (current) {
         setFailed(
@@ -220,7 +226,7 @@ export default function ReaderContextSheet({
                 placeholder="e.g. Pune, Lagos or São Paulo"
                 placeholderTextColor={colors.tertiary}
                 accessibilityLabel="Your city"
-                    autoCapitalize="words"
+                autoCapitalize="words"
                 autoCorrect={false}
                 textContentType="addressCity"
                 autoComplete="off"

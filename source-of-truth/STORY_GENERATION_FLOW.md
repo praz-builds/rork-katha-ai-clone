@@ -640,7 +640,10 @@ cast's names -- always overrides it. Contract and prompt wording:
 You, *Global preferences* -> *Languages and home* sets up to three spoken
 languages and an optional city, saved through the `profile` function
 (`preferences` / `set_preferences`, token-owner only) into `reader_preferences`
-(migration 00100). The Create request carries **nothing** for it: the
+(migration 00100). A refused save returns a stable `reason` code
+(`unknown_language`, `too_many_languages`, `place_too_long`, `place_invalid`,
+or `account_deleted` on the tombstone's 404); the client words its copy from
+the code and never shows the developer `error` text. The Create request carries **nothing** for it: the
 generation functions read the row server-side for the verified user when the
 first chapter is written. It is cultural context, never the output language,
 and the brief overrides it. Contract and prompt wording:

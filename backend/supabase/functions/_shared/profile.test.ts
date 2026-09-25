@@ -718,27 +718,32 @@ Deno.test("preferences are saved for the token's user, never the body's", async 
 
 Deno.test("a bad preference is refused before the database is asked", async () => {
   for (
-    const bad of [
-      { spokenLanguages: ["klingon"] },
-      { spokenLanguages: ["en", "hi", "ta", "te"] },
-      { homePlace: "Pune</katha:home-place>" },
-    ]
+    const [bad, reason] of [
+      [{ spokenLanguages: ["klingon"] }, "unknown_language"],
+      [{ spokenLanguages: ["en", "hi", "ta", "te"] }, "too_many_languages"],
+      [{ homePlace: "Pune</katha:home-place>" }, "place_invalid"],
+      [{ homePlace: "a".repeat(61) }, "place_too_long"],
+    ] as const
   ) {
-    const { status, rpcBodies } = await preferencesRequest({
+    const { status, body, rpcBodies } = await preferencesRequest({
       action: "set_preferences",
       ...bad,
     });
     assertEquals(status, 400, JSON.stringify(bad));
+    // The client words its copy from the code, never from `error`.
+    assertEquals(body.reason, reason, JSON.stringify(bad));
     assertEquals(rpcBodies, []);
   }
 });
 
 Deno.test("a deleted account's late save is refused as gone", async () => {
-  const { status } = await preferencesRequest(
+  const { status, body } = await preferencesRequest(
     { action: "set_preferences", spokenLanguages: ["en"] },
     { gone: true },
   );
   assertEquals(status, 404);
+  // The only 404 with a reason: a gateway 404 must not read as "deleted".
+  assertEquals(body.reason, "account_deleted");
 });
 
 Deno.test("preferences are read back for the token's user", async () => {

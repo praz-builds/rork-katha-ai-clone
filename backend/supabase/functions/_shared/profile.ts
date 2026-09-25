@@ -938,7 +938,9 @@ export async function handleProfile(req: Request): Promise<Response> {
       // is somebody saving a setting, and saving less than they chose would
       // look like a bug.
       const input = normalizeReaderPreferences(body);
-      if ("error" in input) return respond({ error: input.error }, 400);
+      if ("error" in input) {
+        return respond({ error: input.error, reason: input.reason }, 400);
+      }
       const { data, error } = await service.rpc("set_reader_preferences", {
         p_user_id: viewerId,
         p_spoken_languages: input.spokenLanguages,
@@ -947,7 +949,7 @@ export async function handleProfile(req: Request): Promise<Response> {
       if (error) throw error;
       // A tombstoned account (00070) saves nothing; see the migration.
       if (first(data)?.gone === true) {
-        return respond({ error: "Not found" }, 404);
+        return respond({ error: "Not found", reason: "account_deleted" }, 404);
       }
       return respond({
         spokenLanguages: input.spokenLanguages,

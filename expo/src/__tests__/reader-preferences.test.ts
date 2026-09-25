@@ -92,27 +92,61 @@ it("saves through the profile function, and tells a refusal from a failure", asy
     saveReaderPreferences({ spokenLanguages: [], homePlace: null }),
   ).resolves.toEqual({ failed: true });
 
-  // A client one language ahead of the deployed function: the server's words,
-  // not "check your connection".
+  // A client one language ahead of the deployed function: reader copy keyed
+  // off the server's code, never its developer message.
   mockInvoke.mockResolvedValueOnce({
     data: null,
     error: Object.assign(new Error("fn"), {
       context: {
         status: 400,
-        json: () => Promise.resolve({ error: "spokenLanguages has an unknown language" }),
+        json: () =>
+          Promise.resolve({
+            error: "spokenLanguages has an unknown language",
+            reason: "unknown_language",
+          }),
       },
     }),
   });
-  await expect(
-    saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null }),
-  ).resolves.toEqual({ refused: "spokenLanguages has an unknown language" });
+  const unknown = await saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null });
+  expect(unknown).toEqual({
+    refused:
+      "One of these languages is not available yet. Remove the one you added last and try again.",
+  });
+  expect(JSON.stringify(unknown)).not.toContain("spokenLanguages");
 
+  // The tombstone's 404 says so; a gateway 404 without a reason does not.
   mockInvoke.mockResolvedValueOnce({
     data: null,
-    error: Object.assign(new Error("fn"), { context: { status: 404 } }),
+    error: Object.assign(new Error("fn"), {
+      context: {
+        status: 404,
+        json: () => Promise.resolve({ error: "Not found", reason: "account_deleted" }),
+      },
+    }),
   });
-  const gone = await saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null });
-  expect(gone).toHaveProperty("refused");
+  expect(
+    await saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null }),
+  ).toEqual({ refused: "This account has been deleted, so nothing can be saved to it." });
+  mockInvoke.mockResolvedValueOnce({
+    data: null,
+    error: Object.assign(new Error("fn"), {
+      context: { status: 404, json: () => Promise.resolve({ message: "Function not found" }) },
+    }),
+  });
+  expect(
+    await saveReaderPreferences({ spokenLanguages: ["en"], homePlace: null }),
+  ).toEqual({ failed: true });
+});
+
+it("a save that lands after the account changed is reported to nobody", async () => {
+  let resolveSave: (value: unknown) => void = () => {};
+  mockInvoke.mockReturnValueOnce(new Promise((r) => { resolveSave = r; }));
+  const pending = saveReaderPreferences({ spokenLanguages: ["hi"], homePlace: "Pune" });
+  await Promise.resolve();
+  clearReaderPreferencesCache();
+  resolveSave({ data: { spokenLanguages: ["hi"], homePlace: "Pune" }, error: null });
+  await expect(pending).resolves.toEqual({ stale: true });
+  expect(cachedReaderPreferences()).toBeNull();
 });
 
 it("holds the last value for a return visit, and forgets it when the account changes", async () => {
