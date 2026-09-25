@@ -44,6 +44,8 @@ jest.mock("@/lib/supabase", () => ({
 
 /* eslint-disable import/first */
 import {
+  GENRE_SEARCH_FETCH_SIZE,
+  genreClause,
   loadStoryChapters,
   mapSearchRow,
   publishedOffsetFrom,
@@ -141,7 +143,7 @@ describe("the visibility clauses survive every other filter", () => {
     expect(ors).toEqual([
       "is_public.eq.true,is_curated.eq.true",
       "title.ilike.*wolf*,topic.ilike.*wolf*",
-      "primary_genre.eq.fantasy,and(primary_genre.is.null,genre.cs.{fantasy})",
+      "primary_genre.in.(fantasy,cozyFantasy),and(primary_genre.is.null,genre.cs.{fantasy}),and(primary_genre.is.null,genre.cs.{cozyFantasy})",
     ]);
   });
 
@@ -193,6 +195,69 @@ describe("a genre filter answers with that genre only", () => {
     const outcome = await searchStories({ text: "", genre: "adventure" });
     expect(outcome.stories.map((story) => story.id)).toEqual(["a", "l"]);
     expect(outcome.stories.every((story) => story.genre === "adventure")).toBe(true);
+  });
+
+  it("includes every runtime genre that maps to the selected card label", () => {
+    // `cozyFantasy` and `paranormalRomance` are server-only PrimaryGenre
+    // values. They keep their own stored voice but get a display label that a
+    // reader can select, so the query must carry them too.
+    expect(genreClause("fantasy")).toBe(
+      "primary_genre.in.(fantasy,cozyFantasy),and(primary_genre.is.null,genre.cs.{fantasy}),and(primary_genre.is.null,genre.cs.{cozyFantasy})",
+    );
+    expect(genreClause("romance")).toBe(
+      "primary_genre.in.(romance,paranormalRomance),and(primary_genre.is.null,genre.cs.{romance}),and(primary_genre.is.null,genre.cs.{paranormalRomance})",
+    );
+  });
+
+  it("keeps a server-only story under the label its card displays", async () => {
+    rows = [
+      { id: "cozy", title: "A cozy fantasy", primary_genre: "cozyFantasy" },
+      { id: "para", title: "A paranormal romance", primary_genre: "paranormalRomance" },
+    ];
+
+    const fantasy = await searchStories({ text: "", genre: "fantasy" });
+    expect(fantasy.stories.map((story) => story.id)).toEqual(["cozy"]);
+    expect(fantasy.stories[0].genre).toBe("fantasy");
+
+    const romance = await searchStories({ text: "", genre: "romance" });
+    expect(romance.stories.map((story) => story.id)).toEqual(["para"]);
+    expect(romance.stories[0].genre).toBe("romance");
+  });
+
+  it("over-fetches a bounded genre page before its defensive card filter", async () => {
+    // The actual SQL clause cannot tell where a legacy array contains its
+    // primary genre. These 24 non-Adventure legacy rows would otherwise eat
+    // all 24 slots before the client can drop them.
+    rows = [
+      ...Array.from({ length: 24 }, (_, index) => ({
+        id: `wrong-${index}`,
+        title: `Wrong ${index}`,
+        primary_genre: null,
+        genre: ["mystery", "adventure"],
+      })),
+      ...Array.from({ length: 24 }, (_, index) => ({
+        id: `right-${index}`,
+        title: `Right ${index}`,
+        primary_genre: "adventure",
+      })),
+    ];
+
+    const outcome = await searchStories({ text: "", genre: "adventure" });
+    expect(had("limit", GENRE_SEARCH_FETCH_SIZE)).toBe(true);
+    expect(outcome.stories).toHaveLength(24);
+    expect(outcome.stories.every((story) => story.genre === "adventure")).toBe(true);
+    expect(outcome.stories[0].id).toBe("right-0");
+  });
+
+  it("does not label a row with an unrecognised carried genre as Adventure", () => {
+    // A made-up server value used to become an Adventure card but could never
+    // be selected by the Adventure query. Drop malformed data rather than
+    // presenting a false, unqueryable label.
+    expect(mapSearchRow({
+      id: "unknown",
+      title: "Unknown",
+      primary_genre: "not-a-real-genre",
+    })).toBeNull();
   });
 
   it("leaves an unfiltered page alone", async () => {

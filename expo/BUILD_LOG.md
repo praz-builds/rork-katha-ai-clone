@@ -2154,3 +2154,34 @@ and `deno check` clean.
   injection sinks, auth regressions, or PII logging were found in the changed
   surfaces. `pnpm audit` reports 2 high vulnerabilities, both ignored by the
   existing patched advisory policy.
+## 2026-09-25: PR #149 reviewer follow-up
+
+### Changed
+
+- Replaced the display face with the existing Hanken 700 UI heading treatment
+  across Profile, public profile, Journey, and Profile-owned sheet headings,
+  display names, and metrics. Reader/story typography and the brand wordmark
+  remain unchanged; `DESIGN.md` and the canonical design-system document now
+  supersede Profile's former display-font exception.
+- Made Explore's card label and genre query agree for the full 19-value backend
+  genre contract. Server-only Cozy Fantasy and Paranormal Romance now join their
+  visible Fantasy and Romance filters, while malformed genre rows are not
+  misrepresented as Adventure.
+- Bounded a genre query's defensive over-fetch to 48 metadata rows before
+  keeping the 24 visible cards, so legacy secondary genres cannot leave a
+  selected genre page empty or short.
+- Kept per-voice sample errors visible on their own rows without replacing the
+  language/gender descriptions; retries clear only that voice's prior error.
+- Delayed the Author Stories heading until the profile request resolves and
+  removed the stale public-calendar argument from the client helper.
+
+### Verification
+
+- `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing.
+- `pnpm typecheck`: clean. ESLint over every changed source/test file: 0 errors
+  and two pre-existing `react/no-unescaped-entities` warnings in `MemberSheet`
+  and `JourneyScreen`.
+- Existing Expo notification and React `act` warnings were emitted by unrelated
+  profile-screen imports; no test failed.
+- Expo Doctor and a full web export began but exceeded this environment's
+  30-second command window, so they are not claimed as passes.

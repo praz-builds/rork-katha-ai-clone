@@ -332,13 +332,14 @@ export default function AuthorScreen({
           )
           : null}
 
-        {/* What they have written: the reason anybody opens this page, so it
-            is named, and it answers even when the answer is "nothing yet". */}
-        {isBlocked ? null : (
+        {/* What they have written: show the heading only when the query has
+            answered. During a live-profile load, a bare heading over empty
+            space looks like an empty result rather than honest loading. */}
+        {!isBlocked && (!real || published !== null || profileState === "error") ? (
           <Text style={styles.storiesHeading} testID="author-stories-heading">
             Stories
           </Text>
-        )}
+        ) : null}
 
         <View style={styles.stack}>
           {isBlocked
@@ -517,7 +518,8 @@ const styles = {
     },
     avatarImage: { width: "100%", height: "100%" },
     authorInitial: {
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.surface,
       fontSize: 42,
     },
@@ -543,7 +545,8 @@ const styles = {
     },
     followCount: { alignItems: "center" },
     followValue: {
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.ink,
       fontSize: 24,
     },
@@ -561,14 +564,16 @@ const styles = {
     storiesHeading: {
       marginTop: spacing.sm,
       marginBottom: spacing.sm,
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.ink,
       fontSize: 22,
     },
     commentsSection: { marginTop: spacing.xl, gap: spacing.sm },
     commentsHeading: {
       marginBottom: spacing.xs,
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.ink,
       fontSize: 22,
     },

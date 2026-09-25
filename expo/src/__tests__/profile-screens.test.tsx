@@ -219,6 +219,30 @@ describe("following an author", () => {
 // ---------------------------------------------------------------------------
 
 describe("somebody else's profile", () => {
+  it("does not show a bare Stories heading while the public profile is loading", async () => {
+    let resolveProfile!: (value: null) => void;
+    mockFetchPublicProfile.mockReturnValue(new Promise((resolve) => {
+      resolveProfile = resolve;
+    }));
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    expect(view.queryByTestId("author-stories-heading")).toBeNull();
+
+    await act(async () => {
+      resolveProfile(null);
+    });
+    await waitFor(() => view.getByTestId("author-stories-error"));
+    expect(view.getByTestId("author-stories-heading")).toBeTruthy();
+  });
+
   it("shows only what the server listed, never the local story array", async () => {
     mockFetchPublicProfile.mockResolvedValue({
       profile: publicProfile,

@@ -43,6 +43,16 @@ import type { Genre, Story } from "@/types/domain";
 export const SEARCH_PAGE_SIZE = 24;
 
 /**
+ * The genre query may include an old row whose `genre` array merely CONTAINS
+ * the selected genre. We settle that row on the array's first value before it
+ * can become a card, so fetch a bounded extra page before that defensive
+ * filter. Explore has no pagination; returning a short page because those
+ * false legacy matches consumed its only 24 slots would be worse than the
+ * small, fixed metadata read. The result is always clipped back to 24.
+ */
+export const GENRE_SEARCH_FETCH_SIZE = SEARCH_PAGE_SIZE * 2;
+
+/**
  * How long the field waits after the last keystroke.
  *
  * 220ms is under the ~250ms a reader reads as "instant" and above a fast
@@ -91,6 +101,51 @@ export function themeTags(value: unknown): string[] {
 }
 
 const GENRE_SET: ReadonlySet<string> = new Set(GENRES);
+
+/**
+ * Every primary-genre value the backend can currently persist, mapped to the
+ * client label a reader can actually filter by. `cozyFantasy` and
+ * `paranormalRomance` are deliberately here even though they are server-only:
+ * old stories retain those values and must not render as one genre then vanish
+ * when that visible genre is selected. Keep this list in lockstep with the
+ * backend's `PrimaryGenre`, not just the picker list.
+ */
+const DISPLAY_GENRE_BY_RUNTIME_GENRE: Readonly<Record<string, Genre>> = {
+  romance: "romance",
+  romantasy: "romantasy",
+  darkRomance: "darkRomance",
+  cozyFantasy: "fantasy",
+  paranormalRomance: "romance",
+  fantasy: "fantasy",
+  scifi: "scifi",
+  thriller: "thriller",
+  mystery: "mystery",
+  horror: "horror",
+  contemporary: "contemporary",
+  historical: "historical",
+  adventure: "adventure",
+  comedy: "comedy",
+  poetry: "poetry",
+  educational: "educational",
+  fanfiction: "fanfiction",
+  folktale: "folktale",
+  sliceOfLife: "sliceOfLife",
+};
+
+function displayGenreForRuntimeGenre(value: unknown): Genre | null {
+  return typeof value === "string"
+    ? DISPLAY_GENRE_BY_RUNTIME_GENRE[value] ?? null
+    : null;
+}
+
+function runtimeGenresForDisplayGenre(genre: Genre): string[] {
+  const mapped = Object.entries(DISPLAY_GENRE_BY_RUNTIME_GENRE)
+    .filter(([, display]) => display === genre)
+    .map(([runtime]) => runtime);
+  // Keep the ordinary stored value first. It makes the wire clause easy to
+  // audit while still including server-only values that share its display.
+  return [genre, ...mapped.filter((runtime) => runtime !== genre)];
+}
 
 export type SearchInput = {
   /** What the reader typed. May be empty — that is the default browse. */
@@ -246,7 +301,7 @@ export async function searchStories(
     query = query
       .order("like_count", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(SEARCH_PAGE_SIZE);
+      .limit(genre ? GENRE_SEARCH_FETCH_SIZE : SEARCH_PAGE_SIZE);
 
     if (options.signal) query = query.abortSignal(options.signal);
 
@@ -256,11 +311,14 @@ export async function searchStories(
     const stories = data
       .map((row) => mapSearchRow(row))
       .filter((story): story is Story => story !== null);
+    const visible = genre
+      ? stories.filter((story) => story.genre === genre).slice(0, SEARCH_PAGE_SIZE)
+      : stories;
     return {
       // The card shows the genre `mapSearchRow` settled on, so that is the
       // one the filter answers to. A legacy row whose array leads with some
       // other genre matched the clause above and would render as that genre.
-      stories: genre ? stories.filter((story) => story.genre === genre) : stories,
+      stories: visible,
       source: "supabase",
     };
   } catch {
@@ -274,7 +332,14 @@ export async function searchStories(
  * clause is asserted as written; see the comment at its call site.
  */
 export function genreClause(genre: Genre): string {
-  return `primary_genre.eq.${genre},and(primary_genre.is.null,genre.cs.{${genre}})`;
+  const runtimeGenres = runtimeGenresForDisplayGenre(genre);
+  const primary = runtimeGenres.length === 1
+    ? `primary_genre.eq.${runtimeGenres[0]}`
+    : `primary_genre.in.(${runtimeGenres.join(",")})`;
+  const legacy = runtimeGenres.map((runtimeGenre) =>
+    `and(primary_genre.is.null,genre.cs.{${runtimeGenre}})`
+  );
+  return [primary, ...legacy].join(",");
 }
 
 /** Author ids whose handle contains `term`. Empty on any failure. */
@@ -362,11 +427,14 @@ export function mapSearchRow(row: unknown): Story | null {
   if (!id || !title) return null;
 
   const legacy = Array.isArray(record.genre) ? record.genre : [];
-  const genre: Genre = isKnownGenre(record.primary_genre)
-    ? record.primary_genre
-    : isKnownGenre(legacy[0])
-    ? legacy[0]
-    : "adventure";
+  const genre = displayGenreForRuntimeGenre(record.primary_genre) ??
+    displayGenreForRuntimeGenre(legacy[0]) ??
+    // Rows with no genre at all predate the catalogue contract. They retain
+    // the historic Adventure fallback. A row carrying an unknown genre is
+    // deliberately dropped instead: calling it Adventure would make the card
+    // lie and make it unqueryable under every exact genre clause.
+    (record.primary_genre == null && legacy.length === 0 ? "adventure" : null);
+  if (!genre) return null;
 
   return {
     id,

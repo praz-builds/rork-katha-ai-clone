@@ -132,7 +132,8 @@ const styles = StyleSheet.create({
   iconWrapUrgent: { backgroundColor: colors.accent },
   body: { flex: 1 },
   value: {
-    fontFamily: fonts.display,
+    fontFamily: fonts.ui,
+    fontWeight: "700",
     color: colors.ink,
     fontSize: 22,
   },

@@ -358,7 +358,7 @@ const styles = {
       justifyContent: "center",
       marginLeft: -8,
     },
-    title: { fontFamily: fonts.display, color: colors.ink, fontSize: 26 },
+    title: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 26 },
     memberSince: {
       flexDirection: "row",
       alignItems: "center",
@@ -390,7 +390,8 @@ const styles = {
       borderColor: colors.border,
     },
     statValue: {
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.ink,
       fontSize: 40,
       lineHeight: 46,
@@ -420,7 +421,8 @@ const styles = {
     sectionTitle: {
       marginTop: spacing.betweenGroups,
       marginBottom: spacing.md,
-      fontFamily: fonts.display,
+      fontFamily: fonts.ui,
+      fontWeight: "700",
       color: colors.ink,
       fontSize: 22,
     },

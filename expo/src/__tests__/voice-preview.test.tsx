@@ -173,11 +173,36 @@ it("says a missing sample failed, and lets it be tried again", async () => {
     mockLoads[0].reject(new Error("404"));
   });
   await waitFor(() => view.getByLabelText("Kai sample unavailable. Try again"));
-  expect(view.getByText("Sample unavailable right now")).toBeTruthy();
+  // A failure is an added status, never a replacement for the voice facts.
+  expect(view.getAllByText("English · Female")).toHaveLength(3);
+  expect(view.getByTestId("voice-sample-error-kai")).toHaveTextContent(
+    "Sample unavailable right now",
+  );
 
   await fireEvent.press(view.getByLabelText("Kai sample unavailable. Try again"));
   expect(mockLoads).toHaveLength(2);
   expect(mockSetPreferredVoiceId).not.toHaveBeenCalled();
+});
+
+it("keeps each failed voice visible while another voice is sampled", async () => {
+  const view = await renderVoices();
+
+  await fireEvent.press(view.getByLabelText("Play Aria sample"));
+  await act(async () => {
+    mockLoads[0].reject(new Error("404"));
+  });
+  await waitFor(() => view.getByTestId("voice-sample-error-aria"));
+
+  await fireEvent.press(view.getByLabelText("Play Kai sample"));
+  await act(async () => {
+    mockLoads[1].reject(new Error("404"));
+  });
+  await waitFor(() => view.getByTestId("voice-sample-error-kai"));
+
+  expect(view.getByTestId("voice-sample-error-aria")).toBeTruthy();
+  expect(view.getByTestId("voice-sample-error-kai")).toBeTruthy();
+  // Both rows retain the compact language/gender description under failure.
+  expect(view.getAllByText("English · Female")).toHaveLength(3);
 });
 
 it("offers no sample for a voice the registry has none for", async () => {

@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl,
     gap: spacing.related,
   },
-  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
+  title: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 22 },
   close: {
     width: 36,
     height: 36,

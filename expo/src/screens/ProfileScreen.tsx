@@ -675,7 +675,7 @@ const styles = {
       borderRadius: radius.sm,
       backgroundColor: colors.surface2,
     },
-    name: { fontFamily: fonts.display, color: colors.ink, fontSize: 22 },
+    name: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 22 },
     meta: {
       marginTop: spacing.tight,
       fontFamily: fonts.ui,

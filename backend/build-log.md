@@ -9032,3 +9032,35 @@ Backend `deno test --allow-all supabase/functions/` 1067 passed (+2),
 suite green. Client `pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci`
 1360 passed across 129 suites. Both new behavioural tests were run against the
 reverted fix and fail there.
+## 2026-09-25 UTC — PR #149 reviewer follow-up: truthful Explore and voice states
+
+- Profile, public profile, Journey, and Profile-owned sheet headings, display
+  names, initials, and metric values now use the existing Hanken UI family at
+  700. Reader/story prose and the brand/reader faces are untouched. The visual
+  contract now explicitly supersedes Profile's old Bricolage exception.
+- Explore now maps all 19 runtime `PrimaryGenre` values to a queryable card
+  label. The two backend-only stored values remain visible under their
+  documented replacements (`cozyFantasy` -> Fantasy and
+  `paranormalRomance` -> Romance); malformed carried genres are dropped rather
+  than falsely labelled Adventure.
+- A genre browse fetches a bounded 48 metadata rows, defensively removes legacy
+  secondary-genre matches, then returns at most the 24-card page. This prevents
+  the client-side accuracy guard from consuming an otherwise full page.
+- Voice preview failures are now persistent per voice and additive to, rather
+  than replacements for, the language/gender subtitle. The public-profile
+  Stories heading waits for a load result, and the own-calendar helper no
+  longer advertises a public-profile parameter it does not use.
+- No backend runtime, schema, secret, or deployed function changed.
+
+### Verification
+
+- `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing. Existing Expo notification and React `act` warnings remain outside these changes.
+- `pnpm typecheck`: clean. ESLint over every changed Expo source/test file:
+  0 errors and two pre-existing `react/no-unescaped-entities` warnings in
+  `MemberSheet` and `JourneyScreen`.
+- Expo Doctor and the full web export exceeded this environment's 30-second
+  command window after starting; neither is recorded as a pass here.
+- Security scan completed before push: no new credential exposure, injection,
+  authorization gap, unbounded input, or client PII storage was introduced.
+  `pnpm audit --prod` still reports the repository's two pre-existing high
+  advisories and no critical advisory.

@@ -148,7 +148,8 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: spacing.sm,
-    fontFamily: fonts.display,
+    fontFamily: fonts.ui,
+    fontWeight: "700",
     color: colors.ink,
     fontSize: 24,
   },

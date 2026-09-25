@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  headerTitle: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 24 },
   closeButton: { padding: 4 },
   body: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
   lead: {

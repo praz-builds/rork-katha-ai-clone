@@ -57,7 +57,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   value: {
-    fontFamily: fonts.display,
+    fontFamily: fonts.ui,
+    fontWeight: "700",
     color: colors.ink,
     fontSize: 20,
   },

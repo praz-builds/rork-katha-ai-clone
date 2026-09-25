@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  title: { fontFamily: fonts.ui, fontWeight: "700", color: colors.ink, fontSize: 24 },
   close: {
     width: 36,
     height: 36,

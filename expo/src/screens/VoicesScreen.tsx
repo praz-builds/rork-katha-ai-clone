@@ -47,7 +47,21 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
     undefined,
   );
   const [selected, setSelected] = useState<string | null>(null);
+  const [failedPreviewIds, setFailedPreviewIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const preview = useVoicePreview();
+
+  // Playback itself has one active state, but a failed static sample remains
+  // useful information about that specific voice. Do not erase Aria's failure
+  // merely because the reader then samples Kai.
+  useEffect(() => {
+    if (preview.state.status !== "error" || !preview.state.voiceId) return;
+    setFailedPreviewIds((current) => {
+      if (current.has(preview.state.voiceId!)) return current;
+      return new Set(current).add(preview.state.voiceId!);
+    });
+  }, [preview.state.status, preview.state.voiceId]);
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +80,18 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
   const choose = (id: string) => {
     setSelected(id);
     void setPreferredVoiceId(id);
+  };
+
+  const togglePreview = (voiceId: string, url: string) => {
+    // A retry starts a new attempt, so its prior error stops being presented
+    // as current. If it fails again the effect above restores it for this row.
+    setFailedPreviewIds((current) => {
+      if (!current.has(voiceId)) return current;
+      const next = new Set(current);
+      next.delete(voiceId);
+      return next;
+    });
+    preview.toggle(voiceId, url);
   };
 
   return (
@@ -114,6 +140,7 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
                   preview.state.voiceId === voice.id
                     ? preview.state.status
                     : "idle";
+                const sampleFailed = failedPreviewIds.has(voice.id);
                 return (
                   <View
                     key={voice.id}
@@ -135,11 +162,17 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
                     >
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle}>{voice.displayName}</Text>
-                        <Text style={styles.rowSubtitle}>
-                          {sample === "error"
-                            ? "Sample unavailable right now"
-                            : describe(voice)}
-                        </Text>
+                        <Text style={styles.rowSubtitle}>{describe(voice)}</Text>
+                        {sampleFailed
+                          ? (
+                            <Text
+                              style={styles.sampleError}
+                              testID={`voice-sample-error-${voice.id}`}
+                            >
+                              Sample unavailable right now
+                            </Text>
+                          )
+                          : null}
                       </View>
                       {active && (
                         <View style={styles.tick}>
@@ -158,7 +191,7 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
                           status={sample}
                           testID={`voice-preview-${voice.id}`}
                           onPress={() =>
-                            preview.toggle(voice.id, voice.previewUrl)}
+                            togglePreview(voice.id, voice.previewUrl!)}
                         />
                       )
                       : null}
@@ -291,6 +324,13 @@ const styles = {
       backgroundColor: colors.bg,
     },
     previewButtonActive: { backgroundColor: colors.accentSoft },
+    sampleError: {
+      color: colors.danger,
+      fontFamily: fonts.ui,
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 2,
+    },
     rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
     rowText: { flex: 1 },
     rowTitle: {
