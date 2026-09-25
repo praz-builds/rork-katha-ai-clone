@@ -269,9 +269,9 @@
   },
   "auth": {
     "codeTitle": "Check your inbox",
-    "codeSub": "Enter the 6-digit code we sent to {{email}}.",
-    "codeHint": "Enter the 6-digit code",
-    "codeTooLong": "That has more than 6 digits. Paste just the 6-digit code from the newest email.",
+    "codeSub": "Enter the {{count}}-digit code we sent to {{email}}.",
+    "codeHint": "Enter the {{count}}-digit code",
+    "codeTooLong": "That has more than {{count}} digits. Paste just the {{count}}-digit code from the newest email.",
     "codeMismatch": "That code did not match. Try again or resend it.",
     "verify": "Verify and continue",
     "resend": "Resend code",

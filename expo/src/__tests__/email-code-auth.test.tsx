@@ -46,7 +46,7 @@ jest.mock("@expo/vector-icons", () => {
 });
 
 /* eslint-disable import/first */
-import { CODE_TOO_LONG, EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
+import { codeTooLong, EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
 /* eslint-enable import/first */
 
 const HEADLINE = "Welcome back.";
@@ -291,8 +291,10 @@ describe("EmailCodeAuth -- a 6-digit code, pasted or typed", () => {
       "12345678",
     );
 
-    await view.findByText(CODE_TOO_LONG);
-    expect(CODE_TOO_LONG).toContain("6-digit");
+    await view.findByText(codeTooLong());
+    expect(codeTooLong()).toBe(
+      "That has more than 6 digits. Paste just the 6-digit code from the newest email.",
+    );
     // Its first six are not the code; spending a verify on them only burns
     // the rate limit.
     expect(mockVerifyEmailCode).not.toHaveBeenCalled();
@@ -305,6 +307,31 @@ describe("EmailCodeAuth -- a 6-digit code, pasted or typed", () => {
     const { view } = await mount();
     await reachCodeStep(view);
     view.getByText(`Enter the 6-digit code we sent to ${EMAIL}.`);
+  });
+
+  it("sends a code pasted while a verify is in flight once that verify fails", async () => {
+    let refuse!: (error: Error) => void;
+    mockVerifyEmailCode.mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => { refuse = reject; }),
+    );
+    const { view, onVerified } = await mount();
+    await reachCodeStep(view);
+    const input = view.getByLabelText("Verification code");
+
+    await fireEvent.changeText(input, "111111");
+    await waitFor(() => expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1));
+    // The right code arrives while the wrong one is still being checked.
+    await fireEvent.changeText(input, "222222");
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(1);
+
+    refuse(new Error("no match"));
+
+    // No Verify tap: the waiting code goes out on its own.
+    await waitFor(() =>
+      expect(mockVerifyEmailCode).toHaveBeenLastCalledWith(EMAIL, "222222")
+    );
+    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    expect(mockVerifyEmailCode).toHaveBeenCalledTimes(2);
   });
 
   it("retries the same code from Verify after the auto-submit was refused", async () => {
