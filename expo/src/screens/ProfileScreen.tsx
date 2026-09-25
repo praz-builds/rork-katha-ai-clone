@@ -22,6 +22,7 @@ import {
   Flame,
   Globe2,
   HelpCircle,
+  Languages,
   LogOut,
   MessageSquare,
   Music,
@@ -40,6 +41,7 @@ import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import FeedbackSheet from "@/components/profile/FeedbackSheet";
 import FeatureVoteSheet from "@/components/profile/FeatureVoteSheet";
 import StoryWorldSheet from "@/components/profile/StoryWorldSheet";
+import ReaderContextSheet from "@/components/profile/ReaderContextSheet";
 import IdentityEditor, { type IdentityEdits } from "@/components/profile/IdentityEditor";
 import MemberSheet from "@/components/profile/MemberSheet";
 import { Toggle } from "@/components/Toggle";
@@ -52,6 +54,12 @@ import {
   storyWorldLabel,
   useStoryWorld,
 } from "@/lib/story-world";
+import {
+  EMPTY_READER_PREFERENCES,
+  fetchReaderPreferences,
+  type ReaderPreferences,
+  readerPreferencesSummary,
+} from "@/lib/reader-preferences";
 import { streakState } from "@/lib/profile";
 import {
   FRESH_FOR_MS,
@@ -153,6 +161,30 @@ export default function ProfileScreen({
     musicChosenByUserRef.current = true;
     setMusicOn(next);
     void setMusicMuted(!next);
+  }, []);
+
+  // Languages and home, from the account. The same rule as the music switch:
+  // a save made while the first read is still in flight must not be undone
+  // when that read lands with the older value.
+  const [readerPrefs, setReaderPrefs] = useState<ReaderPreferences>(
+    EMPTY_READER_PREFERENCES,
+  );
+  const [readerContextOpen, setReaderContextOpen] = useState(false);
+  const readerPrefsChosenByUserRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void fetchReaderPreferences().then((prefs) => {
+      if (alive && prefs && !readerPrefsChosenByUserRef.current) {
+        setReaderPrefs(prefs);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const saveReaderPrefs = useCallback((next: ReaderPreferences) => {
+    readerPrefsChosenByUserRef.current = true;
+    setReaderPrefs(next);
   }, []);
 
   useEffect(() => {
@@ -411,7 +443,14 @@ export default function ProfileScreen({
         )}
 
         {/* Everything below changes rarely or never. */}
-        <View style={styles.group}>
+        {/* Global preferences: how stories sound and where they are rooted,
+            for every story rather than one. Named as a section because the
+            four rows answer one question -- "how do you like your stories?" --
+            and read as unrelated settings when mixed in with the rest. */}
+        <View style={styles.group} testID="profile-global-preferences">
+          <Text style={styles.groupHeading} accessibilityRole="header">
+            Global preferences
+          </Text>
           <Row
             icon={Volume2}
             title="Audiobook voices"
@@ -441,14 +480,6 @@ export default function ProfileScreen({
             />
           </View>
           <Row
-            icon={MessageSquare}
-            title={i18n.t("profile.feedbackSheet.row")}
-            subtitle={i18n.t("profile.feedbackSheet.rowDesc")}
-            onPress={() => setFeedbackOpen(true)}
-            testID="profile-feedback"
-            grouped
-          />
-          <Row
             icon={Globe2}
             title="Story world"
             subtitle={storyWorld === "global"
@@ -456,6 +487,26 @@ export default function ProfileScreen({
               : `${storyWorldLabel(storyWorld)} — where new stories are rooted`}
             onPress={() => setStoryWorldOpen(true)}
             testID="profile-story-world"
+            grouped
+          />
+          <Row
+            icon={Languages}
+            title="Languages and home"
+            subtitle={readerPreferencesSummary(readerPrefs)}
+            onPress={() => setReaderContextOpen(true)}
+            testID="profile-reader-context"
+            grouped
+            last
+          />
+        </View>
+
+        <View style={styles.group}>
+          <Row
+            icon={MessageSquare}
+            title={i18n.t("profile.feedbackSheet.row")}
+            subtitle={i18n.t("profile.feedbackSheet.rowDesc")}
+            onPress={() => setFeedbackOpen(true)}
+            testID="profile-feedback"
             grouped
           />
           <Row
@@ -559,6 +610,13 @@ export default function ProfileScreen({
         value={storyWorld}
         onChange={(next) => void setStoryWorld(next)}
         onClose={() => setStoryWorldOpen(false)}
+      />
+
+      <ReaderContextSheet
+        visible={readerContextOpen}
+        value={readerPrefs}
+        onSaved={saveReaderPrefs}
+        onClose={() => setReaderContextOpen(false)}
       />
 
       <FeatureVoteSheet visible={votesOpen} onClose={() => setVotesOpen(false)} />
@@ -783,6 +841,19 @@ const styles = {
       borderWidth: 1,
       borderColor: colors.border,
       overflow: "hidden",
+    },
+    /* The section name at the top of a grouped card: the danger zone's
+       heading, for the same job. */
+    groupHeading: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.sm,
+      fontFamily: fonts.ui,
+      color: colors.tertiary,
+      fontWeight: "800",
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
     },
     dangerHeading: {
       paddingHorizontal: spacing.lg,

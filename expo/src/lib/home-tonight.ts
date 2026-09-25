@@ -58,6 +58,21 @@ export function isMood(value: string | null | undefined): value is Mood {
     Object.prototype.hasOwnProperty.call(MOOD_LABELS, value);
 }
 
+/**
+ * The one mood the rail is keyed on, when the reader picked several.
+ *
+ * The mood question is multi-select (2026-09-25), and the rail has one title
+ * and one shelf. The contract is the first mood TAPPED: onboarding sends its
+ * answers in tap order, and the first thing somebody reaches for is the
+ * strongest signal of what they want tonight. Unknown keys are passed over
+ * rather than ending the search, so a stale key cannot blank the rail.
+ */
+export function primaryMood(
+  moods: readonly string[] | null | undefined,
+): Mood | null {
+  return moods?.find((mood): mood is Mood => isMood(mood)) ?? null;
+}
+
 /** The rail's eyebrow: the mood in the reader's own words. */
 export function tonightTitle(mood: Mood): string {
   return `Tonight · ${MOOD_LABELS[mood]}`;

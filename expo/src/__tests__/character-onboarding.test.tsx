@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo, StyleSheet } from "react-native";
+import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGenerateCharacterImage = jest.fn();
@@ -187,8 +187,10 @@ jest.mock("@/components/onboarding/WelcomeScreen", () => {
 
 /* eslint-disable import/first */
 import CharacterOnboarding, {
+  backFrom,
   PORTRAIT_WAIT_CAPTION,
 } from "@/screens/CharacterOnboarding";
+import { STAGE_CAST } from "@/lib/onboarding-cast";
 import type { OnboardingPurpose } from "@/screens/CharacterOnboarding";
 /* eslint-enable import/first */
 
@@ -905,7 +907,7 @@ describe("character onboarding", () => {
     reanimated.withTiming.mockClear();
     reanimated.withRepeat.mockClear();
 
-    const stage = view.getByLabelText("Three character portraits");
+    const stage = view.getByLabelText(/^Three character portraits/);
     const cards = stage.children as unknown as { props: { style: unknown } }[];
     for (const card of cards) {
       const flattened = StyleSheet.flatten(card.props.style) as Record<string, unknown>;
@@ -943,5 +945,104 @@ describe("character onboarding", () => {
     );
     await fireEvent.press(view.getByLabelText("Back"));
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+  /*
+    2026-09-25: the stage held one hero and the same side portrait twice, and
+    the PNGs carried a frame of their own that showed as a second edge inside
+    the card. Three different people now, cut to the card's ratio.
+  */
+  it("puts three different people on W3's stage, each described", async () => {
+    const view = await mount();
+    const sources = ["stage-card-hero", "stage-card-left", "stage-card-right"]
+      .map((id) => view.getByTestId(id).props.source);
+    expect(new Set(sources).size).toBe(3);
+    expect(sources).toEqual(STAGE_CAST.map((member) => member.source));
+    const label = view.getByLabelText(/^Three character portraits/).props
+      .accessibilityLabel as string;
+    for (const member of STAGE_CAST) expect(label).toContain(member.label);
+  });
+
+  /*
+    After the code verifies, the screens behind it are for somebody who has
+    not signed in. Back from the face goes to the sheet, and Back from the
+    sheet goes to the face -- never to the email box, the code, W3 or out.
+  */
+  it("never walks back behind the code once it has verified", async () => {
+    const onExit = jest.fn();
+    const view = await render(
+      <CharacterOnboarding
+        purpose="write"
+        initialGenre="mystery"
+        onDone={jest.fn()}
+        onExit={onExit}
+      />,
+    );
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    view.getByText("Craft your lead");
+    await fireEvent.press(view.getByLabelText("Back"));
+    await view.findByText(`Meet ${NAME}.`);
+    expect(view.queryByLabelText("Email address")).toBeNull();
+    expect(view.queryByLabelText("Verification code")).toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
+    // Walking back and forth spends nothing.
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes Android's hardware Back by the same table, and never closes the app", async () => {
+    const handlers: (() => boolean)[] = [];
+    const spy = jest
+      .spyOn(BackHandler, "addEventListener")
+      .mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: () => {} };
+      });
+    try {
+      const onExit = jest.fn();
+      const view = await render(
+        <CharacterOnboarding
+          purpose="write"
+          initialGenre="mystery"
+          onDone={jest.fn()}
+          onExit={onExit}
+        />,
+      );
+      await fillSheet(view);
+      await submitSave(view);
+      await verify(view);
+      await view.findByText(`Meet ${NAME}.`);
+
+      // The latest registration is the live one.
+      let consumed = false;
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      view.getByText("Craft your lead");
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      await view.findByText(`Meet ${NAME}.`);
+      expect(onExit).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("keeps the whole back table in one place", () => {
+    expect(backFrom("w3", false)).toBe("exit");
+    expect(backFrom("w4", false)).toBe("w3");
+    expect(backFrom("w5", false)).toBe("w4");
+    expect(backFrom("code", false)).toBe("w5");
+    expect(backFrom("w6", true)).toBe("w4");
+    // Verified: W4 leads back to the face, not to the pitch.
+    expect(backFrom("w4", true)).toBe("w6");
+    expect(backFrom("paywall", true)).toBeNull();
+    expect(backFrom("welcome", true)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -70,8 +71,7 @@ import {
 } from "@/theme";
 import { Button } from "@/components/Button";
 import type { Genre } from "@/types/domain";
-import portraitAarav from "../../assets/onboarding/portrait-aarav.png";
-import portraitPriya from "../../assets/onboarding/portrait-priya.png";
+import { STAGE_CAST } from "@/lib/onboarding-cast";
 
 /**
  * The character path through onboarding: W3 to W7 of the 2026-09-11 hand-off.
@@ -118,8 +118,8 @@ export type CharacterOnboardingEntryContext = {
   name: string;
   genreInterests: string[];
   otherGenre?: string;
-  refine?: string;
-  moment?: string;
+  refine?: string[];
+  moment?: string[];
 };
 
 export type OnboardingCharacter = {
@@ -156,7 +156,44 @@ type Props = {
   onExit?: () => void;
 };
 
-type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
+export type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
+
+/**
+ * Where Back goes from each screen. The one table: the top bar's arrow and
+ * Android's hardware Back both read it, so they cannot disagree.
+ *
+ * AFTER THE CODE HAS VERIFIED, NOTHING BEHIND IT IS REACHABLE (2026-09-25).
+ * The email box, the code screen, W3's pitch and the questionnaire before it
+ * are all screens for somebody who has not signed in yet. Walking back into
+ * them from a signed-in session asked for an address that was already
+ * confirmed, or dropped the person into the intro with a live account and a
+ * portrait in flight. So a verified W4 -- reached to fix the sheet -- goes
+ * back to the face it is editing, and the Meet screen goes back to W4. The two
+ * post-auth screens point at each other and at nothing earlier.
+ *
+ * `"exit"` is W3 leaving to the questionnaire (the caller's `onExit`). `null`
+ * is a screen with no Back: the paywall has its own close, and the welcome
+ * screen is an animation that is already leaving.
+ */
+export function backFrom(
+  step: Step,
+  emailVerified: boolean,
+): Step | "exit" | null {
+  switch (step) {
+    case "w3":
+      return "exit";
+    case "w4":
+      return emailVerified ? "w6" : "w3";
+    case "w5":
+      return "w4";
+    case "code":
+      return "w5";
+    case "w6":
+      return "w4";
+    default:
+      return null;
+  }
+}
 
 /**
  * THERE IS NO GENDER FIELD, and there is no gender on the wire either.
@@ -410,6 +447,28 @@ export default function CharacterOnboarding(
     haptic("confirm");
     setStep(next);
   }, [haptic]);
+
+  /** Back, by the table. See `backFrom`. */
+  const back = useCallback(() => {
+    const target = backFrom(step, emailVerified);
+    if (target === "exit") onExit?.();
+    else if (target) go(target);
+  }, [emailVerified, go, onExit, step]);
+
+  /*
+    Android's hardware Back follows the same table as the arrow. Unhandled, it
+    closed the whole app from the middle of onboarding -- with a portrait in
+    flight and, after the code, a signed-in session left on a questionnaire
+    it had already answered. Always consumed: on the paywall and the welcome
+    screen, where `backFrom` answers null, it does nothing rather than exit.
+  */
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      back();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [back]);
 
   /* ── The portrait ───────────────────────────────────────────────────── */
 
@@ -805,7 +864,8 @@ export default function CharacterOnboarding(
       {step === "w3"
         ? (
           <Frame
-            onBack={onExit}
+            // No exit, no arrow: an arrow that does nothing is worse than none.
+            onBack={onExit ? back : undefined}
             steps={progress.total}
             currentStep={progress.w3}
             glow
@@ -844,7 +904,7 @@ export default function CharacterOnboarding(
         : step === "w4"
         ? (
           <Frame
-            onBack={() => go("w3")}
+            onBack={back}
             steps={progress.total}
             currentStep={progress.character}
             cta={
@@ -931,7 +991,7 @@ export default function CharacterOnboarding(
         : step === "w5"
         ? (
           <Frame
-            onBack={() => go("w4")}
+            onBack={back}
             steps={progress.total}
             currentStep={progress.character}
             cta={
@@ -1002,7 +1062,7 @@ export default function CharacterOnboarding(
             email={email.trim()}
             headline="Check your inbox"
             sub={`Enter the 6-digit code we sent to ${email.trim()}.`}
-            onBack={() => go("w5")}
+            onBack={back}
             onVerified={() => {
               setEmailVerified(true);
               go("w6");
@@ -1023,7 +1083,7 @@ export default function CharacterOnboarding(
             canReimagine={reimaginesUsed < REIMAGINE_BUDGET}
             steps={progress.total}
             currentStep={progress.character}
-            onBack={() => go("w4")}
+            onBack={back}
             onRedraw={redrawEdited}
             onPaywall={() => go("paywall")}
             onRetry={retryPortrait}
@@ -1322,19 +1382,23 @@ function CharacterStage() {
     <View
       style={{ width: 300 * scale, height: 290 * scale, alignSelf: "center" }}
       accessible
-      accessibilityLabel="Three character portraits"
+      accessibilityLabel={`Three character portraits: ${
+        STAGE_CAST.map((member) => member.label).join("; ")
+      }`}
     >
       <SideCard
         progress={side}
         dir={1}
         card={card}
         position={{ left: 0, top: 34 * scale }}
+        source={STAGE_CAST[1].source}
       />
       <SideCard
         progress={side}
         dir={-1}
         card={card}
         position={{ right: 0, top: 34 * scale }}
+        source={STAGE_CAST[2].source}
       />
       <Animated.View
         style={[
@@ -1346,9 +1410,10 @@ function CharacterStage() {
         ]}
       >
         <Image
-          source={portraitAarav}
+          source={STAGE_CAST[0].source}
           resizeMode="cover"
           style={styles.stageImage}
+          testID="stage-card-hero"
         />
       </Animated.View>
     </View>
@@ -1367,11 +1432,14 @@ function SideCard({
   dir,
   card,
   position,
+  source,
 }: {
   progress: { value: number };
   dir: 1 | -1;
   card: { width: number; height: number };
   position: StyleProp<ViewStyle>;
+  /** A different person per card; see `STAGE_CAST`. */
+  source: number;
 }) {
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -1390,9 +1458,10 @@ function SideCard({
       style={[styles.stageCard, card, position, animatedStyle]}
     >
       <Image
-        source={portraitPriya}
+        source={source}
         resizeMode="cover"
         style={styles.stageImage}
+        testID={`stage-card-${dir === 1 ? "left" : "right"}`}
       />
     </Animated.View>
   );

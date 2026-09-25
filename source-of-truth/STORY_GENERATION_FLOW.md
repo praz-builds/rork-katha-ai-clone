@@ -636,6 +636,16 @@ for what the brief leaves open, and the brief -- idea, *Where and when*, the
 cast's names -- always overrides it. Contract and prompt wording:
 `STORY_PROMPT_SYSTEM.md` *Story world*.
 
+**Languages and home are a standing account preference too (2026-09-25).** On
+You, *Global preferences* -> *Languages and home* sets up to three spoken
+languages and an optional city, saved through the `profile` function
+(`preferences` / `set_preferences`, token-owner only) into `reader_preferences`
+(migration 00100). The Create request carries **nothing** for it: the
+generation functions read the row server-side for the verified user when the
+first chapter is written. It is cultural context, never the output language,
+and the brief overrides it. Contract and prompt wording:
+`STORY_PROMPT_SYSTEM.md` *Reader context*.
+
 ---
 
 ## 7. See an example

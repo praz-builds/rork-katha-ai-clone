@@ -7,6 +7,76 @@
 
 ---
 
+## 2026-09-25 UTC — Onboarding takes several answers, the stage shows three different people, and stories know the reader's languages and city
+
+**Session:** completion of the dirty `codex/onboarding-culture-remediation`
+worktree. Not deployed: migration `00100` and the `profile`,
+`generate-story` and `generate-story-stream` functions ship in a later deploy
+(migration first, per *Deploy discipline*).
+
+### Onboarding
+
+- **Multi-select where the question allows it.** `selectionFor` is the table:
+  the writer's two intent questions and the reader's mood and routine are
+  multi-select; purpose, R-how and the "both" questions stay single because
+  they route or already offer the combination. Answers are `string[]` in tap
+  order; the first is the primary (`primaryMood` keys Home's Tonight rail).
+  *Surprise me* and *Whenever I get time* are exclusive. Session state only.
+- **Back is one table** (`backFrom`) for the arrow and Android hardware Back.
+  After the code verifies, W4 and W6 point at each other and nothing earlier
+  is reachable. Hardware Back is always consumed; it used to close the app.
+- **Three different people on W3's stage** (`STAGE_CAST`, three 450 × 630
+  WebPs with no baked frame). The two old PNGs are deleted.
+
+### Reader context (migration 00100)
+
+- `reader_preferences`: up to three spoken languages (closed list of 30 ISO
+  639 ids) and an optional city. RLS on, all client grants revoked, written
+  only by `set_reader_preferences` (security definer, `search_path = ''`,
+  execute granted to `service_role` only). Every real function is
+  `pg_catalog`-qualified, including `btrim` and `char_length` inside the
+  CHECKs and the `now()` default. A trigger on the `profiles.deleted_at`
+  tombstone deletes the row, and a late save from a tombstoned account
+  returns `gone`.
+- `profile` gains `preferences` / `set_preferences`, keyed on the verified
+  token and never on the body. The endpoint validates first (Unicode letters
+  and marks, digits, `. , ' ( ) -`, 60 characters) and the CHECKs are the
+  backstop.
+- Generation reads the row as service role for the first chapter and renders
+  `buildReaderContextBlock` after Story world: cultural context, **never** the
+  output language, and the brief wins. The city is fenced with `userField`.
+  A failed read produces no block. **Known gap:** `shape-story` does not
+  receive it yet.
+- You: a *Global preferences* heading over voices, music, Story world and the
+  new *Languages and home* sheet. Send feedback moves to the next group.
+
+### Fixes made while completing
+
+- `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`
+  and its doc comment, which left that comment attached to the wrong function.
+  Moved.
+- The 00100 CHECK called `btrim` / `char_length` unqualified. Now qualified,
+  with a test that fails on any bare real function or any qualified parser
+  construct.
+- New migration tests: RLS is enabled, and `service_role` can call the setter
+  and read the row.
+- `reader-preferences.test.ts` (Expo) failed typecheck: it used a default
+  import of `path`, which the node shims do not declare. Changed to named
+  imports.
+
+### Gates
+
+`deno test` functions: 1118 passed. `deno check` on every function
+`index.ts`: clean. 00100 migration test: 7 passed; full migration suite: see
+the PR. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
+`pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
+files), `jest --ci` 1607 passed across 152 suites, `expo-doctor` 18/18, web
+export wrote `index.html`. The security review of the diff found nothing: no
+secrets, the owner comes from the token, the city is kept out of AsyncStorage,
+and the RLS and grants are tested.
+
+---
+
 ## 2026-09-25 UTC — Deployed: 00099 and eight functions, 89/89 byte-identical, and the smoke back to 43/43
 
 **Session:** the deploy #145 said to do, with the drift audit and the production

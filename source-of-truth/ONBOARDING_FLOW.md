@@ -418,8 +418,8 @@ copy. It still decides the exit (§15).
 
 | Step | Header | Control | CTA |
 |---|---|---|---|
-| `writer_format` | **What do you want to write?** | Four full-width single-select cards | **Continue** |
-| `writer_blocker` | **What usually stops you?** | Four full-width single-select cards | **Continue** into W3 |
+| `writer_format` | **What do you want to write?** | Four full-width **multi-select** cards (amended 2026-09-25, §3D) | **Continue** |
+| `writer_blocker` | **What usually stops you?** | Four full-width **multi-select** cards (amended 2026-09-25, §3D) | **Continue** into W3 |
 
 `writer_format` options: A full novel, Short stories, Fan fiction, Poetry and
 verse.
@@ -434,8 +434,9 @@ call, generation operation, ledger row, or cover request.
 
 ## 3C. R-how, R-mood, R-when: the reader's questions
 
-**Added 2026-09-14**, from the owner's design frames. Three single-select
-screens after **Reading**, drawn with the same option row as S3 (§3B's selected
+**Added 2026-09-14**, from the owner's design frames. Three screens after
+**Reading** (R-how single-select; R-mood and R-when multi-select since
+2026-09-25, §3D), drawn with the same option row as S3 (§3B's selected
 look: `colors.accentSoft` fill, `colors.accent` border, filled accent check
 disc; unselected rows draw no ring). The row's border is always present, in
 `colors.surface` when unselected, so selecting never moves the list.
@@ -454,8 +455,9 @@ tappable. It exists so W3's three portraits are expected rather than a detour.
 **Skip is the only optional answer in the flow**, because R-when is about
 routine, not taste, and a person who does not know yet should not invent one.
 Skip leaves with `moment` empty; a tapped-then-skipped row is not sent.
+**Whenever I get time** is exclusive (§3D).
 
-**What the answers feed.** `mood` is the key of Home's **Tonight** rail
+**What the answers feed.** The **first** `mood` tapped (`primaryMood`) is the key of Home's **Tonight** rail
 (`expo/src/lib/home-tonight.ts`): the first shelf under the reader's own
 stories, titled **Tonight · {mood label}**, built from the mood's genres
 (escape → fantasy, adventure, sci-fi, romantasy; guessing → mystery, thriller,
@@ -468,6 +470,43 @@ the writer's answers and feed nothing yet.
 **The last question's CTA is Continue on every path.** It read **Build my
 profile** for readers and "both", a label for a progress ring that no longer
 exists.
+
+---
+
+## 3D. Which questions take several answers (2026-09-25)
+
+`selectionFor` in `expo/src/screens/KathaOnboardingFlowV2.tsx` is the one
+table; the screens and the tests read it.
+
+| Question | Purpose | Selection |
+|---|---|---|
+| S3 `purpose` | all | single -- it routes, and **Reading and Writing** is already an option |
+| `refine` (W0a *What do you want to write?*) | write | **multi** |
+| `refine` (R-how *How do you like your stories?*) | read | single -- **A mix of both** is the combination |
+| `refine` ("both") | both | single -- **Balance both** is the combination |
+| `mood` (R-mood) | read | **multi** |
+| `moment` (W0b *What usually stops you?*) | write | **multi** |
+| `moment` (R-when) | read | **multi** |
+| `moment` ("both") | both | single -- it asks for the one that fits most |
+
+Rules (`toggleAnswer`, pure and tested):
+
+- **Every answer is a list of option keys in tap order**, including a
+  single-select one (a list of one). `KathaOnboardingAnswers` and
+  `CharacterEntryContext` carry `refine`, `mood` and `moment` as `string[]`.
+- **The first tap is the primary.** A consumer that needs one value reads it:
+  Home's Tonight rail keys on `primaryMood(mood)`, which skips unknown keys
+  rather than blanking the rail.
+- **Exclusive options** -- 🎲 **Surprise me** on R-mood, 🕒 **Whenever I get
+  time** on R-when -- are a whole answer: choosing one clears the others, and
+  choosing another option clears it.
+- A multi-select screen says so in a line under the heading, **Pick as many as
+  you like.**, in `colors.ink` bold (the accent is under 3:1 at helper size).
+  Its rows announce as **checkbox**; single-select rows stay **radio**.
+- **Continue is enabled by one rule on every question screen: at least one
+  answer.** R-when's Skip is still the only way to leave with none.
+- The answers are session state; nothing here is persisted or sent to the
+  server, so the shape change needs no migration.
 
 ---
 
@@ -729,9 +768,25 @@ row, **36 pt**, then a centred **300 × 290** stage holding three cards, each
 | Left | left 0, top 34 | rotate **-8°** | `shadows.onboardingCard` |
 | Right | right 0, top 34 | rotate **+8°** | `shadows.onboardingCard` |
 
-The right card is the exact mirror of the left. Assets are
-`expo/assets/onboarding/portrait-aarav.png` (hero, focal centre 18%) and
-`portrait-priya.png` (both sides).
+The right card is the exact mirror of the left.
+
+**Amended 2026-09-25: three different people.** The stage held one hero and
+the same side portrait twice, so "anyone can be the lead" was argued by two
+copies of one slim adult. The cast is now one table, `STAGE_CAST` in
+`expo/src/lib/onboarding-cast.ts`, read by the stage and by R-when's Up next
+card (which shows `[0]`, the face that steps forward on W3):
+
+| Slot | Asset | Who |
+|---|---|---|
+| Hero `[0]` | `expo/assets/onboarding/stage-heavyset.webp` | a heavyset woman in her forties, mustard kurta, tote bag |
+| Left `[1]` | `stage-athletic.webp` | an athletic man in his thirties, rust track jacket |
+| Right `[2]` | `stage-child.webp` | a nine-year-old girl, green raincoat, holding a book |
+
+Each is cut to the card's own 5:7 (450 × 630, 3× the 150 × 210 card) on a flat
+`colors.onboardingStone` ground, with no frame or rounded corners of its own --
+the old PNGs carried a baked-in frame that `cover` cropped into a second edge.
+Head to feet sits in the middle 80%. The stage's accessibility label names all
+three. `portrait-aarav.png` and `portrait-priya.png` are deleted.
 
 **Amended 2026-09-12 (third round): W3 does not pin its CTA, and it is the only
 screen on the path that does not.** The progress row stays at the top, and
@@ -776,6 +831,24 @@ bounce back to rest would turn it into a UI flourish.
 scale and opacity, with no entrance.
 
 **Back** returns to S3, or to W0b for writers, with every selection restored.
+
+**Back is one table for the character path (2026-09-25).** `backFrom(step,
+emailVerified)` in `CharacterOnboarding.tsx` answers for both the top bar's
+arrow and Android's hardware Back, which is now always consumed -- unhandled,
+it closed the app mid-onboarding with a portrait in flight.
+
+| From | Before the code verifies | After it verifies |
+|---|---|---|
+| W3 | leaves to the questionnaire (`onExit`; no arrow without one) | -- |
+| W4 | W3 | **W6** (the face being edited) |
+| W5 | W4 | -- |
+| code | W5 | -- |
+| W6 | -- | W4 |
+| W7 paywall, welcome | nothing (hardware Back is swallowed) | nothing |
+
+**After the code has verified, nothing before it is reachable.** The email
+box, the code screen, W3's pitch and the questionnaire are for somebody not yet
+signed in; W4 and W6 point at each other and at nothing earlier.
 
 **Instrumentation:** `onboarding_character_cta_shown { purpose }`;
 `onboarding_character_cta_tapped { purpose }`.

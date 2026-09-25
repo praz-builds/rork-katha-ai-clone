@@ -45,6 +45,9 @@ jest.mock("@expo/vector-icons", () => {
 /* eslint-disable import/first */
 import KathaOnboardingFlowV2, {
   MIN_GENRE_SELECTIONS,
+  MOODS,
+  selectionFor,
+  toggleAnswer,
 } from "@/screens/KathaOnboardingFlowV2";
 import { genreChipLabel } from "@/components/explore/GenreStrip";
 import { BUTTON_RECIPE } from "@/components/Button";
@@ -108,9 +111,9 @@ describe("KathaOnboardingFlowV2", () => {
         name: "Nikita",
         genres: ["Mystery", "Fantasy", "Adventure"],
         otherGenre: "",
-        refine: "novel",
-        mood: "",
-        moment: "chapters",
+        refine: ["novel"],
+        mood: [],
+        moment: ["chapters"],
       },
     });
   });
@@ -156,9 +159,9 @@ describe("KathaOnboardingFlowV2", () => {
         name: "Mira",
         genres: ["Mystery", "Fantasy", "Adventure"],
         otherGenre: "",
-        refine: "listen",
-        mood: "emotional",
-        moment: "sleep",
+        refine: ["listen"],
+        mood: ["emotional"],
+        moment: ["sleep"],
       },
     });
   });
@@ -187,9 +190,9 @@ describe("KathaOnboardingFlowV2", () => {
       expect.objectContaining({
         purpose: "read",
         onboarding: expect.objectContaining({
-          refine: "read",
-          mood: "surprise",
-          moment: "",
+          refine: ["read"],
+          mood: ["surprise"],
+          moment: [],
         }),
       }),
     );
@@ -284,9 +287,9 @@ describe("KathaOnboardingFlowV2", () => {
       expect.objectContaining({
         purpose: "write",
         onboarding: expect.objectContaining({
-          refine: "novel",
-          mood: "",
-          moment: "chapters",
+          refine: ["novel"],
+          mood: [],
+          moment: ["chapters"],
         }),
       }),
     );
@@ -508,5 +511,148 @@ describe("KathaOnboardingFlowV2", () => {
     // them, and would fail this.
     expect(cta.minHeight).toBe(BUTTON_RECIPE.lg);
     expect(cta.borderRadius).toBe(BUTTON_RECIPE.radius);
+  });
+});
+
+/*
+  2026-09-25: the writer's two questions and the reader's mood and routine
+  take several answers. Purpose never does: it decides which screens follow,
+  and two purposes at once would leave the next screen undefined.
+*/
+describe("multi-select questions", () => {
+  it("takes several answers exactly where the contract says, and one everywhere else", () => {
+    expect(selectionFor("purpose", "")).toBe("single");
+    for (const purpose of ["read", "write", "both"] as const) {
+      expect(selectionFor("purpose", purpose)).toBe("single");
+    }
+    expect(selectionFor("refine", "write")).toBe("multi");
+    expect(selectionFor("moment", "write")).toBe("multi");
+    expect(selectionFor("mood", "read")).toBe("multi");
+    expect(selectionFor("moment", "read")).toBe("multi");
+    // One option of each is the combination, or the question asks for one.
+    expect(selectionFor("refine", "read")).toBe("single");
+    expect(selectionFor("refine", "both")).toBe("single");
+    expect(selectionFor("moment", "both")).toBe("single");
+  });
+
+  it("keeps tap order, toggles off, and treats an exclusive option as a whole answer", () => {
+    let answer: string[] = [];
+    answer = toggleAnswer(answer, "emotional", "multi", MOODS);
+    answer = toggleAnswer(answer, "escape", "multi", MOODS);
+    expect(answer).toEqual(["emotional", "escape"]);
+    answer = toggleAnswer(answer, "emotional", "multi", MOODS);
+    expect(answer).toEqual(["escape"]);
+    // Surprise me clears the rest; a real mood clears Surprise me.
+    answer = toggleAnswer(answer, "surprise", "multi", MOODS);
+    expect(answer).toEqual(["surprise"]);
+    answer = toggleAnswer(answer, "quick", "multi", MOODS);
+    expect(answer).toEqual(["quick"]);
+    // Single-select replaces, and a second tap keeps the choice.
+    expect(toggleAnswer(["a"], "b", "single", [])).toEqual(["b"]);
+    expect(toggleAnswer(["b"], "b", "single", [])).toEqual(["b"]);
+  });
+
+  it("lets a writer pick several formats and several blockers, in tap order", async () => {
+    const onCharacterPath = jest.fn();
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={onCharacterPath} />,
+    );
+    await answerNameAndGenres(view, "Nikita");
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(view.getByText("What do you want to write?")).toBeTruthy();
+    expect(view.getByText("Pick as many as you like.")).toBeTruthy();
+    // Announced as checkboxes, so the kind of question is known before a tap.
+    expect(view.getByLabelText("Poetry and verse").props.accessibilityRole).toBe(
+      "checkbox",
+    );
+    await fireEvent.press(view.getByText("Poetry and verse"));
+    await fireEvent.press(view.getByText("Short stories"));
+    await fireEvent.press(view.getByText("Fan fiction"));
+    await fireEvent.press(view.getByText("Fan fiction"));
+    expect(
+      view.getByLabelText("Poetry and verse").props.accessibilityState.checked,
+    ).toBe(true);
+    expect(
+      view.getByLabelText("Short stories").props.accessibilityState.checked,
+    ).toBe(true);
+    expect(
+      view.getByLabelText("Fan fiction").props.accessibilityState.checked,
+    ).toBe(false);
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(view.getByText("What usually stops you?")).toBeTruthy();
+    await fireEvent.press(view.getByText("Plan chapters"));
+    await fireEvent.press(view.getByText("Rewrite in my voice"));
+    // Taking every answer back disables Continue again.
+    await fireEvent.press(view.getByText("Plan chapters"));
+    await fireEvent.press(view.getByText("Rewrite in my voice"));
+    expect(
+      view.getByLabelText("Continue").props.accessibilityState.disabled,
+    ).toBe(true);
+    await fireEvent.press(view.getByText("Rewrite in my voice"));
+    await fireEvent.press(view.getByText("Plan chapters"));
+
+    // Back and forward again restores both lists as they were.
+    await fireEvent.press(view.getByLabelText("Back"));
+    expect(
+      view.getByLabelText("Short stories").props.accessibilityState.checked,
+    ).toBe(true);
+    await fireEvent.press(view.getByText("Continue"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(onCharacterPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "write",
+        onboarding: expect.objectContaining({
+          refine: ["poetry", "short"],
+          mood: [],
+          moment: ["voice", "chapters"],
+        }),
+      }),
+    );
+  });
+
+  it("lets a reader give several reasons, and keeps purpose and how-to-read single", async () => {
+    const onCharacterPath = jest.fn();
+    const view = await render(
+      <KathaOnboardingFlowV2 onCharacterPath={onCharacterPath} />,
+    );
+    await answerNameAndGenres(view, "Mira");
+
+    // Purpose routes, so a second tap replaces rather than adds.
+    expect(view.getByLabelText("Reading").props.accessibilityRole).toBe("radio");
+    await fireEvent.press(view.getByText("Writing"));
+    await fireEvent.press(view.getByText("Reading"));
+    expect(view.getByLabelText("Writing").props.accessibilityState.checked).toBe(
+      false,
+    );
+    expect(view.queryByText("Pick as many as you like.")).toBeNull();
+    await fireEvent.press(view.getByText("Continue"));
+
+    await fireEvent.press(view.getByText("Reading them myself"));
+    await fireEvent.press(view.getByText("Listening to audio"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(view.getByText("Pick as many as you like.")).toBeTruthy();
+    await fireEvent.press(view.getByText("Something that keeps me guessing"));
+    await fireEvent.press(view.getByText("Something emotional"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    await fireEvent.press(view.getByText("Before bed"));
+    await fireEvent.press(view.getByText("Weekends"));
+    await fireEvent.press(view.getByText("Continue"));
+
+    expect(onCharacterPath).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "read",
+        onboarding: expect.objectContaining({
+          refine: ["listen"],
+          mood: ["guessing", "emotional"],
+          moment: ["sleep", "weekend"],
+        }),
+      }),
+    );
   });
 });
