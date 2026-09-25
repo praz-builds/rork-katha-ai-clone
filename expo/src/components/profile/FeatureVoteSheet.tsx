@@ -97,7 +97,7 @@ export default function FeatureVoteSheet({
         />
         <View style={styles.sheet} testID="feature-vote-sheet">
           <View style={styles.header}>
-            <Text style={styles.title} accessibilityRole="header">Vote on what's next</Text>
+            <Text style={styles.title} accessibilityRole="header">Vote on what’s next</Text>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
