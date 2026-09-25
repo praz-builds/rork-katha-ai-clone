@@ -20,7 +20,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+import { rememberBlocked } from "@/lib/blocks";
 import { setEntitlementOverride } from "@/lib/entitlements";
+import { ensurePhotoLibraryAccess } from "@/lib/photo-access";
 import { bootstrapUser } from "@/lib/session";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -231,8 +233,14 @@ export function avatarMessage(reason: Exclude<AvatarResult, { ok: true }>["reaso
  * on this screen.
  */
 export async function pickAndUploadAvatar(): Promise<AvatarResult> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return { ok: false, reason: "permission" };
+  let allowed = false;
+  try {
+    allowed = await ensurePhotoLibraryAccess();
+  } catch {
+    // A permission request that throws (iOS only; Android asks nothing) is a
+    // refusal, not a crash on the Profile screen.
+  }
+  if (!allowed) return { ok: false, reason: "permission" };
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
@@ -639,6 +647,11 @@ export async function fetchPublicProfile(
       body: { action: "public", authorId },
     });
     if (error || !data?.profile) return null;
+    // The server knows this viewer blocked the writer even when the local
+    // block list failed to load at boot. Record it, so AuthorScreen shows
+    // "You blocked this writer" with Unblock rather than an empty page with
+    // a live Follow button.
+    if (data.viewerBlocked === true) rememberBlocked(authorId);
     return {
       profile: data.profile as PublicProfile,
       stories: Array.isArray(data.stories)

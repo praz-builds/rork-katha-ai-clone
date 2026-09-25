@@ -29,6 +29,7 @@ import { authorFor } from "@/data/seed";
 import CommentThread from "@/components/comments/CommentThread";
 import type { StoryReportReason } from "@/components/comments/types";
 import { blockAuthor, fetchCommentCount, reportContent } from "@/lib/comments";
+import { rememberBlocked } from "@/lib/blocks";
 import { downloadStoryPdf } from "@/lib/story-pdf";
 import { setAuthorFollow, setStoryBookmark } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -449,23 +450,25 @@ export default function StoryDetailScreen({
   /**
    * Blocking persists, then leaves the story.
    *
-   * The feed applies the block on its next fetch; see the `user_blocks` filter
-   * in `backend/supabase/functions/feed/index.ts`.
+   * Leaving comes first and hiding second: the moment the block is recorded
+   * this story drops out of every list the app draws (`lib/blocks.ts`), and
+   * the page must already be on its way out when it does. The server applies
+   * the same block to every later read (`user_blocks` in `comments`, `feed`,
+   * `library`, `profile` and Explore's search).
    */
   const handleBlockAuthor = useCallback(async () => {
     if (requireSignIn(`block ${author.displayName}`)) {
       setActionsOpen(false);
       return false;
     }
-    if (isSupabaseConfigured) {
-      try {
-        await blockAuthor(story.authorId);
-      } catch {
-        return false;
-      }
+    try {
+      if (isSupabaseConfigured) await blockAuthor(story.authorId);
+    } catch {
+      return false;
     }
     setActionsOpen(false);
     onBack();
+    rememberBlocked(story.authorId);
     return true;
   }, [author.displayName, onBack, requireSignIn, story.authorId]);
 

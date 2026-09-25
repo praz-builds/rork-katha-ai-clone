@@ -16,7 +16,7 @@ import { colors, controls, motion, radius, shadows } from "@/theme";
  * WHY THIS EXISTS. Every toggle on the create brief was React Native's
  * `Switch` with a spread of colour props. That control paints its own thumb
  * and its own off-state fill from the PLATFORM palette, so a prop the caller
- * forgets is not a missing colour, it is iOS green: the Kids Mode row shipped
+ * forgets is not a missing colour, it is iOS green: the All-ages row shipped
  * an orange track with a GREEN thumb, reported off a screenshot as "I don't
  * know why we have green in the app". Green is in no token file here and
  * never was. A component that can only be correct when four props are passed
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
 
     The off track was `borderStrong` (#D7D5D0) carrying a white thumb, on a
     #F3F2EF page. Three near-identical warm neutrals stacked on each other:
-    the owner read the Kids Mode row as switched ON when it was off, and they
+    the owner read the All-ages row as switched ON when it was off, and they
     were right to -- the only cue distinguishing the two states was which end
     a white circle sat at, against a track barely darker than the page.
 

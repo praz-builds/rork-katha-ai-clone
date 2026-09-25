@@ -15,7 +15,7 @@
  *   // Call once early in the app lifecycle (e.g. after onboarding splash)
  *   const granted = await requestTrackingPermission();
  *   if (granted) {
- *     // IDFA available -- Firebase Analytics + Google Ads attribution works
+ *     // IDFA available to ad attribution
  *   }
  *
  * The ATT prompt string is configured in app.json under:

@@ -2,10 +2,9 @@
  * Copying text, on all three platforms this app builds for.
  *
  * `expo-clipboard` is the native path. It is loaded through a guarded dynamic
- * require rather than a top-level import for the same reason
- * `firebase-analytics.ts` does it: a jest run and an Expo web bundle both
- * resolve this module, and neither has the native module linked. A hard import
- * would take the whole reader down with it.
+ * require rather than a top-level import: a jest run and an Expo web bundle
+ * both resolve this module, and neither has the native module linked. A hard
+ * import would take the whole reader down with it.
  *
  * Web goes to the browser's own clipboard API, which is what
  * `StoryDetailScreen`'s share already uses.

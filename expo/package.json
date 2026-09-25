@@ -1,6 +1,6 @@
 {
   "name": "katha-ai-mobile",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -17,8 +17,6 @@
     "@babel/runtime": "^7.29.7",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native-firebase/analytics": "^26.3.2",
-    "@react-native-firebase/app": "^26.3.2",
     "@sentry/react-native": "^7.2.0",
     "@supabase/supabase-js": "^2.87.1",
     "expo": "54.0.37",
