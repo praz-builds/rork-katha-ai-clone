@@ -15,7 +15,9 @@ smoke that close it out. Branch `codex/deploy-record-0925`.
 ### What shipped
 
 - Migration `00099_feature_votes` (from #144). `supabase migration list --linked`
-  now shows local and remote aligned `00001`-`00099` with nothing pending.
+  now shows local and remote aligned through `00099` with nothing pending. The
+  range is not contiguous: `00016`, `00024`, `00081` and `00083` are deliberately
+  absent on both sides, so a gap there is not drift.
 - Eight functions, in one pass, carrying both #144 and #145:
   `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
   `reimagine-chapter`, `shape-story`, `generate-character-image`,
@@ -56,8 +58,9 @@ sent, which is why Play's Data Safety answer is *shared*.
 off at <https://openrouter.ai/settings/privacy> needs **no deploy** — #145's chain
 is correct either way, and `meta/muse-spark-1.3` inherits the window in ~48.1s at
 ~17x the token cost. But that switch alone does **not** let the Data Safety answer
-become *not shared*. D1's remedy is three steps: turn training off, **drop the
-contributor id and `openrouter/free` from the chains**, then answer not shared.
+become *not shared*. D1's remedy is two actions plus the form answer: turn
+training off, **drop the contributor id and the free-tier ids from the chains**,
+then answer not shared.
 The free router is still last in the chain (`_shared/llm.ts`), and D1 records that
 it "is also typically served by models that log prompts" — a sharing path the
 OpenRouter privacy setting does not close. So: the setting is a cost-and-privacy

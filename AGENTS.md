@@ -43,8 +43,8 @@ When available, use the local Expo skills in `.agents/skills` for Expo, React Na
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied
 (local and remote aligned through `00099`, nothing pending — the range is not
 contiguous, `00016`, `00024`, `00081` and `00083` are deliberately absent), the
-eight
-functions carrying #144 and #145 deployed, then every live bundle downloaded and
+eight functions carrying #144 and #145 deployed, then every live bundle downloaded
+and
 every `.ts` file in it compared byte for byte with main — **89 of 89 identical,
 zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 **zero importers**: dead code, not drift.
@@ -65,9 +65,9 @@ contributor-tier abort would have printed `meta/muse-spark-1.3` instead.
 
 Earlier audits, for the record and not to be mistaken for the one above: 33 of 33
 identical on 2026-09-24, and 89 of 89 earlier on 2026-09-25, before this deploy.
-The four phrase functions (`save-phrase`, `unsave-phrase`, `phrases`,
-`record-practice`) were deleted from the project after #135, which is why the
-function count is 34 rather than 37.
+The function count went 37→33 when the four phrase functions (`save-phrase`,
+`unsave-phrase`, `phrases`, `record-practice`) were deleted in #135 — which is the
+33 above — and then →34 when `app-feedback` was added in #140.
 
 That audit is also the lesson from the same night. Checking only the functions a
 PR's own folder touched had left **16 functions behind main**, some since #107 on
@@ -482,7 +482,7 @@ Rules and known failure modes:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00099` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (Both numbers moved on 2026-09-25: `00094`→`00099`, and 37→34 after the four phrase functions were deleted post-#135.)
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00099` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (Both numbers moved on 2026-09-25: `00094`→`00099`, and the function count went 37→33 when the four phrase functions were deleted in #135, then →34 when `app-feedback` was added in #140.)
 
 **Take the next number from `origin/main`, never from your own directory listing.** `schema_migrations` keys on the version string, so once production has recorded `00093`, a *different* `00093` is considered already applied: `supabase db push` skips it, reports success, and the change never reaches production. Nothing errors, every test passes, and it works on the machine where it was written. This has happened twice -- `00056` is the renumbered `story_shape_no_anonymous_ceiling`, which shared `00046` with `engagement_persistence`, and on 2026-09-20 `00093` was taken by both `story_bible_rev` (#115) and a music branch cut before it merged.
 

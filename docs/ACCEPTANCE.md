@@ -133,13 +133,13 @@ fixing — but no story a reader asked for ever failed because of it.
       which is why Data Safety answers "shared with third parties". That tier is
       ~17x cheaper than the alternative, so this is a cost decision as much as a
       privacy one.
-      Two steps, not one: turning training off at
+      Two actions plus the form answer, not one switch: turning training off at
       <https://openrouter.ai/settings/privacy> needs **no deploy** — the
       generation chain is correct either way as of this round. But answering Play
-      "not shared" also needs the contributor id and the free router dropped from
-      the chains, which is a code change; the free router is served by models that
-      typically log prompts, and the privacy setting does not close that. Tell us
-      which you want and we do the second part.
+      "not shared" also needs the contributor id and the free-tier ids dropped
+      from the chains, which is a code change; those free models typically log
+      prompts, and the privacy setting does not close that. Tell us which you want
+      and we do the second part.
 - [ ] **device:** version 1.0.0, no Firebase, background audio and the blocked
       permissions are in the release config; a release AAB compiled locally.
       Installing it on a phone is the check that is left.
