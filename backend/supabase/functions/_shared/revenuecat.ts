@@ -9,6 +9,13 @@ export type RevenueCatProduct = {
   interval: "weekly" | "monthly" | "yearly" | null;
   credits: number;
   trialCredits: number | null;
+  /**
+   * The Google Play base plan id, for a subscription. RevenueCat names an
+   * Android subscription `<productId>:<basePlanId>` -- in the SDK and in every
+   * webhook it sends -- so the base plan is part of the product's identity.
+   * `backend/PLAY_BILLING_SETUP.md` is the checklist that creates it.
+   */
+  basePlanId: string | null;
 };
 
 /**
@@ -43,6 +50,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "weekly",
+    basePlanId: "weekly",
     credits: 20,
     trialCredits: 10,
   },
@@ -51,6 +59,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "monthly",
+    basePlanId: "monthly",
     credits: 50,
     trialCredits: 10,
   },
@@ -59,6 +68,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: "katha",
     tier: "katha",
     interval: "yearly",
+    basePlanId: "yearly",
     credits: 50,
     trialCredits: 10,
   },
@@ -67,6 +77,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 2,
     trialCredits: null,
   },
@@ -75,6 +86,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 10,
     trialCredits: null,
   },
@@ -83,6 +95,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 50,
     trialCredits: null,
   },
@@ -91,6 +104,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 200,
     trialCredits: null,
   },
@@ -99,6 +113,7 @@ export const REVENUECAT_PRODUCT_MAP: Readonly<
     entitlement: null,
     tier: null,
     interval: null,
+    basePlanId: null,
     credits: 1000,
     trialCredits: null,
   },
@@ -116,6 +131,17 @@ export type RevenueCatEvent = {
   event_timestamp_ms?: number | null;
   transaction_id?: string | null;
   original_transaction_id?: string | null;
+  /**
+   * Every id RevenueCat has merged into this customer, including the
+   * `$RCAnonymousID:…` the SDK used before `logIn`. See `resolveUserId`.
+   */
+  aliases?: string[] | null;
+  original_app_user_id?: string | null;
+  /**
+   * On a `PRODUCT_CHANGE`, the product being moved TO (`product_id` is the one
+   * being left). On Google Play it arrives in the same `sub:baseplan` form.
+   */
+  new_product_id?: string | null;
   cancel_reason?:
     | "CUSTOMER_SUPPORT"
     | "DEVELOPER_INITIATED"
@@ -204,16 +230,87 @@ export function resolveRevenueCatCredit(
   };
 }
 
+/**
+ * The canonical product id for the id a store event carries, or null.
+ *
+ * iOS and every one-time pack arrive as the bare id. A Google Play
+ * subscription arrives as `<productId>:<basePlanId>` ("For Google Play
+ * products set up in RevenueCat after February 2023", RevenueCat's webhook
+ * field reference) -- `ai.katha.sub.yearly:yearly` -- and until this existed
+ * every Android subscription event was rejected as "Unknown product": paid
+ * for, and never credited.
+ *
+ * The base plan must be the one the catalogue names. Another base plan on the
+ * same subscription is another price or another billing period, and paying
+ * this plan's grant for it would be a guess; it stays "Unknown product" and
+ * lands in `payment_event_backlog`, where it is seen.
+ */
+export function canonicalRevenueCatProductId(
+  storeProductId: string | null | undefined,
+): string | null {
+  if (!storeProductId) return null;
+  const separator = storeProductId.indexOf(":");
+  const productId = separator === -1
+    ? storeProductId
+    : storeProductId.slice(0, separator);
+  if (!Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) return null;
+  if (separator === -1) return productId;
+  const basePlanId = storeProductId.slice(separator + 1);
+  const product = REVENUECAT_PRODUCT_MAP[productId];
+  return product.basePlanId !== null && product.basePlanId === basePlanId
+    ? productId
+    : null;
+}
+
+/**
+ * The Katha user a RevenueCat event belongs to.
+ *
+ * `app_user_id` first: it is the Katha user id once the app has called
+ * `logIn`. A purchase made before that -- the SDK configured anonymously and
+ * the sign-in had not reached it yet -- arrives with `app_user_id`
+ * `$RCAnonymousID:…`, and used to be rejected outright ("Missing or invalid
+ * app_user_id", 422, parked in the backlog), even though RevenueCat had
+ * already merged the anonymous customer into the Katha one and listed that
+ * UUID in `aliases`. The fallback is that alias -- but only when exactly one
+ * distinct UUID is there. Two would mean two Katha accounts on one store
+ * customer, and choosing between them would be crediting a guess.
+ */
+export function resolveUserId(event: RevenueCatEvent): string | null {
+  const direct = parseUuid(event.app_user_id);
+  if (direct) return direct;
+  const candidates = new Set<string>();
+  for (
+    const alias of [...(event.aliases ?? []), event.original_app_user_id]
+  ) {
+    const uuid = parseUuid(alias);
+    if (uuid) candidates.add(uuid.toLowerCase());
+  }
+  return candidates.size === 1 ? [...candidates][0] : null;
+}
+
+/**
+ * The event a `PRODUCT_CHANGE` should be recorded as: the same event, naming
+ * the product being moved to. Recording `product_id` (the product being
+ * left) kept a monthly-to-yearly upgrade on `interval = monthly` until the
+ * new product's first renewal, and the yearly grant job reads `interval`.
+ * A `new_product_id` that is missing or not in the catalogue leaves the event
+ * as it was, so the change is still recorded against a product we know.
+ */
+export function productChangeTarget(event: RevenueCatEvent): RevenueCatEvent {
+  const target = canonicalRevenueCatProductId(event.new_product_id);
+  return target ? { ...event, product_id: target } : event;
+}
+
 /** Resolve lifecycle identity without pretending a lifecycle event is a refund. */
 export function resolveRevenueCatIdentity(
   event: RevenueCatEvent,
 ): RevenueCatIdentity {
-  const productId = event.product_id;
-  if (!productId || !Object.hasOwn(REVENUECAT_PRODUCT_MAP, productId)) {
+  const productId = canonicalRevenueCatProductId(event.product_id);
+  if (!productId) {
     throw new Error("Unknown product");
   }
   if (!event.id) throw new Error("Missing RevenueCat event ID");
-  const userId = parseUuid(event.app_user_id);
+  const userId = resolveUserId(event);
   if (!userId) throw new Error("Missing or invalid app_user_id");
   return {
     userId,

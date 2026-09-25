@@ -55,7 +55,7 @@ note in §3 (*Character images*).
 
 One product, three durations. There is no separate reader tier.
 
-| | Weekly | Monthly | Yearly · 3-day trial |
+| | Weekly | Monthly | Yearly (no trial at launch, §3 *Store SKUs*) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -601,7 +601,7 @@ flagged rather than quietly carried.
 > credits, which is not how you price a different *product* — and the created-flow
 > work erased the line it assumed: a reader who reimagines a chapter is creating.
 
-| | Weekly | Monthly | Yearly · 3-day trial |
+| | Weekly | Monthly | Yearly (no trial at launch, see *Store SKUs*) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -1103,7 +1103,7 @@ downside at **$0.74**.
 |---|---|
 | `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
 | `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
-| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
+| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo. A 3-day trial offer exists on paper only: **not created for launch** (below) |
 | `ai.katha.credits.2` | 2 credits — $0.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
 | `ai.katha.credits.50` | 50 credits — $15.99 |
@@ -1113,6 +1113,15 @@ downside at **$0.74**.
 Eight SKUs, one entitlement (`katha`). The server-side product map is
 `_shared/revenuecat.ts`; migration 00089 and the functions deployed with it
 carry this list.
+
+**Store-side configuration** — the Google Play base plan ids (`weekly`,
+`monthly`, `yearly`), the RevenueCat packages and offerings, and the setup
+steps — is in [`backend/PLAY_BILLING_SETUP.md`](../backend/PLAY_BILLING_SETUP.md).
+That file repeats the prices above only as a checklist convenience; tests fail
+if its prices or ids drift from this table or from the code, and this table
+wins. The app buys the yearly **base plan**, never an offer, so the 3-day
+trial is not created for launch: no surface discloses a trial today
+(2026-09-25).
 
 > **The `reader.*` and `writer.*` SKU families are retired** with the two-audience
 > grid, and **`ai.katha.credits.{5,30,100,300}` are retired with the six-pack

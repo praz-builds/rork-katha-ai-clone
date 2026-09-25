@@ -4,6 +4,7 @@ import {
   constantTimeEquals,
   eventDate,
   isStoreRefundCancellation,
+  productChangeTarget,
   resolveRevenueCatCredit,
   resolveRevenueCatIdentity,
   REVENUECAT_PRODUCT_MAP,
@@ -18,6 +19,7 @@ import {
   lapseCredits,
   refreshSubscriptionGrant,
 } from "../_shared/credits.ts";
+import { settleSubscriptionGrant } from "../_shared/subscription-grants.ts";
 
 const WEBHOOK_SECRET = Deno.env.get("REVENUECAT_WEBHOOK_SECRET");
 const ALLOW_SANDBOX = Deno.env.get("REVENUECAT_ALLOW_SANDBOX") === "true";
@@ -137,7 +139,14 @@ serve(async (req) => {
     }
     if (eventType === "PRODUCT_CHANGE" || eventType === "UNCANCELLATION") {
       // These events update subscription state but never mint a second grant.
-      await recordSubscription(serviceClient, event, true, true);
+      // A product change is recorded as the product being moved TO
+      // (`new_product_id`), not the one being left.
+      await recordSubscription(
+        serviceClient,
+        eventType === "PRODUCT_CHANGE" ? productChangeTarget(event) : event,
+        true,
+        true,
+      );
       return jsonResponse({ ok: true, acknowledged: eventType.toLowerCase() });
     }
     if (eventType === "SUBSCRIPTION_PAUSED") {
@@ -169,14 +178,40 @@ serve(async (req) => {
         `rc:${operation.eventId}`,
       );
     } else if (operation.reason === "subscription") {
-      balance = await refreshSubscriptionGrant(
-        serviceClient,
-        operation.userId,
-        operation.credits,
-        operation.transactionId,
-        `rc:${operation.eventId}`,
+      const settled = await settleSubscriptionGrant(
+        operation,
+        event,
+        new Date(),
+        {
+          ledgerThisMonth: async (userId, monthStart) => {
+            const { data, error: ledgerError } = await serviceClient
+              .from("credit_ledger")
+              .select("reason, amount, created_at")
+              .eq("user_id", userId)
+              .in("reason", ["subscription", "lapse"])
+              .gte("created_at", monthStart);
+            if (ledgerError) throw new Error(ledgerError.message);
+            return data ?? [];
+          },
+          refresh: (userId, credits, referenceId, operationKey) =>
+            refreshSubscriptionGrant(
+              serviceClient,
+              userId,
+              credits,
+              referenceId,
+              operationKey,
+            ),
+        },
       );
       await recordSubscription(serviceClient, event, true, true);
+      if (settled.alreadyGranted) {
+        // The yearly anniversary: the cron already paid this month's grant.
+        return jsonResponse({
+          ok: true,
+          acknowledged: "already granted this month",
+        });
+      }
+      balance = settled.balance ?? 0;
     } else {
       balance = await grantCredit(
         serviceClient,

@@ -82,6 +82,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -93,8 +94,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TestimonialRail } from "@/components/onboarding/TestimonialRail";
 import { PLAN_FACTS } from "@/components/profile/MemberSheet";
+import i18n from "@/i18n";
 import { useIsSubscribed } from "@/lib/entitlements";
-import { revenueCatService, type RevenueCatPaywallProduct } from "@/lib/revenuecat";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
+import {
+  revenueCatService,
+  type RevenueCatPaywallProduct,
+  type RevenueCatUnavailableReason,
+} from "@/lib/revenuecat";
+import {
+  manageSubscriptionsUrl,
+  STORE_SUBSCRIPTIONS,
+  subscriptionPackages,
+} from "@/lib/store-catalog";
 import {
   colors,
   controls,
@@ -190,6 +202,13 @@ type Plan = {
   badge?: string;
 };
 
+/** The RevenueCat package type the store catalogue assigns a plan. */
+function packageTypeFor(plan: PlanId): string {
+  const match = STORE_SUBSCRIPTIONS.find((subscription) => subscription.plan === plan);
+  if (!match) throw new Error(`No store subscription for ${plan}`);
+  return match.packageType;
+}
+
 const PLANS: Record<PlanId, Plan> = {
   weekly: {
     id: "weekly",
@@ -198,7 +217,7 @@ const PLANS: Record<PlanId, Plan> = {
     period: "/wk",
     credits: 20,
     note: (credits) => `${credits} credits a week`,
-    packageType: "WEEKLY",
+    packageType: packageTypeFor("weekly"),
   },
   yearly: {
     id: "yearly",
@@ -207,7 +226,7 @@ const PLANS: Record<PlanId, Plan> = {
     credits: 50,
     fallbackAmount: 59,
     period: "/yr",
-    packageType: "ANNUAL",
+    packageType: packageTypeFor("yearly"),
     /**
      * Weekly annualises to $311.48 against $59 (`CREDITS_AND_PRICING.md` §3),
      * which is 81%. The claim is the weekly-vs-yearly comparison, rounded
@@ -243,6 +262,42 @@ function dailyNote(amount: number, priceString: string): string {
 
 const CTA_LABEL = "Unlock Katha";
 const PURCHASE_ERROR = "Purchase didn't go through. Try again.";
+
+/**
+ * The Subscriptions-policy lines, in the device's language (EN/PT/ES).
+ *
+ * Google Play requires the paywall itself to say what is charged and how
+ * often, that it renews on its own, and how to cancel -- next to the button,
+ * not behind a link. These are the only strings on this screen that go
+ * through i18n today: the rest of the screen is English until the app's
+ * i18n pass, but a policy disclosure a Portuguese speaker cannot read is not
+ * a disclosure.
+ */
+export function renewalLine(plan: PlanId, price: string): string {
+  return i18n.t(`paywall.renews.${plan}`, { price });
+}
+
+export function cancelLine(platform: string = Platform.OS): string {
+  const key = platform === "android" ? "android" : platform === "ios" ? "ios" : "other";
+  return i18n.t(`paywall.cancel.${key}`);
+}
+
+/**
+ * The service's reason, read defensively: a service (or a test double) that
+ * does not report one is treated as having no key, the conservative answer.
+ */
+function storeUnavailableReason(): RevenueCatUnavailableReason {
+  return revenueCatService.unavailableReason ?? "no-key";
+}
+
+/** Web cannot open a store's subscription page for an app it is not running in. */
+const WEB_MANAGE_NOTICE = "Manage or cancel from the store you subscribed on.";
+
+/** The store's own subscriptions page, for the active Katha plan when there is one. */
+function openStoreSubscriptions(): Promise<unknown> {
+  const active = revenueCatService.profile?.activeSubscriptions?.[0] ?? null;
+  return Linking.openURL(manageSubscriptionsUrl(Platform.OS, active));
+}
 
 type BenefitRow = { emoji: string; lead: string; body: string };
 
@@ -349,18 +404,25 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
   const [notice, setNotice] = useState<string | null>(null);
   const manage = useCallback(() => {
+    // The store's own page is the fallback for BOTH failures: Customer Center
+    // not presentable (SDK unconfigured) and Customer Center throwing (it is
+    // optional in the dashboard). A member must always have a working way to
+    // manage or cancel -- Play's Subscriptions policy requires it.
+    const fallBack = () => {
+      if (Platform.OS === "web") {
+        setNotice(WEB_MANAGE_NOTICE);
+        return;
+      }
+      openStoreSubscriptions().catch(() =>
+        setNotice("Subscription management is not available right now.")
+      );
+    };
     revenueCatService
       .presentCustomerCenter()
       .then((presented) => {
-        if (!presented) {
-          setNotice(
-            Platform.OS === "web"
-              ? "Manage or cancel from the store you subscribed on."
-              : "Subscription management is not available right now.",
-          );
-        }
+        if (!presented) fallBack();
       })
-      .catch(() => setNotice("Subscription management is not available right now."));
+      .catch(fallBack);
   }, []);
 
   return (
@@ -437,14 +499,43 @@ function PaywallOffer({
    * and the scroll corrects itself on the next.
    */
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * Whether the store can be talked to. Read live, because RevenueCat
+   * configures asynchronously at app start and this screen can mount first.
+   */
+  const [storeAvailable, setStoreAvailable] = useState(() =>
+    Boolean(revenueCatService.isAvailable)
+  );
+  const [storeReason, setStoreReason] = useState(storeUnavailableReason);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
+    const unsubscribe = revenueCatService.subscribe(() => {
+      if (!mounted.current) return;
+      setStoreAvailable(Boolean(revenueCatService.isAvailable));
+      setStoreReason(storeUnavailableReason());
+    });
     return () => {
       mounted.current = false;
+      unsubscribe();
     };
   }, []);
+
+  /**
+   * Why a shipped native build cannot sell, split by whether trying again
+   * can help (Development and web keep the off-store walk-through below):
+   *
+   *   - `storeMissing`: the build has no RevenueCat key. Nothing a user does
+   *     changes that, so the button is disabled and the screen says so,
+   *     instead of letting every tap fail with "Try again".
+   *   - `storeOffline`: the key is there but the SDK did not start. That is
+   *     the network, not the version, so the copy says so and a tap retries.
+   */
+  const releaseNative = !__DEV__ && Platform.OS !== "web";
+  const storeMissing = releaseNative && !storeAvailable && storeReason === "no-key";
+  const storeOffline = releaseNative && !storeAvailable && storeReason === "failed";
 
   // Localized prices if the store has any. A failure here is not an error the
   // user needs: the canonical prices stand and the purchase path simulates.
@@ -454,13 +545,13 @@ function PaywallOffer({
       .getOfferings()
       .then((offerings) => {
         if (cancelled) return;
-        setPackages(offerings?.current?.availablePackages ?? null);
+        setPackages(subscriptionPackages(offerings));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storeAvailable]);
 
   const priceFor = useCallback(
     (plan: Plan) => {
@@ -500,13 +591,23 @@ function PaywallOffer({
   }, []);
 
   const purchase = useCallback(async () => {
-    if (busy) return;
+    if (busy || storeMissing) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     const plan = PLANS[selected];
     try {
+      if (releaseNative && !revenueCatService.isAvailable) {
+        // Not started, or failed to: try once more before calling it offline.
+        await revenueCatService.activate?.();
+        if (!mounted.current) return;
+        if (!revenueCatService.isAvailable) {
+          setError(i18n.t("paywall.storeOffline"));
+          return;
+        }
+      }
       const offerings = await revenueCatService.getOfferings();
-      const pkg = offerings?.current?.availablePackages.find(
+      const pkg = subscriptionPackages(offerings)?.find(
         (candidate) => String(candidate.packageType) === plan.packageType,
       );
       if (!pkg) {
@@ -529,7 +630,10 @@ function PaywallOffer({
         if (mounted.current) setError(PURCHASE_ERROR);
         return;
       }
-      const profile = await revenueCatService.purchasePackage(pkg);
+      // The base plan, never an introductory offer: this screen shows a price
+      // and no trial, so a store default that starts a free trial would sell
+      // something other than what the card says (`revenuecat.ts`).
+      const profile = await revenueCatService.purchasePackage(pkg, { basePlanOnly: true });
       if (!mounted.current) return;
       // A cancel resolves with null rather than throwing, and it is a cancel
       // even for someone who was already premium: reading `isPremium` here
@@ -544,7 +648,51 @@ function PaywallOffer({
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [busy, onSubscribed, selected]);
+  }, [busy, onSubscribed, releaseNative, selected, storeMissing]);
+
+  /**
+   * Restore. A restored plan needs no navigation: `useIsSubscribed` hears the
+   * new profile and this screen becomes the member state on its own. Nothing
+   * restored says so, rather than leaving the tap looking ignored.
+   */
+  const restore = useCallback(async () => {
+    if (busy) return;
+    setError(null);
+    setNotice(null);
+    if (!storeAvailable) {
+      setNotice(
+        Platform.OS === "web"
+          ? i18n.t("paywall.webOnly")
+          : storeReason === "failed"
+          ? i18n.t("paywall.storeOffline")
+          : i18n.t("paywall.unavailable"),
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      await revenueCatService.restorePurchases();
+      if (!mounted.current) return;
+      setNotice(
+        revenueCatService.isPremium
+          ? i18n.t("paywall.restored")
+          : i18n.t("paywall.nothingToRestore"),
+      );
+    } catch {
+      if (mounted.current) setError(i18n.t("paywall.restoreFailed"));
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }, [busy, storeAvailable, storeReason]);
+
+  // Web runs in no store, so Google Play is the wrong answer there too.
+  const manage = useCallback(() => {
+    if (Platform.OS === "web") {
+      setNotice(WEB_MANAGE_NOTICE);
+      return;
+    }
+    openStoreSubscriptions().catch(() => undefined);
+  }, []);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -650,19 +798,49 @@ function PaywallOffer({
           />
         </View>
 
-        <View style={styles.cancelLine}>
+        {/*
+          The Subscriptions-policy disclosure: the selected plan's price and
+          period, that it renews by itself, and where to cancel. It replaced
+          "Cancel anytime, no commitments", which said nothing about renewal
+          and was not true of a year paid up front.
+        */}
+        <View style={styles.cancelLine} testID="paywall-renewal-terms">
           <IconCheck size={14} color={colors.onboardingSuccess} />
-          <Text style={styles.cancelText}>Cancel anytime, no commitments</Text>
+          <Text style={styles.cancelText}>
+            {`${renewalLine(selected, priceFor(PLANS[selected]))} ${cancelLine()}`}
+          </Text>
         </View>
 
+        {storeMissing ? <Text style={styles.memberNotice}>{i18n.t("paywall.unavailable")}</Text> : null}
+        {storeOffline && !notice && !error
+          ? <Text style={styles.memberNotice}>{i18n.t("paywall.storeOffline")}</Text>
+          : null}
+        {notice && !storeMissing ? <Text style={styles.memberNotice}>{notice}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
           label={CTA_LABEL}
           onPress={purchase}
           loading={busy}
+          disabled={storeMissing}
           style={styles.primary}
         />
+
+        <View style={styles.legalRow}>
+          <LegalLink label={i18n.t("paywall.restore")} onPress={restore} />
+          <Text style={styles.legalDot}>·</Text>
+          <LegalLink label={i18n.t("paywall.manage")} onPress={manage} />
+          <Text style={styles.legalDot}>·</Text>
+          <LegalLink
+            label={i18n.t("paywall.terms")}
+            onPress={() => void Linking.openURL(TERMS_URL).catch(() => undefined)}
+          />
+          <Text style={styles.legalDot}>·</Text>
+          <LegalLink
+            label={i18n.t("paywall.privacy")}
+            onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)}
+          />
+        </View>
       </View>
     </View>
   );
@@ -732,6 +910,20 @@ function PlanCard({
         </Text>
       </View>
       <Text style={styles.planNote} numberOfLines={2}>{note}</Text>
+    </Pressable>
+  );
+}
+
+/** One quiet text link in the row under the CTA. 44pt tall with its hit slop. */
+function LegalLink({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      hitSlop={{ top: 12, bottom: 12, left: 4, right: 4 }}
+    >
+      <Text style={styles.legalLink}>{label}</Text>
     </Pressable>
   );
 }
@@ -931,9 +1123,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   cancelText: {
+    flexShrink: 1,
     fontFamily: fonts.ui,
     fontSize: 12.5,
     lineHeight: 17,
+    color: colors.muted,
+    textAlign: "center",
+  },
+  legalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    columnGap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  legalLink: {
+    fontFamily: fonts.ui,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: colors.muted,
+    textDecorationLine: "underline",
+  },
+  legalDot: {
+    fontFamily: fonts.ui,
+    fontSize: 11.5,
+    lineHeight: 16,
     color: colors.muted,
   },
   error: {

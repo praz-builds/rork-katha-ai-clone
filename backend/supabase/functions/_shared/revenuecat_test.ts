@@ -3,9 +3,13 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  canonicalRevenueCatProductId,
   constantTimeEquals,
   isStoreRefundCancellation,
+  productChangeTarget,
   resolveRevenueCatCredit,
+  resolveRevenueCatIdentity,
+  resolveUserId,
   REVENUECAT_PRODUCT_MAP,
   settleStoreRefund,
 } from "./revenuecat.ts";
@@ -273,5 +277,320 @@ Deno.test("RevenueCat webhook resolver rejects malformed credit events", () => {
       }),
     Error,
     "Subscription received non-renewing purchase event",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Google Play: RevenueCat's `<productId>:<basePlanId>` product ids
+// ---------------------------------------------------------------------------
+
+/**
+ * RevenueCat names a Google Play subscription `<subscription_id>:<base_plan_id>`
+ * in every webhook ("For Google Play products set up in RevenueCat after
+ * February 2023", its webhook field reference). The map is keyed by the bare
+ * id, so before this every Android subscription event was "Unknown product":
+ * charged by Google, answered 422, parked in the backlog, never credited.
+ */
+Deno.test("an Android subscription event, named with its base plan, grants its plan", () => {
+  for (
+    const [productId, product] of Object.entries(REVENUECAT_PRODUCT_MAP)
+  ) {
+    if (product.kind !== "subscription") continue;
+    const androidId = `${productId}:${product.basePlanId}`;
+    for (const type of ["INITIAL_PURCHASE", "RENEWAL"]) {
+      const operation = resolveRevenueCatCredit({
+        id: `${type}-${androidId}`,
+        type,
+        app_user_id: USER_ID,
+        product_id: androidId,
+        period_type: "NORMAL",
+        transaction_id: "GPA.3345-1234-5678-12345..0",
+      });
+      assertEquals(operation?.productId, productId, androidId);
+      assertEquals(operation?.credits, product.credits, androidId);
+      assertEquals(operation?.reason, "subscription", androidId);
+    }
+  }
+});
+
+Deno.test("an Android refund, expiration and lifecycle event resolve to the canonical product", () => {
+  const refund = resolveRevenueCatCredit({
+    id: "android-refund",
+    type: "CANCELLATION",
+    cancel_reason: "CUSTOMER_SUPPORT",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.weekly:weekly",
+    transaction_id: "GPA.1",
+  });
+  assertEquals(refund?.reason, "chargeback");
+  assertEquals(refund?.credits, 20);
+  assertEquals(refund?.productId, "ai.katha.sub.weekly");
+
+  // EXPIRATION, PRODUCT_CHANGE, BILLING_ISSUE and plain CANCELLATION go
+  // through the identity resolver; the subscription row must be recorded
+  // under the same id the monthly grant job looks up.
+  const identity = resolveRevenueCatIdentity({
+    id: "android-expiration",
+    type: "EXPIRATION",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.yearly:yearly",
+  });
+  assertEquals(identity.productId, "ai.katha.sub.yearly");
+  assertEquals(identity.product.interval, "yearly");
+});
+
+Deno.test("an Android trial on the yearly plan grants the trial amount", () => {
+  assertEquals(
+    resolveRevenueCatCredit({
+      id: "android-trial",
+      type: "INITIAL_PURCHASE",
+      app_user_id: USER_ID,
+      product_id: "ai.katha.sub.yearly:yearly",
+      period_type: "TRIAL",
+    })?.credits,
+    10,
+  );
+});
+
+/**
+ * Only the base plan the catalogue names is honoured. Another base plan on
+ * the same subscription could be another price or period; paying this plan's
+ * grant for it would be a guess, so it stays visible as "Unknown product".
+ */
+Deno.test("an unlisted base plan, or a suffix on a pack, is an unknown product", () => {
+  for (
+    const productId of [
+      "ai.katha.sub.yearly:monthly",
+      "ai.katha.sub.yearly:",
+      "ai.katha.sub.weekly:weekly-intro",
+      "ai.katha.credits.10:anything",
+      "ai.katha.sub.reader.weekly:weekly",
+      ":weekly",
+    ]
+  ) {
+    assertEquals(canonicalRevenueCatProductId(productId), null, productId);
+    assertThrows(
+      () =>
+        resolveRevenueCatCredit({
+          id: "bad-base-plan",
+          type: "RENEWAL",
+          app_user_id: USER_ID,
+          product_id: productId,
+        }),
+      Error,
+      "Unknown product",
+      productId,
+    );
+  }
+  assertEquals(canonicalRevenueCatProductId(undefined), null);
+  assertEquals(
+    canonicalRevenueCatProductId("ai.katha.credits.2"),
+    "ai.katha.credits.2",
+  );
+});
+
+/**
+ * Redelivery is idempotent because every grant is keyed on the event id
+ * (`rc:<event id>`), and the Android form must not change that key: the same
+ * event delivered twice resolves to the same operation.
+ */
+Deno.test("the same Android event resolves identically on redelivery", () => {
+  const event = {
+    id: "redelivered",
+    type: "RENEWAL",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.monthly:monthly",
+    transaction_id: "GPA.9..3",
+  };
+  assertEquals(resolveRevenueCatCredit(event), resolveRevenueCatCredit(event));
+  assertEquals(resolveRevenueCatCredit(event)?.eventId, "redelivered");
+});
+
+// ---------------------------------------------------------------------------
+// The setup checklist and the pricing source of truth agree with this map
+// ---------------------------------------------------------------------------
+
+async function readRepoFile(relative: string): Promise<string> {
+  return await Deno.readTextFile(
+    new URL(`../../../../${relative}`, import.meta.url),
+  );
+}
+
+type ChecklistRow = {
+  productId: string;
+  basePlanId: string | null;
+  price: number;
+  credits: number;
+  entitlement: string | null;
+};
+
+async function checklistRows(): Promise<ChecklistRow[]> {
+  const doc = await readRepoFile("backend/PLAY_BILLING_SETUP.md");
+  const block = doc.split("<!-- catalogue:start -->")[1]
+    ?.split("<!-- catalogue:end -->")[0];
+  if (!block) throw new Error("PLAY_BILLING_SETUP.md has no catalogue block");
+  const cell = (value: string) => value.replaceAll("`", "").trim();
+  const orNull = (value: string) => cell(value) === "—" ? null : cell(value);
+  return block.split("\n")
+    .filter((line) =>
+      line.startsWith("| ") && !line.startsWith("| Type") &&
+      !line.startsWith("|---")
+    )
+    .map((line) => {
+      const cells = line.split("|").slice(1, -1);
+      return {
+        productId: cell(cells[1]),
+        basePlanId: orNull(cells[2]),
+        price: Number(cell(cells[4]).replace("$", "")),
+        credits: Number(cell(cells[5]).split(" ")[0]),
+        entitlement: orNull(cells[8]),
+      };
+    });
+}
+
+Deno.test("PLAY_BILLING_SETUP.md lists exactly this map's products, base plans, grants and entitlement", async () => {
+  const rows = await checklistRows();
+  assertEquals(
+    rows.map((row) => row.productId).sort(),
+    Object.keys(REVENUECAT_PRODUCT_MAP).sort(),
+  );
+  for (const row of rows) {
+    const product = REVENUECAT_PRODUCT_MAP[row.productId];
+    assertEquals(
+      {
+        basePlanId: row.basePlanId,
+        credits: row.credits,
+        entitlement: row.entitlement,
+      },
+      {
+        basePlanId: product.basePlanId,
+        credits: product.credits,
+        entitlement: product.entitlement,
+      },
+      row.productId,
+    );
+  }
+});
+
+Deno.test("PLAY_BILLING_SETUP.md prices every product as CREDITS_AND_PRICING.md does", async () => {
+  const doc = await readRepoFile("source-of-truth/CREDITS_AND_PRICING.md");
+  const section = doc.split("### Store SKUs")[1]?.split("\n## ")[0] ?? "";
+  const prices = new Map<string, number>();
+  for (
+    const match of section.matchAll(
+      /\| `(ai\.katha\.[a-z0-9.]+)` \|[^|]*\$(\d+(?:\.\d+)?)/g,
+    )
+  ) {
+    prices.set(match[1], Number(match[2]));
+  }
+  assertEquals(
+    [...prices.keys()].sort(),
+    Object.keys(REVENUECAT_PRODUCT_MAP).sort(),
+  );
+  for (const row of await checklistRows()) {
+    assertEquals(row.price, prices.get(row.productId), row.productId);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Anonymous purchasers and product changes
+// ---------------------------------------------------------------------------
+
+/**
+ * A first Android purchase made before the app's `logIn` reached RevenueCat
+ * arrives with `app_user_id` `$RCAnonymousID:…`. RevenueCat has merged that
+ * customer into the Katha one and lists the Katha UUID in `aliases`; the
+ * webhook used to 422 it into the backlog regardless.
+ */
+Deno.test("an anonymous app_user_id is credited to the one Katha UUID in its aliases", () => {
+  const operation = resolveRevenueCatCredit({
+    id: "anon-first-purchase",
+    type: "INITIAL_PURCHASE",
+    app_user_id: "$RCAnonymousID:8b2f0f2c4a5e4b1c9d0e",
+    aliases: ["$RCAnonymousID:8b2f0f2c4a5e4b1c9d0e", USER_ID],
+    product_id: "ai.katha.sub.weekly:weekly",
+    period_type: "NORMAL",
+    transaction_id: "GPA.anon",
+  });
+  assertEquals(operation?.userId, USER_ID);
+  assertEquals(operation?.credits, 20);
+
+  assertEquals(
+    resolveRevenueCatIdentity({
+      id: "anon-expiration",
+      type: "EXPIRATION",
+      app_user_id: "$RCAnonymousID:1",
+      original_app_user_id: USER_ID,
+      product_id: "ai.katha.sub.yearly:yearly",
+    }).userId,
+    USER_ID,
+  );
+});
+
+Deno.test("an anonymous purchaser with no Katha alias, or two, is still rejected", () => {
+  for (
+    const aliases of [
+      ["$RCAnonymousID:only"],
+      [USER_ID, "7ba7b810-9dad-41d1-80b4-00c04fd430c8"],
+      [],
+    ]
+  ) {
+    assertThrows(
+      () =>
+        resolveRevenueCatCredit({
+          id: "anon",
+          type: "INITIAL_PURCHASE",
+          app_user_id: "$RCAnonymousID:only",
+          aliases,
+          product_id: "ai.katha.credits.10",
+          transaction_id: "t",
+        }),
+      Error,
+      "Missing or invalid app_user_id",
+      JSON.stringify(aliases),
+    );
+  }
+  // The same UUID listed twice (any case) is one account, not two.
+  assertEquals(
+    resolveUserId({
+      app_user_id: "$RCAnonymousID:x",
+      aliases: [USER_ID, USER_ID.toUpperCase()],
+    }),
+    USER_ID,
+  );
+});
+
+/**
+ * PRODUCT_CHANGE names the product being LEFT in `product_id`. Recording that
+ * kept a monthly-to-yearly upgrade on `interval = monthly`, invisible to the
+ * yearly grant job.
+ */
+Deno.test("a product change is recorded as the product being moved to", () => {
+  const change = productChangeTarget({
+    id: "upgrade",
+    type: "PRODUCT_CHANGE",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.monthly:monthly",
+    new_product_id: "ai.katha.sub.yearly:yearly",
+  });
+  const identity = resolveRevenueCatIdentity(change);
+  assertEquals(identity.productId, "ai.katha.sub.yearly");
+  assertEquals(identity.product.interval, "yearly");
+  // It stays a product change: it grants nothing.
+  assertEquals(resolveRevenueCatCredit(change), null);
+});
+
+Deno.test("a product change to an unknown product keeps the product being left", () => {
+  const event = {
+    id: "odd-change",
+    type: "PRODUCT_CHANGE",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.monthly",
+    new_product_id: "ai.katha.sub.yearly:some-other-plan",
+  };
+  assertEquals(productChangeTarget(event), event);
+  assertEquals(
+    productChangeTarget({ ...event, new_product_id: null }).product_id,
+    "ai.katha.sub.monthly",
   );
 });

@@ -295,5 +295,36 @@
     "unblockFailed": "Não foi salvo. Tente de novo.",
     "authorBlockedTitle": "Você bloqueou este escritor",
     "authorBlockedBody": "As histórias e os comentários dessa pessoa ficam ocultos para você."
+  },
+  "paywall": {
+    "renews": {
+      "weekly": "{{price}} por semana, renovação automática até você cancelar.",
+      "yearly": "{{price}} por ano, renovação automática até você cancelar."
+    },
+    "cancel": {
+      "android": "Cancele quando quiser no Google Play.",
+      "ios": "Cancele quando quiser nos ajustes da App Store.",
+      "other": "Cancele quando quiser na loja em que você assinou."
+    },
+    "restore": "Restaurar compras",
+    "manage": "Gerenciar assinaturas",
+    "terms": "Termos",
+    "privacy": "Privacidade",
+    "restored": "Seu plano foi restaurado.",
+    "nothingToRestore": "Nenhum plano ativo nesta conta da loja.",
+    "restoreFailed": "Não foi possível restaurar agora. Tente de novo.",
+    "webOnly": "Compras e restaurações funcionam no app Katha.",
+    "unavailable": "As assinaturas ainda não estão disponíveis nesta versão do app. Ler continua grátis.",
+    "storeOffline": "Não foi possível acessar a loja. Verifique sua conexão e tente de novo.",
+    "manageInStore": {
+      "android": "Gerenciar ou cancelar no Google Play",
+      "ios": "Gerenciar ou cancelar na App Store"
+    },
+    "packs": {
+      "webOnly": "As compras funcionam no app",
+      "storeUnavailable": "As compras ainda não estão disponíveis nesta versão",
+      "storeOffline": "Não foi possível acessar a loja agora",
+      "packUnavailable": "Este pacote não está disponível agora"
+    }
   }
 }

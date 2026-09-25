@@ -295,5 +295,36 @@
     "unblockFailed": "That did not save. Try again.",
     "authorBlockedTitle": "You blocked this writer",
     "authorBlockedBody": "Their stories and comments are hidden from you."
+  },
+  "paywall": {
+    "renews": {
+      "weekly": "{{price}} a week, renews automatically until you cancel.",
+      "yearly": "{{price}} a year, renews automatically until you cancel."
+    },
+    "cancel": {
+      "android": "Cancel anytime in Google Play.",
+      "ios": "Cancel anytime in your App Store settings.",
+      "other": "Cancel anytime from the store you subscribed on."
+    },
+    "restore": "Restore purchases",
+    "manage": "Manage subscriptions",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "restored": "Your plan is restored.",
+    "nothingToRestore": "No active plan on this store account.",
+    "restoreFailed": "Couldn't restore right now. Try again.",
+    "webOnly": "Purchases and restores work in the Katha app.",
+    "unavailable": "Subscriptions aren't available in this version of the app yet. Reading stays free.",
+    "storeOffline": "Couldn't reach the store. Check your connection and try again.",
+    "manageInStore": {
+      "android": "Manage or cancel in Google Play",
+      "ios": "Manage or cancel in the App Store"
+    },
+    "packs": {
+      "webOnly": "Purchases work in the app",
+      "storeUnavailable": "Purchases aren't available in this version yet",
+      "storeOffline": "Can't reach the store right now",
+      "packUnavailable": "This pack isn't available right now"
+    }
   }
 }
