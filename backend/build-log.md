@@ -103,9 +103,10 @@ decision `store/android/data-safety.md` D1 answers as *shared* for Play.
 
 ### Gates
 
-`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1101
-passed, 0 failed** after the review round (1099 before it: one vacuous test
-removed, three added). `deno check` and `deno fmt --check` clean on both touched
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1104
+passed, 0 failed** after merging main. This branch alone was 1099, then 1101
+after the review round (one vacuous test removed, three added); #144 brings the
+other three. `deno check` and `deno fmt --check` clean on both touched
 files. The two deadline tests that asserted the probe shape were rewritten to
 assert the invariant that replaces it — no model is capped below a chapter
 whatever its position — and each was run against the unfixed code, where both
