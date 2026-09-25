@@ -6,8 +6,10 @@ import {
   canonicalRevenueCatProductId,
   constantTimeEquals,
   isStoreRefundCancellation,
+  productChangeTarget,
   resolveRevenueCatCredit,
   resolveRevenueCatIdentity,
+  resolveUserId,
   REVENUECAT_PRODUCT_MAP,
   settleStoreRefund,
 } from "./revenuecat.ts";
@@ -488,4 +490,107 @@ Deno.test("PLAY_BILLING_SETUP.md prices every product as CREDITS_AND_PRICING.md 
   for (const row of await checklistRows()) {
     assertEquals(row.price, prices.get(row.productId), row.productId);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Anonymous purchasers and product changes
+// ---------------------------------------------------------------------------
+
+/**
+ * A first Android purchase made before the app's `logIn` reached RevenueCat
+ * arrives with `app_user_id` `$RCAnonymousID:…`. RevenueCat has merged that
+ * customer into the Katha one and lists the Katha UUID in `aliases`; the
+ * webhook used to 422 it into the backlog regardless.
+ */
+Deno.test("an anonymous app_user_id is credited to the one Katha UUID in its aliases", () => {
+  const operation = resolveRevenueCatCredit({
+    id: "anon-first-purchase",
+    type: "INITIAL_PURCHASE",
+    app_user_id: "$RCAnonymousID:8b2f0f2c4a5e4b1c9d0e",
+    aliases: ["$RCAnonymousID:8b2f0f2c4a5e4b1c9d0e", USER_ID],
+    product_id: "ai.katha.sub.weekly:weekly",
+    period_type: "NORMAL",
+    transaction_id: "GPA.anon",
+  });
+  assertEquals(operation?.userId, USER_ID);
+  assertEquals(operation?.credits, 20);
+
+  assertEquals(
+    resolveRevenueCatIdentity({
+      id: "anon-expiration",
+      type: "EXPIRATION",
+      app_user_id: "$RCAnonymousID:1",
+      original_app_user_id: USER_ID,
+      product_id: "ai.katha.sub.yearly:yearly",
+    }).userId,
+    USER_ID,
+  );
+});
+
+Deno.test("an anonymous purchaser with no Katha alias, or two, is still rejected", () => {
+  for (
+    const aliases of [
+      ["$RCAnonymousID:only"],
+      [USER_ID, "7ba7b810-9dad-41d1-80b4-00c04fd430c8"],
+      [],
+    ]
+  ) {
+    assertThrows(
+      () =>
+        resolveRevenueCatCredit({
+          id: "anon",
+          type: "INITIAL_PURCHASE",
+          app_user_id: "$RCAnonymousID:only",
+          aliases,
+          product_id: "ai.katha.credits.10",
+          transaction_id: "t",
+        }),
+      Error,
+      "Missing or invalid app_user_id",
+      JSON.stringify(aliases),
+    );
+  }
+  // The same UUID listed twice (any case) is one account, not two.
+  assertEquals(
+    resolveUserId({
+      app_user_id: "$RCAnonymousID:x",
+      aliases: [USER_ID, USER_ID.toUpperCase()],
+    }),
+    USER_ID,
+  );
+});
+
+/**
+ * PRODUCT_CHANGE names the product being LEFT in `product_id`. Recording that
+ * kept a monthly-to-yearly upgrade on `interval = monthly`, invisible to the
+ * yearly grant job.
+ */
+Deno.test("a product change is recorded as the product being moved to", () => {
+  const change = productChangeTarget({
+    id: "upgrade",
+    type: "PRODUCT_CHANGE",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.monthly:monthly",
+    new_product_id: "ai.katha.sub.yearly:yearly",
+  });
+  const identity = resolveRevenueCatIdentity(change);
+  assertEquals(identity.productId, "ai.katha.sub.yearly");
+  assertEquals(identity.product.interval, "yearly");
+  // It stays a product change: it grants nothing.
+  assertEquals(resolveRevenueCatCredit(change), null);
+});
+
+Deno.test("a product change to an unknown product keeps the product being left", () => {
+  const event = {
+    id: "odd-change",
+    type: "PRODUCT_CHANGE",
+    app_user_id: USER_ID,
+    product_id: "ai.katha.sub.monthly",
+    new_product_id: "ai.katha.sub.yearly:some-other-plan",
+  };
+  assertEquals(productChangeTarget(event), event);
+  assertEquals(
+    productChangeTarget({ ...event, new_product_id: null }).product_id,
+    "ai.katha.sub.monthly",
+  );
 });

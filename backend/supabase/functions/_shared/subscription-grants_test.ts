@@ -1,10 +1,15 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   grantMonth,
+  type LedgerMonthRow,
   refreshYearlyGrantsPage,
+  settleSubscriptionGrant,
+  type SubscriptionGrantDeps,
+  yearlyGrantCoveredThisMonth,
   type YearlyRefreshDeps,
 } from "./subscription-grants.ts";
 import { DuplicateCreditOperationError } from "./credits.ts";
+import { resolveRevenueCatCredit } from "./revenuecat.ts";
 
 const NOW = new Date("2026-09-26T03:00:00.000Z");
 const BOUGHT_YESTERDAY = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
@@ -111,4 +116,131 @@ Deno.test("a refresh already committed counts as done, a failed one is retried t
     alreadyGranted: 0,
     failures: { refresh_failed: 1 },
   });
+});
+
+// ---------------------------------------------------------------------------
+// The webhook's grant, and the yearly anniversary
+// ---------------------------------------------------------------------------
+
+function yearlyRenewal(id: string) {
+  const event = {
+    id,
+    type: "RENEWAL",
+    app_user_id: SUBSCRIBED_LAST_YEAR,
+    product_id: "ai.katha.sub.yearly:yearly",
+    period_type: "NORMAL",
+    transaction_id: `GPA.${id}`,
+  };
+  const operation = resolveRevenueCatCredit(event);
+  if (!operation) throw new Error("fixture did not resolve");
+  return { event, operation };
+}
+
+function grantFakes(rows: LedgerMonthRow[]) {
+  const refreshed: string[] = [];
+  const deps: SubscriptionGrantDeps = {
+    ledgerThisMonth: () => Promise.resolve(rows),
+    refresh: (_userId, credits, _ref, key) => {
+      refreshed.push(`${key}:${credits}`);
+      return Promise.resolve(credits);
+    },
+  };
+  return { deps, refreshed };
+}
+
+/**
+ * Month 13. The cron topped the yearly plan up on the 1st; the store's
+ * yearly RENEWAL lands on the 15th and used to reset the bucket to 50 again:
+ * up to 100 credits in the anniversary month.
+ */
+Deno.test("a yearly renewal in a month the cron already paid does not refill", async () => {
+  const { event, operation } = yearlyRenewal("anniversary");
+  const { deps, refreshed } = grantFakes([
+    { reason: "subscription", amount: -12, created_at: "2026-09-01T03:00:00Z" },
+    { reason: "subscription", amount: 50, created_at: "2026-09-01T03:00:01Z" },
+  ]);
+  const settled = await settleSubscriptionGrant(operation, event, NOW, deps);
+  assertEquals(settled, { balance: null, alreadyGranted: true });
+  assertEquals(refreshed, []);
+});
+
+Deno.test("a yearly renewal pays when this month has no grant yet", async () => {
+  const { event, operation } = yearlyRenewal("first-of-month");
+  const { deps, refreshed } = grantFakes([]);
+  const settled = await settleSubscriptionGrant(operation, event, NOW, deps);
+  assertEquals(settled, { balance: 50, alreadyGranted: false });
+  assertEquals(refreshed, ["rc:first-of-month:50"]);
+});
+
+/** A trial's 10 is not this month's grant: the conversion must still pay 50. */
+Deno.test("a trial converting to yearly this month still gets its 50", async () => {
+  const { event, operation } = yearlyRenewal("conversion");
+  const { deps, refreshed } = grantFakes([
+    { reason: "subscription", amount: 10, created_at: "2026-09-20T10:00:00Z" },
+  ]);
+  await settleSubscriptionGrant(operation, event, NOW, deps);
+  assertEquals(refreshed, ["rc:conversion:50"]);
+});
+
+/** A grant a lapse has since voided does not count: a recovered plan is paid. */
+Deno.test("a yearly renewal after a lapse this month pays", async () => {
+  const { event, operation } = yearlyRenewal("recovered");
+  const { deps, refreshed } = grantFakes([
+    { reason: "subscription", amount: 50, created_at: "2026-09-01T03:00:00Z" },
+    { reason: "lapse", amount: -41, created_at: "2026-09-10T00:00:00Z" },
+  ]);
+  await settleSubscriptionGrant(operation, event, NOW, deps);
+  assertEquals(refreshed, ["rc:recovered:50"]);
+});
+
+/** Weekly and monthly renewals ARE their plan's refill; the ledger is not asked. */
+Deno.test("weekly and monthly renewals, and first purchases, always pay", async () => {
+  for (
+    const [type, productId] of [
+      ["RENEWAL", "ai.katha.sub.weekly:weekly"],
+      ["RENEWAL", "ai.katha.sub.monthly:monthly"],
+      ["INITIAL_PURCHASE", "ai.katha.sub.yearly:yearly"],
+    ]
+  ) {
+    const event = {
+      id: `${type}-${productId}`,
+      type,
+      app_user_id: SUBSCRIBED_LAST_YEAR,
+      product_id: productId,
+      period_type: "NORMAL",
+      transaction_id: "GPA.x",
+    };
+    const operation = resolveRevenueCatCredit(event)!;
+    let asked = false;
+    const settled = await settleSubscriptionGrant(operation, event, NOW, {
+      ledgerThisMonth: () => {
+        asked = true;
+        return Promise.resolve([
+          {
+            reason: "subscription",
+            amount: 50,
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        ]);
+      },
+      refresh: (_u, credits) => Promise.resolve(credits),
+    });
+    assertEquals(settled.alreadyGranted, false, productId);
+    assertEquals(asked, false, productId);
+  }
+});
+
+Deno.test("coverage is decided by the latest event this month", () => {
+  assertEquals(yearlyGrantCoveredThisMonth([], 50), false);
+  assertEquals(
+    yearlyGrantCoveredThisMonth([
+      { reason: "lapse", amount: -3, created_at: "2026-09-02T00:00:00Z" },
+      {
+        reason: "subscription",
+        amount: 50,
+        created_at: "2026-09-03T00:00:00Z",
+      },
+    ], 50),
+    true,
+  );
 });

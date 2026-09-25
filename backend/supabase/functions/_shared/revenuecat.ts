@@ -131,6 +131,17 @@ export type RevenueCatEvent = {
   event_timestamp_ms?: number | null;
   transaction_id?: string | null;
   original_transaction_id?: string | null;
+  /**
+   * Every id RevenueCat has merged into this customer, including the
+   * `$RCAnonymousID:…` the SDK used before `logIn`. See `resolveUserId`.
+   */
+  aliases?: string[] | null;
+  original_app_user_id?: string | null;
+  /**
+   * On a `PRODUCT_CHANGE`, the product being moved TO (`product_id` is the one
+   * being left). On Google Play it arrives in the same `sub:baseplan` form.
+   */
+  new_product_id?: string | null;
   cancel_reason?:
     | "CUSTOMER_SUPPORT"
     | "DEVELOPER_INITIATED"
@@ -251,6 +262,45 @@ export function canonicalRevenueCatProductId(
     : null;
 }
 
+/**
+ * The Katha user a RevenueCat event belongs to.
+ *
+ * `app_user_id` first: it is the Katha user id once the app has called
+ * `logIn`. A purchase made before that -- the SDK configured anonymously and
+ * the sign-in had not reached it yet -- arrives with `app_user_id`
+ * `$RCAnonymousID:…`, and used to be rejected outright ("Missing or invalid
+ * app_user_id", 422, parked in the backlog), even though RevenueCat had
+ * already merged the anonymous customer into the Katha one and listed that
+ * UUID in `aliases`. The fallback is that alias -- but only when exactly one
+ * distinct UUID is there. Two would mean two Katha accounts on one store
+ * customer, and choosing between them would be crediting a guess.
+ */
+export function resolveUserId(event: RevenueCatEvent): string | null {
+  const direct = parseUuid(event.app_user_id);
+  if (direct) return direct;
+  const candidates = new Set<string>();
+  for (
+    const alias of [...(event.aliases ?? []), event.original_app_user_id]
+  ) {
+    const uuid = parseUuid(alias);
+    if (uuid) candidates.add(uuid.toLowerCase());
+  }
+  return candidates.size === 1 ? [...candidates][0] : null;
+}
+
+/**
+ * The event a `PRODUCT_CHANGE` should be recorded as: the same event, naming
+ * the product being moved to. Recording `product_id` (the product being
+ * left) kept a monthly-to-yearly upgrade on `interval = monthly` until the
+ * new product's first renewal, and the yearly grant job reads `interval`.
+ * A `new_product_id` that is missing or not in the catalogue leaves the event
+ * as it was, so the change is still recorded against a product we know.
+ */
+export function productChangeTarget(event: RevenueCatEvent): RevenueCatEvent {
+  const target = canonicalRevenueCatProductId(event.new_product_id);
+  return target ? { ...event, product_id: target } : event;
+}
+
 /** Resolve lifecycle identity without pretending a lifecycle event is a refund. */
 export function resolveRevenueCatIdentity(
   event: RevenueCatEvent,
@@ -260,7 +310,7 @@ export function resolveRevenueCatIdentity(
     throw new Error("Unknown product");
   }
   if (!event.id) throw new Error("Missing RevenueCat event ID");
-  const userId = parseUuid(event.app_user_id);
+  const userId = resolveUserId(event);
   if (!userId) throw new Error("Missing or invalid app_user_id");
   return {
     userId,

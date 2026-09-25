@@ -1,5 +1,101 @@
-import { REVENUECAT_PRODUCT_MAP } from "./revenuecat.ts";
+import {
+  REVENUECAT_PRODUCT_MAP,
+  type RevenueCatCreditOperation,
+  type RevenueCatEvent,
+} from "./revenuecat.ts";
 import { isDuplicateCreditOperationError } from "./credits.ts";
+
+// ---------------------------------------------------------------------------
+// The webhook's subscription grant, and the yearly anniversary
+// ---------------------------------------------------------------------------
+
+/** A `credit_ledger` row this month, as far as the grant rule cares. */
+export type LedgerMonthRow = {
+  reason: string;
+  amount: number;
+  created_at: string;
+};
+
+/**
+ * Whether this month's yearly grant has already been paid and still stands.
+ *
+ * Covered when the latest thing that happened to the grant this month is a
+ * FULL grant (`subscription`, amount at least the plan's credits) rather than
+ * a `lapse`. The trial's 10 does not count -- a trial converting this month
+ * must still get its 50 -- and neither does a grant a lapse has since voided:
+ * a subscription that expired and was recovered must not be left at zero.
+ */
+export function yearlyGrantCoveredThisMonth(
+  rows: LedgerMonthRow[],
+  credits: number,
+): boolean {
+  let covered = false;
+  const ordered = [...rows].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at)
+  );
+  for (const row of ordered) {
+    if (row.reason === "lapse") covered = false;
+    if (row.reason === "subscription" && row.amount >= credits) covered = true;
+  }
+  return covered;
+}
+
+export type SubscriptionGrantDeps = {
+  /** This user's `subscription` and `lapse` ledger rows since `monthStart`. */
+  ledgerThisMonth: (
+    userId: string,
+    monthStart: string,
+  ) => Promise<LedgerMonthRow[]>;
+  refresh: (
+    userId: string,
+    credits: number,
+    referenceId: string,
+    operationKey: string,
+  ) => Promise<number>;
+};
+
+/**
+ * The webhook's grant for a subscription `INITIAL_PURCHASE`, `RENEWAL` or
+ * `REFUND_REVERSED`.
+ *
+ * THE ANNIVERSARY. A yearly plan is topped up monthly by the cron, on the
+ * 1st, and renewed by the store once a year on the purchase date. In the
+ * renewal month both used to refill the bucket: the cron on the 1st, then
+ * the `RENEWAL` on, say, the 15th -- up to 100 credits that month. A yearly
+ * `RENEWAL` now pays only when this month's grant has not already been paid
+ * (see `yearlyGrantCoveredThisMonth`). Weekly and monthly renewals ARE their
+ * plan's refill and always pay; so does every first purchase.
+ */
+export async function settleSubscriptionGrant(
+  operation: RevenueCatCreditOperation,
+  event: RevenueCatEvent,
+  now: Date,
+  deps: SubscriptionGrantDeps,
+): Promise<{ balance: number | null; alreadyGranted: boolean }> {
+  const yearlyRenewal = event.type?.toUpperCase() === "RENEWAL" &&
+    operation.subscription?.interval === "yearly" &&
+    event.period_type !== "TRIAL";
+  if (yearlyRenewal) {
+    const rows = await deps.ledgerThisMonth(
+      operation.userId,
+      grantMonth(now).monthStart,
+    );
+    if (yearlyGrantCoveredThisMonth(rows, operation.credits)) {
+      return { balance: null, alreadyGranted: true };
+    }
+  }
+  const balance = await deps.refresh(
+    operation.userId,
+    operation.credits,
+    operation.transactionId,
+    `rc:${operation.eventId}`,
+  );
+  return { balance, alreadyGranted: false };
+}
+
+// ---------------------------------------------------------------------------
+// The cron
+// ---------------------------------------------------------------------------
 
 /**
  * The monthly refresh of a yearly plan's grant, one page of subscribers at a
