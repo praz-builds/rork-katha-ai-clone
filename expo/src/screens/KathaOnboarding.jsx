@@ -144,9 +144,14 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
   const phaseSV = useSharedValue(0);
   const slideX = useSharedValue(0);
   const dragStart = useSharedValue(0);
-  // Set when a swipe already started the spring to the new page, so the phase
+  // The phase a swipe has already started springing towards, so the phase
   // effect does not replace a velocity-carrying spring with a fresh curve.
-  const settledByGesture = useRef(false);
+  // A PHASE, not a boolean: a swipe can ask for the phase the auto-advance
+  // committed a frame earlier (the gesture reads `phaseSV`, which syncs after
+  // commit). That `setPhase` is a same-value bail-out and runs no effect, and
+  // a boolean left armed swallowed the NEXT real transition: hero on Publish,
+  // sheet on Read.
+  const settledByGesture = useRef(null);
 
   const advanceFrom = useCallback((from) => {
     setPhase((current) => (current === from ? Math.min(2, from + 1) : current));
@@ -174,10 +179,9 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
     const target = -phase * W;
     const resized = lastW.current !== W;
     lastW.current = W;
-    if (settledByGesture.current) {
-      settledByGesture.current = false;
-      return;
-    }
+    const swipedHere = settledByGesture.current === phase;
+    settledByGesture.current = null;
+    if (swipedHere && !resized) return;
     if (reduceMotion || resized) {
       cancelAnimation(slideX);
       slideX.set(target);
@@ -188,11 +192,12 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
 
   const goTo = useCallback((n) => setPhase(n), []);
   const goToFromSwipe = useCallback((n) => {
-    settledByGesture.current = true;
+    settledByGesture.current = n;
     setPhase(n);
   }, []);
 
   const pan = Gesture.Pan()
+    .withTestId('intro-pan')
     // Horizontal intent only: a vertical scroll of a short window must still
     // scroll the page, not grab the carousel.
     .activeOffsetX([-12, 12])
@@ -242,7 +247,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
         <View testID="intro-column" style={[styles.column, { width: W }]}>
           <GestureDetector gesture={pan}>
             <View style={styles.hero}>
-              <Animated.View style={[{ flexDirection: 'row', width: W * 3, height: HERO_H }, rowStyle]}>
+              <Animated.View testID="intro-slides" style={[{ flexDirection: 'row', width: W * 3, height: HERO_H }, rowStyle]}>
                 <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={p0} reduceMotion={reduceMotion} /></View>
                 <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={p1} reduceMotion={reduceMotion} /></View>
                 <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
