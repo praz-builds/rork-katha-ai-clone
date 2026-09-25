@@ -113,13 +113,25 @@ alongside these:
   always settles the status and the row can never stick on "Loading…".
   `drawnSheet`'s comment now says what it holds: the sheet the current
   request was fired for, in step with `portraitKey`.
-- **Fixed (third standing review, of `759b56d`).** A save that landed after
-  an account switch still reached You's state; it now returns `stale` and is
-  reported to nobody, as the read already was. `set_preferences` refusals
+- **Fixed (standing reviews of `759b56d` and `bc6eae8`).** A save that lands
+  after an account switch now returns `stale` and is reported to nobody, as
+  the read already was -- for symmetry with the read, not a reachable path:
+  every epoch bump happens with the tab tree unmounted. `set_preferences` refusals
   carry a stable `reason` code and the client words its own copy from it --
   the reader never sees "spokenLanguages has an unknown language" -- and a
   404 means "account deleted" only when the body says `account_deleted`, not
   for a gateway 404. The hardware-Back comment matched the old paywall row.
+  From `bc6eae8`: the length test now asserts the absent `maxLength` prop
+  (the harness never enforces it, so the old assertion could not fail), and
+  an indentation slip is fixed.
+- **Fixed (standing review of `4304e87`, non-blocking).** Changing a chip
+  clears a refusal, so "remove the one you added last" goes away once the
+  reader does it. A test pins `REFUSAL_COPY` to the server's
+  `PreferencesRefusalReason` union, the third place in the three-way pin. The
+  inline length message says "60 characters or fewer", matching the rule. A
+  non-list `spokenLanguages` is `invalid_request`, not `unknown_language`.
+  Component tests cover the refused, no-reason (pre-deploy function) and
+  stale branches.
 
 Found before the review:
 
@@ -141,7 +153,7 @@ Found before the review:
 `index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
 passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
 `pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
-files), `jest --ci` 1618 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
+files), `jest --ci` 1622 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.

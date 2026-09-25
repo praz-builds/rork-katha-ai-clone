@@ -195,10 +195,15 @@ export default function ReaderContextSheet({
                   return (
                     <Pressable
                       key={language.id}
-                      onPress={() =>
+                      onPress={() => {
                         setLanguages((current) =>
                           toggleSpokenLanguage(current, language.id)
-                        )}
+                        );
+                        // A refusal is usually about a chip ("remove the one
+                        // you added last"): acting on it clears it, as typing
+                        // in the city field does.
+                        if (failed) setFailed(null);
+                      }}
                       disabled={blocked}
                       accessibilityRole="checkbox"
                       accessibilityLabel={language.label}

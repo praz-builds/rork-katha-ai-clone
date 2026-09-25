@@ -81,7 +81,7 @@ export function homePlaceProblem(value: string): string | null {
   const place = value.replace(/\s+/g, " ").trim();
   if (place.length === 0) return null;
   if (place.length > HOME_PLACE_MAX) {
-    return `Keep it under ${HOME_PLACE_MAX} characters.`;
+    return `Keep it to ${HOME_PLACE_MAX} characters or fewer.`;
   }
   if (!HOME_PLACE_PATTERN.test(place)) {
     return "Use letters, numbers, spaces and . , ' ( ) - only.";
@@ -198,7 +198,7 @@ export type SaveReaderPreferencesResult =
  * function). The server's `error` text is for logs and is never shown: it
  * names JSON fields. A code this build does not know gets the generic line.
  */
-const REFUSAL_COPY: Record<string, string> = {
+export const REFUSAL_COPY: Record<string, string> = {
   unknown_language:
     "One of these languages is not available yet. Remove the one you added last and try again.",
   too_many_languages: `Pick up to ${MAX_SPOKEN_LANGUAGES} languages.`,
@@ -207,8 +207,15 @@ const REFUSAL_COPY: Record<string, string> = {
     "Use letters, numbers, spaces and . , ' ( ) - for your city.",
   account_deleted:
     "This account has been deleted, so nothing can be saved to it.",
+  invalid_request: "That could not be saved. Check your choices and try again.",
 };
-const REFUSAL_FALLBACK = "That could not be saved. Check your choices and try again.";
+/**
+ * A 400 with no code: a deployed `profile` older than the codes, which is
+ * what production runs between this client shipping and the functions
+ * deploying.
+ */
+export const REFUSAL_FALLBACK =
+  "That could not be saved. Check your choices and try again.";
 
 /**
  * Reader copy for a refusal, or null when the answer was not one. A 400 is a

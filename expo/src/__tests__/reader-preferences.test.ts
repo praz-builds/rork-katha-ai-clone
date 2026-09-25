@@ -24,6 +24,7 @@ import {
   fetchReaderPreferences,
   homePlaceProblem,
   MAX_SPOKEN_LANGUAGES,
+  REFUSAL_COPY,
   readerPreferencesSummary,
   saveReaderPreferences,
   SPOKEN_LANGUAGES,
@@ -194,4 +195,21 @@ it("reads the saved preferences, dropping ids this build does not know", async (
     spokenLanguages: ["hi"],
     homePlace: "Pune",
   });
+});
+
+it("has reader copy for every refusal code the server can send", () => {
+  const source = readFileSync(
+    resolve(
+      __dirname,
+      "../../../backend/supabase/functions/_shared/reader-preferences.ts",
+    ),
+    "utf8",
+  );
+  const union = source.match(
+    /export type PreferencesRefusalReason =([\s\S]*?);/,
+  );
+  expect(union).not.toBeNull();
+  const serverCodes = [...union![1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+  expect(serverCodes.length).toBeGreaterThan(0);
+  expect(Object.keys(REFUSAL_COPY).sort()).toEqual([...serverCodes].sort());
 });

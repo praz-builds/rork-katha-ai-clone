@@ -18,7 +18,10 @@ jest.mock("@/lib/supabase", () => ({
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn().mockResolvedValue({ userId: "u1" }) }));
 
 import ReaderContextSheet from "@/components/profile/ReaderContextSheet";
-import type { ReaderPreferences } from "@/lib/reader-preferences";
+import {
+  clearReaderPreferencesCache,
+  type ReaderPreferences,
+} from "@/lib/reader-preferences";
 
 const EMPTY: ReaderPreferences = { spokenLanguages: [], homePlace: null };
 const SAVED: ReaderPreferences = { spokenLanguages: ["hi", "en"], homePlace: "Pune" };
@@ -121,4 +124,86 @@ it("a pasted city that is too long is explained, not silently cut", async () => 
     await fireEvent.press(view.getByTestId("reader-context-save"));
   });
   expect(mockInvoke).not.toHaveBeenCalled();
+});
+
+function refusal(status: number, body: Record<string, unknown>) {
+  return {
+    data: null,
+    error: Object.assign(new Error("fn"), {
+      context: { status, json: () => Promise.resolve(body) },
+    }),
+  };
+}
+
+async function openReady(onClose = jest.fn()) {
+  const view = await render(
+    <ReaderContextSheet
+      visible
+      value={SAVED}
+      status="ready"
+      onRetry={jest.fn()}
+      onSaved={jest.fn()}
+      onClose={onClose}
+    />,
+  );
+  return view;
+}
+
+it("shows the reader copy for a refusal, and clears it when a chip is changed", async () => {
+  mockInvoke.mockResolvedValueOnce(
+    refusal(400, { error: "spokenLanguages has an unknown language", reason: "unknown_language" }),
+  );
+  const view = await openReady();
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  const error = view.getByTestId("reader-context-error");
+  expect(error.props.children).toBe(
+    "One of these languages is not available yet. Remove the one you added last and try again.",
+  );
+  // Doing what it asks takes it away.
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-language-en"));
+  });
+  expect(view.queryByTestId("reader-context-error")).toBeNull();
+});
+
+it("a refusal from a function older than the codes gets the generic line", async () => {
+  mockInvoke.mockResolvedValueOnce(
+    refusal(400, { error: "spokenLanguages has an unknown language" }),
+  );
+  const view = await openReady();
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  expect(view.getByTestId("reader-context-error").props.children).toBe(
+    "That could not be saved. Check your choices and try again.",
+  );
+});
+
+it("a save that lands after an account switch closes the sheet and reports nothing", async () => {
+  let resolveSave: (value: unknown) => void = () => {};
+  mockInvoke.mockReturnValueOnce(new Promise((r) => { resolveSave = r; }));
+  const onClose = jest.fn();
+  const onSaved = jest.fn();
+  const view = await render(
+    <ReaderContextSheet
+      visible
+      value={SAVED}
+      status="ready"
+      onRetry={jest.fn()}
+      onSaved={onSaved}
+      onClose={onClose}
+    />,
+  );
+  await act(async () => {
+    fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  clearReaderPreferencesCache();
+  await act(async () => {
+    resolveSave({ data: { spokenLanguages: ["hi", "en"], homePlace: "Pune" }, error: null });
+  });
+  expect(onSaved).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(view.queryByTestId("reader-context-error")).toBeNull();
 });

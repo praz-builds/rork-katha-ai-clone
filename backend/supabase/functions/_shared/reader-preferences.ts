@@ -84,6 +84,8 @@ export type PreferencesRefusalReason =
   | "too_many_languages"
   | "place_too_long"
   | "place_invalid"
+  /** A body no client of ours sends: `spokenLanguages` is not a list. */
+  | "invalid_request"
   | "account_deleted";
 
 export type PreferencesRefusal = {
@@ -144,7 +146,7 @@ export function normalizeReaderPreferences(
   if (!Array.isArray(raw)) {
     return {
       error: "spokenLanguages must be a list",
-      reason: "unknown_language",
+      reason: "invalid_request",
     };
   }
   const spokenLanguages: SpokenLanguage[] = [];
