@@ -97,7 +97,11 @@ import { PLAN_FACTS } from "@/components/profile/MemberSheet";
 import i18n from "@/i18n";
 import { useIsSubscribed } from "@/lib/entitlements";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
-import { revenueCatService, type RevenueCatPaywallProduct } from "@/lib/revenuecat";
+import {
+  revenueCatService,
+  type RevenueCatPaywallProduct,
+  type RevenueCatUnavailableReason,
+} from "@/lib/revenuecat";
 import {
   manageSubscriptionsUrl,
   STORE_SUBSCRIPTIONS,
@@ -278,6 +282,17 @@ export function cancelLine(platform: string = Platform.OS): string {
   return i18n.t(`paywall.cancel.${key}`);
 }
 
+/**
+ * The service's reason, read defensively: a service (or a test double) that
+ * does not report one is treated as having no key, the conservative answer.
+ */
+function storeUnavailableReason(): RevenueCatUnavailableReason {
+  return revenueCatService.unavailableReason ?? "no-key";
+}
+
+/** Web cannot open a store's subscription page for an app it is not running in. */
+const WEB_MANAGE_NOTICE = "Manage or cancel from the store you subscribed on.";
+
 /** The store's own subscriptions page, for the active Katha plan when there is one. */
 function openStoreSubscriptions(): Promise<unknown> {
   const active = revenueCatService.profile?.activeSubscriptions?.[0] ?? null;
@@ -389,21 +404,25 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
   const [notice, setNotice] = useState<string | null>(null);
   const manage = useCallback(() => {
+    // The store's own page is the fallback for BOTH failures: Customer Center
+    // not presentable (SDK unconfigured) and Customer Center throwing (it is
+    // optional in the dashboard). A member must always have a working way to
+    // manage or cancel -- Play's Subscriptions policy requires it.
+    const fallBack = () => {
+      if (Platform.OS === "web") {
+        setNotice(WEB_MANAGE_NOTICE);
+        return;
+      }
+      openStoreSubscriptions().catch(() =>
+        setNotice("Subscription management is not available right now.")
+      );
+    };
     revenueCatService
       .presentCustomerCenter()
       .then((presented) => {
-        if (presented) return;
-        if (Platform.OS === "web") {
-          setNotice("Manage or cancel from the store you subscribed on.");
-          return;
-        }
-        // No Customer Center (unconfigured SDK): the store's own page still
-        // manages the subscription, so go there rather than dead-end.
-        openStoreSubscriptions().catch(() =>
-          setNotice("Subscription management is not available right now.")
-        );
+        if (!presented) fallBack();
       })
-      .catch(() => setNotice("Subscription management is not available right now."));
+      .catch(fallBack);
   }, []);
 
   return (
@@ -488,12 +507,15 @@ function PaywallOffer({
   const [storeAvailable, setStoreAvailable] = useState(() =>
     Boolean(revenueCatService.isAvailable)
   );
+  const [storeReason, setStoreReason] = useState(storeUnavailableReason);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
     const unsubscribe = revenueCatService.subscribe(() => {
-      if (mounted.current) setStoreAvailable(Boolean(revenueCatService.isAvailable));
+      if (!mounted.current) return;
+      setStoreAvailable(Boolean(revenueCatService.isAvailable));
+      setStoreReason(storeUnavailableReason());
     });
     return () => {
       mounted.current = false;
@@ -502,13 +524,18 @@ function PaywallOffer({
   }, []);
 
   /**
-   * A shipped native build whose store never configured -- no RevenueCat key
-   * in the build, or the SDK failed to start. There is nothing to buy, so the
-   * button is disabled and the screen says so, instead of letting every tap
-   * fail with "Try again", which invites a retry that can never work.
-   * Development and web keep the off-store walk-through below.
+   * Why a shipped native build cannot sell, split by whether trying again
+   * can help (Development and web keep the off-store walk-through below):
+   *
+   *   - `storeMissing`: the build has no RevenueCat key. Nothing a user does
+   *     changes that, so the button is disabled and the screen says so,
+   *     instead of letting every tap fail with "Try again".
+   *   - `storeOffline`: the key is there but the SDK did not start. That is
+   *     the network, not the version, so the copy says so and a tap retries.
    */
-  const storeMissing = !storeAvailable && !__DEV__ && Platform.OS !== "web";
+  const releaseNative = !__DEV__ && Platform.OS !== "web";
+  const storeMissing = releaseNative && !storeAvailable && storeReason === "no-key";
+  const storeOffline = releaseNative && !storeAvailable && storeReason === "failed";
 
   // Localized prices if the store has any. A failure here is not an error the
   // user needs: the canonical prices stand and the purchase path simulates.
@@ -570,6 +597,15 @@ function PaywallOffer({
     setNotice(null);
     const plan = PLANS[selected];
     try {
+      if (releaseNative && !revenueCatService.isAvailable) {
+        // Not started, or failed to: try once more before calling it offline.
+        await revenueCatService.activate?.();
+        if (!mounted.current) return;
+        if (!revenueCatService.isAvailable) {
+          setError(i18n.t("paywall.storeOffline"));
+          return;
+        }
+      }
       const offerings = await revenueCatService.getOfferings();
       const pkg = subscriptionPackages(offerings)?.find(
         (candidate) => String(candidate.packageType) === plan.packageType,
@@ -612,7 +648,7 @@ function PaywallOffer({
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [busy, onSubscribed, selected, storeMissing]);
+  }, [busy, onSubscribed, releaseNative, selected, storeMissing]);
 
   /**
    * Restore. A restored plan needs no navigation: `useIsSubscribed` hears the
@@ -625,7 +661,11 @@ function PaywallOffer({
     setNotice(null);
     if (!storeAvailable) {
       setNotice(
-        Platform.OS === "web" ? i18n.t("paywall.webOnly") : i18n.t("paywall.unavailable"),
+        Platform.OS === "web"
+          ? i18n.t("paywall.webOnly")
+          : storeReason === "failed"
+          ? i18n.t("paywall.storeOffline")
+          : i18n.t("paywall.unavailable"),
       );
       return;
     }
@@ -643,9 +683,14 @@ function PaywallOffer({
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [busy, storeAvailable]);
+  }, [busy, storeAvailable, storeReason]);
 
+  // Web runs in no store, so Google Play is the wrong answer there too.
   const manage = useCallback(() => {
+    if (Platform.OS === "web") {
+      setNotice(WEB_MANAGE_NOTICE);
+      return;
+    }
     openStoreSubscriptions().catch(() => undefined);
   }, []);
 
@@ -767,6 +812,9 @@ function PaywallOffer({
         </View>
 
         {storeMissing ? <Text style={styles.memberNotice}>{i18n.t("paywall.unavailable")}</Text> : null}
+        {storeOffline && !notice && !error
+          ? <Text style={styles.memberNotice}>{i18n.t("paywall.storeOffline")}</Text>
+          : null}
         {notice && !storeMissing ? <Text style={styles.memberNotice}>{notice}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 

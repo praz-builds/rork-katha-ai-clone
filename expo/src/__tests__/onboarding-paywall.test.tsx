@@ -20,8 +20,13 @@ const mockGetOfferings = jest.fn();
 const mockPurchasePackage = jest.fn();
 const mockPresentCustomerCenter = jest.fn();
 /** What the service reports after a purchase attempt. Mutable per test. */
-const mockRevenueCatState = { premium: false, available: false };
+const mockRevenueCatState: {
+  premium: boolean;
+  available: boolean;
+  reason: string | undefined;
+} = { premium: false, available: false, reason: undefined };
 const mockRestorePurchases = jest.fn();
+const mockActivate = jest.fn();
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -40,6 +45,10 @@ jest.mock("@/lib/revenuecat", () => ({
     get isAvailable() {
       return mockRevenueCatState.available;
     },
+    get unavailableReason() {
+      return mockRevenueCatState.reason;
+    },
+    activate: (...args: unknown[]) => mockActivate(...args),
     profile: null,
     subscribe: () => () => undefined,
   },
@@ -92,6 +101,8 @@ beforeEach(() => {
   mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
   mockRevenueCatState.premium = false;
   mockRevenueCatState.available = false;
+  mockRevenueCatState.reason = undefined;
+  mockActivate.mockReset().mockResolvedValue(undefined);
   mockRestorePurchases.mockReset().mockResolvedValue(null);
   mockOpenURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
 });
@@ -400,6 +411,21 @@ describe("OnboardingPaywall", () => {
     );
   });
 
+  // Customer Center is optional in the dashboard; when it throws, a member
+  // used to get "not available right now" and no way to cancel.
+  it("sends a member to the store when the Customer Center throws", async () => {
+    mockRevenueCatState.premium = true;
+    mockPresentCustomerCenter.mockRejectedValue(new Error("Customer Center not configured"));
+    const { view } = await renderPaywall();
+
+    await waitFor(() => expect(view.getByTestId("paywall-member-state")).toBeTruthy());
+    await fireEvent.press(view.getByLabelText("Manage subscription"));
+    await waitFor(() =>
+      expect(mockOpenURL).toHaveBeenCalledWith("https://apps.apple.com/account/subscriptions")
+    );
+    expect(view.queryByText(/not available right now/)).toBeNull();
+  });
+
   it("completes off-store so the flow can be walked without RevenueCat", async () => {
     const { view, onSubscribed } = await renderPaywall();
     await fireEvent.press(view.getByLabelText("Unlock Katha"));
@@ -484,6 +510,76 @@ describe("OnboardingPaywall", () => {
     await waitFor(() =>
       expect(view.getByText("No active plan on this store account.")).toBeTruthy()
     );
+    // Let the restore's own `finally` settle inside the test (no act() warning).
+    await waitFor(() =>
+      expect(view.getByLabelText("Unlock Katha").props.accessibilityState.busy).toBeFalsy()
+    );
+  });
+
+  // CodeAnt: on web "Manage subscriptions" opened Google Play, a store the
+  // page is not running in. Web says where to manage instead.
+  it("does not send web to Google Play from Manage subscriptions", async () => {
+    const original = Platform.OS;
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => "web" });
+    try {
+      const { view } = await renderPaywall();
+      await fireEvent.press(view.getByLabelText("Manage subscriptions"));
+      expect(mockOpenURL).not.toHaveBeenCalled();
+      expect(view.getByText("Manage or cancel from the store you subscribed on.")).toBeTruthy();
+    } finally {
+      Object.defineProperty(Platform, "OS", { configurable: true, get: () => original });
+    }
+  });
+
+  /**
+   * A keyed build that could not reach the store at start-up is offline, not
+   * out of date: the copy says so, the button stays live, and a tap retries
+   * the store before giving up.
+   */
+  it("blames the connection, not the version, when the store failed to start", async () => {
+    mockRevenueCatState.reason = "failed";
+    const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    try {
+      const { view, onSubscribed } = await renderPaywall();
+      const offline = "Couldn't reach the store. Check your connection and try again.";
+      expect(view.getByText(offline)).toBeTruthy();
+      expect(view.queryByText(/in this version of the app/)).toBeNull();
+      const button = view.getByLabelText("Unlock Katha");
+      expect(button.props.accessibilityState.disabled).toBeFalsy();
+      await fireEvent.press(button);
+      await waitFor(() => expect(mockActivate).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(view.getAllByText(offline).length).toBeGreaterThan(0));
+      expect(onSubscribed).not.toHaveBeenCalled();
+      expect(mockPurchasePackage).not.toHaveBeenCalled();
+    } finally {
+      (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+    }
+  });
+
+  it("buys once the retried store comes up", async () => {
+    mockRevenueCatState.reason = "failed";
+    const annual = { packageType: "ANNUAL", product: { price: 59, priceString: "$59" } };
+    mockGetOfferings.mockResolvedValue({ current: { availablePackages: [annual] } });
+    mockActivate.mockImplementation(() => {
+      mockRevenueCatState.available = true;
+      return Promise.resolve();
+    });
+    mockPurchasePackage.mockResolvedValue(null);
+    const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    try {
+      const { view } = await renderPaywall();
+      await fireEvent.press(view.getByLabelText("Unlock Katha"));
+      await waitFor(() =>
+        expect(mockPurchasePackage).toHaveBeenCalledWith(annual, { basePlanOnly: true })
+      );
+      await waitFor(() =>
+        expect(view.getByLabelText("Unlock Katha").props.accessibilityState.busy).toBeFalsy()
+      );
+    } finally {
+      (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+    }
   });
 
   it("buys the base plan, never a trial the card does not mention", async () => {
@@ -496,6 +592,9 @@ describe("OnboardingPaywall", () => {
     await fireEvent.press(view.getByLabelText("Unlock Katha"));
     await waitFor(() =>
       expect(mockPurchasePackage).toHaveBeenCalledWith(annual, { basePlanOnly: true })
+    );
+    await waitFor(() =>
+      expect(view.getByLabelText("Unlock Katha").props.accessibilityState.busy).toBeFalsy()
     );
   });
 

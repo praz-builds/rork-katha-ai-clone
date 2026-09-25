@@ -172,6 +172,13 @@ describe("Android product identifiers", () => {
       }),
     ).toBe(byId);
     expect(subscriptionPackages({ current: { availablePackages: current }, all: {} })).toBe(current);
+    // A `default` offering that exists but sells nothing must not hide `current`.
+    expect(
+      subscriptionPackages({
+        current: { availablePackages: current },
+        all: { [SUBSCRIPTION_OFFERING_ID]: { availablePackages: [] } },
+      }),
+    ).toBe(current);
     expect(subscriptionPackages(null)).toBeNull();
   });
 

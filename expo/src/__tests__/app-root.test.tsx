@@ -7,9 +7,11 @@
  * for the mechanism.
  */
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { render, waitFor } from "@testing-library/react-native";
 
 const mockMountedProvider = jest.fn();
+const mockRevenueCatLogIn = jest.fn((..._id: unknown[]) => Promise.resolve());
+const mockBootstrapUser = jest.fn((): Promise<unknown> => Promise.resolve(null));
 const mockSetAudioMode = jest.fn((..._mode: unknown[]) => Promise.resolve());
 
 jest.mock("react-native-safe-area-context", () => {
@@ -49,10 +51,13 @@ jest.mock("@/lib/analytics", () => ({
 }));
 jest.mock("@/lib/revenuecat", () => ({
   initRevenueCat: jest.fn(),
-  revenueCatService: { presentPaywall: jest.fn() },
+  revenueCatService: {
+    presentPaywall: jest.fn(),
+    logIn: (...args: unknown[]) => mockRevenueCatLogIn(...args),
+  },
 }));
 jest.mock("@/lib/session", () => ({
-  bootstrapUser: () => Promise.resolve(null),
+  bootstrapUser: () => mockBootstrapUser(),
 }));
 jest.mock("@/lib/notifications", () => ({
   setupAndroidChannel: jest.fn(),
@@ -99,4 +104,15 @@ it("sets the background audio mode at start-up, before any sound exists", async 
   expect(mockSetAudioMode).toHaveBeenCalledWith(
     expect.objectContaining({ staysActiveInBackground: true, playsInSilentModeIOS: true }),
   );
+});
+
+// A session restored at boot is the RevenueCat customer. Only `completeSignIn`
+// used to tell RevenueCat who the user was, so a returning user's first
+// purchase could go out under the SDK's anonymous id -- which the webhook
+// cannot credit.
+it("tells RevenueCat who the restored user is at start-up", async () => {
+  const userId = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
+  mockBootstrapUser.mockResolvedValueOnce({ userId, balance: 3, isAnonymous: false });
+  await render(<App />);
+  await waitFor(() => expect(mockRevenueCatLogIn).toHaveBeenCalledWith(userId));
 });

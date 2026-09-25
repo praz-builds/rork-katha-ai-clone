@@ -53,8 +53,9 @@ Things the table implies that are easy to get wrong:
   `payment_event_backlog`, and grants nothing until someone looks.
 - **The yearly plan's 50 credits arrive monthly.** The first 50 land with the
   purchase; `refresh-subscription-grants` (daily cron) tops the plan back up to
-  50 on each following calendar month. Weekly and monthly are topped up by
-  their own renewals.
+  50 on each following calendar month, once per month: the store's yearly
+  renewal does not refill a month the cron has already paid. Weekly and
+  monthly are topped up by their own renewals.
 - **No free trial for launch.** The pricing doc keeps a 3-day trial as store
   configuration on the yearly plan, but no screen in the app discloses a trial
   today (the onboarding paywall removed it on 2026-09-11), and a trial the
@@ -206,8 +207,10 @@ The webhook is what turns a purchase into credits. It is deployed as
       unset REVENUECAT_ALLOW_SANDBOX`), or a license tester's free purchase
       mints real credits.
 - [ ] **Send a test event.** RevenueCat's *Send test event* posts a `TEST`
-      event; the function answers 200 with `ignored: "TEST"`. A 401 means the
-      header does not match the secret.
+      event marked `environment: "SANDBOX"`, so the function answers 200 with
+      `ignored: "sandbox"` (or `ignored: "TEST"` once
+      `REVENUECAT_ALLOW_SANDBOX=true`). Either 200 proves the URL and the
+      secret; a 401 means the header does not match the secret.
 
 ## 6. The key into the app
 
@@ -235,7 +238,15 @@ The app reads the key from build configuration; nobody edits source.
 Until this step lands, every purchase surface says so instead of failing: the
 paywall disables *Unlock Katha* and shows "Subscriptions aren't available in
 this version of the app yet. Reading stays free."; the credit-pack sheet shows
-"Purchases aren't available in this version yet".
+"Purchases aren't available in this version yet". A build that has the key but
+could not reach the store at start-up says "Couldn't reach the store. Check your
+connection and try again." instead, and a tap retries.
+
+**Who the purchase belongs to.** The app tells RevenueCat the Katha user id at
+start-up (for a restored session) and at sign-in, so purchases arrive with a
+UUID `app_user_id`. If one still arrives under an anonymous
+`$RCAnonymousID:…`, the webhook credits the single Katha UUID in the event's
+`aliases`; with none or two, it parks the event in `payment_event_backlog`.
 
 ## 7. Verify on a device
 

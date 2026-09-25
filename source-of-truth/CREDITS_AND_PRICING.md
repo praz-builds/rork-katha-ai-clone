@@ -55,7 +55,7 @@ note in §3 (*Character images*).
 
 One product, three durations. There is no separate reader tier.
 
-| | Weekly | Monthly | Yearly · 3-day trial |
+| | Weekly | Monthly | Yearly (no trial at launch, §3 *Store SKUs*) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -601,7 +601,7 @@ flagged rather than quietly carried.
 > credits, which is not how you price a different *product* — and the created-flow
 > work erased the line it assumed: a reader who reimagines a chapter is creating.
 
-| | Weekly | Monthly | Yearly · 3-day trial |
+| | Weekly | Monthly | Yearly (no trial at launch, see *Store SKUs*) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -1103,7 +1103,7 @@ downside at **$0.74**.
 |---|---|
 | `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
 | `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
-| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, 3-day trial |
+| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo. A 3-day trial offer exists on paper only: **not created for launch** (below) |
 | `ai.katha.credits.2` | 2 credits — $0.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
 | `ai.katha.credits.50` | 50 credits — $15.99 |

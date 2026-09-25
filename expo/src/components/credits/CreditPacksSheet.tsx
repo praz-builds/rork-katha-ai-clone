@@ -17,7 +17,12 @@ import {
   creditPackUnitPrice,
   formatUnitPrice,
 } from "@/lib/pricing";
-import { revenueCatService, type RevenueCatPaywallProduct } from "@/lib/revenuecat";
+import i18n from "@/i18n";
+import {
+  revenueCatService,
+  type RevenueCatPaywallProduct,
+  type RevenueCatUnavailableReason,
+} from "@/lib/revenuecat";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { Button } from "@/components/Button";
 
@@ -40,20 +45,34 @@ import { Button } from "@/components/Button";
  * purchase it tells the caller, who re-reads the balance.
  */
 export const PACKS_HEADLINE = "Credit packs that never expire";
-export const WEB_PURCHASE_NOTE = "Purchases work in the app";
-/**
- * A native build whose store never configured (no RevenueCat key in the
- * build). "Purchases work in the app" was shown here too, which is nonsense
- * to somebody already in the app.
+/*
+ * What the disabled Purchase button says, by why it is disabled. The strings
+ * live in `src/i18n` (`paywall.packs.*`) beside the paywall's; the constants
+ * are their English forms, for tests and callers that compare.
+ *
+ *   - web: purchases work in the app.
+ *   - a native build with no RevenueCat key: not in this version. "Purchases
+ *     work in the app" was shown here too, which is nonsense to somebody
+ *     already in the app.
+ *   - the SDK failed to start: the store cannot be reached, which is the
+ *     network rather than the version.
+ *   - the store answered but does not sell this pack.
  */
-export const STORE_UNAVAILABLE_NOTE = "Purchases aren't available in this version yet";
-/** The store answered but does not sell this pack (not created, or not in an offering). */
-export const PACK_UNAVAILABLE_NOTE = "This pack isn't available right now";
+export const WEB_PURCHASE_NOTE = i18n.t("paywall.packs.webOnly", { lng: "en" });
+export const STORE_UNAVAILABLE_NOTE = i18n.t("paywall.packs.storeUnavailable", { lng: "en" });
+export const STORE_OFFLINE_NOTE = i18n.t("paywall.packs.storeOffline", { lng: "en" });
+export const PACK_UNAVAILABLE_NOTE = i18n.t("paywall.packs.packUnavailable", { lng: "en" });
 
-/** What the disabled Purchase button says, by why it is disabled. */
-export function unavailablePurchaseNote(platform: string, storeAvailable: boolean): string {
-  if (platform === "web") return WEB_PURCHASE_NOTE;
-  return storeAvailable ? PACK_UNAVAILABLE_NOTE : STORE_UNAVAILABLE_NOTE;
+export function unavailablePurchaseNote(
+  platform: string,
+  storeAvailable: boolean,
+  reason: RevenueCatUnavailableReason | null = null,
+): string {
+  if (platform === "web") return i18n.t("paywall.packs.webOnly");
+  if (storeAvailable) return i18n.t("paywall.packs.packUnavailable");
+  return reason === "failed"
+    ? i18n.t("paywall.packs.storeOffline")
+    : i18n.t("paywall.packs.storeUnavailable");
 }
 
 type PackOffer = {
@@ -120,7 +139,11 @@ export default function CreditPacksSheet({
     offers.find((offer) => offer.pack.credits === pack.credits)?.amount ?? pack.usd
   );
   const purchasable = available && chosen?.pkg !== null;
-  const unavailableNote = unavailablePurchaseNote(Platform.OS, available);
+  const unavailableNote = unavailablePurchaseNote(
+    Platform.OS,
+    available,
+    revenueCatService.unavailableReason ?? null,
+  );
 
   const purchase = useCallback(async () => {
     if (busy || !chosen?.pkg) return;

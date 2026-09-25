@@ -474,6 +474,12 @@ export default function App() {
         );
         setIsAnonymous(user.isAnonymous);
       }
+      // The restored session's id is the RevenueCat customer id. Without this
+      // a returning user's purchase could go out under the SDK's anonymous
+      // id, which the webhook cannot credit. Only `completeSignIn` did this,
+      // so a session restored at boot never logged in at all. Safe before
+      // RevenueCat has finished starting: the id is held until it has.
+      if (user) void revenueCatService.logIn?.(user.userId);
       // Expo tokens rotate on reinstall, on some OS updates, and when a backup
       // is restored onto a new device, and only the app ever learns the new
       // value. This never asks for permission; it re-registers a token the

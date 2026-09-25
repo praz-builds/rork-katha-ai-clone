@@ -53,6 +53,9 @@ export type KathaTier = (typeof ENTITLEMENT_TIER_MAP)[keyof typeof ENTITLEMENT_T
 export type RevenueCatProfile = CustomerInfo;
 export type RevenueCatPaywallProduct = PurchasesPackage;
 
+/** See `RevenueCatService.unavailableReason`. */
+export type RevenueCatUnavailableReason = "no-key" | "starting" | "failed";
+
 type ProfileListener = (profile: RevenueCatProfile | null) => void;
 
 function isUserCancelled(error: unknown): boolean {
@@ -68,6 +71,13 @@ class RevenueCatService {
   private _profile: RevenueCatProfile | null = null;
   private _listeners: ProfileListener[] = [];
   private _ready = false;
+  /** Why the store is off, when it is. Null once configured. */
+  private _unavailableReason: RevenueCatUnavailableReason | null = null;
+  /** The Katha user id RevenueCat should know this customer by, once there is one. */
+  private _pendingUserID: string | null = null;
+  /** The id `configure` was given, so a pending one is not logged in twice. */
+  private _configuredAs: string | null = null;
+  private _activating: Promise<void> | null = null;
   private readonly _customerInfoListener = (profile: CustomerInfo) => {
     this.setProfile(profile);
   };
@@ -79,10 +89,26 @@ class RevenueCatService {
     return RevenueCatService._instance;
   }
 
-  /** Configure RevenueCat once at startup. Anonymous users receive an SDK ID. */
+  /**
+   * Configure RevenueCat once at startup, and again on demand if it failed.
+   *
+   * THE CUSTOMER'S ID. The webhook can only credit a purchase whose
+   * `app_user_id` is the Katha user id (a UUID); an SDK-generated
+   * `$RCAnonymousID` purchase lands in `payment_event_backlog`. So the id is
+   * applied whenever it becomes known -- passed here, or handed to `identify`
+   * before, during or after activation -- and never dropped because the SDK
+   * was not ready yet (it used to be: `identify` returned early).
+   *
+   * OFFLINE IS NOT BROKEN. The SDK is usable once `configure` returns; the
+   * first `getCustomerInfo` failing (no network at boot) used to leave the
+   * store off for the whole session and the paywall blaming "this version".
+   * It is now only a missing profile, which the update listener fills later.
+   */
   async activate(appUserID?: string): Promise<void> {
     if (Platform.OS === "web") return;
+    if (appUserID) this._pendingUserID = appUserID;
     if (!REVENUECAT_PUBLIC_KEY) {
+      this._unavailableReason = "no-key";
       // Fail loudly. A release build with no key silently has no billing at all,
       // which otherwise only surfaces as zero revenue days later.
       console.error(
@@ -98,19 +124,52 @@ class RevenueCatService {
       if (appUserID) await this.identify(appUserID);
       return;
     }
-
-    try {
-      Purchases.configure({
-        apiKey: REVENUECAT_PUBLIC_KEY,
-        ...(appUserID ? { appUserID } : {}),
+    if (!this._activating) {
+      this._activating = this.configureAndLoad(REVENUECAT_PUBLIC_KEY).finally(() => {
+        this._activating = null;
       });
+    }
+    await this._activating;
+  }
+
+  private async configureAndLoad(apiKey: string): Promise<void> {
+    try {
+      const appUserID = this._pendingUserID;
+      Purchases.configure({ apiKey, ...(appUserID ? { appUserID } : {}) });
       Purchases.addCustomerInfoUpdateListener(this._customerInfoListener);
-      this._profile = await Purchases.getCustomerInfo();
+      this._configuredAs = appUserID;
       this._ready = true;
-      this.notify();
+      this._unavailableReason = null;
     } catch (error) {
       console.warn("RevenueCat activation failed:", error);
+      this._unavailableReason = "failed";
+      this.notify();
+      return;
     }
+    // Somebody signed in while `configure` ran: log them in now rather than
+    // leave the purchase to an anonymous id the webhook cannot credit.
+    const pending = this._pendingUserID;
+    if (pending && pending !== this._configuredAs) {
+      await this.identify(pending);
+      return;
+    }
+    try {
+      this._profile = await Purchases.getCustomerInfo();
+    } catch (error) {
+      console.warn("RevenueCat customer info unavailable (offline?):", error);
+    }
+    this.notify();
+  }
+
+  /**
+   * Why purchases are off: `no-key` (this build carries no RevenueCat key --
+   * nothing a user can do), `starting` (activation has not finished),
+   * `failed` (the SDK did not start; `activate()` retries it), or null when
+   * the store is available or this is web.
+   */
+  get unavailableReason(): RevenueCatUnavailableReason | null {
+    if (Platform.OS === "web" || this._ready) return null;
+    return this._unavailableReason ?? (REVENUECAT_PUBLIC_KEY ? "starting" : "no-key");
   }
 
   get tier(): KathaTier | null {
@@ -293,7 +352,11 @@ class RevenueCatService {
 
   /** Link an anonymous customer to the authenticated Supabase user ID. */
   async identify(appUserID: string): Promise<void> {
-    if (Platform.OS === "web" || !this._ready) return;
+    if (Platform.OS === "web") return;
+    // Remembered either way: before activation it is the id `configure` is
+    // given, during activation it is logged in as soon as `configure` returns.
+    this._pendingUserID = appUserID;
+    if (!this._ready) return;
     try {
       const { customerInfo } = await Purchases.logIn(appUserID);
       this.setProfile(customerInfo);
@@ -304,8 +367,8 @@ class RevenueCatService {
 
   /**
    * `identify` under the name the post-auth contract uses. Same behaviour: a
-   * no-op on web or before activation, so `completeSignIn` can call it
-   * unconditionally.
+   * no-op on web, and remembered until activation finishes otherwise, so the
+   * boot path and `completeSignIn` can both call it unconditionally.
    */
   async logIn(appUserID: string): Promise<void> {
     await this.identify(appUserID);

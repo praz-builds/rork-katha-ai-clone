@@ -137,9 +137,11 @@ export function subscriptionPackages<P>(
   offerings: OfferingsLike<P> | null | undefined,
 ): P[] | null {
   if (!offerings) return null;
-  return offerings.all?.[SUBSCRIPTION_OFFERING_ID]?.availablePackages ??
-    offerings.current?.availablePackages ??
-    null;
+  // `length`, not `??`: a `default` offering that exists but is empty is an
+  // array, and `??` would keep it and never reach `current`.
+  const byId = offerings.all?.[SUBSCRIPTION_OFFERING_ID]?.availablePackages;
+  if (byId?.length) return byId;
+  return offerings.current?.availablePackages ?? byId ?? null;
 }
 
 /**

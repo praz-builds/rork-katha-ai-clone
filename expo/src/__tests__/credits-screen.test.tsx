@@ -246,4 +246,7 @@ it("words a disabled Purchase by the reason it is disabled", () => {
   expect(unavailablePurchaseNote("web", false)).toBe(WEB_PURCHASE_NOTE);
   expect(unavailablePurchaseNote("android", false)).toBe(STORE_UNAVAILABLE_NOTE);
   expect(unavailablePurchaseNote("android", true)).toBe("This pack isn't available right now");
+  // A keyed build whose SDK failed to start is offline, not out of date.
+  expect(unavailablePurchaseNote("android", false, "failed")).toBe("Can't reach the store right now");
+  expect(unavailablePurchaseNote("android", false, "no-key")).toBe(STORE_UNAVAILABLE_NOTE);
 });

@@ -62,7 +62,7 @@ catalogue table is pinned to the code and to `CREDITS_AND_PRICING.md` §3 by
 ### Deploy (not done in this session)
 
 `revenuecat-webhook` and `refresh-subscription-grants` (both import the changed
-`_shared/revenuecat.ts`; the cron also imports the new
+`_shared/revenuecat.ts`; both also import the new
 `_shared/subscription-grants.ts`). `seed-voice-previews` and `reviewer-signin`
 also import `_shared/revenuecat.ts` (for `constantTimeEquals` only): their
 behaviour does not change, but redeploy them too so production stays byte for
@@ -75,6 +75,39 @@ Backend `deno test --allow-env --allow-net --allow-read supabase/functions/`
 `pnpm typecheck` clean, `pnpm lint` 0 errors, jest 1467/1470 in the full run
 with 3 reader tests timing out under load, which pass alone (18/18) and are
 untouched here.
+
+### Review round (Fable on PR #142)
+
+Merged main (#138–#141; the i18n files keep both `blocks` and `paywall`, raw
+UTF-8; `FOLLOW_DEVICE_LOCALE = false` stays, so the policy lines render in
+English until the app-wide i18n release). Then:
+
+- **The anniversary month.** A yearly `RENEWAL` no longer refills a month the
+  cron has already paid (`settleSubscriptionGrant`): the latest grant event
+  this month must be a full grant, not a trial's 10 and not a grant a `lapse`
+  has voided. It was up to 100 credits once a year per subscriber.
+- **`PRODUCT_CHANGE` records the product moved to** (`new_product_id`,
+  canonicalised), not the one left, so an upgrade to yearly is visible to the
+  yearly grant job at once. Caveat: for a Play downgrade that takes effect at
+  renewal, the row names the new product early.
+- **Anonymous purchasers.** The webhook credits an `$RCAnonymousID` event to
+  the single Katha UUID in `aliases` / `original_app_user_id` (none or two:
+  still the backlog). The client now logs RevenueCat in with the restored
+  session's id at boot, and `identify` before activation is remembered instead
+  of dropped.
+- **Offline is not "this version".** The SDK counts as available once
+  `configure` returns; a failed first `getCustomerInfo` no longer turns
+  purchases off. A failed `configure` reports `failed`, the paywall and pack
+  sheet say the store could not be reached, and a tap retries.
+- **A member always has a manage path**: Customer Center throwing falls back to
+  the store page; `MemberSheet`'s line is a link on iOS/Android. Web's "Manage
+  subscriptions" no longer opens Google Play. An empty `default` offering
+  falls back to `current`.
+- `CREDITS_AND_PRICING.md`: the grid headers and the Store SKUs row no longer
+  advertise a 3-day trial the app never offers.
+
+Every new regression test was run against the reverted fix and fails there
+(backend 4, client service 5, app boot 1, paywall/member/catalogue 7).
 ## 2026-09-25 UTC — "Send feedback" and a Background music switch on the You tab
 
 **Session:** Lane E of the launch push, branch `codex/feedback-and-music-control`.

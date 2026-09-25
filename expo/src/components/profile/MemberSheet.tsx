@@ -1,5 +1,8 @@
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, Crown, X } from "lucide-react-native";
+import i18n from "@/i18n";
+import { revenueCatService } from "@/lib/revenuecat";
+import { manageSubscriptionsUrl } from "@/lib/store-catalog";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { Button } from "@/components/Button";
 
@@ -14,9 +17,11 @@ import { Button } from "@/components/Button";
  *
  * It states the plan's facts and nothing it cannot deliver: the four
  * promises are the paywall's four rows, so a member reads here exactly what
- * they read when they bought. Managing the subscription is the store's job,
- * and the line at the bottom says which store rather than pretending to a
- * control the sheet does not have.
+ * they read when they bought. Managing the subscription is the store's job:
+ * on a phone the line at the bottom is a link to that store's subscriptions
+ * page (Play's Subscriptions policy wants a working manage/cancel path for a
+ * member, and this sheet is where Profile and Credits land when the Customer
+ * Center cannot open). On web there is no store to link, so it stays a line.
  */
 export const PLAN_FACTS: readonly string[] = [
   "50 credits a month",
@@ -32,11 +37,11 @@ export default function MemberSheet({
   visible: boolean;
   onClose: () => void;
 }) {
-  const manageLine = Platform.OS === "ios"
-    ? "Manage or cancel any time in your Apple ID subscriptions."
-    : Platform.OS === "android"
-    ? "Manage or cancel any time in Google Play subscriptions."
-    : "Manage or cancel any time from the store you subscribed on.";
+  const store = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
+  const openStore = () => {
+    const held = revenueCatService?.profile?.activeSubscriptions?.[0] ?? null;
+    void Linking.openURL(manageSubscriptionsUrl(Platform.OS, held)).catch(() => undefined);
+  };
 
   return (
     <Modal
@@ -76,7 +81,24 @@ export default function MemberSheet({
               </View>
             ))}
           </View>
-          <Text style={styles.manage}>{manageLine}</Text>
+          {store
+            ? (
+              <Pressable
+                onPress={openStore}
+                accessibilityRole="link"
+                testID="member-sheet-manage"
+                hitSlop={{ top: 12, bottom: 12 }}
+              >
+                <Text style={[styles.manage, styles.manageLink]}>
+                  {i18n.t(`paywall.manageInStore.${store}`)}
+                </Text>
+              </Pressable>
+            )
+            : (
+              <Text style={styles.manage}>
+                Manage or cancel any time from the store you subscribed on.
+              </Text>
+            )}
           <Button
             label="Done"
             onPress={onClose}
@@ -152,6 +174,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  manageLink: { textDecorationLine: "underline" },
   /** Layout only; the recipe is `Button`'s. */
   done: { marginTop: spacing.md },
 });
