@@ -141,7 +141,7 @@ describe("the visibility clauses survive every other filter", () => {
     expect(ors).toEqual([
       "is_public.eq.true,is_curated.eq.true",
       "title.ilike.*wolf*,topic.ilike.*wolf*",
-      "primary_genre.eq.fantasy,genre.cs.{fantasy}",
+      "primary_genre.eq.fantasy,and(primary_genre.is.null,genre.cs.{fantasy})",
     ]);
   });
 
@@ -158,6 +158,50 @@ describe("the visibility clauses survive every other filter", () => {
       "(title.ilike.*w*)",
       "(genre.cs.{a})",
     ]);
+  });
+});
+
+describe("a genre filter answers with that genre only", () => {
+  /**
+   * The acceptance failure: Adventure selected, and the page held mysteries,
+   * fantasies and sci-fi. The legacy `genre` array lists a story's SECONDARY
+   * genres too ({mystery, adventure}), and the clause matched the array
+   * whatever the primary genre said. Checked against production on
+   * 2026-09-25: the old clause returned 24 rows across seven primary genres
+   * for Adventure; this one returns the 7 whose primary genre is Adventure.
+   */
+  it("matches the legacy array only for a row with no primary genre", async () => {
+    await searchStories({ text: "", genre: "adventure" });
+    const ors = calls.filter((call) => call.method === "or").map((call) =>
+      call.args[0]
+    );
+    expect(ors).toContain(
+      "primary_genre.eq.adventure,and(primary_genre.is.null,genre.cs.{adventure})",
+    );
+    expect(ors).not.toContain("primary_genre.eq.adventure,genre.cs.{adventure}");
+  });
+
+  it("drops a row whose card would show another genre", async () => {
+    // What a server that still matched secondary genres would send back. The
+    // card renders `primary_genre`, so the filter has to answer to it too.
+    rows = [
+      { id: "a", title: "Real adventure", primary_genre: "adventure", genre: ["adventure", "comedy"] },
+      { id: "m", title: "A mystery", primary_genre: "mystery", genre: ["mystery", "adventure"] },
+      { id: "l", title: "Legacy adventure", primary_genre: null, genre: ["adventure"] },
+      { id: "x", title: "Legacy mystery", primary_genre: null, genre: ["mystery", "adventure"] },
+    ];
+    const outcome = await searchStories({ text: "", genre: "adventure" });
+    expect(outcome.stories.map((story) => story.id)).toEqual(["a", "l"]);
+    expect(outcome.stories.every((story) => story.genre === "adventure")).toBe(true);
+  });
+
+  it("leaves an unfiltered page alone", async () => {
+    rows = [
+      { id: "a", title: "One", primary_genre: "adventure" },
+      { id: "m", title: "Two", primary_genre: "mystery" },
+    ];
+    const outcome = await searchStories({ text: "", genre: null });
+    expect(outcome.stories).toHaveLength(2);
   });
 });
 

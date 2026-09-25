@@ -362,6 +362,49 @@ describe("somebody else's profile", () => {
 
     await waitFor(() => view.getByTestId("author-no-stories"));
     expect(view.queryByText("An Unpublished Draft")).toBeNull();
+    // Named, and said about this writer, not a bare "nothing here".
+    expect(view.getByText("Stories")).toBeTruthy();
+    expect(view.getByText("@ada has not published a story yet.")).toBeTruthy();
+  });
+
+  it("draws no streak calendar and never asks for one", async () => {
+    mockFetchPublicProfile.mockResolvedValue({
+      profile: publicProfile,
+      stories: [publicStory],
+    });
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        canEngage
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByText("A Public Story"));
+    // The owner's calendar lives on Journey. A visitor came for the work.
+    expect(view.queryAllByTestId(/^activity-grid/)).toHaveLength(0);
+    expect(view.queryByText(/days? this year|day streak/i)).toBeNull();
+    expect(mockFetchActivityCalendar).not.toHaveBeenCalled();
+    expect(view.getByText("Stories")).toBeTruthy();
+  });
+
+  it("says the stories could not load rather than that there are none", async () => {
+    mockFetchPublicProfile.mockResolvedValue(null);
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("author-stories-error"));
+    expect(view.queryByTestId("author-no-stories")).toBeNull();
   });
 
   it("gates the follow button behind sign-in for a guest", async () => {
@@ -536,6 +579,14 @@ describe("the reader's own profile", () => {
     for (const gone of ["Reads", "Likes", "Chapters", "Stories"]) {
       expect(view.queryByText(gone)).toBeNull();
     }
+  });
+
+  it("describes How credits work in plain words", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-faq"));
+    expect(view.getByText("Prices and free credits")).toBeTruthy();
+    expect(view.queryByText("Every price, streaks and invites")).toBeNull();
   });
 
   // No page title: the tab bar already said "You" in a word they just tapped.

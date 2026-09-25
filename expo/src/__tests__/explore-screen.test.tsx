@@ -41,7 +41,6 @@ const renderExplore = async (onStory = jest.fn()) =>
     <ExploreScreen
       stories={stories}
       onStory={onStory}
-      onProfile={jest.fn()}
       searchOptions={{ debounceMs: 0 }}
     />,
   );
@@ -57,9 +56,30 @@ const titlesInOrder = (view: ExploreView) =>
 it("opens on a browsable default rather than a blank page", async () => {
   const view = await renderExplore();
   await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
-  // Nothing typed, no genre: the reader is looking at the catalogue's most
-  // loved, and the eyebrow says so rather than leaving them to guess.
-  expect(view.getByText(/Most loved/)).toBeTruthy();
+  // Nothing typed, no genre: the eyebrow names the order the list is in.
+  // It said "Most loved" over a list sorted by reads.
+  expect(view.getByText(/^Trending/)).toBeTruthy();
+});
+
+it("has no stray profile link in the corner", async () => {
+  const view = await renderExplore();
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+  // Profile is its own tab. The "You" link here was a second door to it.
+  expect(view.queryByText("You")).toBeNull();
+  expect(view.queryByLabelText("Open profile")).toBeNull();
+});
+
+it("names the genre, not the default order, once a genre is chosen", async () => {
+  const view = await renderExplore();
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+  await fireEvent.press(view.getByLabelText("Fantasy"));
+  await waitFor(() => expect(view.getByText(/^Fantasy/)).toBeTruthy());
+  expect(view.queryByText(/Trending/)).toBeNull();
+
+  // A sort the reader picked is news, so it is named beside the genre.
+  await fireEvent.press(view.getByLabelText("Filters"));
+  await fireEvent.press(view.getByTestId("explore-sort-newest"));
+  await waitFor(() => expect(view.getByText(/^Fantasy · Newest/)).toBeTruthy());
 });
 
 it("offers every genre the app knows, as selectable chips", async () => {
@@ -170,7 +190,7 @@ it("reorders the list when the sort changes", async () => {
   await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
   await fireEvent.press(view.getByLabelText("Filters"));
 
-  // By testID, not by text. "Most loved" is also what the eyebrow says when
+  // By testID, not by text. A sort's label is also what the eyebrow says when
   // nothing is typed and no genre is picked, so `getByText` is one wording
   // change away from matching two nodes and throwing instead of sorting.
   await fireEvent.press(view.getByTestId("explore-sort-loved"));

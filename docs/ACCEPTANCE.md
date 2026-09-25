@@ -13,6 +13,45 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 ---
 
+# Round: go-live remediation (2026-09-25)
+
+Fixes to what failed the last walk. **Merged, not deployed**: an Expo client change reaches the phone only through an EAS build, so check these on http://localhost:8090 after `scripts/preview.sh` has picked up main.
+
+## R1. Explore
+
+- [ ] No "You" in the top-right corner. The search field is the first thing on the screen.
+- [ ] Tap **Adventure**: every card says Adventure. No Mystery, Fantasy, Sci-fi or Educational cards mixed in.
+- [ ] With Adventure selected, the line right of Filters says **Adventure**, with no sort order after it.
+- [ ] Open Filters, pick **Newest**: the line becomes **Adventure · Newest**.
+- [ ] Clear the genre: the line says **Trending** (it used to say "Most loved" over a list sorted by reads).
+
+## R2. Home
+
+- [ ] At the foot of the feed, a small outlined **Explore all** button, centred. Not a full-width button. It opens Explore.
+
+## R3. Voice samples (Profile -> Audiobook voices)
+
+- [ ] Every voice has a round play button at the right of its row.
+- [ ] Tap one: a spinner, then either the sample plays (the button becomes a stop square) or the row says **Sample unavailable right now**. **Today it will say unavailable**: the sample clips have not been generated in production yet (see the blocker in the PR).
+- [ ] The tick does **not** move to the voice you previewed. Only tapping the row itself changes your voice.
+- [ ] Tap a second voice's play while one is loading or playing: the first stops.
+
+## R4. Someone's public profile (tap an author name)
+
+- [ ] No streak calendar.
+- [ ] A **Stories** heading, then their public stories -- or "@handle has not published a story yet".
+- [ ] Your own Journey screen (You -> the streak row) still has your calendar.
+
+## R5. You
+
+- [ ] "How credits work" reads **Prices and free credits** underneath.
+
+## R6. Story page summary -- not changed, and why
+
+- [ ] The story page still shows one opening line, not a 4-5 line summary. No spoiler-free summary exists anywhere in the data yet; the PR explains what building one takes.
+
+---
+
 # Round: the Play launch push (#138-#143, plus the generation fix)
 
 Six lanes merged on 2026-09-25 and are deployed, and so is A1's seventh change.
@@ -193,7 +232,7 @@ fixing — but no story a reader asked for ever failed because of it.
 ## 6. Explore
 
 - [ ] A search bar, which Home does not have.
-- [ ] Every genre in a horizontal strip, tap to filter, tap again to clear.
+- [ ] Every genre in a horizontal strip, tap to filter, tap again to clear. Every card under a genre is that genre.
 - [ ] Type quickly: results never flicker backwards to an older query.
 - [ ] Search shows nothing the feed would hide.
 
@@ -219,7 +258,7 @@ fixing — but no story a reader asked for ever failed because of it.
 - [ ] Your own leads with the streak and shows Followers and Following. There is no stat grid: reads, likes, chapter and story counts are gone.
 - [ ] You can change your handle and upload a picture.
 - [ ] No parental controls.
-- [ ] Another author's profile has follow, their public stories, and public counts. A private story never appears there.
+- [ ] Another author's profile has follow, their public stories under a **Stories** heading, and follower counts. No streak calendar. A private story never appears there.
 
 ## 10. Signing in
 

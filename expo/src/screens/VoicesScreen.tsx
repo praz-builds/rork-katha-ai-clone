@@ -12,13 +12,14 @@ import {
 // The safe-area-context one works on both. `SafeAreaProvider` is already
 // mounted in App.tsx, so this is a swap, not new plumbing.
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Check, ChevronLeft } from "lucide-react-native";
+import { Check, ChevronLeft, Play, Square } from "lucide-react-native";
 import {
   fetchNarrationVoices,
   type NarrationVoice,
   preferredVoiceId,
   setPreferredVoiceId,
 } from "@/lib/voices";
+import { useVoicePreview, type VoicePreviewStatus } from "@/lib/voice-preview";
 import { colors, fonts, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
@@ -32,17 +33,21 @@ import { sharedStyles } from "@/screens/shared";
  * from the file would offer voices that answer `400 Unknown voice_id` the
  * moment somebody pressed Listen.
  *
- * NO PREVIEW BUTTONS. The registry carries a `preview_url` for every voice and
- * not one of those objects exists in storage — `seed-voice-previews` has never
- * run — so a play button here would be a button that always fails. It is left
- * out rather than shipped broken, and it goes in the moment the previews are
- * generated.
+ * A SAMPLE BESIDE EVERY VOICE THAT HAS ONE. The registry's `preview_url` is
+ * played as-is by `useVoicePreview` (`src/lib/voice-preview.ts`): one static
+ * file, no provider call, nothing charged. The play control is its own
+ * button, not part of the row, because hearing a voice is not choosing it --
+ * only a press on the row itself saves the preference. A sample that cannot be
+ * fetched says so on its row and can be tried again; as of 2026-09-25 that is
+ * every sample in production, because `seed-voice-previews` has not been run
+ * there, and the error is the honest answer until it is.
  */
 export default function VoicesScreen({ onBack }: { onBack: () => void }) {
   const [voices, setVoices] = useState<NarrationVoice[] | null | undefined>(
     undefined,
   );
   const [selected, setSelected] = useState<string | null>(null);
+  const preview = useVoicePreview();
 
   useEffect(() => {
     let alive = true;
@@ -105,42 +110,110 @@ export default function VoicesScreen({ onBack }: { onBack: () => void }) {
             <View style={styles.list}>
               {voices.map((voice, index) => {
                 const active = selected === voice.id;
+                const sample: VoicePreviewStatus =
+                  preview.state.voiceId === voice.id
+                    ? preview.state.status
+                    : "idle";
                 return (
-                  <Pressable
+                  <View
                     key={voice.id}
-                    onPress={() => choose(voice.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={voice.displayName}
-                    testID={`voice-${voice.id}`}
-                    style={({ pressed }) => [
+                    style={[
                       styles.row,
                       index < voices.length - 1 && styles.rowDivider,
-                      pressed && styles.pressed,
                     ]}
                   >
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowTitle}>{voice.displayName}</Text>
-                      <Text style={styles.rowSubtitle}>
-                        {describe(voice)}
-                      </Text>
-                    </View>
-                    {active && (
-                      <View style={styles.tick}>
-                        <Check
-                          size={13}
-                          color={colors.surface}
-                          strokeWidth={3}
-                        />
+                    <Pressable
+                      onPress={() => choose(voice.id)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={voice.displayName}
+                      testID={`voice-${voice.id}`}
+                      style={({ pressed }) => [
+                        styles.choice,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowTitle}>{voice.displayName}</Text>
+                        <Text style={styles.rowSubtitle}>
+                          {sample === "error"
+                            ? "Sample unavailable right now"
+                            : describe(voice)}
+                        </Text>
                       </View>
-                    )}
-                  </Pressable>
+                      {active && (
+                        <View style={styles.tick}>
+                          <Check
+                            size={13}
+                            color={colors.surface}
+                            strokeWidth={3}
+                          />
+                        </View>
+                      )}
+                    </Pressable>
+                    {voice.previewUrl
+                      ? (
+                        <PreviewButton
+                          name={voice.displayName}
+                          status={sample}
+                          testID={`voice-preview-${voice.id}`}
+                          onPress={() =>
+                            preview.toggle(voice.id, voice.previewUrl)}
+                        />
+                      )
+                      : null}
+                  </View>
                 );
               })}
             </View>
           )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * Play, stop, or a spinner while the sample loads. 44pt, its own target, and
+ * it names the voice in every state so a screen reader hears whose sample.
+ */
+function PreviewButton({
+  name,
+  status,
+  testID,
+  onPress,
+}: {
+  name: string;
+  status: VoicePreviewStatus;
+  testID: string;
+  onPress: () => void;
+}) {
+  const label = status === "loading"
+    ? `Loading ${name} sample. Tap to cancel`
+    : status === "playing"
+    ? `Stop ${name} sample`
+    : status === "error"
+    ? `${name} sample unavailable. Try again`
+    : `Play ${name} sample`;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: status === "loading" }}
+      hitSlop={4}
+      testID={testID}
+      style={({ pressed }) => [
+        styles.previewButton,
+        status === "playing" && styles.previewButtonActive,
+        pressed && styles.pressed,
+      ]}
+    >
+      {status === "loading"
+        ? <ActivityIndicator size="small" color={colors.accent} />
+        : status === "playing"
+        ? <Square size={14} color={colors.accent} fill={colors.accent} />
+        : <Play size={16} color={colors.strong} />}
+    </Pressable>
   );
 }
 
@@ -197,11 +270,27 @@ const styles = {
       overflow: "hidden",
     },
     row: {
+      paddingRight: spacing.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    choice: {
+      flex: 1,
       padding: spacing.lg,
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.md,
     },
+    previewButton: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.bg,
+    },
+    previewButtonActive: { backgroundColor: colors.accentSoft },
     rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
     rowText: { flex: 1 },
     rowTitle: {

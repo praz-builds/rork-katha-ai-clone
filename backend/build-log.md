@@ -7,6 +7,72 @@
 
 ---
 
+## 2026-09-25 UTC — Go-live remediation: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
+
+**Session:** the acceptance failures from the last walk on `main`. Branch
+`codex/go-live-remediation`. **Client-only; nothing deployed, no migration, no
+function change.** It reaches a phone only through an EAS build.
+
+### What changed, as a reader meets it
+
+- **Explore, Adventure selected, showed mysteries, fantasies and sci-fi.** Cause:
+  the genre clause matched the legacy `stories.genre` array unconditionally,
+  and that array carries a story's *secondary* genres (`{mystery, adventure}`).
+  Checked against production with the anon key: the old clause returned 24 rows
+  over seven primary genres for Adventure; the new one,
+  `primary_genre.eq.X,and(primary_genre.is.null,genre.cs.{X})` (`genreClause` in
+  `expo/src/lib/search.ts`), returns the 7 whose primary genre is Adventure. A
+  second guard drops any row whose mapped card genre differs, so a legacy row
+  whose array leads with another genre cannot render under the wrong chip.
+- **Explore's stray top-right "You"** link is gone, with the `onProfile` prop.
+- **The Explore eyebrow** named "Most loved" over a list sorted by reads. It now
+  names the actual order (`Trending` by default), and with a genre chosen shows
+  only the genre unless the reader picked a non-default sort
+  (`exploreScopeLabel`).
+- **Home's full-width "See everything"** is a compact, centred, secondary
+  **Explore all** (`size="sm"`, `fullWidth={false}`).
+- **Voice samples** on the Voices screen (`expo/src/lib/voice-preview.ts`):
+  plays the `preview_url` the `voices` function already returns. Loading,
+  playing/stop and error states; one at a time; a superseded load is unloaded;
+  stops on unmount; **never writes the preferred voice**.
+- **Public profile** (`AuthorScreen`): the streak calendar and its
+  `fetchActivityCalendar` call are removed; a **Stories** heading, an empty
+  state naming the writer, and a distinct could-not-load state.
+- **You:** "How credits work" subtitle is now "Prices and free credits".
+
+### Blockers found, not worked around
+
+- **Every voice sample 404s in production.** `voice-previews/{aria,kai,onyx,nova,echo,fable,elvira,alvaro}.mp3`
+  do not exist in the `audio` bucket (checked 2026-09-25): `seed-voice-previews`
+  has never run. The button shows its error state until an operator runs it
+  (RunPod spend; not done here, per the no-deploy instruction).
+- **Story detail's 4–5 line summary is not buildable from the current
+  contract.** The page shows chapter 1's `first_line`. The only multi-sentence
+  summary stored is `chapters.previously_summary`, written for the model's
+  continuation context, and it gives away the ending (production example: "The
+  capsule splashed down safely in the Atlantic after their timed burn worked").
+  `stories.topic` is the creator's prompt, which the story page deliberately
+  stopped showing. A real summary needs a spoiler-free `blurb` in the
+  structured output (`source-of-truth/STORY_PROMPT_SYSTEM.md`), a column, the
+  parser and persistence in every generate path, a backfill for existing
+  stories, and a deploy. Nothing was faked client-side.
+- **The `profile` function still serves another author's calendar** to a direct
+  caller when they have published. The app no longer asks; whether the server
+  should refuse is a product decision left open.
+
+### Verification
+
+- `pnpm exec jest`: 152 suites, 1608 tests passing.
+- New and changed tests were each run against the unfixed code and failed:
+  Explore (6 failures with `search.ts` and `ExploreScreen.tsx` reverted), public
+  profile (3), voice samples (the superseded-load test, with the token guard
+  removed).
+- `pnpm typecheck` clean; `pnpm lint` 0 errors (32 pre-existing warnings, none
+  in the changed files); `expo-doctor` 18/18; `expo export --platform web`
+  compiled.
+
+---
+
 ## 2026-09-25 UTC — Deployed: 00099 and eight functions, 89/89 byte-identical, and the smoke back to 43/43
 
 **Session:** the deploy #145 said to do, with the drift audit and the production

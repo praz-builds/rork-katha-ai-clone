@@ -2,6 +2,16 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-25: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
+
+- **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.
+- **Home (`src/screens/HomeScreen.tsx`)**: "See everything" full-width became a compact centred secondary **Explore all**.
+- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips 404 in production until `seed-voice-previews` runs.
+- **Public profile (`src/screens/AuthorScreen.tsx`)**: no streak calendar; a **Stories** heading with an empty state naming the writer and a could-not-load state. Journey keeps the owner's calendar.
+- **You**: "How credits work" reads "Prices and free credits".
+- **Not changed**: the story page's one-line teaser. No spoiler-free summary exists in the contract; see `../backend/build-log.md` for what one needs.
+- **Verified**: jest 152 suites / 1608 tests, typecheck, lint (0 errors), expo-doctor 18/18, web export. **Not verified**: a browser walk or a native build.
+
 ## 2026-09-25: Six-digit codes, moment chips that fit, and an intro that works at any window (PR #143)
 
 - **Intro (`src/screens/KathaOnboarding.jsx`)**: motion moved from RN `Animated` plus a per-frame `setState` to Reanimated 4 shared values. The carousel follows a swipe, the dots have 44pt targets, and the copy crossfades. It is a phone-width column (`controls.introMaxWidth`, 430) that scrolls on a short window, which removes the desktop-width trap. The slide curve changed to the skill's ease-in-out `(0.77, 0, 0.175, 1)`; the durations did not (`DESIGN.md` records it). A swipe that races the auto-advance used to leave a flag armed that swallowed the next slide; it now records the target phase.

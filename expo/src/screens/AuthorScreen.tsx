@@ -16,11 +16,9 @@ import { ChevronLeft } from "lucide-react-native";
 import { formatNumber, StoryCard } from "@/components/KathaPrimitives";
 import { Button } from "@/components/Button";
 import FollowButton from "@/components/profile/FollowButton";
-import ActivityGrid from "@/components/profile/ActivityGrid";
 import { authorFor } from "@/data/seed";
 import { unblockAuthorEverywhere, useBlockedAuthorIds } from "@/lib/blocks";
 import {
-  fetchActivityCalendar,
   fetchProfileComments,
   isRealAuthorId,
   type ProfileComment,
@@ -43,12 +41,16 @@ import { sharedStyles } from "@/screens/shared";
  * Somebody else's profile: reached from a byline or a comment author.
  *
  * WHAT IS ALLOWED ON THIS PAGE. Their handle, their picture, their bio, their
- * public stories, and four counts taken over exactly those public stories.
- * Nothing else, and the boundary is enforced on the server rather than here --
- * `public_profile` and the list query in `_shared/profile.ts` share one
- * predicate, so their drafts, their private stories, their credits and
- * their own reading streak are not merely hidden by this
- * screen: they never leave the database.
+ * public stories, and their follower counts. Nothing else, and the boundary
+ * is enforced on the server rather than here -- `public_profile` and the
+ * list query in `_shared/profile.ts` share one predicate, so their drafts, their private stories and their credits are
+ * not merely hidden by this screen: they never leave the database.
+ *
+ * NO STREAK CALENDAR. It used to sit under the follow counts. How often
+ * somebody opens the app is about them, not about their work, and a visitor
+ * came here for the stories -- which the calendar pushed below the fold. The
+ * owner still sees theirs on the Journey screen, reached from their own
+ * Profile tab; this page no longer asks for anybody's.
  *
  * A visitor cannot tell from this page whether the author has drafts at all.
  * That is the intended property. "3 published, 11 total" would be flattering
@@ -85,12 +87,10 @@ export default function AuthorScreen({
   // A page seen earlier this session is drawn at once from what it showed
   // then, and refreshed behind it; see `src/lib/profile-store.ts`.
   const held = real ? cachedPublicProfile(authorId) : null;
-  // The reader's own page, opened from the Profile tab. The calendar is the
-  // same one Journey draws, which the Profile tab has usually fetched already.
+  // The reader's own page, opened from the Profile tab: their name and face
+  // are already held app-wide and stand in until the public row lands.
   const own = useOwnProfileStore();
   const isOwnPage = real && own.profile?.userId === authorId;
-  const [days, setDays] = useState<string[] | null>(null);
-  const [daysState, setDaysState] = useState<"loading" | "ready" | "error">("loading");
   const [comments, setComments] = useState<ProfileComment[]>([]);
   const [profile, setProfile] = useState<PublicProfile | null>(held?.profile ?? null);
   const [published, setPublished] = useState<PublicStorySummary[] | null>(
@@ -127,13 +127,11 @@ export default function AuthorScreen({
     let alive = true;
     // Cleared on every author change, before anything is fetched. Without this
     // a failed or empty request leaves the PREVIOUS author's comments and
-    // calendar on screen, attributed to whoever is being looked at now.
+    // stories on screen, attributed to whoever is being looked at now.
     const cached = cachedPublicProfile(authorId);
     setProfile(cached?.profile ?? null);
     setPublished(cached?.stories ?? null);
     setComments([]);
-    setDays(null);
-    setDaysState("loading");
     setProfileState(cached ? "ready" : "loading");
     loadPublicProfile(authorId)
       .then((result) => {
@@ -150,18 +148,8 @@ export default function AuthorScreen({
       .catch(() => {
         if (alive && !cached) setProfileState("error");
       });
-    // The calendar and the comments are independent of the profile and of
-    // each other: one failing leaves the other two on the page rather than
-    // taking the whole thing down.
-    fetchActivityCalendar(authorId)
-      .then((result) => {
-        if (!alive) return;
-        setDays(result);
-        setDaysState(result ? "ready" : "error");
-      })
-      .catch(() => {
-        if (alive) setDaysState("error");
-      });
+    // The comments are independent of the profile: one failing leaves the
+    // other on the page rather than taking the whole thing down.
     fetchProfileComments(authorId)
       .then((result) => {
         if (alive && result) setComments(result);
@@ -171,9 +159,6 @@ export default function AuthorScreen({
       alive = false;
     };
   }, [authorId, real, readEpoch]);
-
-  // Their own calendar, held app-wide, until this page's own read lands.
-  const shownDays = days ?? (isOwnPage ? own.calendar : null);
 
   // On the reader's own page, the name and face they already have stand in
   // until the public row arrives.
@@ -334,17 +319,6 @@ export default function AuthorScreen({
                   <Text style={styles.followLabel}>Following</Text>
                 </View>
               </View>
-
-              {/* The activity calendar, the same one the owner sees on their
-                  journey page. Public here for the reason GitHub's is public:
-                  it says something true about how somebody shows up that no
-                  single number can. */}
-              <View style={styles.activityCard}>
-                <ActivityGrid
-                  days={shownDays}
-                  loading={shownDays === null && daysState === "loading"}
-                />
-              </View>
             </View>
           )
           : !real
@@ -357,6 +331,14 @@ export default function AuthorScreen({
             </View>
           )
           : null}
+
+        {/* What they have written: the reason anybody opens this page, so it
+            is named, and it answers even when the answer is "nothing yet". */}
+        {isBlocked ? null : (
+          <Text style={styles.storiesHeading} testID="author-stories-heading">
+            Stories
+          </Text>
+        )}
 
         <View style={styles.stack}>
           {isBlocked
@@ -383,7 +365,19 @@ export default function AuthorScreen({
         {!isBlocked && real && published !== null && published.length === 0
           ? (
             <Text style={styles.empty} testID="author-no-stories">
-              Nothing published yet.
+              {isOwnPage
+                ? "You have not made a story public yet. Private stories stay in your Library."
+                : `${displayName} has not published a story yet.`}
+            </Text>
+          )
+          : null}
+
+        {/* The list could not be read. Said, rather than shown as an empty
+            page that would read as "this writer has published nothing". */}
+        {!isBlocked && real && published === null && profileState === "error"
+          ? (
+            <Text style={styles.empty} testID="author-stories-error">
+              Stories could not be loaded. Check your connection and try again.
             </Text>
           )
           : null}
@@ -564,12 +558,12 @@ const styles = {
       height: 28,
       backgroundColor: colors.border,
     },
-    activityCard: {
-      padding: spacing.lg,
-      borderRadius: radius.xl,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+    storiesHeading: {
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+      fontFamily: fonts.display,
+      color: colors.ink,
+      fontSize: 22,
     },
     commentsSection: { marginTop: spacing.xl, gap: spacing.sm },
     commentsHeading: {

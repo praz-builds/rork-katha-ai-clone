@@ -235,9 +235,12 @@ export async function searchStories(
     if (genre) {
       // Two columns carry a genre: `primary_genre` (one value, the modern
       // one) and the legacy `genre` text[]. A story published before
-      // `primary_genre` existed only has the array, so matching one column
-      // would quietly hide the back catalogue.
-      query = query.or(`primary_genre.eq.${genre},genre.cs.{${genre}}`);
+      // `primary_genre` existed only has the array, so it is still matched --
+      // but ONLY when `primary_genre` is empty. The array also lists a
+      // story's secondary genres ({mystery, adventure}), so matching it
+      // unconditionally put mysteries, fantasies and sci-fi under Adventure,
+      // each card labelled with its real genre.
+      query = query.or(genreClause(genre));
     }
 
     query = query
@@ -250,15 +253,28 @@ export async function searchStories(
     const { data, error } = await query;
     if (error || !Array.isArray(data)) return local();
 
+    const stories = data
+      .map((row) => mapSearchRow(row))
+      .filter((story): story is Story => story !== null);
     return {
-      stories: data
-        .map((row) => mapSearchRow(row))
-        .filter((story): story is Story => story !== null),
+      // The card shows the genre `mapSearchRow` settled on, so that is the
+      // one the filter answers to. A legacy row whose array leads with some
+      // other genre matched the clause above and would render as that genre.
+      stories: genre ? stories.filter((story) => story.genre === genre) : stories,
       source: "supabase",
     };
   } catch {
     return local();
   }
+}
+
+/**
+ * The PostgREST `or` clause for one genre: the story's primary genre, or --
+ * for a row that predates `primary_genre` -- the legacy array. Exported so the
+ * clause is asserted as written; see the comment at its call site.
+ */
+export function genreClause(genre: Genre): string {
+  return `primary_genre.eq.${genre},and(primary_genre.is.null,genre.cs.{${genre}})`;
 }
 
 /** Author ids whose handle contains `term`. Empty on any failure. */

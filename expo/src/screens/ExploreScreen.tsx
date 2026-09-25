@@ -36,6 +36,35 @@ import type { Genre, Story } from "@/types/domain";
 /** How the results are ordered once they arrive. */
 type SortOption = "trending" | "loved" | "newest";
 
+/** The rest state. The eyebrow and the filter badge key off leaving it. */
+const DEFAULT_SORT: SortOption = "trending";
+
+/** What the eyebrow calls each order. The chips below use the same words. */
+const SORT_LABELS: Record<SortOption, string> = {
+  trending: "Trending",
+  loved: "Most loved",
+  newest: "Newest",
+};
+
+/**
+ * The caption above the results when nothing is typed.
+ *
+ * With no genre it names the order, because the order is the only thing
+ * shaping the list. It used to say "Most loved" while the list was sorted by
+ * reads, which is a caption describing a different list.
+ *
+ * With a genre chosen the genre IS the answer to "what am I looking at", and
+ * the default order is not news: "Adventure · Trending" reads as a second
+ * filter that was never applied. The order is named only once the reader has
+ * picked one themselves.
+ */
+export function exploreScopeLabel(genre: Genre | null, sort: SortOption): string {
+  if (!genre) return SORT_LABELS[sort];
+  return sort === DEFAULT_SORT
+    ? genreLabels[genre]
+    : `${genreLabels[genre]} · ${SORT_LABELS[sort]}`;
+}
+
 /** A row this dense stops discriminating past a dozen or so choices. */
 const MAX_VISIBLE_TAGS = 12;
 
@@ -64,11 +93,12 @@ const SUGGESTED_GENRES: readonly Genre[] = ["fantasy", "mystery", "romance"];
  *    so a story looks like itself wherever the reader meets it.
  *
  * THE DEFAULT STATE IS NOT BLANK. With nothing typed and no genre chosen,
- * this runs the same query with no filters, which is the catalogue ordered by
- * `like_count` — most loved first. That is the right default for a discovery
- * page for a reason worth stating: a reader who opens Explore without a
- * question has not failed to use it, and the honest answer to "show me
- * anything" is the work other readers liked most. It also means the screen
+ * this runs the same query with no filters: the page the server picks by
+ * `like_count`, shown in the default Trending order (most read first). That is
+ * the right default for a discovery page for a reason worth stating: a reader
+ * who opens Explore without a question has not failed to use it, and the
+ * honest answer to "show me anything" is the work other readers came back to.
+ * The eyebrow names that order rather than the server's. It also means the screen
  * has ONE data path instead of a browse mode and a search mode that can
  * disagree with each other, and it means the genre strip and the sort control
  * do something on first paint rather than waiting for a query.
@@ -92,7 +122,6 @@ export default function ExploreScreen({
   stories,
   onStory,
   onOpenStory,
-  onProfile,
   searchOptions,
 }: {
   /** The bundled catalogue. Also what the offline fallback filters. */
@@ -106,7 +135,6 @@ export default function ExploreScreen({
    * nothing can resolve.
    */
   onOpenStory?: (story: Story) => void;
-  onProfile: () => void;
   /** Test seam, forwarded to `useStorySearch`. */
   searchOptions?: UseStorySearchOptions;
 }) {
@@ -120,7 +148,7 @@ export default function ExploreScreen({
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [sort, setSort] = useState<SortOption>("trending");
+  const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const { status, stories: searched, source } = useStorySearch(
@@ -165,10 +193,10 @@ export default function ExploreScreen({
   // Clear affordance both key off drifting away from it. Search and genre
   // have their own always-visible resets (the clear button, tapping the
   // selected chip) so they are not double-counted here.
-  const activeFilterCount = (sort !== "trending" ? 1 : 0) + selectedTags.length;
+  const activeFilterCount = (sort !== DEFAULT_SORT ? 1 : 0) + selectedTags.length;
 
   const clearFilters = useCallback(() => {
-    setSort("trending");
+    setSort(DEFAULT_SORT);
     setSelectedTags([]);
   }, []);
 
@@ -242,13 +270,11 @@ export default function ExploreScreen({
     if (status === "loading" && visible.length === 0) return "Searching";
     const scope = searching
       ? `${visible.length} ${visible.length === 1 ? "result" : "results"}`
-      : genre
-      ? genreLabels[genre]
-      : "Most loved";
+      : exploreScopeLabel(genre, sort);
     return source === "local" && !searching
       ? `${scope} · offline catalogue`
       : scope;
-  }, [genre, searching, source, status, visible.length]);
+  }, [genre, searching, sort, source, status, visible.length]);
 
   const listEmpty = useMemo(() => {
     // Still fetching, with nothing to show underneath. A spinner rather than
@@ -371,7 +397,6 @@ export default function ExploreScreen({
             onToggleTag={toggleTag}
             activeFilterCount={activeFilterCount}
             onClearFilters={clearFilters}
-            onProfile={onProfile}
           />
         }
         ListEmptyComponent={listEmpty}
@@ -418,7 +443,6 @@ function ExploreListHeader({
   onToggleTag,
   activeFilterCount,
   onClearFilters,
-  onProfile,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
@@ -436,30 +460,15 @@ function ExploreListHeader({
   onToggleTag: (tag: string) => void;
   activeFilterCount: number;
   onClearFilters: () => void;
-  onProfile: () => void;
 }) {
   return (
     <View style={styles.headerStack}>
-      {/* 1. No title.
-          The tab bar already says Explore, in a label the reader just
-          tapped, so a heading here only repeats it and pushes the search
-          field -- the thing they came for -- further down. What stays is the
-          way out to the profile. The result count below the search field is
-          a different thing and earns its line: it says what came back, which
-          nothing else on screen can. */}
-      <View style={[styles.header, styles.headerNoTitle]}>
-        <Pressable
-          onPress={onProfile}
-          accessibilityLabel="Open profile"
-          accessibilityRole="button"
-          hitSlop={8}
-          style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}
-        >
-          <Text style={styles.profileLinkText}>You</Text>
-        </Pressable>
-      </View>
+      {/* No title and no header row. The tab bar already says Explore, and
+          Profile is its own tab, so a "You" link here was a second door to a
+          tab one thumb away -- and read as a stray word in the corner. The
+          search field is the first thing on the screen. */}
 
-      {/* 2. Search — the field Home does not have. */}
+      {/* 1. Search — the field Home does not have. */}
       <SearchField
         value={query}
         onChange={onQueryChange}
@@ -467,10 +476,10 @@ function ExploreListHeader({
         busy={busy}
       />
 
-      {/* 3. Every genre, scrollable, one at a time. */}
+      {/* 2. Every genre, scrollable, one at a time. */}
       <GenreStrip selected={genre} onSelect={onGenreChange} />
 
-      {/* 4. Filters pill (inline panel, no modal) + what you're looking at. */}
+      {/* 3. Filters pill (inline panel, no modal) + what you're looking at. */}
       <View style={styles.controlRow}>
         <Pressable
           onPress={onToggleFilters}
@@ -511,19 +520,19 @@ function ExploreListHeader({
           <Text style={styles.filterPanelLabel}>SORT</Text>
           <View style={styles.filterPanelRow}>
             <Chip
-              label="Trending"
+              label={SORT_LABELS.trending}
               testID="explore-sort-trending"
               selected={sort === "trending"}
               onPress={() => onSortChange("trending")}
             />
             <Chip
-              label="Most loved"
+              label={SORT_LABELS.loved}
               testID="explore-sort-loved"
               selected={sort === "loved"}
               onPress={() => onSortChange("loved")}
             />
             <Chip
-              label="Newest"
+              label={SORT_LABELS.newest}
               testID="explore-sort-newest"
               selected={sort === "newest"}
               onPress={() => onSortChange("newest")}
@@ -589,9 +598,9 @@ const styles = StyleSheet.create({
   itemPad: { paddingHorizontal: spacing.xl },
   separator: { height: spacing.md },
 
-  /* The title used to carry this space with it. Without one the row starts at
-     the very top of the safe area and the profile link is clipped, so the
-     padding the heading was implicitly providing is now explicit.
+  /* The title used to carry this space with it. Without one the search field
+     starts at the very top of the safe area, so the padding the heading was
+     implicitly providing is now explicit.
 
      The bottom padding is the gap between the controls and the results, and
      it has to live here rather than on the first card: `ItemSeparatorComponent`
@@ -604,39 +613,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.betweenGroups,
   },
 
-  /* ── 1. Header ── */
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  /* With the title gone the row holds one control, which `space-between`
-     would park on the left. */
-  headerNoTitle: {
-    justifyContent: "flex-end",
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  h1: {
-    fontFamily: fonts.display,
-    color: colors.ink,
-    fontSize: 31,
-    lineHeight: 35,
-  },
-  profileLink: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-  },
-  profileLinkText: {
-    ...type.subhead,
-    fontWeight: "800",
-    color: colors.accent,
-  },
-
-  /* ── 4. Filters + eyebrow ── */
+  /* ── 3. Filters + eyebrow ── */
   controlRow: {
     paddingHorizontal: spacing.xl,
     flexDirection: "row",

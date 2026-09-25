@@ -594,12 +594,17 @@ export default function HomeScreen({
 
         {/* Home's one exit into the full, filterable catalogue. Everything
             above this is curation; this is where curation ends and browsing
-            begins. */}
+            begins. Small and hugging its label: a full-width button at the
+            foot of the feed read as the screen's main action, and it is a
+            way out, not the thing Home is for. */}
         <Button
-          label="See everything"
+          label="Explore all"
           variant="secondary"
+          size="sm"
+          fullWidth={false}
           onPress={onSeeAll}
-          style={styles.seeEverything}
+          accessibilityHint="Opens Explore, with search and every genre"
+          style={styles.exploreAll}
         />
       </ScrollView>
     </SafeAreaView>
@@ -660,9 +665,9 @@ const styles = StyleSheet.create({
   */
   /* ── Write CTA (new user) ── */
 
-  /* ── See everything (bottom exit into Explore) ── */
-  seeEverything: {
-    marginHorizontal: spacing.xl,
+  /* ── Explore all (bottom exit into Explore) ── */
+  exploreAll: {
+    alignSelf: "center",
     marginTop: spacing.betweenGroups,
   },
 });

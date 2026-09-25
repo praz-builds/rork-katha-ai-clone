@@ -469,7 +469,7 @@ export default function ProfileScreen({
           <Row
             icon={HelpCircle}
             title="How credits work"
-            subtitle="Every price, streaks and invites"
+            subtitle="Prices and free credits"
             onPress={onCredits}
             testID="profile-faq"
             grouped
