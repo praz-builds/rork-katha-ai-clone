@@ -50,11 +50,19 @@ predicted from a 38.7s measurement, observed in production.
 ### Still the founder's call, unchanged by this deploy
 
 `store/android/data-safety.md` **D1**: the contributor tier trains on what it is
-sent, which is why Play's Data Safety answer is *shared*. Turning training off at
-<https://openrouter.ai/settings/privacy> makes that answer *not shared* and needs
-**no deploy** — #145's chain is correct either way, and `meta/muse-spark-1.3`
-inherits the window in ~48.1s at ~17x the token cost. Cost and privacy, and both
-are decisions rather than bugs.
+sent, which is why Play's Data Safety answer is *shared*.
+
+**Two separate things, and it is worth not conflating them.** Turning training
+off at <https://openrouter.ai/settings/privacy> needs **no deploy** — #145's chain
+is correct either way, and `meta/muse-spark-1.3` inherits the window in ~48.1s at
+~17x the token cost. But that switch alone does **not** let the Data Safety answer
+become *not shared*. D1's remedy is three steps: turn training off, **drop the
+contributor id and `openrouter/free` from the chains**, then answer not shared.
+The free router is still last in the chain (`_shared/llm.ts`), and D1 records that
+it "is also typically served by models that log prompts" — a sharing path the
+OpenRouter privacy setting does not close. So: the setting is a cost-and-privacy
+decision the founder can make today with no deploy; changing the Play answer is a
+code change on top of it. Neither is a bug.
 
 ### Gates
 
