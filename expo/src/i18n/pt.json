@@ -65,7 +65,36 @@
       "feedback": "Feedback",
       "feedbackDesc": "Comentarios, avaliacao, suporte"
     },
-    "legal": "Politica de Privacidade - Termos de Servico - v{{version}}"
+    "legal": "Politica de Privacidade - Termos de Servico - v{{version}}",
+    "music": {
+      "title": "M\u00fasica de fundo",
+      "desc": "Toca baixinho enquanto voc\u00ea l\u00ea",
+      "toggle": "M\u00fasica de fundo durante a leitura"
+    },
+    "feedbackSheet": {
+      "row": "Enviar feedback",
+      "rowDesc": "Conte o que funciona e o que n\u00e3o funciona",
+      "title": "Enviar feedback",
+      "lead": "Algo quebrado, uma ideia, uma hist\u00f3ria que voc\u00ea quer ler: conte com suas palavras.",
+      "about": "Sobre",
+      "categories": {
+        "bug": "Algo quebrou",
+        "idea": "Uma ideia",
+        "story": "Uma hist\u00f3ria",
+        "other": "Outra coisa"
+      },
+      "placeholder": "Conte o que aconteceu, ou o que voc\u00ea gostaria que o Katha fizesse",
+      "messageLabel": "Sua mensagem",
+      "counter": "{{length}} / {{max}}",
+      "send": "Enviar",
+      "sending": "Enviando",
+      "failed": "N\u00e3o foi enviado. Sua mensagem continua aqui; verifique sua conex\u00e3o e tente de novo.",
+      "rateLimited": "Voc\u00ea enviou muitos feedbacks recentemente. Sua mensagem continua aqui; tente de novo daqui a pouco.",
+      "sentTitle": "Obrigado",
+      "sentBody": "Sua mensagem chegou at\u00e9 n\u00f3s.",
+      "done": "Concluir",
+      "close": "Fechar"
+    }
   },
   "reader": {
     "narration": "Narracao",

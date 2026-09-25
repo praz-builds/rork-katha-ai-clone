@@ -21,6 +21,7 @@ Checked against `backend/supabase/functions/` on 2026-09-24: 37 directories. Fou
 | P1 | `reimagine-chapter`, `edit-story` | Editing | `error_events` |
 | P1 | `library`, `feed`, `publish-story`, `comments`, `like`, `bookmark`, `follow-story`, `follow-user`, `record-read`, `referral`, `credit-claims`, `feedback` | Library, Explore and the social features | 5xx, `feed_unhandled` |
 | P2 | `send-push`, `register-push-token`, `voices`, `seed-voice-previews`, `reviewer-signin` | Supporting features | 5xx; `reviewer_pepper_missing` for the reviewer |
+| P2 | `app-feedback` | Profile's "Send feedback" sheet (00098) | 5xx; a run of 429s from one user. Read new rows with `select category, message, platform, app_version, created_at from app_feedback order by created_at desc` (service role) |
 | P2 | `deduct-credit`, `grant-credit` | Retired. `deduct-credit` returns 403 to everyone on purpose; money moves through the operation RPCs | A 2xx from `deduct-credit` would be the incident |
 
 ## Upstream providers and storage
