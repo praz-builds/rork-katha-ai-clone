@@ -56,6 +56,7 @@ import {
   getBlockedAuthorIds,
   rememberBlocked,
 } from "@/lib/blocks";
+import { __resetStoryWorld, currentStoryWorld } from "@/lib/story-world";
 
 const AUTHOR = "11111111-1111-4111-8111-111111111111";
 
@@ -113,6 +114,7 @@ beforeEach(() => {
   // The profile is held app-wide now; each test starts from a cold boot.
   resetProfileStoreForTests();
   clearBlockedAuthors();
+  __resetStoryWorld();
 });
 
 afterEach(cleanup);
@@ -658,14 +660,43 @@ describe("the reader's own profile", () => {
     try {
       const view = await render(<ProfileScreen {...profileProps()} />);
       await waitFor(() => view.getByTestId("profile-privacy"));
-      fireEvent.press(view.getByTestId("profile-privacy"));
+      await fireEvent.press(view.getByTestId("profile-privacy"));
       expect(openURL).toHaveBeenCalledWith(PRIVACY_URL);
-      fireEvent.press(view.getByTestId("profile-terms"));
+      await fireEvent.press(view.getByTestId("profile-terms"));
       expect(openURL).toHaveBeenCalledWith(TERMS_URL);
       expect(PRIVACY_URL).toBe("https://katha.thetractionlabs.com/privacy");
       expect(TERMS_URL).toBe("https://katha.thetractionlabs.com/terms");
     } finally {
       openURL.mockRestore();
     }
+  });
+
+  it("sets the Story world from You and shows it on the row", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-story-world"));
+    expect(view.getByText(/Anywhere — Katha follows/)).toBeTruthy();
+    await fireEvent.press(view.getByTestId("profile-story-world"));
+    await fireEvent.press(view.getByTestId("story-world-latin_american"));
+    await waitFor(() =>
+      expect(view.getByText("Latin American — where new stories are rooted")).toBeTruthy()
+    );
+    expect(currentStoryWorld()).toBe("latin_american");
+  });
+
+  it("opens the vote on what's next from You", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-feature-votes"));
+    await fireEvent.press(view.getByTestId("profile-feature-votes"));
+    expect(view.getByTestId("feature-vote-sheet")).toBeTruthy();
+  });
+
+  it("shows the version the app was built with, not a stale literal", async () => {
+    const version = (require("../../app.json") as { expo: { version: string } }).expo.version;
+    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    expect(view.getByText(`v${version}`)).toBeTruthy();
+    expect(view.queryByText("v0.1.0")).toBeNull();
   });
 });

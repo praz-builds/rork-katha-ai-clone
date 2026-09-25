@@ -110,7 +110,7 @@ export type ReaderScreenProps = {
    */
   renderChapterEnd?: (
     chapter: Chapter,
-    actions: { reimagine: (() => void) | null; reimagineLabel: string },
+    actions: { reimagine: (() => void) | null; reimagineLabel: string; theme: ReaderTheme },
   ) => ReactNode;
   /**
    * Extension point for a module that needs to replace individual words.
@@ -1651,6 +1651,7 @@ export default function ReaderScreen({
                             reimagineLabel: isAuthor
                               ? "Re-prompt this chapter"
                               : "Write my own version",
+                            theme,
                           })
                         : null}
                     </View>

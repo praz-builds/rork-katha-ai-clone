@@ -137,8 +137,9 @@ export default function ExploreScreen({
 
   // Tags are a property of whatever came BACK, not a fixed list this screen
   // knows ahead of time - so the panel always offers choices that narrow the
-  // current results rather than emptying them. Live rows carry no tags yet,
-  // which is why the panel's tag section renders only when there are some.
+  // current results rather than emptying them. Live rows carry the story's
+  // generated themes (`themeTags` in lib/search.ts); a page with none still
+  // hides the panel's tag section rather than drawing an empty one.
   const availableTags = useMemo(() => {
     const counts = new Map<string, number>();
     for (const story of results) {

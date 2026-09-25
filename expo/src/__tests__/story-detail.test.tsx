@@ -13,6 +13,7 @@ import { stories } from "@/data/seed";
 import type { Story } from "@/types/domain";
 
 const mockSetStoryBookmark = jest.fn();
+const mockUseIsSubscribed = jest.fn(() => true);
 
 // The detail screen now persists block/report through @/lib/comments, which
 // pulls the Supabase client - and with it native storage - into this suite.
@@ -29,6 +30,9 @@ jest.mock("@/lib/api", () => ({
   setAuthorFollow: jest.fn(() => Promise.resolve({ on: true, count: 1 })),
   setStoryBookmark: (...args: unknown[]) => mockSetStoryBookmark(...args),
   setStoryLike: jest.fn(() => Promise.resolve({ on: true, count: 1 })),
+}));
+jest.mock("@/lib/entitlements", () => ({
+  useIsSubscribed: () => mockUseIsSubscribed(),
 }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("lucide-react-native", () => {
@@ -75,6 +79,7 @@ const withStory = (overrides: Partial<Story>): Story => ({
 });
 
 beforeEach(() => {
+  mockUseIsSubscribed.mockReturnValue(true);
   mockSetStoryBookmark.mockReset();
   mockSetStoryBookmark.mockImplementation((
     _storyId: string,
@@ -240,6 +245,24 @@ describe("the overflow menu", () => {
     await waitFor(() => expect(view.getByLabelText("Report story")).toBeTruthy());
     expect(view.queryByLabelText(/^Block /)).toBeNull();
     expect(view.getByLabelText("Download as PDF")).toBeTruthy();
+  });
+
+  it("sends a non-member to the plan instead of starting a PDF download", async () => {
+    mockUseIsSubscribed.mockReturnValue(false);
+    const onPaywall = jest.fn();
+    const view = await render(
+      <StoryDetailScreen
+        story={standalone!}
+        onBack={jest.fn()}
+        onRead={jest.fn()}
+        onAuthor={jest.fn()}
+        onPaywall={onPaywall}
+      />,
+    );
+
+    await fireEvent.press(view.getByLabelText("More options"));
+    await fireEvent.press(view.getByLabelText("Unlock PDF download with a Katha plan"));
+    expect(onPaywall).toHaveBeenCalledTimes(1);
   });
 });
 

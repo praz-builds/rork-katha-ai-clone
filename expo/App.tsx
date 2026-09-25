@@ -26,6 +26,7 @@ import {
 } from "react-native-safe-area-context";
 import { setupAndroidChannel, syncPushToken } from "@/lib/notifications";
 import { configureAudioSession } from "@/lib/audio-session";
+import { hydrateStoryWorld } from "@/lib/story-world";
 import { Alert, Platform, View } from "react-native";
 import { stories } from "@/data/seed";
 import BottomTabs from "@/components/BottomTabs";
@@ -456,6 +457,9 @@ export default function App() {
     // Before any narration or genre music can be created: the mode is
     // process-wide, and without it both stop when the phone locks.
     void configureAudioSession();
+    // The Story world preference rides on every new story's request, so it is
+    // read now rather than when You is first opened.
+    void hydrateStoryWorld();
   }, []);
 
   useEffect(() => {
@@ -1391,6 +1395,7 @@ export default function App() {
             // on that page stays visible and routes here instead of writing.
             canEngage={!isAnonymous}
             onSignIn={() => setScreen({ name: "onboarding" })}
+            onPaywall={() => setScreen({ name: "paywall" })}
             // Listen is its own screen now, not a reader with autoplay set: a
             // story with no narration yet has a real wait, and the player owns
             // it. Close comes back here.
@@ -1488,7 +1493,7 @@ export default function App() {
                   adoptReimagineGeneration({ run, story: target });
                 }}
                 onBack={() => goTabs(tab)}
-                renderChapterEnd={(chapter, { reimagine, reimagineLabel }) => {
+                renderChapterEnd={(chapter, { reimagine, reimagineLabel, theme }) => {
                   const story =
                     allStories.find((item) => item.id === screen.storyId) ??
                       allStories[0];
@@ -1501,6 +1506,7 @@ export default function App() {
                       // write-ahead reads it: on the tick a chapter completes
                       // the state is still one charge behind.
                       credits={availableCreditsRef.current}
+                      readerTheme={theme}
                       // A standalone, and a series that has reached its
                       // planned ending, have no next chapter to offer. Rewriting
                       // is the one thing left, so the pill has to be reachable

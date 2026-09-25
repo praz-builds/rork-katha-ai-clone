@@ -31,6 +31,7 @@ import type { StoryReportReason } from "@/components/comments/types";
 import { blockAuthor, fetchCommentCount, reportContent } from "@/lib/comments";
 import { rememberBlocked } from "@/lib/blocks";
 import { downloadStoryPdf } from "@/lib/story-pdf";
+import { useIsSubscribed } from "@/lib/entitlements";
 import { setAuthorFollow, setStoryBookmark } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
@@ -248,6 +249,7 @@ export default function StoryDetailScreen({
   isOwn = false,
   canEngage = true,
   onSignIn,
+  onPaywall,
 }: {
   story: Story;
   onBack: () => void;
@@ -281,11 +283,14 @@ export default function StoryDetailScreen({
   canEngage?: boolean;
   /** Opens the app's sign-in flow. Called by every gated control. */
   onSignIn?: () => void;
+  /** Opens the plan screen for the paid PDF export. */
+  onPaywall?: () => void;
 }) {
   const author = authorFor(story.authorId);
   const { height: windowHeight } = useWindowDimensions();
   const hasMultipleChapters = story.chapters.length > 1;
   const narrationReady = hasNarration(story);
+  const subscribed = useIsSubscribed();
   const chips = chipLabels(story);
   const [listenNotice, setListenNotice] = useState(false);
 
@@ -494,6 +499,12 @@ export default function StoryDetailScreen({
    * A dismissed dialog is not a failure and says nothing.
    */
   const handleDownloadPdf = useCallback(() => {
+    // The server will remain the final authority when export moves off-device;
+    // this guard keeps the current local action honest for active clients too.
+    if (!subscribed) {
+      onPaywall?.();
+      return;
+    }
     downloadStoryPdf({
       story,
       authorName: author.displayName,
@@ -502,7 +513,7 @@ export default function StoryDetailScreen({
       setPdfToast("Couldn't prepare the PDF on this device.");
       setTimeout(() => setPdfToast(null), 2500);
     });
-  }, [author.displayName, story]);
+  }, [author.displayName, onPaywall, story, subscribed]);
 
   const openComments = useCallback(() => setCommentsOpen(true), []);
   const closeComments = useCallback(() => setCommentsOpen(false), []);
@@ -893,7 +904,8 @@ export default function StoryDetailScreen({
         authorName={author.displayName}
         onBlockAuthor={handleBlockAuthor}
         onSubmitReport={handleReportStory}
-        onDownloadPdf={handleDownloadPdf}
+        onDownloadPdf={subscribed ? handleDownloadPdf : undefined}
+        onRequireSubscription={subscribed ? undefined : onPaywall}
         canBlockAuthor={!isOwn}
       />
 

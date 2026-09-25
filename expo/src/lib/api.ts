@@ -1,4 +1,5 @@
 import { stories } from "@/data/seed";
+import { hydrateStoryWorld, storyWorldRequestField } from "@/lib/story-world";
 import {
   setCharacterImageBalance,
   observeCharacterImagesRemaining,
@@ -183,6 +184,10 @@ export async function inferStoryBrief(
     );
   }
 
+  // The stored Story world is read at start-up; a request made in the first
+  // moments of a session waits for that read rather than going out as
+  // Anywhere. Memoised, so every later call resolves at once.
+  await hydrateStoryWorld();
   const { data, error } = await supabase.functions.invoke("shape-story", {
     body: {
       idea,
@@ -197,6 +202,10 @@ export async function inferStoryBrief(
       avoid: brief?.avoid,
       chapter_length: brief?.chapterLength,
       planned_chapter_count: brief?.plannedChapterCount,
+      // Shaping is where the setting and the cast's names are first guessed,
+      // and generation then treats them as the brief. Without the Story world
+      // here, the shaper's guess would override the preference it never saw.
+      ...storyWorldRequestField(),
     },
   });
   if (error) {
@@ -1074,6 +1083,7 @@ export async function generateStory(
   }
 
   const notifyOnReady = await pushPermissionGranted();
+  await hydrateStoryWorld();
   const { data, error } = await supabase.functions.invoke("generate-story", {
     body: buildGenerationRequestBody(draft, requestId, notifyOnReady),
   });
@@ -1164,6 +1174,7 @@ export async function generateStoryStreaming(
   }
 
   const notifyOnReady = await notifyPromise;
+  await hydrateStoryWorld();
 
   const done = await runStreamedCall({
     fn: "generate-story-stream",
@@ -1268,6 +1279,10 @@ function buildGenerationRequestBody(
         })),
       language: draft.language,
       where_and_when: draft.whereAndWhen,
+      // The reader's standing Story world, set on You. Omitted for "Anywhere",
+      // so a request with no preference is unchanged. The server keeps it only
+      // where the brief leaves culture open; see `lib/story-world.ts`.
+      ...storyWorldRequestField(),
       moments: draft.moments,
       // The plan the writer approved on the blueprint screen. Without it the
       // outline they were shown and the story they receive are unrelated.

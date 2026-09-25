@@ -178,6 +178,41 @@ export const IDENTITY_LENSES: ReadonlySet<string> = new Set<IdentityLens>([
 ]);
 
 // ---------------------------------------------------------------------------
+// Story world (cultural preference)
+// ---------------------------------------------------------------------------
+
+/**
+ * The reader's standing cultural preference, chosen once on You and sent with
+ * every new story. A closed list, never free text: the value selects one of
+ * the fixed phrases below, so nothing a client sends reaches the prompt as
+ * written. `global` is the default and is never sent -- it means "infer from
+ * the brief", which is how every story was written before the preference.
+ *
+ * The brief always wins. The preference shapes only what the idea, the setting
+ * and the cast leave open (`buildStoryWorldBlock` in story-prompts.ts).
+ */
+export const CULTURAL_SETTINGS = {
+  south_asian: "South Asia (India, Pakistan, Bangladesh, Sri Lanka, Nepal)",
+  east_asian: "East Asia (China, Japan, Korea, Taiwan)",
+  southeast_asian:
+    "Southeast Asia (Indonesia, the Philippines, Vietnam, Thailand, Malaysia)",
+  middle_eastern: "the Middle East and North Africa",
+  african: "Sub-Saharan Africa",
+  latin_american: "Latin America",
+  caribbean: "the Caribbean",
+  european: "Europe",
+  north_american: "the United States and Canada",
+  oceanian: "Australia, New Zealand and the Pacific Islands",
+} as const;
+
+export type CulturalSetting = keyof typeof CULTURAL_SETTINGS;
+
+export function isCulturalSetting(value: unknown): value is CulturalSetting {
+  return typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(CULTURAL_SETTINGS, value);
+}
+
+// ---------------------------------------------------------------------------
 // Spice Level
 // ---------------------------------------------------------------------------
 
@@ -569,6 +604,12 @@ export interface ValidatedGenerationParams {
   language?: string;
   /** World and era, inferred from the idea and editable as a chip. */
   whereAndWhen?: string;
+  /**
+   * The reader's story-world preference. Absent means "infer from the brief".
+   * Chapter one only: later chapters inherit the world the opening
+   * established through the story bible, so the preference is not stored.
+   */
+  culturalSetting?: CulturalSetting;
   /** Beats the user pinned. One entry is one schedulable beat. */
   moments: string[];
   /**

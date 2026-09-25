@@ -92,6 +92,12 @@ describe("EmailCodeAuth", () => {
     expect(view.queryByRole("progressbar")).toBeNull();
   });
 
+  it("links the terms and privacy policy from the email step", async () => {
+    const { view } = await mount();
+    expect(view.getByLabelText("Terms of Use").props.accessibilityRole).toBe("link");
+    expect(view.getByLabelText("Privacy Policy").props.accessibilityRole).toBe("link");
+  });
+
   it("keeps a send failure on the email step", async () => {
     mockSendEmailCode.mockRejectedValueOnce(new Error("offline"));
     const { view } = await mount();

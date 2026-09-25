@@ -16,8 +16,10 @@
  */
 
 import React from "react";
+import { StyleSheet } from "react-native";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 import ChapterEnd, { deriveContinuationOptions } from "@/components/reader/ChapterEnd";
+import { READER_THEMES } from "@/lib/reading-themes";
 import {
   __resetGenerationSessions,
   startChapterGeneration,
@@ -267,6 +269,27 @@ describe("deriveContinuationOptions", () => {
 });
 
 describe("ChapterEnd", () => {
+  it("uses the reader palette for every chapter-end surface in Night mode", async () => {
+    const story = makeStory();
+    const view = await render(
+      <ChapterEnd
+        story={story}
+        chapter={story.chapters[1]}
+        credits={PLENTY}
+        onContinue={jest.fn()}
+        readerTheme={READER_THEMES.night}
+      />,
+    );
+
+    const card = await view.findByTestId("chapter-end-option-0");
+    expect(StyleSheet.flatten(card.props.style)).toEqual(expect.objectContaining({
+      backgroundColor: READER_THEMES.night.social.surface,
+      borderColor: READER_THEMES.night.divider,
+    }));
+    expect(StyleSheet.flatten(view.getByText(/Any of these writes chapter/).props.style))
+      .toEqual(expect.objectContaining({ color: READER_THEMES.night.social.muted }));
+  });
+
   it("offers three cards of equal weight, the last of them write-your-own", async () => {
     const story = makeStory();
     const chapter = story.chapters[1];

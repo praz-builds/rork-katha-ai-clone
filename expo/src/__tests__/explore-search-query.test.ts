@@ -48,6 +48,7 @@ import {
   mapSearchRow,
   publishedOffsetFrom,
   searchStories,
+  themeTags,
 } from "@/lib/search";
 /* eslint-enable import/first */
 
@@ -273,5 +274,22 @@ describe("opening a story whose chapters will not load", () => {
       "A line.",
       "Another line.",
     ]);
+  });
+});
+
+describe("live rows carry their themes as tags", () => {
+  it("maps themes to clean, capped tags so Explore's tag filter has something to filter", () => {
+    const story = mapSearchRow({
+      id: "t1",
+      title: "Tagged",
+      themes: ["  Found Family ", "found family", "grief", 7, "", "x".repeat(40), "a", "b", "c", "d", "e"],
+    });
+    expect(story!.tags).toEqual(["found family", "grief", "a", "b", "c", "d"]);
+  });
+
+  it("treats missing or malformed themes as no tags", () => {
+    expect(themeTags(undefined)).toEqual([]);
+    expect(themeTags("grief")).toEqual([]);
+    expect(mapSearchRow({ id: "t2", title: "Bare" })!.tags).toEqual([]);
   });
 });

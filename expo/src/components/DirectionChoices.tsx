@@ -12,6 +12,7 @@ import { Check, Circle, PenLine, Shuffle, Signpost, X } from "lucide-react-nativ
 import { MAX_NEXT_INSTRUCTION_CHARS } from "@/lib/pricing-limits";
 import { Button } from "@/components/Button";
 import { colors, fonts, radius, spacing, type } from "@/theme";
+import type { ReaderTheme } from "@/lib/reading-themes";
 
 /**
  * The one direction-chip surface in the app.
@@ -98,6 +99,12 @@ export type ReadOnlyDirectionChoicesProps = {
    */
   attribution?: string;
   testIDPrefix: string;
+  /**
+   * Chapter-end choices live on a reader page rather than an app card.  The
+   * reader supplies its selected palette so this shared component stays
+   * legible in Night mode; Create intentionally leaves it unset.
+   */
+  readerTheme?: ReaderTheme;
 };
 
 export type InteractiveDirectionChoicesProps = {
@@ -150,6 +157,8 @@ export type InteractiveDirectionChoicesProps = {
   charLimit?: number;
   /** A direction, or `undefined` for "surprise me" -- let Katha decide. */
   onChoose: (direction?: string) => void;
+  /** See {@link ReadOnlyDirectionChoicesProps.readerTheme}. */
+  readerTheme?: ReaderTheme;
 };
 
 export type DirectionChoicesProps =
@@ -158,6 +167,15 @@ export type DirectionChoicesProps =
 
 export default function DirectionChoices(props: DirectionChoicesProps) {
   const reduceMotion = useReducedMotion();
+  const readerTheme = props.readerTheme;
+  const readerText = readerTheme ? { color: readerTheme.social.text } : undefined;
+  const readerMuted = readerTheme ? { color: readerTheme.social.muted } : undefined;
+  const readerCard = readerTheme
+    ? { backgroundColor: readerTheme.social.surface, borderColor: readerTheme.divider }
+    : undefined;
+  const readerField = readerTheme
+    ? { backgroundColor: readerTheme.social.field, color: readerTheme.social.text }
+    : undefined;
   // The composer starts closed on purpose. Suggested directions are the
   // primary surface; typing your own is the escape hatch, and an escape hatch
   // that is open by default reads as the main path.
@@ -184,7 +202,7 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
     if (options.length === 0) return null;
     return (
       <View style={styles.wrap} testID={`${testIDPrefix}-paths`}>
-        <Text style={styles.heading}>{heading}</Text>
+        <Text style={[styles.heading, readerText]}>{heading}</Text>
         {options.map((option, index) => {
           // Matched on the prose, because that is what was sent to the model
           // and what is stored in `direction_chosen` -- the ids are generated
@@ -204,23 +222,30 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
                 : `Not taken: ${option.prompt}`}
               style={[
                 styles.optionCard,
+                readerCard,
                 styles.pathCard,
-                taken && styles.pathCardTaken,
+                taken && (readerTheme
+                  ? { borderColor: colors.accent, backgroundColor: readerTheme.social.field }
+                  : styles.pathCardTaken),
               ]}
               testID={`${testIDPrefix}-path-${index}`}
             >
               {taken
                 ? <Check size={16} color={colors.accent} />
-                : <Circle size={16} color={colors.tertiary} />}
+                : <Circle size={16} color={readerTheme?.social.muted ?? colors.tertiary} />}
               <View style={styles.pathBody}>
                 <Text
-                  style={[styles.optionText, !taken && styles.pathTextUntaken]}
+                  style={[
+                    styles.optionText,
+                    readerText,
+                    !taken && [styles.pathTextUntaken, readerMuted],
+                  ]}
                 >
                   {option.prompt}
                 </Text>
                 {taken && attribution
                   ? (
-                    <Text style={styles.pathAttribution}>
+                    <Text style={[styles.pathAttribution, readerMuted]}>
                       {attribution}
                     </Text>
                   )
@@ -253,7 +278,10 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
   return (
     <View style={styles.wrap}>
       <Text
-        style={headingSize === "step" ? styles.stepHeading : styles.heading}
+        style={[
+          headingSize === "step" ? styles.stepHeading : styles.heading,
+          readerText,
+        ]}
         accessibilityRole={headingSize === "step" ? "header" : undefined}
       >
         {heading}
@@ -263,15 +291,15 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
         * Katha decide - does the same work and costs the same. Putting it only
         * on the composer's submit button hid it from the cards, which are the
         * path most people take. */}
-      <Text style={styles.priceNote}>{priceNote}</Text>
+      <Text style={[styles.priceNote, readerMuted]}>{priceNote}</Text>
       {status === "loading" ? (
         <View style={styles.loadingRow} accessibilityLabel={loadingLabel}>
-          <ActivityIndicator color={colors.muted} />
-          <Text style={styles.mutedBody}>{loadingMessage}</Text>
+          <ActivityIndicator color={readerTheme?.social.muted ?? colors.muted} />
+          <Text style={[styles.mutedBody, readerMuted]}>{loadingMessage}</Text>
         </View>
       ) : null}
       {status === "unavailable" ? (
-        <Text style={styles.mutedBody}>{unavailableReason}</Text>
+        <Text style={[styles.mutedBody, readerMuted]}>{unavailableReason}</Text>
       ) : null}
       {/* The suggested directions ARE the surface. They were previously one
         * card among equals next to a full-width free-text box, and anyone
@@ -289,7 +317,10 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
             accessibilityHint={chooseHint}
             style={({ pressed }) => [
               styles.optionCard,
-              pressed && !reduceMotion && styles.optionCardPressed,
+              readerCard,
+              pressed && !reduceMotion && (readerTheme
+                ? { borderColor: colors.accent, backgroundColor: readerTheme.social.field }
+                : styles.optionCardPressed),
             ]}
             onPress={() => onChoose(option.prompt)}
             testID={`${testIDPrefix}-option-${index}`}
@@ -297,7 +328,7 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
             {/* A signpost: this card is a way the story could go. Not
               * Sparkles, which in this app means credits and nothing else. */}
             <Signpost size={16} color={colors.accent} />
-            <Text style={styles.optionText}>{option.prompt}</Text>
+            <Text style={[styles.optionText, readerText]}>{option.prompt}</Text>
           </Pressable>
         ))
         : null}
@@ -316,10 +347,10 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
         own.
       */}
       {composerOpen ? (
-        <View style={styles.composerCard} testID={`${testIDPrefix}-composer`}>
+        <View style={[styles.composerCard, readerCard]} testID={`${testIDPrefix}-composer`}>
           <View style={styles.composerHeader}>
             <PenLine size={16} color={colors.accent} />
-            <Text style={styles.composerTitle}>Write your own</Text>
+            <Text style={[styles.composerTitle, readerText]}>Write your own</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close your own direction"
@@ -328,13 +359,13 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
               onPress={() => setComposerOpen(false)}
               testID={`${testIDPrefix}-composer-close`}
             >
-              <X size={18} color={colors.muted} />
+              <X size={18} color={readerTheme?.social.muted ?? colors.muted} />
             </Pressable>
           </View>
           {/* The register is taught once, with an example, rather than left to
             * be discovered by writing a question and getting a chapter that
             * answers one. */}
-          <Text style={styles.composerHint}>
+          <Text style={[styles.composerHint, readerMuted]}>
             An instruction, not a question — &ldquo;Take Meera to the fort path.&rdquo;
           </Text>
           <TextInput
@@ -344,14 +375,14 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
             onChangeText={setComposerText}
             maxLength={charLimit}
             placeholder={composerPlaceholder}
-            placeholderTextColor={colors.tertiary}
-            style={styles.composerInput}
+            placeholderTextColor={readerTheme?.social.muted ?? colors.tertiary}
+            style={[styles.composerInput, readerField]}
             accessibilityLabel="Write your own direction"
             accessibilityHint="Optional. Leave it blank and Katha decides."
             testID={`${testIDPrefix}-composer-input`}
           />
           {composerText.length >= counterVisibleAt(charLimit) ? (
-            <Text style={styles.composerCount} testID={`${testIDPrefix}-composer-count`}>
+            <Text style={[styles.composerCount, readerMuted]} testID={`${testIDPrefix}-composer-count`}>
               {composerText.length} / {charLimit}
             </Text>
           ) : null}
@@ -366,8 +397,8 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
               onPress={() => onChoose(undefined)}
               testID={`${testIDPrefix}-let-katha-decide`}
             >
-              <Shuffle size={16} color={colors.muted} />
-              <Text style={styles.textCtaLabel}>Surprise me</Text>
+              <Shuffle size={16} color={readerTheme?.social.muted ?? colors.muted} />
+              <Text style={[styles.textCtaLabel, readerMuted]}>Surprise me</Text>
             </Pressable>
             <Button
               label={submitLabel}
@@ -389,15 +420,18 @@ export default function DirectionChoices(props: DirectionChoicesProps) {
           accessibilityHint={chooseHint}
           accessibilityState={{ expanded: false }}
           style={({ pressed }) => [
-            styles.optionCard,
+              styles.optionCard,
+              readerCard,
             styles.writeOwnCard,
-            pressed && !reduceMotion && styles.optionCardPressed,
+            pressed && !reduceMotion && (readerTheme
+              ? { borderColor: colors.accent, backgroundColor: readerTheme.social.field }
+              : styles.optionCardPressed),
           ]}
           onPress={() => setComposerOpen(true)}
           testID={`${testIDPrefix}-write-own`}
         >
           <PenLine size={16} color={colors.accent} />
-          <Text style={[styles.optionText, styles.writeOwnText]}>{writeOwnLabel}</Text>
+          <Text style={[styles.optionText, styles.writeOwnText, readerText]}>{writeOwnLabel}</Text>
         </Pressable>
       )}
     </View>

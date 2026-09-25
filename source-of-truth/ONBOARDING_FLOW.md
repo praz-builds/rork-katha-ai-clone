@@ -967,7 +967,7 @@ structural change this whole section exists to record.
 | Sub | **Your portrait is being drawn now. Save it to your account so {name} follows you into every story, on every device.** | **Your portrait is being drawn now. Save it to your account so you're in every story, on every device.** (amended 2026-09-14: the reader is the character, and "so Priya follows you", said to Priya, was the writer's sentence with her name in it) |
 | Field label | **EMAIL** | **EMAIL** |
 | CTA | **Email me a code** | **Email me a code** |
-| Terms | **By continuing you agree to our Terms and Privacy Policy.** | same |
+| Terms | **By continuing you agree to our Terms and Privacy Policy.** **Terms** and **Privacy Policy** are separate, accessible links to `https://katha.thetractionlabs.com/terms` and `https://katha.thetractionlabs.com/privacy`; neither opens the next step. | same |
 
 **Why the email moved in front of the portrait.** C4 asked for it after the
 reveal, which meant the first thing the person saw after their character existed
