@@ -15,21 +15,32 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 # Round: the Play launch push (#138-#143, plus the generation fix)
 
-Six lanes merged on 2026-09-25 and are deployed. Most of this round is Android
-and Play Console work, so it splits into what you can eyeball on
-http://localhost:8090 and what genuinely needs a device or the Console. Anything
-below marked **device** or **Console** cannot be judged in the browser — that is
-a limit of the change, not a gap in the check.
+Six lanes merged on 2026-09-25 and are deployed. The generation fix in A1 is a
+seventh change and is **only checkable once it is deployed** — merged is not
+deployed on this project, and A1 says so again where it matters.
+
+Most of this round is Android and Play Console work, so it splits into what you
+can eyeball on http://localhost:8090 and what genuinely needs a device or the
+Console. Anything below marked **device** or **Console** cannot be judged in the
+browser — that is a limit of the change, not a gap in the check.
 
 ## A1. Creating a story works again
 
-This is the one to try first. Before this round, every story you asked for
-failed and refunded the credit.
+This is the one to try first. Before this fix, every story you asked for failed
+and refunded the credit.
+
+> **Needs the deploy first.** This one is not live until `generate-story`,
+> `generate-story-stream`, `continue-story`, `edit-story`, `reimagine-chapter`
+> and `shape-story` have been deployed — they all import the file that changed.
+> Run A1 before that and it will still answer "Story generation failed. Credit
+> refunded.", and that is the old code, not a new bug.
 
 - [ ] Open Create, write one sentence, press Create. A chapter arrives. It does
       **not** say "Story generation failed. Credit refunded."
-- [ ] It arrives in well under a minute — expect roughly 40 seconds to first
-      page, not two minutes and not a failure.
+- [ ] It arrives well under two minutes. A 1,504-word chapter was measured at
+      38.7s from the model, but production chapters have run 55–76s and the
+      grounding step and persistence sit on top of that, so treat anything under
+      two minutes as healthy and anything over as worth reporting.
 - [ ] Do it twice more. All three succeed; the failure this fixes was happening
       on every attempt, not occasionally.
 

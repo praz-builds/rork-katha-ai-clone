@@ -22,11 +22,15 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  AllProvidersFailedError,
+  classifyLlmError,
   EDGE_REQUEST_IDLE_TIMEOUT_MS,
+  generateFastStructuredText,
   GENERATION_DEADLINE_MS,
   OPENROUTER_MODELS,
   openRouterPhaseDeadlines,
   PHASE_END_SHARE,
+  ProviderSkippedNoTimeError,
 } from "./llm.ts";
 
 /** The slowest chapter measured against production, 2026-09-09. */
@@ -55,21 +59,6 @@ Deno.test("the whole blocking generation fits inside the gateway idle timeout", 
   );
 });
 
-Deno.test("the model that actually writes gets a chapter's worth of time", () => {
-  const window = Math.floor(
-    GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
-  );
-  const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
-  assertEquals(deadlines.length, OPENROUTER_MODELS.length);
-  const writer = deadlines[deadlines.length - 1];
-  assert(
-    writer >= WORST_MEASURED_CHAPTER_MS,
-    `the writing model gets ${writer}ms against a ${WORST_MEASURED_CHAPTER_MS}ms chapter`,
-  );
-  // The last model owns the whole window: nothing is left unspendable.
-  assertEquals(writer, window);
-});
-
 Deno.test("no model is capped below a chapter, whatever its position", () => {
   // The bug this replaces: `OPENROUTER_MODELS[0]` held an 8s probe deadline
   // that was justified by "it 404s in under a second". When the account's
@@ -80,6 +69,7 @@ Deno.test("no model is capped below a chapter, whatever its position", () => {
     GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
   );
   const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
+  assertEquals(deadlines.length, OPENROUTER_MODELS.length);
   for (const [index, deadline] of deadlines.entries()) {
     assertEquals(
       deadline,
@@ -130,4 +120,90 @@ Deno.test("the paid phase is not sliced: every model is bounded by the phase end
   // Negative and fractional windows are floored to a usable integer.
   assertEquals(openRouterPhaseDeadlines(-5_000, 2), [0, 0]);
   assertEquals(openRouterPhaseDeadlines(1_500.9, 1), [1_500]);
+});
+
+Deno.test("the paid phase cannot overrun its share of the generation deadline", () => {
+  // Every model is bounded by the phase end, so the guarantee that matters is
+  // that the phase end is where `PHASE_END_SHARE` says - otherwise "no slices"
+  // would mean "no bound", and the phases behind it would never be reached.
+  const window = Math.floor(
+    GENERATION_DEADLINE_MS * PHASE_END_SHARE.openrouter,
+  );
+  const deadlines = openRouterPhaseDeadlines(window, OPENROUTER_MODELS.length);
+  for (const deadline of deadlines) {
+    assert(
+      deadline <= window,
+      `a model may run to ${deadline}ms, past the ${window}ms phase end`,
+    );
+  }
+  // And the tail phases still have somewhere to run.
+  assert(
+    window < GENERATION_DEADLINE_MS,
+    "the paid phase claims the entire generation deadline",
+  );
+});
+
+Deno.test("a position reached with no time left is skipped, not recorded as a timeout", async () => {
+  // The telemetry half of dropping the probe. A leader that stalls to the phase
+  // end leaves the next model no time, and `remainingDuration` refuses to open
+  // a socket. If that were classified `timeout`, `error_events` would read
+  // `[timeout, timeout]` - byte-for-byte the signature of the 2026-09-05 even
+  // split and the 2026-09-09 probe, both of which were diagnosed from exactly
+  // this field.
+  //
+  // Driven through the fast path because it is the only exported entry point
+  // that takes a deadline, but `remainingDuration` is shared with the paid
+  // phase, which is where this now happens.
+  const originalFetch = globalThis.fetch;
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
+  Deno.env.set("LLM_DISABLED_PROVIDERS", "gemini");
+  let fetched = false;
+  globalThis.fetch = () => {
+    fetched = true;
+    return Promise.reject(new Error("fetch must not be called"));
+  };
+  try {
+    await generateFastStructuredText(
+      "system",
+      "user",
+      { name: "probe", schema: { type: "object" } },
+      900,
+      -1,
+    );
+    throw new Error("the chain resolved with no time left");
+  } catch (error) {
+    assert(
+      error instanceof AllProvidersFailedError,
+      `expected AllProvidersFailedError, got ${error}`,
+    );
+    assertEquals(fetched, false, "a skipped position opened a socket");
+    for (const failure of error.failures) {
+      assertEquals(failure.code, "skipped_no_time");
+      assertEquals(failure.retryable, true);
+    }
+    assert(error.failures.length > 0, "no failure was recorded");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) Deno.env.delete("OPENROUTER_API_KEY");
+    else Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    Deno.env.delete("LLM_DISABLED_PROVIDERS");
+  }
+});
+
+Deno.test("a skipped position and a timeout are different codes", () => {
+  // Guards the mapping itself, so a future refactor cannot quietly fold
+  // ProviderSkippedNoTimeError back into the AbortError branch.
+  const skipped = classifyLlmError(
+    new ProviderSkippedNoTimeError("no time"),
+    "openrouter",
+    "meta/muse-spark-1.3",
+  );
+  assertEquals(skipped.code, "skipped_no_time");
+  const timedOut = classifyLlmError(
+    new DOMException("Timeout after 90000ms", "AbortError"),
+    "openrouter",
+    "meta/muse-spark-1.3",
+  );
+  assertEquals(timedOut.code, "timeout");
 });

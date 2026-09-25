@@ -109,28 +109,29 @@ export const OPENROUTER_MODELS: readonly string[] = [
 ];
 
 /**
- * The OpenRouter position for STREAMED prose, without the contributor probe.
+ * The OpenRouter position for STREAMED prose, standard tier first.
  *
  * `OPENROUTER_MODEL` is a training-tier id that this account's data policy
- * answered `404` to when this order was chosen. It serves again as of
- * 2026-09-25, so the reason for the order is no longer "it cannot answer" but
- * "the streamed path is judged on the seconds before the reader sees a first
- * page, and that position should not change with an account setting". The
- * buffered chain is ordered cheapest-first because it can afford a round trip;
- * the stream is not, so it stays pinned to the standard tier.
+ * answered `404` to when this order was chosen, so leading with it was a
+ * guaranteed wasted round trip in front of the number the product lives or dies
+ * on -- the seconds before the reader sees a first page. **It serves again as of
+ * 2026-09-25**, so that reason has expired, but the order stands on a different
+ * one: the streamed path's first-token latency should not change because
+ * somebody flipped a checkbox at https://openrouter.ai/settings/privacy. The
+ * buffered chain can absorb a round trip and is ordered cheapest-first; the
+ * stream cannot, so it stays pinned to the model whose latency was measured.
  *
- * The probe is not deleted, only demoted to last, where it is reached solely
- * if the serving model fails before writing a token. That keeps the
- * before-first-token fallback the streamed path has always had, and keeps the
- * probe alive for the day the policy changes -- it simply stops standing in
- * front of every reader.
+ * `OPENROUTER_MODEL` is kept behind it rather than dropped, reached only if the
+ * standard tier fails before writing a token. That is the before-first-token
+ * fallback the streamed path has always had. Note the asymmetry with the
+ * buffered chain, which is deliberate: there the cheaper tier writes, here it
+ * only catches.
  */
 export const OPENROUTER_STREAM_MODELS: readonly string[] = [
   "meta/muse-spark-1.3",
-  // Kept, but LAST. It costs nothing where it now sits -- it is only reached
-  // if the serving model fails before a first token, which is already a bad
-  // day -- and on the day the data policy changes it starts working again
-  // without anyone remembering this file exists.
+  // Second, and only reached if the model in front fails before a first token,
+  // which is already a bad day. Cheaper per token, but latency here is worth
+  // more than tokens.
   OPENROUTER_MODEL,
 ];
 /**
@@ -447,11 +448,25 @@ export const PHASE_END_SHARE = {
  * on 2026-09-25. Neither path spends a fixed slice on a model that cannot use
  * it.
  *
- * The cost of dropping the probe is that a leading model which neither serves
- * nor fails fast holds the window until its own `OPENROUTER_TIMEOUT_MS` socket
- * timeout (90s), leaving 25s - not a chapter. That was already true of the
- * writer in the previous shape; it is the 150s gateway, not this function, and
- * `GENERATION_DEADLINE_MS` is what to revisit if it starts happening.
+ * **What dropping the probe costs, in full.** A leading model that neither
+ * serves nor fails fast holds the window until its own `OPENROUTER_TIMEOUT_MS`
+ * socket timeout (90s), leaving 25s - not a chapter. That was already true of
+ * the writer in the previous shape; it is the 150s gateway, not this function,
+ * and `GENERATION_DEADLINE_MS` is what to revisit if it starts happening.
+ *
+ * The sharper version of the same cost is moderation retries, because a
+ * `content_filter` is raised *after* a complete generation: three full attempts
+ * on the leader would spend the phase and leave every model behind it to be
+ * skipped, where the old 8s probe would have capped the leader and handed the
+ * rest ~107s. `generateOpenRouterText` bounds that by refusing a retry that does
+ * not fit in the time left, measured against the previous attempt's own
+ * duration - see the loop there. `EDIT_DEADLINE_MS` (60s, window 55.2s) has the
+ * same shape and the same bound.
+ *
+ * A position reached with no time left throws `ProviderSkippedNoTimeError`
+ * before any socket is opened and is recorded as `skipped_no_time`, never as a
+ * timeout, so this case cannot be mistaken in `error_events` for the deadline
+ * bugs above.
  */
 export function openRouterPhaseDeadlines(
   windowMs: number,
@@ -499,6 +514,18 @@ export class ProviderHttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
     this.name = "ProviderHttpError";
+  }
+}
+
+/**
+ * A position that was reached with no time left, before any socket was opened.
+ *
+ * Distinct from an `AbortError` on purpose - see `remainingDuration`.
+ */
+export class ProviderSkippedNoTimeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderSkippedNoTimeError";
   }
 }
 
@@ -557,6 +584,11 @@ export function classifyLlmError(
 ): LlmFailure {
   const base = { provider, model, message: failureMessage(error) };
 
+  // Before the AbortError branch: this one never opened a socket, and calling
+  // that a timeout is how a stalled leader comes to look like a deadline bug.
+  if (error instanceof ProviderSkippedNoTimeError) {
+    return { ...base, code: "skipped_no_time", retryable: true };
+  }
   if (
     (error instanceof DOMException && error.name === "AbortError") ||
     (error instanceof Error && error.name === "AbortError")
@@ -1196,7 +1228,24 @@ async function generateOpenRouterText(
     );
   }
 
+  // Moderation retries are bounded by the shared deadline, and since the paid
+  // phase stopped slicing its window that deadline is the phase end - so three
+  // full-length attempts on one model could spend the whole phase and leave
+  // every model behind it to be skipped. A `content_filter` is raised *after* a
+  // complete generation, so an attempt here costs a chapter's worth of time,
+  // not a round trip.
+  //
+  // The bound is the previous attempt's own duration: a retry is only started
+  // if one more attempt of the same size actually fits in what is left. That is
+  // self-calibrating - it needs no constant to guess how long a chapter takes -
+  // and it removes the pathological case rather than the useful one. Retrying a
+  // softened prompt on the same model is usually the better bet than falling to
+  // the next (a refusal tends to repeat across a model family), so this stops
+  // only the retry that would have timed out anyway and eaten the fallback's
+  // time doing it.
+  let lastAttemptMs = 0;
   for (let attempt = initialSafetyLevel; attempt < 3; attempt += 1) {
+    const attemptStart = Date.now();
     try {
       const payload = await chatCompletionRequest({
         providerName: "OpenRouter",
@@ -1221,8 +1270,17 @@ async function generateOpenRouterText(
       };
     } catch (error) {
       if (!isModerationRejection(error)) throw error;
+      lastAttemptMs = Date.now() - attemptStart;
       onModerationRetry(Math.min(attempt + 1, 2));
       if (attempt === 2) throw error;
+      if (deadline - Date.now() < lastAttemptMs) {
+        console.warn(
+          `${model} moderation retry ${attempt + 1} of 2 skipped: ` +
+            `${deadline - Date.now()}ms left, last attempt took ` +
+            `${lastAttemptMs}ms`,
+        );
+        throw error;
+      }
       console.warn(
         `${model} moderation retry ${attempt + 1} of 2:`,
         failureMessage(error),
@@ -1531,10 +1589,24 @@ function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 500) : String(error);
 }
 
+/**
+ * The time this request may have, or a refusal to start it at all.
+ *
+ * Called immediately before `fetch` on both provider paths, so throwing here
+ * always means *this position never left the process*. That is not a timeout,
+ * and it must not be recorded as one: a chain whose leader stalled to the phase
+ * end writes `[timeout, timeout]` if it is, which is byte-for-byte the
+ * signature of the two deadline bugs this file has already had (the 2026-09-05
+ * even split and the 2026-09-09 probe). The next person reading `error_events`
+ * has to be able to tell "asked and gave up" from "never asked", so a skipped
+ * position carries `skipped_no_time` instead. See `classifyLlmError`.
+ */
 function remainingDuration(deadline: number, providerLimit: number): number {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
-    throw new DOMException("Generation deadline exceeded", "AbortError");
+    throw new ProviderSkippedNoTimeError(
+      "No time left in the phase to start this request",
+    );
   }
   return Math.min(remaining, providerLimit);
 }

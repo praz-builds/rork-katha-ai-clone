@@ -79,8 +79,10 @@ caught by:
 | training allowed (today)         | the contributor tier writes, 38.7s, ~17x cheaper |
 | training refused (the D1 remedy) | it `404`s in <1s, `meta/muse-spark-1.3` inherits ~114s and writes in 48.1s |
 
-`OPENROUTER_PROBE_MS` is deleted, with no reference left in code, tests or docs.
-What is deliberately *not* changed: `GENERATION_DEADLINE_MS` (125s),
+`OPENROUTER_PROBE_MS` is deleted. No live reference to it remains in code or
+tests; `AGENTS.md` still names it twice, deliberately, as the history of a
+constant that broke production — a reader who greps for it should find out what
+happened to it rather than nothing. What is deliberately *not* changed: `GENERATION_DEADLINE_MS` (125s),
 `PHASE_END_SHARE`, the model order, and `FAST_OPENROUTER_RESERVE_MS` — the
 onboarding fast path still reserves a tail for a fast failure and still carries
 the old premise, now said plainly in its comment rather than implied.
@@ -101,12 +103,63 @@ decision `store/android/data-safety.md` D1 answers as *shared* for Play.
 
 ### Gates
 
-`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1099
-passed, 0 failed.** `deno check` and `deno fmt --check` clean on both touched
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1101
+passed, 0 failed** after the review round (1099 before it: one vacuous test
+removed, three added). `deno check` and `deno fmt --check` clean on both touched
 files. The two deadline tests that asserted the probe shape were rewritten to
 assert the invariant that replaces it — no model is capped below a chapter
 whatever its position — and each was run against the unfixed code, where both
 fail.
+
+### Review round (Opus on PR #145)
+
+Requested changes, five findings, all addressed here rather than deferred:
+
+- **The leader could spend the whole paid phase on moderation retries.** A
+  `content_filter` is raised *after* a complete generation, and with the slices
+  gone the retry loop's bound is the phase end, so three full attempts on one
+  model could starve every model behind it — where the old 8s probe would have
+  capped the leader and handed the rest ~107s. `generateOpenRouterText` now
+  refuses a retry that does not fit in the time left, measured against the
+  previous attempt's own duration. Self-calibrating, so it needs no constant to
+  guess how long a chapter takes, and it removes only the retry that would have
+  timed out anyway. `EDIT_DEADLINE_MS` (60s) has the same shape and the same
+  bound. `generateGeminiText` is deliberately left alone: its phase is ~5s.
+- **A stalled leader logged telemetry identical to the bug being fixed.** A
+  position reached with no time left threw `AbortError` before opening a socket
+  and was recorded as `timeout`, so `error_events` would read
+  `[timeout, timeout]` — the signature of both previous deadline bugs, and the
+  field from which both were diagnosed. It now throws
+  `ProviderSkippedNoTimeError` and is recorded as `skipped_no_time`.
+- **`OPENROUTER_STREAM_MODELS` contradicted itself.** Half its comment had been
+  updated to say the contributor tier serves and half still explained the order
+  by "it cannot answer", with "on the day the data policy changes it starts
+  working again" now backwards. Rewritten, along with the stale "no contributor
+  probe" in `story-stream.ts`.
+- **Three claims were false as written.** "No reference left in code, tests or
+  docs" (AGENTS.md keeps two, on purpose — the sentence is now accurate);
+  `docs/ACCEPTANCE.md` A1 told the founder to check that story creation works
+  while this fix was neither merged nor deployed (now gated on the deploy, in a
+  callout); and "roughly 40 seconds" rested on one 1,504-word measurement while
+  production chapters have run 55–76s (now "well under two minutes", with the
+  arithmetic shown).
+- **The 26/27 and 43/43 smoke numbers were unreconciled.** The suite is
+  sequential and its later checks operate on the story 2.1 generates, so a run
+  where generation fails stops at 27 checks rather than 43. Said in AGENTS.md so
+  the next reader does not think 16 checks were dropped.
+
+Also from the review: `AGENTS.md` still claimed "production is current with
+main, file for file", which this PR itself invalidates on merge. That section is
+now dated 2026-09-25, carries the 89/89 audit, and states plainly that
+production is behind by exactly this change until the deploy below.
+
+Two test findings, both fixed: "the model that actually writes gets a chapter's
+worth of time" passed against the *old* implementation too, so it discriminated
+nothing and is folded into the test that replaced it; and the new design's own
+invariants were untested. Added: the paid phase cannot overrun its share of
+`GENERATION_DEADLINE_MS`; a position reached with no time left is skipped
+without opening a socket and is classified `skipped_no_time`; and that a skipped
+position and a timeout cannot be folded back into one code.
 
 ### Deploy
 

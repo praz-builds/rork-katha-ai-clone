@@ -355,11 +355,9 @@ export function chapterOutputFromStreamedMetadata(input: {
   const output = parseStructuredOutput(
     JSON.stringify({
       ...record,
-      ...(namedChapter
-        ? {}
-        : {
-          chapter_title: input.fallbackChapterTitle ?? input.fallbackTitle,
-        }),
+      ...(namedChapter ? {} : {
+        chapter_title: input.fallbackChapterTitle ?? input.fallbackTitle,
+      }),
       chapter_body: input.prose,
       ...(input.overrides ?? {}),
     }),
@@ -683,8 +681,8 @@ export async function streamChapterProse(
       .filter(Boolean),
   );
 
-  // The stream's own list: no contributor probe. See
-  // OPENROUTER_STREAM_MODELS.
+  // The stream's own list: standard tier first, for first-token latency rather
+  // than cost. See OPENROUTER_STREAM_MODELS.
   const models = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_STREAM_MODELS;

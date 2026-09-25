@@ -37,13 +37,22 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-24)
+## Production state (2026-09-25)
 
-**Production is current with main, file for file.** Verified on 2026-09-24
-rather than assumed: the migration ledger matches main exactly through `00096`
-(no local-only, no remote-only), and every one of the **33** deployed functions
-was downloaded and every `.ts` file in each bundle compared byte for byte with
-main. All 33 are identical. The four phrase functions (`save-phrase`,
+**Production was current with main, file for file, as of 2026-09-25, and is
+behind it again by exactly one change.** `_shared/llm.ts` changed after that
+audit and has not shipped; until the six functions that import it are deployed
+(`generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+`reimagine-chapter`, `shape-story`), production is running the previous chain.
+Nothing else differs.
+
+The audit behind that claim, re-run on 2026-09-25 rather than assumed: the
+migration ledger matches main exactly through `00098` (no local-only, no
+remote-only), and every live function bundle was downloaded and every `.ts` file
+in it compared byte for byte with main. **89 of 89 files identical.** The only
+repo file in no bundle is `_shared/prompts.ts`, which has zero importers - dead
+code, not drift. The first such audit, on 2026-09-24, covered 33 functions and
+found all 33 identical. The four phrase functions (`save-phrase`,
 `unsave-phrase`, `phrases`, `record-practice`) were deleted from the project
 after #135.
 
@@ -54,8 +63,12 @@ privacy gate #107 removed. A change to a `_shared/` file reaches every function
 that imports it, and those functions need deploying too. `deno info --json
 <fn>/index.ts` lists what a function imports.
 
-`backend/scripts/smoke-app-surface.py` passed **43/43** against production that
-night: bootstrap, profile, shaping, generation, edit, publish (public on request,
+`backend/scripts/smoke-app-surface.py` passed **43/43** against production on
+2026-09-24. **Read the count, not just the ratio:** the suite is sequential and
+its later checks operate on the story step 2.1 generates, so a run where
+generation fails stops at **27 checks, not 43**. That is what "26 passed, 1
+failed" on 2026-09-25 meant - not that 16 checks were removed. The 43-check run
+covers: bootstrap, profile, shaping, generation, edit, publish (public on request,
 chapters published), the cover served publicly, and audio-status. It cleans
 up after itself and leaves no user behind. `character_image_free_remaining`
 answers 3 for a new account (00096).
