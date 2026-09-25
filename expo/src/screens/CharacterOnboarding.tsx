@@ -32,6 +32,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { EmailCodeAuth } from "@/components/onboarding/EmailCodeAuth";
+import { LegalConsentLine } from "@/components/onboarding/LegalConsentLine";
 import { Field } from "@/components/onboarding/Field";
 import { OnboardingPaywall } from "@/components/onboarding/OnboardingPaywall";
 import {
@@ -947,9 +948,7 @@ export default function CharacterOnboarding(
                     void submitSave();
                   }}
                 />
-                <Text style={styles.legal}>
-                  By continuing you agree to our Terms and Privacy Policy.
-                </Text>
+                <LegalConsentLine style={styles.legal} />
               </>
             }
           >

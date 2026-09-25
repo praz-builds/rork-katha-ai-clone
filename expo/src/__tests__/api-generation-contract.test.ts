@@ -5,8 +5,9 @@
  * the backend still maps, but new callers must not depend on it.
  */
 
+const mockStorage = new Map<string, string>();
 jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn(),
+  getItem: jest.fn((key: string) => Promise.resolve(mockStorage.get(key) ?? null)),
   setItem: jest.fn(),
   removeItem: jest.fn(),
 }));
@@ -44,6 +45,7 @@ import {
   setCharacterImagesRemaining,
 } from "@/lib/character-image-allowance";
 import type { CreateDraft } from "@/types/domain";
+import { __resetStoryWorld, setStoryWorld } from "@/lib/story-world";
 /* eslint-enable import/first */
 
 const draft: CreateDraft = {
@@ -479,6 +481,28 @@ describe("world and beats fields", () => {
     expect(body.beats).toBeUndefined();
   });
 
+  it("waits for the stored Story world before the first request of a session", async () => {
+    __resetStoryWorld();
+    mockStorage.set("katha.story-world.v1", "oceanian");
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory(draft, "req-story-world-cold");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("oceanian");
+    mockStorage.delete("katha.story-world.v1");
+    __resetStoryWorld();
+  });
+
+  it("sends the Story world preference, and nothing for Anywhere", async () => {
+    await setStoryWorld("south_asian");
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory(draft, "req-story-world");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("south_asian");
+
+    await setStoryWorld("global");
+    mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
+    await generateStory(draft, "req-story-world-global");
+    expect(bodyOf(mockInvoke.mock.calls[1])).not.toHaveProperty("cultural_setting");
+  });
+
   it("resolves an unset chapter length to the same default the setup screen displays, rather than leaving it for the backend to guess", async () => {
     // The backend's own fallback for an absent chapter_length is "standard",
     // audience-unaware -- see `effectiveChapterLength` in `lib/api.ts`. An
@@ -594,6 +618,17 @@ describe("the story plan", () => {
     });
     await shapeStoryIdea("A quiet mystery.");
     expect(bodyOf(mockInvoke.mock.calls[0]).variant).toBe("create");
+  });
+
+  it("sends the Story world to shaping, where the setting and names are first guessed", async () => {
+    await setStoryWorld("east_asian");
+    mockInvoke.mockResolvedValueOnce({
+      data: { shape: { genres: ["mystery"], characters: [] } },
+      error: null,
+    });
+    await shapeStoryIdea("A quiet mystery.");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("east_asian");
+    await setStoryWorld("global");
   });
 });
 

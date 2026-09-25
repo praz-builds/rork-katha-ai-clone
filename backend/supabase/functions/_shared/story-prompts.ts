@@ -31,9 +31,12 @@ import type {
 } from "./types.ts";
 import {
   characterAppearance,
+  CULTURAL_SETTINGS,
+  type CulturalSetting,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
   GENRE_MIGRATION_MAP,
+  isCulturalSetting,
   type PlannedChapterCount,
   wordBandFor,
 } from "./types.ts";
@@ -1460,10 +1463,31 @@ function buildPlanSection(
   return parts;
 }
 
+/**
+ * The reader's standing story-world preference, as one fixed sentence.
+ *
+ * It is a DEFAULT, not an instruction that competes with the brief. The idea,
+ * the setting and the cast's names are what this writer asked for in this
+ * story; the preference is what they asked for in general. So it applies only
+ * where the brief leaves culture open, and the block says so in as many words
+ * -- a reader who prefers South Asian stories and writes "a heist in 1920s
+ * Chicago" gets Chicago.
+ *
+ * The phrase comes from `CULTURAL_SETTINGS`, never from the request, so no
+ * client text reaches the prompt through this block. An unknown id renders
+ * nothing: the story is written as if no preference had been set.
+ */
+export function buildStoryWorldBlock(setting?: CulturalSetting): string {
+  if (!isCulturalSetting(setting)) return "";
+  const world = CULTURAL_SETTINGS[setting];
+  return `Story world preference:\nThe reader prefers stories rooted in ${world}. Where the idea, the setting and the characters' names leave the culture open, ground the names, places, food, customs, idiom and everyday objects there, specifically rather than generically. If the brief points anywhere else, follow the brief; this preference never overrides it.`;
+}
+
 export function buildUserPrompt(params: {
   primaryGenre: string;
   genres?: string[];
   whereAndWhen?: string;
+  culturalSetting?: CulturalSetting;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1541,6 +1565,8 @@ export function buildUserPrompt(params: {
   seed?: string;
   topic?: string;
   whereAndWhen?: string;
+  /** The reader's story-world preference; see `buildStoryWorldBlock`. */
+  culturalSetting?: CulturalSetting;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1621,6 +1647,9 @@ export function buildUserPrompt(params: {
       }\nLet this shape the texture, the objects, the weather and the idiom, not just an establishing line.`,
     );
   }
+
+  const storyWorld = buildStoryWorldBlock(params.culturalSetting);
+  if (storyWorld) parts.push(storyWorld);
 
   if (params.audienceMode === "kids" && params.storyValues?.length) {
     parts.push(

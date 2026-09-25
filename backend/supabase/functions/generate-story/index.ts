@@ -112,6 +112,7 @@ serve(async (req) => {
       requestId,
       language,
       whereAndWhen,
+      culturalSetting,
       moments,
       beats,
       storyValues,
@@ -396,6 +397,7 @@ serve(async (req) => {
         characters,
         language,
         whereAndWhen,
+        culturalSetting,
         moments,
         beats,
         // Chapter one always opens the plan, so the beat and the chapter agree

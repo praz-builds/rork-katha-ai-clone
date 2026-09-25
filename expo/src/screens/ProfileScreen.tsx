@@ -20,6 +20,7 @@ import {
   Crown,
   FileText,
   Flame,
+  Globe2,
   HelpCircle,
   LogOut,
   MessageSquare,
@@ -30,11 +31,15 @@ import {
   Trash2,
   UserRound,
   Volume2,
+  Vote,
 } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import BlockedAccountsSheet from "@/components/profile/BlockedAccountsSheet";
+import Constants from "expo-constants";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import FeedbackSheet from "@/components/profile/FeedbackSheet";
+import FeatureVoteSheet from "@/components/profile/FeatureVoteSheet";
+import StoryWorldSheet from "@/components/profile/StoryWorldSheet";
 import IdentityEditor, { type IdentityEdits } from "@/components/profile/IdentityEditor";
 import MemberSheet from "@/components/profile/MemberSheet";
 import { Toggle } from "@/components/Toggle";
@@ -42,6 +47,11 @@ import i18n from "@/i18n";
 import { creatureSource } from "@/lib/creatures";
 import { useIsSubscribed } from "@/lib/entitlements";
 import { getMusicMuted, setMusicMuted } from "@/lib/music-storage";
+import {
+  setStoryWorld,
+  storyWorldLabel,
+  useStoryWorld,
+} from "@/lib/story-world";
 import { streakState } from "@/lib/profile";
 import {
   FRESH_FOR_MS,
@@ -114,6 +124,9 @@ export default function ProfileScreen({
   const [memberSheet, setMemberSheet] = useState(false);
   const [blockedSheet, setBlockedSheet] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [votesOpen, setVotesOpen] = useState(false);
+  const [storyWorldOpen, setStoryWorldOpen] = useState(false);
+  const storyWorld = useStoryWorld();
   const subscribed = useIsSubscribed();
 
   // Background music. The SAME stored preference the reader's mute control
@@ -436,6 +449,24 @@ export default function ProfileScreen({
             grouped
           />
           <Row
+            icon={Globe2}
+            title="Story world"
+            subtitle={storyWorld === "global"
+              ? "Anywhere — Katha follows each story's own cues"
+              : `${storyWorldLabel(storyWorld)} — where new stories are rooted`}
+            onPress={() => setStoryWorldOpen(true)}
+            testID="profile-story-world"
+            grouped
+          />
+          <Row
+            icon={Vote}
+            title="Vote on what's next"
+            subtitle="Tell the team which ideas matter most to you"
+            onPress={() => setVotesOpen(true)}
+            testID="profile-feature-votes"
+            grouped
+          />
+          <Row
             icon={HelpCircle}
             title="How credits work"
             subtitle="Every price, streaks and invites"
@@ -497,7 +528,7 @@ export default function ProfileScreen({
           </Pressable>
         </View>
 
-        <Text style={styles.version}>v0.1.0</Text>
+        <Text style={styles.version}>v{APP_VERSION}</Text>
       </ScrollView>
 
       <IdentityEditor
@@ -522,6 +553,15 @@ export default function ProfileScreen({
         onClose={() => setFeedbackOpen(false)}
         screen="profile"
       />
+
+      <StoryWorldSheet
+        visible={storyWorldOpen}
+        value={storyWorld}
+        onChange={(next) => void setStoryWorld(next)}
+        onClose={() => setStoryWorldOpen(false)}
+      />
+
+      <FeatureVoteSheet visible={votesOpen} onClose={() => setVotesOpen(false)} />
 
       <DeleteAccountSheet
         visible={deleting}
@@ -581,6 +621,12 @@ function Row({
 }
 
 const AVATAR = 56;
+
+/**
+ * The version the build was made with. It read a literal "v0.1.0" long after
+ * the app became 1.0.0, which is the one number a bug report most needs right.
+ */
+const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
 
 const styles = {
   ...sharedStyles,

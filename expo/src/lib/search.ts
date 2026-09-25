@@ -66,7 +66,29 @@ const MAX_AUTHOR_MATCHES = 20;
 const STORY_COLUMNS =
   "id, title, author_id, genre, primary_genre, topic, cover_image_url, cover_status, " +
   "content_rating, audience_mode, spice_level, language, story_mode, is_curated, " +
-  "is_public, like_count, bookmark_count, read_count, created_at";
+  "is_public, like_count, bookmark_count, read_count, created_at, themes";
+
+/** How many of a story's themes become Explore tags, and how long one may be. */
+const MAX_TAGS = 6;
+const MAX_TAG_LENGTH = 32;
+
+/**
+ * A row's `themes` as Explore tags: trimmed, lower-cased, de-duplicated and
+ * capped. The generator writes 3-6 free-form themes per story; a malformed or
+ * missing array is no tags, never an error.
+ */
+export function themeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const tag = entry.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!tag || tag.length > MAX_TAG_LENGTH) continue;
+    seen.add(tag);
+    if (seen.size >= MAX_TAGS) break;
+  }
+  return [...seen];
+}
 
 const GENRE_SET: ReadonlySet<string> = new Set(GENRES);
 
@@ -347,7 +369,9 @@ export function mapSearchRow(row: unknown): Story | null {
     likes: countOf(record.like_count),
     bookmarks: countOf(record.bookmark_count),
     views: countOf(record.read_count),
-    tags: [],
+    // The generator's themes. These were `[]`, so on live results Explore's
+    // tag filter had nothing to offer and the panel's tag section never drew.
+    tags: themeTags(record.themes),
     publishedOffset: publishedOffsetFrom(record.created_at),
     isFeatured: record.is_curated === true,
     isPublic: record.is_public === true,

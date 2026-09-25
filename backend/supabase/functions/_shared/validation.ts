@@ -23,6 +23,7 @@ import {
   GENRE_MIGRATION_MAP,
   IDENTITY_LENSES,
   type IdentityLens,
+  isCulturalSetting,
   MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
   MAX_CAST_SIZE,
@@ -340,6 +341,14 @@ export function validateGenerationRequest(
     };
   }
 
+  // Normalised, never rejected: an id this deploy has not heard of (a newer
+  // client) writes the story exactly as if no preference had been set, which
+  // is what every story before the preference was. Refusing a paid generation
+  // over a soft preference would cost the writer the story.
+  const culturalSetting = isCulturalSetting(body.cultural_setting)
+    ? body.cultural_setting
+    : undefined;
+
   // The picture style is normalised, never rejected. Unlike a genre or a
   // chapter length, this field decides only what the art looks like, and
   // refusing a paid generation because a client shipped a style name this
@@ -452,6 +461,7 @@ export function validateGenerationRequest(
     requestId,
     language,
     whereAndWhen,
+    ...(culturalSetting ? { culturalSetting } : {}),
     moments,
     beats,
     storyValues,

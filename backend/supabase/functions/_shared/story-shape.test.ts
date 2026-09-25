@@ -4,6 +4,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   buildStoryShapePrompt,
+  normalizeStoryShapeBrief,
   ONBOARDING_SHAPE_OUTPUT,
   ONBOARDING_SHAPE_SYSTEM_PROMPT,
   parseStoryShape,
@@ -361,4 +362,25 @@ Deno.test("a genre that survived v7 is still returned as itself", () => {
 
   assert(shape);
   assertEquals(shape.genres, ["mystery", "fantasy", "sliceOfLife"]);
+});
+
+Deno.test("shaping infers the world and names from the Story world, never over the idea", () => {
+  const brief = normalizeStoryShapeBrief({ culturalSetting: "south_asian" });
+  assertEquals(brief.culturalSetting, "south_asian");
+  const prompt = buildStoryShapePrompt(
+    "Two rivals share a train compartment.",
+    undefined,
+    brief,
+  );
+  assert(prompt.includes("rooted in South Asia"));
+  assert(prompt.includes("set whereAndWhen there"));
+  assert(prompt.includes("If the idea points anywhere else, follow the idea"));
+
+  for (const value of ["constructor", "atlantis", 3, undefined]) {
+    const none = normalizeStoryShapeBrief({ culturalSetting: value });
+    assertEquals("culturalSetting" in none, false, String(value));
+    assert(
+      !buildStoryShapePrompt("An idea.", undefined, none).includes("rooted in"),
+    );
+  }
 });

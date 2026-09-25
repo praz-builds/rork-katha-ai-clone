@@ -856,7 +856,7 @@ optional `is_finale` flag can end a series early.
 
 ### Cultural Context
 
-The AI infers cultural context from character names, traits, and story language. No explicit culture/ethnicity field -- inference from names and traits is the design choice.
+The AI infers cultural context from character names, traits, setting and story language. There is no culture or ethnicity field on a character or a brief -- inference is the design choice. **Since 2026-09-25 a reader may set a standing Story world on You** (a closed list of ten regions, device-local, sent as `cultural_setting`); it is only the default for what the brief leaves open and never overrides it. `source-of-truth/STORY_PROMPT_SYSTEM.md` *Story world* is the contract.
 
 ### Input Requirements
 
@@ -1197,6 +1197,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Characters. Characters lists `saved_characters` and creates or edits one on the brief's Craft character screen.
+- **You -- settings added 2026-09-25:** *Story world* (the cultural preference above, `lib/story-world.ts`) and *Vote on what's next* (`components/profile/FeatureVoteSheet.tsx`, migration 00099, no edge function). Votes are on team-written topics only -- readers never post public text there, so it adds no moderation surface; anything else goes through Send feedback. Votes grant no credits.
 - **You** (`expo/src/screens/ProfileScreen.tsx`): since 2026-09-16 the header is the avatar and the handle on one row with a pencil at the right, and the pencil is the only control that opens the identity editor. **There is no guest card.** The "Sign in to keep all of this" prompt is gone, because the product has no guests past the email step. **Sign out routes to the sign-in screen and leaves the device with no session** -- `signOutToSignIn` in `expo/src/lib/session.ts` clears the stored session (`scope: "local"`) and does *not* mint a replacement guest; the old `restartGuestSession` left a live anonymous identity behind the sign-in screen. Do not reintroduce it.
 
 ### Onboarding

@@ -8,6 +8,7 @@ import {
   colors,
   fonts,
   genreGradients,
+  genreLabels,
   motion,
   radius,
   shadows,
@@ -243,6 +244,22 @@ function CardCover(
           </Animated.View>
         )
         : null}
+      {/*
+        The genre, on the art. A story whose cover is still being painted is a
+        bare gradient, and a gradient alone does not say what kind of story it
+        is; with a painted cover it is the one-word answer to "what is this"
+        before the title is read. Decorative to a screen reader: the card's
+        hint carries the same word.
+      */}
+      <View
+        style={styles.genrePill}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
+        <Text style={styles.genrePillText} numberOfLines={1}>
+          {genreLabels[story.genre] ?? story.genre}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -285,6 +302,9 @@ function StoryFeedCardComponent({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Read ${story.title}`}
+      // The genre only: a hint is read on every focus, and a synopsis there
+      // makes each card in a list several seconds long to move past.
+      accessibilityHint={genreLabels[story.genre]}
       style={({ pressed }) => [
         styles.card,
         cardWidth === null ? styles.listCard : { width: cardWidth },
@@ -337,6 +357,25 @@ const styles = StyleSheet.create({
   cover: {
     overflow: "hidden",
     backgroundColor: colors.sepiaPlaceholder,
+  },
+  genrePill: {
+    position: "absolute",
+    left: spacing.xs,
+    bottom: spacing.xs,
+    maxWidth: "90%",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    // Solid ink, not a scrim: over pale artwork a translucent pill let the
+    // label fall under 4.5:1.
+    backgroundColor: colors.ink,
+  },
+  genrePillText: {
+    ...type.caption,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "700",
+    color: colors.surface,
   },
   body: {
     flex: 1,

@@ -439,6 +439,39 @@ value so it cannot be closed early.
 
 Two of those layers carry rules of their own.
 
+### Story world (the reader's cultural preference, 2026-09-25)
+
+A reader can set a standing **Story world** on You -- one of ten regions, or
+*Anywhere* (the default). It reaches the prompt as one fixed sentence placed
+directly after the setting layer (`buildStoryWorldBlock` in
+`_shared/story-prompts.ts`):
+
+- **It is a closed list, never free text.** The request carries an id
+  (`cultural_setting`); the server maps it to a phrase in `CULTURAL_SETTINGS`
+  (`_shared/types.ts`). An unknown id, a prototype key or a non-string is
+  dropped, never refused -- the story is written as if no preference were set.
+  *Anywhere* is never sent.
+- **The brief always wins.** The block tells the model to ground names, places,
+  food, customs, idiom and everyday objects in the region only where the idea,
+  the setting and the cast's names leave culture open, and to follow the brief
+  wherever it points elsewhere.
+- **Shaping receives it too.** `shape-story` is where *Where and when* and the
+  cast's names are first inferred, and generation then treats them as the
+  brief. So the shaper gets the same id and one fixed sentence
+  (`buildStoryShapePrompt` in `_shared/story-shape.ts`): where the idea names
+  no place, culture or people, infer the setting and names from the region;
+  creator-supplied names are never changed. Without this, the shaper's guess
+  would become the "brief" that overrides the preference it never saw.
+- **Chapter one only; not stored.** Later chapters, continuations and
+  reimagines inherit the world the opening established through the story bible
+  and the text itself, so the preference needs no column. Covers are unchanged:
+  the cover prompt reads the setting and never this preference.
+
+This amends the older rule (AGENTS.md *Cultural Context*) that there is no
+explicit culture field. There is still no ethnicity field and no per-character
+culture: inference from names, traits and setting remains the design, and the
+preference is only the default for what the brief leaves open.
+
 Reader phrase seeds were removed on 2026-09-24 with the reader's Save phrase
 feature: generation no longer reads a reader's saved phrases, and the layer and
 `_shared/phrases.ts` are deleted. The `saved_phrases`, `phrase_corpus` and
