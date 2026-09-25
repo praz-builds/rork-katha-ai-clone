@@ -27,6 +27,7 @@ import {
   EDGE_REQUEST_IDLE_TIMEOUT_MS,
   generateFastStructuredText,
   GENERATION_DEADLINE_MS,
+  moderationRetryCost,
   OPENROUTER_MODELS,
   openRouterPhaseDeadlines,
   PHASE_END_SHARE,
@@ -270,7 +271,7 @@ Deno.test("a moderation retry that would starve the fallback is refused, and say
   // retry is refused -- and it is refused with its own code, not the provider's
   // rejection, because "gave up for time" and "softened it twice and was still
   // refused" are different incidents.
-  const run = await moderationRun(700, 300);
+  const run = await moderationRun(2_000, 900);
   // One request per position and not one more: no position retried.
   assertEquals(
     run.requests,
@@ -300,4 +301,22 @@ Deno.test("a moderation retry that fits is still taken", async () => {
     run.codes.includes("moderation_blocked"),
     `expected an exhausted moderation rejection, got ${run.codes.join(", ")}`,
   );
+});
+
+Deno.test("a model with a fallback behind it reserves for it; the last model does not", () => {
+  // The round-1 bound was `lastAttemptMs` for everyone, and that is what let the
+  // leader take the whole phase: 38s attempts in a 115s window satisfy "one more
+  // attempt fits" three times over, so the comment claimed a protection the code
+  // did not give. A model with something behind it must reserve the fallback's
+  // attempt too.
+  assertEquals(moderationRetryCost(38_000, false), 76_000);
+  // 115s window, leader has used 38s: 77s remain, 76s needed - the retry runs.
+  // After it, 39s remain and 76s would be needed, so the second retry is refused
+  // and the model behind it inherits a full attempt's worth.
+  assert(115_000 - 38_000 >= moderationRetryCost(38_000, false));
+  assert(115_000 - 76_000 < moderationRetryCost(38_000, false));
+  // The last model in a phase has nothing to reserve for, so reserving would
+  // strand time nobody can spend.
+  assertEquals(moderationRetryCost(38_000, true), 38_000);
+  assertEquals(moderationRetryCost(0, false), 0);
 });

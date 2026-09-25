@@ -681,8 +681,9 @@ export async function streamChapterProse(
       .filter(Boolean),
   );
 
-  // The stream's own list: standard tier first, for first-token latency rather
-  // than cost. See OPENROUTER_STREAM_MODELS.
+  // The stream's own list: standard tier first, to hold the reader-facing
+  // position constant rather than let an account setting move it. Per-tier
+  // first-token latency is unmeasured. See OPENROUTER_STREAM_MODELS.
   const models = isProviderDisabled("openrouter", disabled)
     ? []
     : OPENROUTER_STREAM_MODELS;

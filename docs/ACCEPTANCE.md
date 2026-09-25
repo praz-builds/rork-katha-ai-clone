@@ -16,8 +16,8 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 # Round: the Play launch push (#138-#143, plus the generation fix)
 
 Six lanes merged on 2026-09-25 and are deployed. A1 is a seventh change, is
-**only checkable once it is deployed**, and is narrower than it sounds — read its
-first paragraph before trying it.
+**only checkable once it is deployed**, and is not an in-app check at all — read
+its first paragraph before looking for a button.
 
 Most of this round is Android and Play Console work, so it splits into what you
 can eyeball on http://localhost:8090 and what genuinely needs a device or the
@@ -26,28 +26,40 @@ browser — that is a limit of the change, not a gap in the check.
 
 ## A1. The buffered generation chain works again
 
-**Read this one carefully, because it is not "press Create".** Pressing Create in
-the app uses the streaming endpoint, which was never affected and has been
-working throughout. What was broken is the *buffered* chain: the production smoke
-test's story step, the fallback used when streaming is unavailable, and the
-non-streamed paragraph edit. Every story generated over the stream was fine.
+**There is nothing to tap for this one, and that is the honest answer.** The code
+that was broken — `runProviderChain` — is not reachable from the app at all.
+Pressing Create streams through `generate-story-stream`, which has its own model
+list and its own deadline. The reader's Edit is a notepad: it saves the whole
+chapter, and `edit-story` handles that before it ever reaches the model. The
+per-paragraph AI rewrite that would use the fixed code has no caller in the app
+yet.
+
+What the bug actually cost: the production smoke suite's story step failed, and
+because that suite is sequential, the 16 checks after it had not run for a while.
+That is the gate this repo trusts before calling main deployable, so it is worth
+fixing — but no story a reader asked for ever failed because of it.
 
 > **Needs the deploy first.** Not live until these eight functions are deployed:
 > `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 > `reimagine-chapter`, `shape-story`, `generate-character-image` and
 > `regenerate-cover`. Migration `00099` goes first.
 
-- [ ] The check that actually exercises it: run
-      `python3 backend/scripts/smoke-app-surface.py` from the repo root with
-      `backend/.env` loaded. It should report **43 passed, 0 failed**. Before this
-      fix it reported 26 passed, 1 failed and stopped at step 2.1 — which is why
-      the 16 checks after it had not run for a while.
-- [ ] In the app, the thing worth eyeballing is **paragraph editing**: open a
-      chapter, tap Edit, change a word, save. It should come back promptly. Before
-      this fix that path spent 8 seconds on a model it then abandoned.
-- [ ] Creating and continuing stories should behave exactly as they did before —
-      unchanged, not improved. If Create behaves *differently* after this deploy,
-      that is worth reporting, because nothing here should have touched it.
+- [ ] The check, and the only one that exercises this, from the repo root:
+
+      ```
+      set -a; . backend/.env; set +a
+      python3 backend/scripts/smoke-app-surface.py
+      ```
+
+      It should run past step 2.1 and end with **0 failed**. Before this fix it
+      stopped at 2.1 with `HTTP 500`, "Story generation failed. Credit refunded.",
+      and reported 26 passed, 1 failed. The passing total is around 43 — a few
+      checks are conditional, so treat a different total with zero failures as
+      fine and any failure as not.
+- [ ] Everything you can see in the app — creating, continuing, editing, reading —
+      should behave exactly as it did before. **Unchanged, not improved.** If any
+      of it behaves differently after this deploy, that is worth reporting,
+      because nothing here should have touched it.
 
 ## A2. "All-ages" replaced "Kids", everywhere
 

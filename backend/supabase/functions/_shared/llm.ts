@@ -467,10 +467,13 @@ export const PHASE_END_SHARE = {
  * `content_filter` is raised *after* a complete generation: three full attempts
  * on the leader would spend the phase and leave every model behind it to be
  * skipped, where the old 8s probe would have capped the leader and handed the
- * rest ~107s. `generateOpenRouterText` bounds that by refusing a retry that does
- * not fit in the time left, measured against the previous attempt's own
- * duration - see the loop there. `EDIT_DEADLINE_MS` (60s, window 55.2s) has the
- * same shape and the same bound.
+ * rest ~107s. `generateOpenRouterText` bounds that against the previous attempt's own
+ * duration, in two cases: a model with something behind it needs room for this
+ * retry *and* one more attempt, so the fallback still exists, while the last
+ * model in a phase has nothing to reserve for and needs room only for the retry.
+ * `EDIT_DEADLINE_MS` (60s, window 55.2s) has the same shape and the same bound.
+ * The fast path is the exception and passes "last" for every model, because it
+ * reserves structurally instead - see the call site there.
  *
  * A position reached with no time left throws `ProviderSkippedNoTimeError`
  * before any socket is opened and is recorded as `skipped_no_time`, never as a
@@ -484,6 +487,30 @@ export function openRouterPhaseDeadlines(
   const window = Math.max(0, Math.floor(windowMs));
   if (models <= 0) return [];
   return Array.from({ length: models }, () => window);
+}
+
+/**
+ * What a moderation retry must have room for, in ms.
+ *
+ * A retry costs one more attempt of the size the last one was. What it must
+ * *reserve* depends on whether anything is behind this model:
+ *
+ * - **Something is behind it.** Room for this retry and one more attempt, so the
+ *   fallback still exists. Without the second term the bound is satisfied over
+ *   and over - 38s attempts in a 115s window satisfy "one more fits" three times
+ *   - and the leader takes the phase anyway, which is the thing it is for.
+ * - **Nothing is behind it.** Room for the retry alone. Reserving for a fallback
+ *   that does not exist would strand time nobody can spend.
+ *
+ * Exported for `llm-deadline.test.ts`: the rule is arithmetic and is pinned as
+ * arithmetic, because the phases it governs cannot be driven from a test with a
+ * controllable deadline.
+ */
+export function moderationRetryCost(
+  lastAttemptMs: number,
+  isLastModel: boolean,
+): number {
+  return isLastModel ? lastAttemptMs : lastAttemptMs * 2;
 }
 
 interface GenerationResult {
@@ -534,9 +561,9 @@ export class ProviderHttpError extends Error {
 /**
  * A moderation retry that was refused because the time left would not hold it.
  *
- * Distinct from `ProviderModerationRejectedError`, which means all three
- * attempts ran and the prompt could not be softened enough. See
- * `generateOpenRouterText`.
+ * Distinct from `ProviderModerationRejectedError`, which means every attempt ran
+ * and the prompt could not be softened enough. Both end this model; only one of
+ * them says the content was the problem. See `generateOpenRouterText`.
  */
 export class ProviderModerationNoTimeError extends Error {
   constructor(message: string) {
@@ -789,7 +816,15 @@ export async function generateFastStructuredText(
         modelDeadline,
         0,
         () => undefined,
-        index === openRouterModels.length - 1,
+        // `true` for every model here, which is not a mistake. This phase
+        // reserves structurally: `fastOpenRouterDeadlines` already subtracts
+        // `FAST_OPENROUTER_RESERVE_MS` per model behind this one, so the
+        // fallback owns its tail before the leader starts. Asking the retry
+        // bound to reserve again would reserve twice over and strand the
+        // difference - time the leader may not spend and the fallback does not
+        // get, which is the exact error `FAST_OPENROUTER_SHARE` is documented
+        // against. Each model here may use the window it was actually given.
+        true,
       );
     } catch (error) {
       console.error(`${model} failed:`, error);
@@ -1321,7 +1356,7 @@ async function generateOpenRouterText(
       // would hand the next model the most-softened prompt and, at level 2, a
       // single attempt.
       const remaining = deadline - Date.now();
-      const needed = isLastModel ? lastAttemptMs : lastAttemptMs * 2;
+      const needed = moderationRetryCost(lastAttemptMs, isLastModel);
       if (remaining < needed) {
         console.warn(
           `${model} moderation retry ${attempt + 1} of 2 refused for time: ` +

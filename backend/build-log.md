@@ -43,21 +43,25 @@ has its own model list (`OPENROUTER_STREAM_MODELS`), its own flat
 `generateStory` in `expo/src/lib/api.ts` has no non-test caller, and neither does
 the buffered `continueStory`.
 
-So what was broken, and is fixed here:
+**Pushed further on review: `runProviderChain` is not reachable from the app at
+all.** Its three entry points are `generate-story` (no client caller), the
+buffered `continue-story` (no client caller, and nothing degrades from streaming
+to buffered — every client path sends `stream: true`), and `editParagraph`, whose
+client functions `editParagraph` and `editParagraphStreaming` appear only as jest
+mocks. The reader's Edit control is a notepad: it saves a whole chapter, and
+`edit-story/index.ts:111` handles `chapter_body` *before* any paragraph-edit
+validation, so that tap never reaches the model.
 
-- `generate-story`, the buffered endpoint — which is what
-  `smoke-app-surface.py` step 2.1 calls, so **the production gate was red and
-  its 16 downstream checks never ran** (see the count note in AGENTS.md).
-- The non-streamed branches of `continue-story` and `reimagine-chapter`, which
-  are the fallbacks when the SSE transport is unavailable.
-- `editParagraph`, the non-streamed branch of `edit-story`. Its 60s deadline gave
-  the same 8s probe to a model that now writes, so every paragraph edit that took
-  that branch wasted 8s and one paid aborted request before the model behind it
-  served.
+So the cost of this bug was exactly one thing, and it is worth being plain about
+it: **`smoke-app-surface.py` step 2.1 failed, and because the suite is sequential
+the 16 checks after it stopped running.** That is the gate this repo trusts before
+calling main deployable. No reader's story ever failed because of it — the app
+streams.
 
-What was **not** broken: the app's Create flow, its continuation, and the
-streamed edit branch. Anyone reading this later should not conclude from the
-smoke failure that users could not write stories — they could, over SSE.
+The fix is still right to make: the buffered chain is the documented endpoint, it
+is the gate, and the per-paragraph rewrite is wired on the server and waiting for
+a client. But nobody should read this entry later and conclude users could not
+write stories.
 
 `backend/scripts/smoke-app-surface.py` re-run: **26 passed, 1 failed**, the same
 failure the interrupted session had found and not diagnosed —
@@ -128,11 +132,14 @@ decision `store/android/data-safety.md` D1 answers as *shared* for Play.
 
 ### Gates
 
-`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1106
+`deno test --allow-env --allow-net --allow-read supabase/functions/`: **1107
 passed, 0 failed.** This branch was 1099, 1101 after review round 1 (one vacuous
-test removed, three added) and 1106 after round 2 (two moderation-bound tests,
-plus the three #144 brought with the merge). `deno check` and `deno fmt --check`
-clean on all touched files. Every test added in either round was run against the
+test removed, three added), 1106 after round 2 (two moderation-bound tests, plus
+the three #144 brought with the merge) and 1107 after round 3. `deno check` clean, and `deno fmt --check`
+clean on the three touched `.ts` files, which is what CI checks
+(`.github/workflows/ci.yml` names them). `deno fmt` does not pass on
+`docs/ACCEPTANCE.md` and did not before this change either; it is not in CI's
+list and is not reformatted here. Every test added in either round was run against the
 code it guards, reverted, and fails there. `deno check` and `deno fmt --check` clean on both touched
 files. The two deadline tests that asserted the probe shape were rewritten to
 assert the invariant that replaces it — no model is capped below a chapter
@@ -233,12 +240,56 @@ Requested changes again, and the first finding was the one that mattered most.
   (125s), so a chapter 7s from a refund would have read as fine. The eight
   functions are named in A1 and the timing claim is gone with the rewrite.
 
+### Review round 3 (Opus on PR #145)
+
+- **The A1 rewrite repeated the mistake it was written to fix.** Round 2 removed
+  "press Create"; round 2's replacement said "tap Edit, change a word, save",
+  which also reaches no model — the reader's Edit is a notepad, it sends
+  `chapter_body`, and `edit-story/index.ts:111` handles that before any
+  paragraph-edit validation. Pushed on: the per-paragraph rewrite's client
+  functions (`editParagraph`, `editParagraphStreaming`) appear **only as jest
+  mocks**, so `runProviderChain` has no caller in the app by any route. A1 now
+  says there is nothing to tap, gives the smoke command, and asks him to confirm
+  the app is *unchanged*. The scope paragraph above was corrected the same way: it
+  had claimed a "fallback used when streaming is unavailable", and no client path
+  degrades from streaming to buffered.
+- **`isLastModel: false` on the fast path reserved twice.** That phase already
+  reserves structurally — `fastOpenRouterDeadlines` subtracts
+  `FAST_OPENROUTER_RESERVE_MS` per model behind — so asking the retry bound to
+  reserve again stranded the difference: on the grounding pipeline's 9s budget a
+  refusal at t=2000 left 2500ms that the leader could not spend and the fallback
+  did not get. That is the error `FAST_OPENROUTER_SHARE` is documented against.
+  The fast path now passes `true` for every model, with the reason at the call
+  site. The paid and free predicates were confirmed correct: later phases are
+  bounded from the chain start, not from elapsed time, so the last paid model
+  cannot starve Gemini's or the free tier's slices.
+- **The retry bound is now pinned as arithmetic.** Round 2's integration test
+  proved the guard exists but not the two-case reserve, and widening its timing
+  slack made it stop discriminating that at all. The rule is extracted as
+  `moderationRetryCost(lastAttemptMs, isLastModel)` and tested directly, including
+  the round-2 scenario it exists for: 38s attempts in a 115s window satisfy "one
+  more fits" three times, and the reserve is what stops the third. Reverted to the
+  round-1 bound, that test fails.
+- **Four doc corrections.** `ProviderSkippedNoTimeError`'s docstring had been
+  orphaned above the new error class, so it described the wrong one. The
+  `openRouterPhaseDeadlines` explainer still described only half the bound. The
+  `story-stream.ts` pointer asserted a first-token-latency justification that
+  `OPENROUTER_STREAM_MODELS` had just retracted. And the Gates section claimed
+  `deno fmt --check` clean "on all touched files" — it is clean on the three
+  `.ts` files CI names; `docs/ACCEPTANCE.md` does not pass `deno fmt` and did not
+  before this change.
+- **A1 no longer pins an exact smoke total.** Several checks in that suite are
+  conditional, so a legitimate run can pass a different number; it now says
+  around 43 and to judge on zero failures. The command is also copy-pasteable now
+  (`set -a; . backend/.env; set +a`), which it was not.
+
 Still open, and recorded rather than quietly dropped: nothing drives a *slow*
 successful leader through `runProviderChain`, so an off-by-one wiring the
 deadline array to the wrong model would pass the suite. `llm-deadline.test.ts`
 pins the array itself and `llm.test.ts` covers the 404 fallthrough, which is why
 this is a gap and not a hole, but it is the test that would have caught the
-original bug directly.
+original bug directly. The same pre-`onModerationRetry` ordering also survives in
+`generateGeminiText`; its phase is ~5s and it was out of scope in round 1.
 
 Two test findings, both fixed: "the model that actually writes gets a chapter's
 worth of time" passed against the *old* implementation too, so it discriminated
