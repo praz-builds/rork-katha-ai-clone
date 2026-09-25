@@ -16,7 +16,7 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 ## 1. Writing a story
 
 - [ ] Open Create. The starter ideas are behind a single **View ideas** button, and the list changes with the genre chip.
-- [ ] Every toggle looks the same. The Kids Mode toggle no longer has a green thumb.
+- [ ] Every toggle looks the same. The All-ages toggle no longer has a green thumb.
 - [ ] Write one sentence and press Create.
 - [ ] The crafting screen holds, then **page one appears while the chapter is still being written**. Expect roughly 30 seconds. The counter says "Page 1 of 5 · writing" and grows.
 - [ ] No letter-by-letter typing anywhere. Pages appear whole.

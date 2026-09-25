@@ -20,6 +20,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+import { rememberBlocked } from "@/lib/blocks";
 import { setEntitlementOverride } from "@/lib/entitlements";
 import { ensurePhotoLibraryAccess } from "@/lib/photo-access";
 import { bootstrapUser } from "@/lib/session";
@@ -646,6 +647,11 @@ export async function fetchPublicProfile(
       body: { action: "public", authorId },
     });
     if (error || !data?.profile) return null;
+    // The server knows this viewer blocked the writer even when the local
+    // block list failed to load at boot. Record it, so AuthorScreen shows
+    // "You blocked this writer" with Unblock rather than an empty page with
+    // a live Follow button.
+    if (data.viewerBlocked === true) rememberBlocked(authorId);
     return {
       profile: data.profile as PublicProfile,
       stories: Array.isArray(data.stories)

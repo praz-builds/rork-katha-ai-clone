@@ -54,6 +54,32 @@ First mint a session for the house account (`originals@kathaai.test`). With the 
 - **`generate-audio`, `audio-status`**: narrate one chapter on the house account, then poll `audio-status?job_id=…` until it says ready. Check that `chapter_audio.duration_seconds` is filled in. Look at `error_events` rows with `bucket = 'generation.audio'`.
 - **`revenuecat-webhook`**: check the webhook delivery status in the RevenueCat dashboard (Project settings, Integrations, Webhooks). Any non-2xx or retrying delivery is the signal. Then read the function's logs in the Supabase dashboard (Edge Functions, `revenuecat-webhook`, Logs) for `revenuecat-webhook error`. **Do not look in `error_events`:** this function writes only `console.error`, never `logError`, so a query there always comes back empty even during an outage. Making it call `logError` is a follow-up; until it does and is deployed, this is the only check that works. **`refresh-subscription-grants`**: the latest *subscription grants* run in GitHub Actions, then `credit_ledger` rows with a `subscription:` reference for the current month.
 
+## The report queue
+
+Every report filed from a story's ⋮ sheet, the reader's ⋮ menu or a comment's menu lands in `content_reports`. Since migration 00097 the unresolved ones are one query away. **Owner: not yet named.** The founder must name one person who works this queue before the Play closed test opens; Play's User Generated Content policy expects reports to be acted on, not only received. Suggested cadence: daily during the closed test, and a report older than 48 hours is itself an incident.
+
+Run in the Supabase SQL editor (or with the service role; nobody else can read it):
+
+```sql
+select report_id, reported_at, status, target_type, reason, details,
+       reported_username, reported_user_id, open_reports_on_target,
+       story_title, story_id, story_is_public, story_is_curated,
+       comment_excerpt, comment_id, comment_deleted_at, reporter_username
+from public.content_reports_open
+order by reported_at desc;
+```
+
+It lists `pending` and `reviewed` reports newest first, with the story's title, the comment's text, who wrote the thing reported (`reported_user_id`) and how many open reports share that target. Resolve one with:
+
+```sql
+update public.content_reports
+   set status = 'actioned',          -- or 'dismissed', or 'reviewed' while it is being looked at
+       reviewed_at = now()
+ where id = '<report_id>';
+```
+
+Acting on a report is a separate step: unpublish a story (`update stories set is_public = false where id = …`) or soft-delete a comment (`update comments set deleted_at = now() where id = …`), then mark the report `actioned`. Everything reported against the same target should be closed together.
+
 ## Deploy check
 
 Merged is not deployed; see AGENTS.md *Production state*. For any function on this list, `GET /v1/projects/iafeuxgoiknncgyjmugd/functions/<slug>/body` from the Management API and look for a symbol the change added. For example, `shape-story` after this change should contain `story_shape_rate_limited`.

@@ -7,6 +7,67 @@
 
 ---
 
+## 2026-09-25 UTC — Block from a comment, blocks honoured everywhere, "Kids" becomes "All-ages", and a report queue
+
+**Session:** Lane B of the Play launch push (`codex/play-ugc-safety`). Three P0 rows
+from ROADMAP § *Play Store go-live*.
+
+### Block
+
+- The audit said no client surface wrote `user_blocks`. That was stale: the story
+  and reader ⋮ sheets already had Block author. What was missing was Block on a
+  **comment**, any undo (the confirm promised "undo from your settings", a screen
+  that did not exist), and blocks honoured by the lists a session had already
+  loaded.
+- `CommentRow`'s ⋮ menu now offers "Block <name>" (not on your own comment),
+  confirmed in-sheet by `components/moderation/BlockConfirm.tsx`, which the story
+  sheet now shares. Guests are sent to sign in, as Report does.
+- `expo/src/lib/blocks.ts`: an app-wide block set, loaded after boot, cleared on
+  sign-out and re-read on sign-in. Home, Explore, an author's page, the Starred
+  shelf and open comment threads filter through it, so a block takes effect in
+  the session it was made. Undo: Profile › Blocked accounts
+  (`BlockedAccountsSheet`), or Unblock on the blocked writer's page.
+- Server: `library`'s public browse now excludes the caller's blocked authors
+  (fails closed on a failed block read), and `profile`'s `public` action returns
+  `stories: []` and `viewerBlocked: true` for an author the viewer blocked.
+  `comments`, `feed` and Explore's search already honoured blocks.
+
+### All-ages
+
+- The Create switch reads **All-ages** (visible label and accessibility name).
+  `genres.kids` is All-ages / Todas las edades / Todas as idades. The
+  `parentalControls` and `parentalControlsDesc` keys ("Kids mode and PIN gate")
+  are deleted in all three locales; nothing read them. Internal `kids` values are
+  unchanged. `STORY_GENERATION_FLOW.md` §3, AGENTS.md, docs/ACCEPTANCE.md and a
+  superseded note in `strategic-decisions.md` §10 follow.
+
+### Report queue
+
+- Migration **00097** `content_reports_open`: unresolved reports newest first, with
+  context. `security_invoker`, `service_role` only; also the first `service_role`
+  SELECT on `content_reports` (00043 never granted it). Query and resolve steps
+  are in `backend/MONITORING.md`. **The owner is not named**; that is the founder's
+  call.
+
+### Tests
+
+- New: `comment-block.test.tsx` (7), `audience-copy.test.ts` (3), two in
+  `profile-screens.test.tsx`, a store assertion in `reader-report.test.tsx`;
+  4 in `library/index.test.ts`, 4 in `_shared/profile.test.ts`, 2 in
+  `00097_content_reports_open_test.ts`. Each was run against the unfixed code and
+  failed: the comment menu (3 of 7 fail), the library filter (2), the profile
+  branch (1), the 00097 grant (2 of 2 fail with `permission denied`), the copy
+  scan (3 of 3).
+- `pnpm typecheck` clean, `pnpm lint` 0 errors, jest 135 suites / 1458 tests (two
+  suites time out under a cold parallel run and pass alone), 1069 edge-function
+  tests pass.
+
+### Deploy (not done in this session)
+
+1. `supabase db push`: `00097_content_reports_open`.
+2. `supabase functions deploy library profile`.
+3. Read the bundles back: `library` contains `user_blocks`, `profile` contains
+   `viewerBlocked`.
 ## 2026-09-25 UTC — The Play Store pack: listing, graphics, Data Safety and content rating, drafted
 
 **Session:** Lane F of the go-live push. Nothing was submitted to Google and nothing was deployed.
