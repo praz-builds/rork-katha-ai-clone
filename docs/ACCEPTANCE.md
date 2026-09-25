@@ -15,9 +15,9 @@ Guest credits are capped at 3 per network per day. If you see 0 credits, run `./
 
 # Round: the Play launch push (#138-#143, plus the generation fix)
 
-Six lanes merged on 2026-09-25 and are deployed. A1 is a seventh change, is
-**only checkable once it is deployed**, and is not an in-app check at all — read
-its first paragraph before looking for a button.
+Six lanes merged on 2026-09-25 and are deployed, and so is A1's seventh change.
+A1 is not an in-app check at all — read its first paragraph before looking for a
+button.
 
 Most of this round is Android and Play Console work, so it splits into what you
 can eyeball on http://localhost:8090 and what genuinely needs a device or the
@@ -39,10 +39,12 @@ because that suite is sequential, the 16 checks after it had not run for a while
 That is the gate this repo trusts before calling main deployable, so it is worth
 fixing — but no story a reader asked for ever failed because of it.
 
-> **Needs the deploy first.** Not live until these eight functions are deployed:
-> `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
-> `reimagine-chapter`, `shape-story`, `generate-character-image` and
-> `regenerate-cover`. Migration `00099` goes first.
+> **Deployed 2026-09-25.** Migration `00099` and all eight functions
+> (`generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+> `reimagine-chapter`, `shape-story`, `generate-character-image`,
+> `regenerate-cover`) are live, the drift audit is 89/89 byte-identical to main,
+> and the smoke below has already been run: **43 passed, 0 failed.** Re-run it
+> yourself if you want to see it.
 
 - [ ] The check, and the only one that exercises this, from the repo root:
 
@@ -128,12 +130,16 @@ fixing — but no story a reader asked for ever failed because of it.
       waiting on you.
 - [ ] **Decision you own:** `store/android/data-safety.md` item **D1**. Story
       ideas and generated prose currently go to OpenRouter's training tier,
-      which is why Data Safety answers "shared with third parties". It is ~17x
-      cheaper than the alternative. Turning training off at
-      <https://openrouter.ai/settings/privacy> lets that answer become "not
-      shared" and needs **no deploy** — the generation chain is correct either
-      way as of this round. Your call, and it is a cost decision as much as a
+      which is why Data Safety answers "shared with third parties". That tier is
+      ~17x cheaper than the alternative, so this is a cost decision as much as a
       privacy one.
+      Two actions plus the form answer, not one switch: turning training off at
+      <https://openrouter.ai/settings/privacy> needs **no deploy** — the
+      generation chain is correct either way as of this round. But answering Play
+      "not shared" also needs the contributor id and the free-tier ids dropped
+      from the chains, which is a code change; those free models typically log
+      prompts, and the privacy setting does not close that. Tell us which you want
+      and we do the second part.
 - [ ] **device:** version 1.0.0, no Firebase, background audio and the blocked
       permissions are in the release config; a release AAB compiled locally.
       Installing it on a phone is the check that is left.
