@@ -13,7 +13,6 @@ import {
 import { X } from "lucide-react-native";
 import { Button } from "@/components/Button";
 import {
-  HOME_PLACE_MAX,
   homePlaceProblem,
   MAX_SPOKEN_LANGUAGES,
   type ReaderPreferences,
@@ -221,8 +220,7 @@ export default function ReaderContextSheet({
                 placeholder="e.g. Pune, Lagos or São Paulo"
                 placeholderTextColor={colors.tertiary}
                 accessibilityLabel="Your city"
-                maxLength={HOME_PLACE_MAX}
-                autoCapitalize="words"
+                    autoCapitalize="words"
                 autoCorrect={false}
                 textContentType="addressCity"
                 autoComplete="off"

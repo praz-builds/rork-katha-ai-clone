@@ -193,8 +193,11 @@ export default function ProfileScreen({
     // a first read.
     if (!cachedReaderPreferences()) setReaderPrefsStatus("loading");
     void fetchReaderPreferences({ maxAgeMs }).then((prefs) => {
-      if (!aliveRef.current || readerPrefsChosenByUserRef.current) return;
-      if (prefs) setReaderPrefs(prefs);
+      if (!aliveRef.current) return;
+      // The ref guards the VALUE only: a read that lands after a save must
+      // not undo it, but the status always settles, so a later caller (Try
+      // again, a refresh) can never leave the row on "Loading…".
+      if (prefs && !readerPrefsChosenByUserRef.current) setReaderPrefs(prefs);
       // A failed refresh behind a held value leaves the held value editable:
       // it IS what was saved this session.
       setReaderPrefsStatus(

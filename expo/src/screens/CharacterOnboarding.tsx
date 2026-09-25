@@ -453,10 +453,15 @@ export default function CharacterOnboarding(
   }, [haptic]);
 
   /**
-   * The sheet the current portrait was drawn from. W6 shows this name beside
-   * that face and `finish` hands it on with the saved row, so an edit made on
-   * a verified W4 and then abandoned with Back must not survive into W6: the
-   * name would sit beside a portrait (and a library row) drawn for the old one.
+   * The sheet the current portrait request was fired for -- set when the draw
+   * starts, in step with `portraitKey`, not when it lands. `redraw` clears the
+   * old face at the same moment, so W6 shows either this sheet's portrait or
+   * its failure card with Try again, never another sheet's face.
+   *
+   * W6 shows this name beside that face and `finish` hands it on with the
+   * saved row, so an edit made on a verified W4 and then abandoned -- by Back,
+   * or by the CTA at the reimagine cap -- must not survive: the name would sit
+   * beside a portrait (and a library row) drawn for the old one.
    */
   const drawnSheet = useRef<{ name: string; appearance: string } | null>(null);
   /** Put the drawn sheet back: every exit from W4 that is not a submit. */

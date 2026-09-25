@@ -106,8 +106,13 @@ alongside these:
   the session (`READER_PREFERENCES_FRESH_MS`, 5 min, never AsyncStorage),
   drawn at once on return, replaced on save, and dropped by `clearOwnProfile`
   and on an account switch.
-- Left as is: the over-length branch in `normalizeHomePlace` is unreachable
-  from the sheet (`maxLength`), but it is the server-mirroring rule.
+- **Fixed (second standing review, of `8d235e3`).** The city field's
+  `maxLength` silently cut a long paste and made the length message
+  unreachable; it is removed, so the message explains and Save stays off.
+  `readerPrefsChosenByUserRef` now guards only the value, so a later read
+  always settles the status and the row can never stick on "Loading…".
+  `drawnSheet`'s comment now says what it holds: the sheet the current
+  request was fired for, in step with `portraitKey`.
 
 Found before the review:
 
@@ -129,7 +134,7 @@ Found before the review:
 `index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
 passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
 `pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
-files), `jest --ci` 1615 passed across 153 suites (after both review rounds), `expo-doctor` 18/18, web
+files), `jest --ci` 1617 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.

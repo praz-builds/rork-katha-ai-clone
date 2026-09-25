@@ -94,3 +94,26 @@ it("a save that lands after a close-and-reopen does not close the new opening", 
   expect(props.onSaved).toHaveBeenCalledWith({ spokenLanguages: ["hi", "en"], homePlace: "Pune" });
   expect(props.onClose).not.toHaveBeenCalled();
 });
+
+it("a pasted city that is too long is explained, not silently cut", async () => {
+  const view = await render(
+    <ReaderContextSheet
+      visible
+      value={SAVED}
+      status="ready"
+      onRetry={jest.fn()}
+      onSaved={jest.fn()}
+      onClose={jest.fn()}
+    />,
+  );
+  const long = "Thiruvananthapuram Kazhakkoottam Technopark Phase Three Campus";
+  await act(async () => {
+    fireEvent.changeText(view.getByTestId("reader-context-place"), long);
+  });
+  expect(view.getByTestId("reader-context-place").props.value).toBe(long);
+  view.getByTestId("reader-context-place-error");
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  expect(mockInvoke).not.toHaveBeenCalled();
+});
