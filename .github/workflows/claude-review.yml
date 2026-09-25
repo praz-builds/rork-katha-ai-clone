@@ -1,0 +1,125 @@
+name: Claude Review
+
+# Automatic review of every PR, in the seat CodeAnt and CodeRabbit used to
+# fill: a full pass when a PR opens, and an incremental pass on each push.
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    # A PR that touches nothing but these is not worth spending credit on.
+    # If every changed file matches, no run starts at all.
+    paths-ignore:
+      - "**/pnpm-lock.yaml"
+      - "expo/assets/**"
+      - ".agents/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.webp"
+      - "**/*.mp3"
+      - "**/*.wav"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+concurrency:
+  # One review per PR. A new push cancels the review of the commit it replaced,
+  # so a rapid series of pushes costs one review, not one per push.
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review the diff
+    runs-on: ubuntu-latest
+    # Fork PRs receive no secrets, so the job would fail rather than review.
+    # Drafts and bot PRs are skipped deliberately.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false &&
+      !endsWith(github.event.pull_request.user.login, '[bot]')
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: anthropics/claude-code-action@d9fa72aedd427e79c6dcec0388f2656619eb3c6a # v1
+        with:
+          # Console API credit, not a subscription token: spend draws down the
+          # prepaid balance and stops when it is exhausted.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
+          track_progress: true
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 40
+          prompt: |
+            You are the standing reviewer for this repository, in the role
+            CodeAnt and CodeRabbit used to fill. Review pull request
+            #${{ github.event.pull_request.number }}.
+
+            Read AGENTS.md first — it is the canonical repository contract, and
+            it points at the workspace guides (expo/CLAUDE.md, backend/*) and at
+            the skill routing table. A change that violates the contract is a
+            finding even when the code itself is correct.
+
+            On a `synchronize` event, review only the commits pushed since your
+            last review comment on this PR; do not repeat findings you have
+            already posted.
+
+            Ground every finding in the diff:
+
+            - Correctness first. Name the concrete input or state that produces
+              the wrong output, and say what the wrong output is. If you cannot
+              name one, it is not a correctness finding.
+            - Contract and convention: design tokens over hardcoded values,
+              the barrel imports in expo/src/theme, i18n keys rather than
+              literal strings, and the Supabase RPC/edge-function patterns the
+              backend already uses.
+            - Deploy completeness: an edge function that changed a file under
+              `backend/supabase/functions/_shared/` requires every importer of
+              that file to be redeployed. Flag a PR that changes `_shared/`
+              without saying so.
+            - Removals must leave zero trace — no orphaned translation keys,
+              dead imports, unused assets, stale tests, or documentation that
+              still describes the removed behavior.
+            - Tests: a behavior change with no test change is worth one line,
+              not a lecture.
+
+            What to weigh, by area:
+
+            - `expo/**` is an Expo SDK 54 React Native app targeting iOS,
+              Android and web. Prioritize behavioral regressions, navigation
+              and state correctness, accessibility, 390x844 layout, animation
+              cleanup, performance, and consistency with expo/DESIGN.md. Flag
+              native-only or web-only assumptions.
+            - `backend/**` is Supabase migrations and Edge Functions; review
+              security-first. Prioritize auth and authorization, RLS coverage,
+              service-role exposure, input validation, atomic credit
+              accounting, webhook verification and idempotency, retries,
+              secret handling, and backward-compatible schema changes. Require
+              explicit failure handling for external AI, storage, billing and
+              notification integrations.
+            - `ios-katha-ai-create-stories/**`: Swift and SwiftUI lifecycle
+              correctness, accessibility, state ownership, concurrency safety,
+              memory management.
+            - `android-katha-ai/**`: Kotlin and Compose lifecycle correctness,
+              accessibility, state ownership, coroutine safety, recomposition.
+            - `**/*.md`: check the documentation matches shipped behavior,
+              current commands, and the real monorepo structure. Flag stale
+              references to removed files or to separate Katha repositories.
+
+            Post each finding as an inline comment on the line it concerns.
+            Then post one summary comment: a two-sentence description of what
+            the PR does in user-flow terms (what a reader or writer of a story
+            experiences differently, not the architecture), followed by the
+            findings ranked most severe first, and a plain verdict — approve,
+            or the specific things to fix before merge.
+
+            Do not praise the PR, do not restate the diff back, and do not
+            raise style preferences the repository has not committed to. If the
+            PR is clean, say so in one line and stop.

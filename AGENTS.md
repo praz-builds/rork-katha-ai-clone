@@ -1354,14 +1354,18 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Never commit or push directly to `main`.
 - Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
 - Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
-- After every code-changing push, wait for **CodeAnt**'s incremental review (`@codeant-ai`).
-- Merge only when CodeAnt's latest review completed successfully and raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
+- After every code-changing push, wait for **Claude Review**'s incremental review (the `Review the diff` check).
+- Merge only when Claude Review's latest review completed successfully and raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
 - A green commit status alone is not approval. Read the latest review body.
-- **CodeAnt skips a pull request that changes more than 100 files** and says so in a comment. A generated asset drop can trip that on a small code change -- PR #99 did, on 36 avatar files. Ask for the review explicitly with a `@codeant-ai : review` comment, and say in it which paths are worth looking at.
+- **A pull request whose every file is an ignored path gets no review at all** -- lockfiles, `expo/assets/**`, `.agents/**`, and image and audio files are filtered out of the trigger to save credit. A generated asset drop therefore lands unreviewed. When such a PR also carries code worth looking at, ask for the review explicitly with an `@claude` comment naming the paths.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
 - Exceptions require explicit user authorization and documentation in the pull request.
 
-CodeAnt reviews `main` pull requests, including drafts and incremental pushes. **`.coderabbit.yaml` is still tracked and is a leftover**: CodeRabbit is no longer the reviewer that runs on this repository, and the file configures nothing today. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.
+**Claude is the reviewer on this repository**, through `.github/workflows/claude-review.yml`: a full pass when a pull request opens or leaves draft, and an incremental pass on each push. It reads this file first and reviews against the contract, not only the diff. It posts inline findings and one sticky summary comment. Fork pull requests are skipped -- they receive no secrets -- as are drafts, bot authors, and pull requests whose every file is an ignored path. `@claude` in any issue, pull request, or review comment reaches `.github/workflows/claude-mention.yml`, which answers the question or pushes the fix; only users with write access can invoke it.
+
+Both workflows authenticate with the `ANTHROPIC_API_KEY` repository secret and spend prepaid Anthropic Console credit, so review stops when that balance runs out rather than billing onward. Two things keep the burn down: a `paths-ignore` filter means an asset-only or lockfile-only pull request starts no run, and `cancel-in-progress` means a rapid series of pushes costs one review rather than one per push. The Claude GitHub App must stay installed on the repository -- without it the action fails at the token exchange. The action also refuses to run when a pull request's copy of a workflow file differs from the copy on `main`, which is a prompt-injection guard: a change to the reviewer's own instructions cannot be reviewed by the changed version, so such a pull request shows the review as skipped and must be judged by hand.
+
+Neither CodeAnt nor CodeRabbit reviews this repository any more, and `.coderabbit.yaml` has been deleted -- its per-area review instructions were folded into the review prompt in `.github/workflows/claude-review.yml`, which is where they are now maintained. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable on this repository's current plan, so this documented merge gate remains mandatory.
 
 ## Reference Material
 

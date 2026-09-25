@@ -4,7 +4,7 @@ Paste everything below the line into a new Claude Code session opened at the rep
 
 ---
 
-You are working on Katha AI (repo root: this checkout). Read `AGENTS.md` first and follow it: branch `codex/<slug>` from `origin/main`, PR, CodeAnt review, resolve every thread, merge only when green. Match the codebase's style: long comments that explain WHY.
+You are working on Katha AI (repo root: this checkout). Read `AGENTS.md` first and follow it: branch `codex/<slug>` from `origin/main`, PR, Claude review, resolve every thread, merge only when green. Match the codebase's style: long comments that explain WHY.
 
 ## The job
 Make multi-chapter stories written by the production pipeline **coherent from the first chapter to the last**, so a reader never meets a fact that changed, a scene that replays, a clock that runs backwards, or an ending that contradicts the setup. This is the biggest quality problem in the product today, and it hits every user who writes a series.
