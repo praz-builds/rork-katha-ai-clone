@@ -7,6 +7,54 @@
 
 ---
 
+## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
+
+**Session:** wiring an automatic reviewer onto every pull request, in the seat
+CodeAnt and CodeRabbit used to fill. Branches `codex/claude-pr-reviewer` (#146,
+merged) and `codex/mention-checkout-pr-head` (#148).
+
+### What shipped
+
+- `.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml`.
+  The Claude GitHub App is installed and scoped to this repository only; without
+  it the action fails at the OIDC token exchange.
+- `.coderabbit.yaml` deleted. Its per-area review instructions were not lost --
+  the expo, backend, iOS, Android and Markdown guidance moved into the review
+  prompt, which is the file that actually runs.
+- CodeAnt and CodeRabbit removed from every file that instructs someone: the
+  merge gate in `AGENTS.md`, the pull request template, `README.md`, and
+  `backend/originals/NEXT_SESSION_PROMPT.md`. Build logs and two test comments
+  still name CodeAnt; those are records of what happened, not instructions.
+
+### The reviewer actually runs in the cloud, not in Actions
+
+The two workflows are now a **fallback**, gated behind the repository variable
+`CLAUDE_ACTION_ENABLED`. The active reviewer is a cloud routine,
+`trig_01YEy4UFeLZxFSPvaN1p8jhm` ("Katha PR review"), which spends cloud session
+credit rather than platform API credit. Three things learned the hard way:
+
+- **The cloud environment has no `gh` CLI.** A prompt that says "run `gh pr
+  list`" survives only because the agent improvises with the GitHub MCP tools.
+  Say MCP explicitly.
+- **The action refuses to run when a pull request's copy of a workflow file
+  differs from `main`.** That is its prompt-injection guard, and it means the
+  `Review the diff` check reports *pass* without reviewing anything on any PR
+  that edits these workflows. Do not read that check as approval there.
+- **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
+  on the pull request.** Hence the variable gate.
+
+### The mention workflow had a real bug, caught by the new reviewer
+
+`actions/checkout` with no `ref` lands on the default branch, so `@claude fix
+this` on a pull request read `main`. Resolving the head branch fixes the open
+same-repo case, but resolving it unconditionally breaks two others: a merged
+PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
+from a fork is a bare branch name that resolves against *this* repository. The
+shipped guard resolves a ref only when the pull request is open and its head
+repository is this one, and falls back to the default branch otherwise.
+
+---
+
 ## 2026-09-25 UTC — Deployed: 00099 and eight functions, 89/89 byte-identical, and the smoke back to 43/43
 
 **Session:** the deploy #145 said to do, with the drift audit and the production

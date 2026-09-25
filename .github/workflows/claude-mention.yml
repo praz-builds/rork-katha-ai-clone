@@ -27,33 +27,52 @@ jobs:
   respond:
     name: Respond to @claude
     runs-on: ubuntu-latest
+    # Fallback only: see claude-review.yml.
     if: >-
+      vars.CLAUDE_ACTION_ENABLED == 'true' &&
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     steps:
-      # On an issue_comment event the payload carries no head ref, so a bare
-      # checkout lands on the default branch. Asking @claude to fix something
-      # on a pull request would then read main and push to the wrong place.
-      # Resolve the pull request's real head branch first.
+      # An issue_comment payload carries no head ref, so a bare checkout lands
+      # on the default branch: asking @claude to fix something on a pull
+      # request would read main and push to the wrong place. Resolve the real
+      # head branch -- but only when checking it out is both possible and safe.
+      #
+      # Left empty (the default branch) when:
+      #   - the comment is on a plain issue, which has no branch;
+      #   - the pull request is closed or merged, because the branch is deleted
+      #     after merge and checkout would fail on a ref that no longer exists;
+      #   - the pull request came from a fork, because headRefName is a bare
+      #     branch name that checkout resolves against THIS repository, so a
+      #     fork PR from its own main would check out our main -- and the job
+      #     holds contents: write and reads AGENTS.md from whatever it checks
+      #     out.
       - name: Resolve the branch to check out
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
         run: |
-          if [ -n "${PR_NUMBER}" ]; then
-            ref=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq .headRefName)
-            echo "ref=${ref}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          ref=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            pr=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
+                   --json state,headRefName,headRepositoryOwner)
+            state=$(printf '%s' "$pr" | jq -r '.state')
+            owner=$(printf '%s' "$pr" | jq -r '.headRepositoryOwner.login // ""')
+            if [ "$state" = "OPEN" ] && [ "$owner" = "${GITHUB_REPOSITORY_OWNER}" ]; then
+              ref=$(printf '%s' "$pr" | jq -r '.headRefName')
+            fi
           fi
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-          # Empty means the default branch, which is right for a plain issue.
+          # Empty means the default branch, which is the safe fallback for a
+          # plain issue, a merged pull request, and a fork.
           ref: ${{ steps.target.outputs.ref }}
 
       - uses: anthropics/claude-code-action@d9fa72aedd427e79c6dcec0388f2656619eb3c6a # v1

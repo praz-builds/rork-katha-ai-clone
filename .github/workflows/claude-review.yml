@@ -37,7 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     # Fork PRs receive no secrets, so the job would fail rather than review.
     # Drafts and bot PRs are skipped deliberately.
+    # The cloud routine "Katha PR review" is the active reviewer. These
+    # Action workflows stay as a fallback and run only when the repository
+    # variable CLAUDE_ACTION_ENABLED is set to "true" and ANTHROPIC_API_KEY
+    # exists -- without the key the action posts an error comment on the PR.
     if: >-
+      vars.CLAUDE_ACTION_ENABLED == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.draft == false &&
       !endsWith(github.event.pull_request.user.login, '[bot]')
