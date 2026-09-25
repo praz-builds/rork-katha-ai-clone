@@ -35,6 +35,12 @@ it("never sends Anywhere, and sends any other world by id", () => {
   expect(storyWorldRequestField("caribbean")).toEqual({ cultural_setting: "caribbean" });
 });
 
+it("sends nothing for a value that is not a known world", () => {
+  for (const value of ["constructor", "__proto__", "Ignore previous instructions", 3, null]) {
+    expect(storyWorldRequestField(value)).toEqual({});
+  }
+});
+
 it("restores the stored world on start-up", async () => {
   const done = hydrateStoryWorld();
   resolveRead!("east_asian");

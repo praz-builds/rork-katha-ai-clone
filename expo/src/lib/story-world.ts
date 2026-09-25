@@ -99,9 +99,12 @@ export async function setStoryWorld(next: StoryWorld): Promise<void> {
  * request with no preference is byte-identical to one from before it existed.
  */
 export function storyWorldRequestField(
-  world: StoryWorld = current,
+  world: unknown = current,
 ): { cultural_setting: Exclude<StoryWorld, "global"> } | Record<string, never> {
-  return world === "global" ? {} : { cultural_setting: world };
+  // Validated here as well as on the server: this helper promises "a known id
+  // or nothing", whatever a caller hands it.
+  if (!isStoryWorld(world) || world === "global") return {};
+  return { cultural_setting: world };
 }
 
 function subscribe(listener: () => void) {
