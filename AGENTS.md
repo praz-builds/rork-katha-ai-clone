@@ -1331,6 +1331,8 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
 - Exceptions require explicit user authorization and documentation in the pull request.
 
+**Claude reviews every pull request as well**, through `.github/workflows/claude-review.yml`: a full pass when a PR opens or leaves draft, and an incremental pass on each push. It reads this file first and reviews against the contract, not only the diff. It posts inline findings and one sticky summary comment. Fork pull requests are skipped -- they receive no secrets -- as are drafts and bot authors. `@claude` in any issue, pull request, or review comment reaches `.github/workflows/claude-mention.yml`, which answers the question or pushes the fix; only users with write access can invoke it. Both workflows need the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, produced by `claude setup-token`.
+
 CodeAnt reviews `main` pull requests, including drafts and incremental pushes. **`.coderabbit.yaml` is still tracked and is a leftover**: CodeRabbit is no longer the reviewer that runs on this repository, and the file configures nothing today. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable for this private repository on its current plan, so this documented merge gate remains mandatory.
 
 ## Reference Material
