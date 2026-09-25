@@ -39,10 +39,12 @@ because that suite is sequential, the 16 checks after it had not run for a while
 That is the gate this repo trusts before calling main deployable, so it is worth
 fixing — but no story a reader asked for ever failed because of it.
 
-> **Needs the deploy first.** Not live until these eight functions are deployed:
-> `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
-> `reimagine-chapter`, `shape-story`, `generate-character-image` and
-> `regenerate-cover`. Migration `00099` goes first.
+> **Deployed 2026-09-25.** Migration `00099` and all eight functions
+> (`generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+> `reimagine-chapter`, `shape-story`, `generate-character-image`,
+> `regenerate-cover`) are live, the drift audit is 89/89 byte-identical to main,
+> and the smoke below has already been run: **43 passed, 0 failed.** Re-run it
+> yourself if you want to see it.
 
 - [ ] The check, and the only one that exercises this, from the repo root:
 

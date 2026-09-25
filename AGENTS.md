@@ -39,30 +39,28 @@ When available, use the local Expo skills in `.agents/skills` for Expo, React Na
 
 ## Production state (2026-09-25)
 
-**Production was current with main, file for file, as of 2026-09-25 05:55 UTC,
-and is behind it again.** Two merges landed after that audit and neither has
-shipped: `_shared/llm.ts` (the generation chain) and #144's
-`_shared/story-prompts.ts`, `story-shape.ts`, `types.ts`, `validation.ts` plus
-migration `00099_feature_votes`. Until then production runs the previous chain
-and does not have the feature-votes table.
+**Production is current with main, file for file.** Verified after the 2026-09-25
+evening deploy rather than assumed: migration `00099_feature_votes` applied (the
+ledger matches main exactly, `00001`-`00099`, nothing pending), the eight
+functions carrying #144 and #145 deployed, then every live bundle downloaded and
+every `.ts` file in it compared byte for byte with main — **89 of 89 identical,
+zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
+**zero importers**: dead code, not drift.
 
-The deploy set is every function whose dependency graph reaches one of those
-files, which is **eight**, not the three or six either PR touched by folder:
+The deploy set was eight, not the three or six either PR touched by folder:
 `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 `reimagine-chapter`, `shape-story`, `generate-character-image` and
-`regenerate-cover` — the last two only through `types.ts`, which is exactly the
-kind of reach that left 16 functions behind main on 2026-09-24. Migration
-`00099` goes first.
+`regenerate-cover`. The last two reach the change only through `_shared/types.ts`
+— exactly the kind of reach that left 16 functions behind main on 2026-09-24.
 
-The audit behind that claim, re-run on 2026-09-25 rather than assumed: the
-migration ledger matches main exactly through `00098` (no local-only, no
-remote-only), and every live function bundle was downloaded and every `.ts` file
-in it compared byte for byte with main. **89 of 89 files identical.** The only
-repo file in no bundle is `_shared/prompts.ts`, which has zero importers - dead
-code, not drift. The first such audit, on 2026-09-24, covered 33 functions and
-found all 33 identical. The four phrase functions (`save-phrase`,
-`unsave-phrase`, `phrases`, `record-practice`) were deleted from the project
-after #135.
+`backend/scripts/smoke-app-surface.py` then passed **43/43 against production**,
+including step 2.1, which had been failing since the probe-deadline bug. Step 5.3
+reports the model that served the edit: `meta/muse-spark-1.3-contributor`, which
+is the fix working as designed — the cheaper tier writing instead of being
+aborted at 8s. The earlier audits, for the record: 33 of 33 identical on
+2026-09-24, and 89 of 89 on 2026-09-25 before this deploy. The four phrase
+functions (`save-phrase`, `unsave-phrase`, `phrases`, `record-practice`) were
+deleted from the project after #135.
 
 That audit is also the lesson from the same night. Checking only the functions a
 PR's own folder touched had left **16 functions behind main**, some since #107 on

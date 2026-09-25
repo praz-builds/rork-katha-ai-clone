@@ -7,6 +7,62 @@
 
 ---
 
+## 2026-09-25 UTC — Deployed: 00099 and eight functions, 89/89 byte-identical, and the smoke back to 43/43
+
+**Session:** the deploy #145 said to do, with the drift audit and the production
+smoke that close it out. Branch `codex/deploy-record-0925`.
+
+### What shipped
+
+- Migration `00099_feature_votes` (from #144). `supabase migration list --linked`
+  now shows local and remote aligned `00001`-`00099` with nothing pending.
+- Eight functions, in one pass, carrying both #144 and #145:
+  `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
+  `reimagine-chapter`, `shape-story`, `generate-character-image`,
+  `regenerate-cover`. The last two reach the change only through
+  `_shared/types.ts` and neither PR touched them by folder, which is why the set
+  was computed with `deno info --json` per function rather than read off the two
+  diffs.
+
+### Verification, not assumption
+
+**Drift audit: 89 of 89 live files byte-identical to main, zero drift.** Every
+live bundle downloaded (`supabase functions download <fn> --workdir <scratch>`,
+outside the repo, because it overwrites the source) and `cmp`-ed file by file.
+`_shared/prompts.ts` is in no bundle because it has zero importers — dead code,
+not drift, and still deliberately left alone.
+
+**`backend/scripts/smoke-app-surface.py`: 43 passed, 0 failed.** Step 2.1
+`generate-story` answers `200` again; it had been `500` with a refunded credit
+since the probe-deadline bug, which is what stopped the 16 checks behind it from
+running at all. Real numbers from this run: `shape-story` 8.7s,
+`bootstrap-user` 200, publish 200 with 1/1 chapters published, the cover
+persisted and publicly readable, and an unknown audio job correctly `404` rather
+than a retryable `502`.
+
+**The fix is visible in the smoke output, which is the part worth keeping.** Step
+5.3 reports the model that produced the rewrite:
+`meta/muse-spark-1.3-contributor`. That is the position which, until #145, was
+handed an 8s probe deadline it could not use and aborted on every request. It is
+now the model doing the work, at ~17x lower token cost — the behaviour #145
+predicted from a 38.7s measurement, observed in production.
+
+### Still the founder's call, unchanged by this deploy
+
+`store/android/data-safety.md` **D1**: the contributor tier trains on what it is
+sent, which is why Play's Data Safety answer is *shared*. Turning training off at
+<https://openrouter.ai/settings/privacy> makes that answer *not shared* and needs
+**no deploy** — #145's chain is correct either way, and `meta/muse-spark-1.3`
+inherits the window in ~48.1s at ~17x the token cost. Cost and privacy, and both
+are decisions rather than bugs.
+
+### Gates
+
+No code changed in this entry. `docs/ACCEPTANCE.md` A1 is now runnable and
+passing as written.
+
+---
+
 ## 2026-09-25 UTC — The buffered generation chain was failing on a probe deadline, and the launch deploy is now on the record
 
 **Session:** picking the Play launch push back up after the 2026-09-25 usage
