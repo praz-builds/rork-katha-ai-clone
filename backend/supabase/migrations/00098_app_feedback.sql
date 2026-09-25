@@ -1,4 +1,4 @@
--- 00097: in-app feedback, the "Send feedback" sheet on Profile.
+-- 00098: in-app feedback, the "Send feedback" sheet on Profile.
 --
 -- The `feedback` edge function is NOT this. Despite its name it posts a
 -- COMMENT on a story (00005's `create_feedback`), and it needs a story id.
@@ -66,7 +66,7 @@ create table if not exists public.app_feedback (
 );
 
 comment on table public.app_feedback is
-    'Feedback about the app itself, from the Profile "Send feedback" sheet (00097). Not story comments -- those are `comments`, posted through the misleadingly named `feedback` function. Written only by `submit_app_feedback` as service role; no client role can read or write it. Rows are deleted when the account is (trigger on profiles.deleted_at).';
+    'Feedback about the app itself, from the Profile "Send feedback" sheet (00098). Not story comments -- those are `comments`, posted through the misleadingly named `feedback` function. Written only by `submit_app_feedback` as service role; no client role can read or write it. Rows are deleted when the account is (trigger on profiles.deleted_at).';
 
 create index if not exists idx_app_feedback_user_created
     on public.app_feedback (user_id, created_at desc);

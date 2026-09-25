@@ -11,6 +11,7 @@ import { Ban, Check, Download, Flag } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing, type } from "@/theme";
 import { Button } from "@/components/Button";
+import BlockConfirm, { BLOCK_FAILED_MESSAGE } from "@/components/moderation/BlockConfirm";
 import {
   MAX_STORY_REPORT_DETAILS_LENGTH,
   STORY_REPORT_REASONS,
@@ -96,12 +97,12 @@ export default function StoryActionsSheet({
     try {
       const blocked = await onBlockAuthor();
       if (blocked === false) {
-        setBlockError("That block did not save. Check your connection and try again.");
+        setBlockError(BLOCK_FAILED_MESSAGE);
         return;
       }
       setView("blockDone");
     } catch {
-      setBlockError("That block did not save. Check your connection and try again.");
+      setBlockError(BLOCK_FAILED_MESSAGE);
     } finally {
       setBlockBusy(false);
     }
@@ -283,41 +284,20 @@ export default function StoryActionsSheet({
           ) : null}
 
           {view === "blockConfirm" ? (
-            <>
-              <Text style={styles.title}>Block {authorName}?</Text>
-              <Text style={styles.subtitle}>
-                You won&apos;t see stories by {authorName} anymore. You can undo this later
-                from your settings.
-              </Text>
-              <Pressable
-                onPress={handleConfirmBlock}
-                disabled={blockBusy}
-                style={styles.destructiveButton}
-                accessibilityRole="button"
-                accessibilityLabel={`Confirm block ${authorName}`}
-                accessibilityState={{ disabled: blockBusy }}
-              >
-                <Text style={styles.destructiveButtonLabel}>
-                  {blockBusy ? "Blocking..." : "Block author"}
-                </Text>
-              </Pressable>
-              {blockError ? <Text style={styles.error}>{blockError}</Text> : null}
-              <Pressable
-                onPress={() => setView("menu")}
-                style={styles.cancelButton}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.cancelLabel}>Cancel</Text>
-              </Pressable>
-            </>
+            <BlockConfirm
+              name={authorName}
+              busy={blockBusy}
+              error={blockError}
+              onConfirm={handleConfirmBlock}
+              onCancel={() => setView("menu")}
+            />
           ) : null}
 
           {view === "blockDone" ? (
             <>
               <Text style={styles.title}>Author blocked</Text>
               <Text style={styles.subtitle}>
-                You won&apos;t see stories by {authorName} anymore.
+                You won&apos;t see {authorName}&apos;s stories or comments anymore.
               </Text>
               <Button label="Done" onPress={handleClose} style={styles.primaryButton} />
             </>
@@ -452,19 +432,6 @@ const styles = StyleSheet.create({
   footerHalf: { flex: 1 },
   /** Layout only; the recipe is `Button`'s. */
   primaryButton: { marginTop: spacing.related },
-  destructiveButton: {
-    marginTop: spacing.related,
-    minHeight: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.premium,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  destructiveButtonLabel: {
-    ...type.body,
-    fontWeight: "700",
-    color: colors.surface,
-  },
   error: {
     ...type.caption,
     color: colors.accentPressed,

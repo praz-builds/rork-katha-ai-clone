@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  Google Play feature graphic, 1024 x 500.
+
+  Rendered by render.mjs; do not edit the PNGs by hand. Everything it draws is
+  local and committed: the fonts are the app's own bundled files and the covers
+  are the app's own bundled Katha Originals art, so the render is deterministic
+  and needs no network and no image API.
+
+  ?lang=en (default) | pt | es picks the copy. Play shows one feature graphic
+  per listing language, so each locale gets its own PNG.
+
+  Brand values are copied from expo/src/theme/theme.ts (colors.accent #FF6B1A,
+  colors.ink #0F0E0C, colors.bg #F3F2EF) and expo/src/components/BrandWordmark.tsx
+  (orange K, ink "atha", "AI" at 43% on the baseline, Baloo 2 ExtraBold).
+  Keep text inside the centre safe area: Play can crop the edges and overlays
+  a play button in the middle when a promo video is set (none is, today).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Katha feature graphic</title>
+<style>
+  @font-face { font-family: "Baloo2"; src: url("../../../expo/assets/fonts/Baloo2-ExtraBold.ttf"); font-weight: 800; }
+  @font-face { font-family: "Bricolage"; src: url("../../../expo/assets/fonts/BricolageGrotesque.ttf"); font-weight: 200 800; }
+  @font-face { font-family: "Hanken"; src: url("../../../expo/assets/fonts/HankenGrotesk.ttf"); font-weight: 100 900; }
+
+  :root {
+    --accent: #FF6B1A;
+    --accent-pressed: #E85610;
+    --accent-soft: #FFEFE2;
+    --ink: #0F0E0C;
+    --muted: #6B6560;
+    --bg: #F3F2EF;
+    --surface: #FFFFFF;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1024px; height: 500px; overflow: hidden; background: var(--bg); }
+
+  .canvas {
+    position: relative;
+    width: 1024px; height: 500px;
+    background: var(--bg);
+    font-family: "Hanken", sans-serif;
+    color: var(--ink);
+  }
+
+  /* The orange field the covers stand on. A circle cut off by the right and
+     bottom edges, so it reads as warmth behind the books rather than a panel. */
+  .sun {
+    position: absolute;
+    width: 640px; height: 640px;
+    right: -150px; top: -70px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #FF8A45 0%, var(--accent) 55%, var(--accent-pressed) 100%);
+  }
+
+  .copy {
+    position: absolute;
+    left: 72px; top: 0; bottom: 0;
+    width: 440px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+
+  .wordmark {
+    display: inline-flex; align-items: baseline;
+    font-family: "Baloo2", sans-serif; font-weight: 800;
+    font-size: 44px; line-height: 1;
+  }
+  .wordmark .k { color: var(--accent); }
+  .wordmark .atha { color: var(--ink); }
+  .wordmark .ai { color: var(--accent); font-size: 0.43em; margin-left: 3px; }
+
+  h1 {
+    margin-top: 26px;
+    font-family: "Bricolage", sans-serif; font-weight: 800;
+    font-size: 58px; line-height: 1.02; letter-spacing: -0.035em;
+    font-variation-settings: "opsz" 96;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+
+  .sub {
+    margin-top: 20px;
+    font-size: 23px; line-height: 1.35; font-weight: 500;
+    color: var(--muted);
+  }
+
+  .books { position: absolute; right: 0; top: 0; width: 520px; height: 500px; }
+  .book {
+    position: absolute;
+    width: 190px; height: 285px;
+    border-radius: 10px;
+    background-size: cover; background-position: center;
+    box-shadow: 0 18px 40px rgba(15, 14, 12, 0.28), 0 3px 8px rgba(15, 14, 12, 0.18);
+    outline: 3px solid rgba(255, 255, 255, 0.9);
+    outline-offset: -3px;
+  }
+  .b1 { left: 40px;  top: 128px; transform: rotate(-8deg); background-image: url("../../../expo/assets/covers/decimal-point-hardware.jpg"); }
+  .b3 { left: 300px; top: 128px; transform: rotate(8deg);  background-image: url("../../../expo/assets/covers/vanilla-problem-lisbon.jpg"); }
+  .b2 { left: 168px; top: 92px;  width: 206px; height: 309px; z-index: 2; background-image: url("../../../expo/assets/covers/cien-luces-farolero.jpg"); }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="sun"></div>
+
+  <div class="copy">
+    <div class="wordmark" aria-label="Katha AI"><span class="k">K</span><span class="atha">atha</span><span class="ai">AI</span></div>
+    <h1 id="headline">One idea.<br><em>A whole story.</em></h1>
+    <p class="sub" id="sub">Write it with AI. Hear it narrated.<br>Read free, as much as you like.</p>
+  </div>
+
+  <div class="books" aria-hidden="true">
+    <div class="book b1"></div>
+    <div class="book b3"></div>
+    <div class="book b2"></div>
+  </div>
+</div>
+
+<script>
+  // Localised copy. Headlines are kept to two short lines in every language so
+  // the layout does not need to change between them.
+  const COPY = {
+    en: {
+      headline: 'One idea.<br><em>A whole story.</em>',
+      sub: 'Write it with AI. Hear it narrated.<br>Read free, as much as you like.',
+    },
+    pt: {
+      headline: 'Uma ideia.<br><em>Uma história inteira.</em>',
+      size: 47,
+      sub: 'Escreva com IA. Ouça a narração.<br>Leia de graça, quanto quiser.',
+    },
+    es: {
+      headline: 'Una idea.<br><em>Toda una historia.</em>',
+      size: 51,
+      sub: 'Escríbela con IA. Escúchala narrada.<br>Lee gratis, todo lo que quieras.',
+    },
+  };
+  const lang = new URLSearchParams(location.search).get('lang') || 'en';
+  const copy = COPY[lang] || COPY.en;
+  document.documentElement.lang = lang;
+  const headline = document.getElementById('headline');
+  headline.innerHTML = copy.headline;
+  // A longer second line is set smaller rather than wrapped to a third line.
+  if (copy.size) headline.style.fontSize = copy.size + 'px';
+  document.getElementById('sub').innerHTML = copy.sub;
+</script>
+</body>
+</html>

@@ -159,11 +159,11 @@ beforeEach(() => {
 });
 
 describe("approved Create flow", () => {
-  it("uses a compact Kids Mode switch and only reveals Values for kids", async () => {
+  it("uses a compact All-ages switch and only reveals Values in that mode", async () => {
     const view = await renderCreate();
 
     await fillIdea(view);
-    const kidsMode = view.getByRole("switch", { name: "Kids Mode" });
+    const kidsMode = view.getByRole("switch", { name: "All-ages" });
     expect(kidsMode.props.accessibilityState.checked).toBe(false);
     expect(view.queryByText("Values")).toBeNull();
 
@@ -232,7 +232,7 @@ describe("approved Create flow", () => {
 
     const genre = view.getByRole("button", { name: "Genre" });
 
-    expect(view.getByRole("switch", { name: "Kids Mode" })).toBeTruthy();
+    expect(view.getByRole("switch", { name: "All-ages" })).toBeTruthy();
     expect(view.getByLabelText("Story idea")).toBeTruthy();
 
     await fireEvent.press(genre);
@@ -274,9 +274,9 @@ describe("approved Create flow", () => {
     }
   });
 
-  it("derives the kids-mode genre menu from the one genre list, not a second hand-kept one", async () => {
+  it("derives the All-ages genre menu from the one genre list, not a second hand-kept one", async () => {
     const view = await renderCreate();
-    await fireEvent.press(view.getByRole("switch", { name: "Kids Mode" }));
+    await fireEvent.press(view.getByRole("switch", { name: "All-ages" }));
     await fireEvent.press(view.getByRole("button", { name: "Genre" }));
 
     // Every genre KIDS_UI_GENRES computes from UI_GENRES is actually offered.
@@ -352,7 +352,7 @@ describe("approved Create flow", () => {
     const view = await renderCreate();
     await fillIdea(view, "A child follows a map hidden in a library book.");
 
-    await fireEvent.press(view.getByRole("switch", { name: "Kids Mode" }));
+    await fireEvent.press(view.getByRole("switch", { name: "All-ages" }));
     await fireEvent.press(view.getByRole("checkbox", { name: "Kindness" }));
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
     await fireEvent.changeText(view.getByLabelText("Writing style"), "Warm, playful, and direct");
@@ -514,7 +514,7 @@ describe("approved Create flow", () => {
     await fillIdea(view);
 
     expect(
-      view.getByRole("switch", { name: "Kids Mode" }),
+      view.getByRole("switch", { name: "All-ages" }),
     ).toBeTruthy();
     // The control itself says so before anything is spent -- there is no
     // review screen left to restate it on.
@@ -804,13 +804,13 @@ describe("draft restoration across a remount", () => {
       ),
     );
 
-    // ...but NOT the audience. Kids Mode decides who a story is for -- it
+    // ...but NOT the audience. All-ages mode decides who a story is for -- it
     // shrinks the genre list, forces spice to sweet and changes the content
     // rating -- and a draft lives for seven days. Restoring it silently means
     // opening Create to find the switch on with no memory of setting it,
     // which is what the owner reported and read as the app guessing.
     expect(
-      second.getByLabelText("Kids Mode").props.accessibilityState.checked,
+      second.getByLabelText("All-ages").props.accessibilityState.checked,
     ).toBe(false);
 
     await fireEvent.press(second.getByRole("button", { name: "More options" }));
@@ -839,8 +839,8 @@ describe("draft restoration across a remount", () => {
       "A retired postman. Grey coat, a satchel that has outlived three owners.",
     );
   });
-  it("discards what Kids Mode derived, not just the switch", async () => {
-    // Turning Kids Mode on forces `spiceLevel` to sweet and `chapterLength`
+  it("discards what All-ages mode derived, not just the switch", async () => {
+    // Turning All-ages mode on forces `spiceLevel` to sweet and `chapterLength`
     // to short, and `storyValues` exists only for kids. Resetting the switch
     // alone would leave those behind and quietly send a short, sweet,
     // values-laden brief as an adult story. A half-reverted setting is worse
@@ -866,7 +866,7 @@ describe("draft restoration across a remount", () => {
       ),
     );
     expect(
-      view.getByLabelText("Kids Mode").props.accessibilityState.checked,
+      view.getByLabelText("All-ages").props.accessibilityState.checked,
     ).toBe(false);
 
     await fireEvent.press(view.getByRole("button", { name: "More options" }));
@@ -885,7 +885,7 @@ describe("draft restoration across a remount", () => {
     // they cannot say different things.
     //
     // This used to be posed as a restored KIDS draft, because kids and adult
-    // defaults differ. That case is now unreachable: Kids Mode is no longer
+    // defaults differ. That case is now unreachable: All-ages mode is no longer
     // restored from storage, and turning it on through the switch always sets
     // an explicit `chapterLength` (`chooseAudience`). So the only draft that
     // can still arrive with the field truly unset is an ordinary one saved

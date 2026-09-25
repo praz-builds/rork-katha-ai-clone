@@ -53,7 +53,8 @@ The six decisions that shape this document:
    because it is the best thing in their app. See §4.
 4. **Kids mode is a mode, not a chip.** Adult by default, one tap, per-draft. It
    re-authors labels, filters the genre row, adds Values, and **removes** spice
-   rather than defaulting it.
+   rather than defaulting it. Its on-screen label is **All-ages** (§3); "kids"
+   survives only as the internal value.
 5. **There is one visual system: chapter art.** Chapter 1's art is compulsory
    and *becomes the story's cover*; chapters 2–N are an optional per-chapter
    toggle. Cover and illustration are not two features — they are the same
@@ -145,7 +146,7 @@ Create  ──▶  1. Idea      ──▶  2. Where does it begin?
                                from the idea just typed)
 ```
 
-The main Create surface is one scrollable screen. Genre and Kids Mode sit in one
+The main Create surface is one scrollable screen. Genre and the All-ages switch sit in one
 parent row at the top, then the user's idea, starter prompts, optional Premise,
 Values for kids, and Characters. **More options** sits last, above the Create
 button, and holds everything else, including all **six dropdowns** (below). The only second
@@ -269,7 +270,7 @@ a short first-run path before the user reaches the full Create surface.
 
 | | |
 |---|---|
-| **Parent row** | Selected Genre chip with icon + compact **Kids Mode** switch |
+| **Parent row** | Selected Genre chip with icon + compact **All-ages** switch |
 | **Header** | *What's your story about?* |
 | **Sub** | *A sentence is enough. Katha takes it from there.* |
 | **Input** | Multiline, 40-character minimum, `n / 1000` cap |
@@ -317,7 +318,7 @@ The starter chip heading changes from **TRY A PREMISE** to **TRY ONE**.
 
 ```text
 ┌────────────────────────────────────────────┐
-│ [ 🔍 Mystery       ▾ ]        Kids Mode  ○ │
+│ [ 🔍 Mystery       ▾ ]         All-ages  ○ │
 │   compact vertical picker                   │
 ├────────────────────────────────────────────┤
 │  WHAT IS YOUR STORY ABOUT?                 │
@@ -376,16 +377,28 @@ screen. Balance stays in the header, and the button carries the price per
 
 ---
 
-## 3. Kids mode
+## 3. Kids mode (labelled "All-ages")
 
-A compact **Kids Mode** switch sits in the parent row beside Genre. It is a mode
+**The label is "All-ages", on screen and in its accessibility name.** The
+Create switch is English today (`CreateBriefFlow.tsx`), like the rest of Create,
+because no Create component reads the locale files yet. The locale files already
+carry the three strings (`All-ages` / `Todas las edades` / `Todas as idades`, key
+`genres.kids`) for when i18n is wired. It was "Kids Mode" until 2026-09-25. Katha's Play listing targets 18+ only, and a control named "Kids"
+invites a Families-policy review of the whole app; the mode describes a story
+suitable for every age, not an audience of children holding the phone. The
+rename is copy only: `audienceMode: "kids"`, `audience_mode = 'kids'`,
+`content_rating = 'kids'` and every identifier keep their names, so no stored
+story or client contract changes. There is no PIN gate and no "parental
+controls" surface; the locale strings that advertised one were deleted.
+
+A compact **All-ages** switch sits in the parent row beside Genre. It is a mode
 selector, not a chip row. Adult mode is the default for every new draft and does
 not need its own label on the surface. No device lock and no PIN at launch — the
 mode describes the story being written, not the person holding the phone.
 *(Inference: a family plan with child profiles would make a lock worth revisiting.
 Not before.)*
 
-| Surface | Adult default | Kids Mode |
+| Surface | Adult default | All-ages |
 |---|---|---|
 | Extra chip slot | *(none)* | **Values** — kindness, honesty, courage, patience, sharing |
 | Genre row | All 15 | Filtered: no dark romance, paranormal romance, horror, thriller |
@@ -1399,7 +1412,7 @@ derived value.
 
 | Change | Detail |
 |---|---|
-| Main setup has one screen | Genre, Kids Mode, Your idea, optional Premise, characters, More options, brief strength, and Create all live on one scrollable surface. Onboarding owns any separate two-step preview flow. |
+| Main setup has one screen | Genre, All-ages, Your idea, optional Premise, characters, More options, brief strength, and Create all live on one scrollable surface. Onboarding owns any separate two-step preview flow. |
 | Keep the 40-character floor without a counter | `canGenerate` requires enough idea text to infer from, but no visible countdown appears |
 | Rename chip heading | `Try a premise` → `Try one` |
 | Shrink starter chips | The card shows a clipped three-line preview, and tapping still inserts the full starter text into Your idea |

@@ -21,7 +21,7 @@ Checked against `backend/supabase/functions/` on 2026-09-24: 37 directories. Fou
 | P1 | `reimagine-chapter`, `edit-story` | Editing | `error_events` |
 | P1 | `library`, `feed`, `publish-story`, `comments`, `like`, `bookmark`, `follow-story`, `follow-user`, `record-read`, `referral`, `credit-claims`, `feedback` | Library, Explore and the social features | 5xx, `feed_unhandled` |
 | P2 | `send-push`, `register-push-token`, `voices`, `seed-voice-previews`, `reviewer-signin` | Supporting features | 5xx; `reviewer_pepper_missing` for the reviewer |
-| P2 | `app-feedback` | Profile's "Send feedback" sheet (00097) | 5xx; a run of 429s from one user. Read new rows with `select category, message, platform, app_version, created_at from app_feedback order by created_at desc` (service role) |
+| P2 | `app-feedback` | Profile's "Send feedback" sheet (00098) | 5xx; a run of 429s from one user. Read new rows with `select category, message, platform, app_version, created_at from app_feedback order by created_at desc` (service role) |
 | P2 | `deduct-credit`, `grant-credit` | Retired. `deduct-credit` returns 403 to everyone on purpose; money moves through the operation RPCs | A 2xx from `deduct-credit` would be the incident |
 
 ## Upstream providers and storage
@@ -54,6 +54,32 @@ First mint a session for the house account (`originals@kathaai.test`). With the 
 - **`bootstrap-user`, `profile`**: POST `{}` to `bootstrap-user` and `{"action": "me"}` to `profile` with the house JWT. Both should return 200 in under 3s. `smoke-app-surface.py` [1b] prints how long each took.
 - **`generate-audio`, `audio-status`**: narrate one chapter on the house account, then poll `audio-status?job_id=…` until it says ready. Check that `chapter_audio.duration_seconds` is filled in. Look at `error_events` rows with `bucket = 'generation.audio'`.
 - **`revenuecat-webhook`**: check the webhook delivery status in the RevenueCat dashboard (Project settings, Integrations, Webhooks). Any non-2xx or retrying delivery is the signal. Then read the function's logs in the Supabase dashboard (Edge Functions, `revenuecat-webhook`, Logs) for `revenuecat-webhook error`. **Do not look in `error_events`:** this function writes only `console.error`, never `logError`, so a query there always comes back empty even during an outage. Making it call `logError` is a follow-up; until it does and is deployed, this is the only check that works. **`refresh-subscription-grants`**: the latest *subscription grants* run in GitHub Actions, then `credit_ledger` rows with a `subscription:` reference for the current month.
+
+## The report queue
+
+Every report filed from a story's ⋮ sheet, the reader's ⋮ menu or a comment's menu lands in `content_reports`. Since migration 00097 the unresolved ones are one query away. **Owner: not yet named.** The founder must name one person who works this queue before the Play closed test opens; Play's User Generated Content policy expects reports to be acted on, not only received. Suggested cadence: daily during the closed test, and a report older than 48 hours is itself an incident.
+
+Run in the Supabase SQL editor (or with the service role; nobody else can read it):
+
+```sql
+select report_id, reported_at, status, target_type, reason, details,
+       reported_username, reported_user_id, open_reports_on_target,
+       story_title, story_id, story_is_public, story_is_curated,
+       comment_excerpt, comment_id, comment_deleted_at, reporter_username
+from public.content_reports_open
+order by reported_at desc;
+```
+
+It lists `pending` and `reviewed` reports newest first, with the story's title, the comment's text, who wrote the thing reported (`reported_user_id`) and how many open reports share that target. Resolve one with:
+
+```sql
+update public.content_reports
+   set status = 'actioned',          -- or 'dismissed', or 'reviewed' while it is being looked at
+       reviewed_at = now()
+ where id = '<report_id>';
+```
+
+Acting on a report is a separate step: unpublish a story (`update stories set is_public = false where id = …`) or soft-delete a comment (`update comments set deleted_at = now() where id = …`), then mark the report `actioned`. Everything reported against the same target should be closed together.
 
 ## Deploy check
 

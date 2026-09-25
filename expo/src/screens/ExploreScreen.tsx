@@ -19,6 +19,7 @@ import {
   type UseStorySearchOptions,
 } from "@/components/explore/useStorySearch";
 import { hasUsableTerm } from "@/lib/search";
+import { useBlockedAuthorIds, withoutBlockedAuthors } from "@/lib/blocks";
 import {
   colors,
   fonts,
@@ -122,9 +123,16 @@ export default function ExploreScreen({
   const [sort, setSort] = useState<SortOption>("trending");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const { status, stories: results, source } = useStorySearch(
+  const { status, stories: searched, source } = useStorySearch(
     { text: query, genre },
     { catalogue: stories, ...searchOptions },
+  );
+  // The query itself leaves blocked writers out (`search.ts`), but a page
+  // fetched before a block would keep showing them until the next keystroke.
+  const blocked = useBlockedAuthorIds();
+  const results = useMemo(
+    () => withoutBlockedAuthors(searched, blocked),
+    [searched, blocked],
   );
 
   // Tags are a property of whatever came BACK, not a fixed list this screen

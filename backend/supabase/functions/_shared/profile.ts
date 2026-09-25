@@ -520,6 +520,47 @@ export async function readPublicStories(
   }));
 }
 
+/**
+ * The block read's own chain, typed as narrowly as the public-stories one:
+ * two filters and a limit, nothing else.
+ */
+export type BlockReader = {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: unknown): {
+        eq(column: string, value: unknown): {
+          limit(count: number): PromiseLike<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+  };
+};
+
+/**
+ * Has this viewer blocked this author?
+ *
+ * A byline is a way into somebody's work, so a public profile honours a block
+ * the same way the thread, the feed, the library and search do: the page
+ * still answers (a name has to lead somewhere) but lists none of their
+ * stories. A signed-out visitor has no block list. A failed read throws,
+ * because showing a blocked writer's stories is worse than an error page.
+ */
+export async function viewerHasBlocked(
+  client: BlockReader,
+  viewerId: string | null,
+  authorId: string,
+): Promise<boolean> {
+  if (!viewerId || viewerId === authorId) return false;
+  const { data, error } = await client
+    .from("user_blocks")
+    .select("blocked_id")
+    .eq("blocker_id", viewerId)
+    .eq("blocked_id", authorId)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // The endpoint
 // ---------------------------------------------------------------------------
@@ -652,12 +693,26 @@ export async function handleProfile(req: Request): Promise<Response> {
       // The profile is awaited first so a missing author is still a 404: a
       // story-list failure only matters once there is somebody to list for.
       const storiesRequest = readPublicStories(service, authorId);
+      // The block check rides alongside for the same reason.
+      const blockedRequest = viewerHasBlocked(
+        service as unknown as BlockReader,
+        viewerId,
+        authorId,
+      );
       // Handled here so an unawaited rejection (on the 404 path) is not
       // reported as unhandled; the await below still sees it.
       storiesRequest.catch(() => {});
+      blockedRequest.catch(() => {});
       const profile = await readPublicProfile(service, authorId, viewerId);
       if (!profile) return respond({ error: "Not found" }, 404);
-      const stories = await storiesRequest;
+      const [stories, viewerBlocked] = await Promise.all([
+        storiesRequest,
+        blockedRequest,
+      ]);
+      // Somebody the viewer blocked: the profile answers, their work does not.
+      if (viewerBlocked) {
+        return respond({ profile, stories: [], viewerBlocked: true });
+      }
       return respond({ profile, stories });
     }
 

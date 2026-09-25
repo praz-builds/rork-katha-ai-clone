@@ -13,6 +13,8 @@ import CommentRow, { COMMENT_PALETTES } from "./CommentRow";
 import type { CommentTone } from "./CommentRow";
 import type { CommentNode, ReportReason, SortMode } from "./types";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { blockAuthorEverywhere, useBlockedAuthorIds } from "@/lib/blocks";
+import { getViewerId } from "@/lib/ownership";
 import {
   buildThread,
   fetchThread,
@@ -28,6 +30,7 @@ import {
   collapse,
   countAll,
   createComment,
+  removeAuthor,
   removeComment,
   sortTopLevel,
 } from "./types";
@@ -260,8 +263,20 @@ export default function CommentThread({
     void reload();
   }, [reload]);
 
-  const sorted = useMemo(() => sortTopLevel(tree, sortMode), [tree, sortMode]);
-  const total = useMemo(() => countAll(tree), [tree]);
+  // A block made anywhere this session (this thread, the story's ⋮ sheet, the
+  // reader) hides that person's comments here at once, before the refetch
+  // that makes the server say the same.
+  const blocked = useBlockedAuthorIds();
+  const visibleTree = useMemo(() => {
+    let next = tree;
+    for (const authorId of blocked) next = removeAuthor(next, authorId);
+    return next;
+  }, [tree, blocked]);
+  const sorted = useMemo(
+    () => sortTopLevel(visibleTree, sortMode),
+    [visibleTree, sortMode],
+  );
+  const total = useMemo(() => countAll(visibleTree), [visibleTree]);
   const canPost = composerText.trim().length > 0;
 
   useEffect(() => {
@@ -357,6 +372,24 @@ export default function CommentThread({
     }
     if (!remote) return;
     await reportContent({ commentId }, reason, details);
+  };
+
+  /**
+   * Block the person who wrote a comment.
+   *
+   * A guest is asked to sign in, exactly as Report asks them: a block belongs
+   * to an account. Rejects when the write fails, so the menu can say so; on
+   * success every comment by that person leaves the thread at once (through
+   * the block store) and the refetch brings the server's copy.
+   */
+  const handleBlock = async (authorId: string) => {
+    if (!canEngage) {
+      onRequireSignIn?.();
+      return;
+    }
+    await blockAuthorEverywhere(authorId);
+    setTree((current) => removeAuthor(current, authorId));
+    if (remote) void reload();
   };
 
   /** One direction only. See the note on `CommentRowProps.onVote`. */
@@ -537,6 +570,8 @@ export default function CommentThread({
                 onToggleCollapse={handleToggleCollapse}
                 onAuthorPress={onAuthorPress}
                 onReport={handleReport}
+                onBlock={handleBlock}
+                viewerId={getViewerId()}
               />
             </View>
           ))}

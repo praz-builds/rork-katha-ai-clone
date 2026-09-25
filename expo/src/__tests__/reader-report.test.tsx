@@ -39,6 +39,7 @@ jest.mock("@/lib/comments", () => {
 import { stories } from "@/data/seed";
 import ReaderScreen from "@/screens/ReaderScreen";
 import { blockAuthor, reportContent } from "@/lib/comments";
+import { clearBlockedAuthors, getBlockedAuthorIds } from "@/lib/blocks";
 /* eslint-enable import/first */
 
 const storage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
@@ -141,4 +142,8 @@ it("blocks the author and leaves the reader", async () => {
 
   await waitFor(() => expect(blockAuthor).toHaveBeenCalledWith(story.authorId));
   expect(onBack).toHaveBeenCalled();
+  // Recorded app-wide, so Home, Explore and the Starred shelf drop their work
+  // in this session rather than after a restart.
+  expect(getBlockedAuthorIds().has(story.authorId)).toBe(true);
+  clearBlockedAuthors();
 });

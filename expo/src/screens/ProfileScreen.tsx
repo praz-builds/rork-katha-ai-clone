@@ -15,6 +15,7 @@ import {
 // mounted in App.tsx, so this is a swap, not new plumbing.
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  Ban,
   ChevronRight,
   Crown,
   FileText,
@@ -31,6 +32,7 @@ import {
   Volume2,
 } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
+import BlockedAccountsSheet from "@/components/profile/BlockedAccountsSheet";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import FeedbackSheet from "@/components/profile/FeedbackSheet";
 import IdentityEditor, { type IdentityEdits } from "@/components/profile/IdentityEditor";
@@ -110,6 +112,7 @@ export default function ProfileScreen({
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [memberSheet, setMemberSheet] = useState(false);
+  const [blockedSheet, setBlockedSheet] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const subscribed = useIsSubscribed();
 
@@ -441,6 +444,14 @@ export default function ProfileScreen({
             grouped
           />
           <Row
+            icon={Ban}
+            title="Blocked accounts"
+            subtitle="People whose stories and comments you don't see"
+            onPress={() => setBlockedSheet(true)}
+            testID="profile-blocked"
+            grouped
+          />
+          <Row
             icon={Shield}
             title="Privacy Policy"
             onPress={() => openLink(PRIVACY_URL)}
@@ -502,6 +513,10 @@ export default function ProfileScreen({
 
       <MemberSheet visible={memberSheet} onClose={() => setMemberSheet(false)} />
 
+      <BlockedAccountsSheet
+        visible={blockedSheet}
+        onClose={() => setBlockedSheet(false)}
+      />
       <FeedbackSheet
         visible={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}

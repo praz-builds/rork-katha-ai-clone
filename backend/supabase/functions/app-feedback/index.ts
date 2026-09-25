@@ -3,7 +3,7 @@
  *
  * NOT the `feedback` function. That one posts a COMMENT on a story and needs a
  * story id; its name predates comments having their own function. This one
- * files a message about the app itself into `app_feedback` (migration 00097).
+ * files a message about the app itself into `app_feedback` (migration 00098).
  *
  * Any caller with a session may write: a named account or an anonymous
  * (pre-email) identity. Identity comes from the JWT and nowhere else -- the

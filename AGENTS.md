@@ -229,8 +229,8 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
-| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets | Not yet wired |
-| **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend) + `sentryDsn` in `expo/app.json` (client) | Not yet set |
+| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets. The RNFB packages were removed from the app on 2026-09-25 and come back with push | Not yet wired |
+| **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend); client DSN, org and project from EAS env vars through `expo/app.config.ts` (see *Release build config*) | Not yet set |
 | **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
 
 ### LLM Fallback Chain
@@ -487,7 +487,8 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00089 (Launch economy)** | `streak_milestones`, `tester_accounts`, `reviewer_signin_attempts`; `profiles.entitlement_override` / `.avatar_id` / `.referral_code`; `comments.credit_claimed_at` / `.credit_ledger_id`; `referrals.claimed_at` / `.credited_at` plus `unique(referred_id)`; `streak_ladder()`, `claim_comment_credit`, `ensure_identity`, `settle_referrals` |
 | **00090 (Report targets + read gate)** | Target-aware `content_reports` reason and details constraints (a story's four reasons vs a comment's eight; 1,000 vs 2,000 characters); the comment-credit read gate now also requires a `story_reads` row whose **server-set** `read_at` is 60s or more older than the comment; `streak_ladder()` gets the grants every other 00089 function has; `idx_story_reads_user_story_read_at` |
 | **00092 (Story bible)** | `stories.story_bible` -- nullable, server-owned, append-only jsonb holding a multi-chapter story's settled facts, its clock, its fixed truth and the scenes already shown. Written only by `mergeStoryBible`; the model proposes and never writes. NULL means the story predates it and reads as an empty bible. **Never sent to a client** |
-| **00097 (App feedback)** | `app_feedback` (service-role only) and `submit_app_feedback`; a trigger on `profiles.deleted_at` erases an account's rows when it is deleted |
+| **00097 (Report queue)** | `content_reports_open` view: unresolved reports newest first with story, comment and author context; `security_invoker`, readable by `service_role` only (plus the dashboard). Also the first `service_role` SELECT grant on `content_reports`. Query and resolve steps: `backend/MONITORING.md` § *The report queue* |
+| **00098 (App feedback)** | `app_feedback` (service-role only) and `submit_app_feedback`; a trigger on `profiles.deleted_at` erases an account's rows when it is deleted |
 | **00091 (Entity gate removed)** | Drops both 00050 constraints, clears `stories.entity_gate_reason` on every row and leaves the column nullable and unused for older clients; re-issues `public_profile`, `profile_comments` and `activity_calendar` without the gate clause. A writer's publish toggle is honoured. |
 
 ### Credit Ledger Pattern
@@ -626,7 +627,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `reimagine-chapter` | POST | Rewrite one existing chapter, optionally recasting it | Streams on `stream: true`. Forks the story for a non-author. 1 credit, refunded on failure |
 | `library` | GET | Paginated curated feed with genre filter + search; `?scope=mine` for the writer's own | Returns `cover_image_url`, `cover_status`, `chapters(count)`, `previously_summary`, `beats`, `series_state` — everything the Home "Your stories" rail and the chapter-end chips need |
 | `feedback` | POST | Posts a comment. Grants nothing: since migration 00089 the credit is claimed separately through `credit-claims` | Done |
-| `app-feedback` | POST | Profile's "Send feedback" sheet: files `{message, category?, app_version?, platform?, screen?, request_id}` into `app_feedback` | Any session, named or anonymous. `submit_app_feedback` (00097) bounds it to 5 an hour and 20 a day per user and answers 429 past that; a repeated `request_id` replays the first row. Not the `feedback` function above |
+| `app-feedback` | POST | Profile's "Send feedback" sheet: files `{message, category?, app_version?, platform?, screen?, request_id}` into `app_feedback` | Any session, named or anonymous. `submit_app_feedback` (00098) bounds it to 5 an hour and 20 a day per user and answers 429 past that; a repeated `request_id` replays the first row. Not the `feedback` function above |
 | `credit-claims` | POST | `action: "list"` returns the caller's claimable comments with their block reasons; `action: "claim"` pays one | Verifies the JWT, then calls `comment_credit_claims` / `claim_comment_credit` as service role. Every rule (40 characters, somebody else's story, a read recorded before the comment, the per-story / per-day / per-month caps) is re-derived in SQL under a lock; the function checks none of them |
 | `referral` | POST | `action: "code"` returns the caller's invite code and standing; `action: "claim"` records a code entered by an account under 7 days old | Pays nothing. `claim_referral_code` records the relationship, `settle_referrals` grants both halves under `referral:referrer:{id}` and `referral:invitee:{id}` once the invitee has generated and is 24h old |
 | `reviewer-signin` | POST | Exchanges the store reviewer's fixed six-digit code for a magic-link `token_hash` the client verifies | **The only new `verify_jwt = false` function** -- the reviewer has no session to present, so the protections are inside it: one allowlisted address, a peppered HMAC, a constant-time compare, an identical `401 {"error":"invalid"}` for every failure, and a per-email/per-IP lockout. `tester_accounts.user_id` is authoritative for which account the link may resolve to. **The plaintext code lives in `backend/.reviewer-code.local`, which is git-ignored, and is never written into the repository** |
@@ -1156,7 +1157,7 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 - **Author-only continuation.** Only the original author can add chapters.
 - **Genre is single-select; themes are LLM-generated** (3-6 free-form tags per story).
 - **3-credit welcome bonus**, granted when the user declines the paywall. (It used to require declining the one-time offer as well; that offer was removed 2026-09-10.)
-- Kids mode off by default, PIN-gated in parental controls.
+- Kids mode off by default, per draft, labelled **All-ages** in the UI (`audienceMode: "kids"` internally). There is no PIN gate and no parental-controls surface (`source-of-truth/STORY_GENERATION_FLOW.md` §3).
 
 ### Plans, packs, and grants
 
@@ -1219,12 +1220,11 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 
 ### Production SDK Initialization
 
-All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`. All SDKs gracefully no-op when API keys are empty.
+All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog()`, `initRevenueCat()`, `setupAndroidChannel()`, `configureAudioSession()`. All SDKs gracefully no-op when API keys are empty.
 
 - `expo/src/lib/analytics.ts`: Sentry + PostHog. Use `trackEvent(name, props)` and `identifyUser(id, traits)`.
 - `expo/src/lib/revenuecat.ts`: RevenueCat Purchases. Use offerings/packages, managed paywalls, and Customer Center.
 - `expo/src/lib/notifications.ts`: expo-notifications. Use `requestNotificationPermission()` and `getPushToken()`.
-- `expo/src/lib/firebase-analytics.ts`: Firebase Analytics with safe dynamic imports.
 - `expo/src/lib/tracking-transparency.ts`: iOS ATT. Call `requestTrackingPermission()` before analytics.
 
 ### Design System
@@ -1232,7 +1232,7 @@ All SDK initialization runs in `App.tsx` useEffect: `initSentry()`, `initPostHog
 - Fonts: `BricolageGrotesque`, `HankenGrotesk`, `Baloo2` (bundled locally).
 - Assets: `expo/assets/covers` and `expo/assets/avatars`. Do not recreate `assets/images` (removed as duplicate).
 - i18n: `expo/src/i18n/` -- i18next with EN/ES/PT. Not yet wired to components.
-- API keys via `Constants.expoConfig.extra` (app.json); convert to `app.config.ts` for `EXPO_PUBLIC_*` env vars before production.
+- API keys via `Constants.expoConfig.extra`: `app.json` is the static record and `expo/app.config.ts` fills build-time values from the environment.
 
 ## Build & Deploy
 
@@ -1255,10 +1255,53 @@ supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-gene
 cd expo && pnpm install                        # Install dependencies
 pnpm typecheck                                 # TypeScript check
 pnpm exec expo-doctor                          # Expo health check
-pnpm approve-builds                            # Needed for @firebase/util, @sentry/cli, protobufjs
+pnpm approve-builds                            # Build scripts are allow-listed in pnpm-workspace.yaml
 ```
 
 Node v22.23.0 for typecheck (v24 has tsc shim issues).
+
+### Release build config
+
+What the store binary bakes in, and so cannot be changed by an OTA update.
+`expo/src/__tests__/release-config.test.ts` pins all of it.
+
+- **Version and runtime.** `expo.version` is the versionName users see (1.0.0 at
+  launch); `versionCode` is EAS's (`appVersionSource: remote`, `autoIncrement`).
+  `runtimeVersion` is `{ "policy": "appVersion" }`: an OTA reaches only binaries
+  of the same `version`, so **bump `version` for any native change** (a new
+  native module, a permission, a plugin option) and never for a JS-only one.
+- **Two values `eas init` fills, one of them for you.** `eas init` writes
+  `extra.eas.projectId` into `app.json` (Expo edits `app.json` when the
+  function-style `app.config.ts` spreads it, then re-reads to check). The second,
+  `updates.url`, stays the placeholder `https://u.expo.dev/UPDATE_PROJECT_ID` in
+  `app.json` and `app.config.ts` derives `https://u.expo.dev/<projectId>` from the
+  first; a real URL written there by `eas update:configure` is left alone. The
+  `channel` comes from the build profile in `eas.json` (`production`, `preview`,
+  `development`), and `eas update --channel production` targets it.
+- **Sentry is environment, not files.** Set as EAS environment variables:
+  `SENTRY_DSN` (read into `extra.sentryDsn`), `SENTRY_ORG` and `SENTRY_PROJECT`
+  (written into the `@sentry/react-native/expo` plugin), and the secret
+  `SENTRY_AUTH_TOKEN`, which only the Sentry Gradle/Xcode step reads and which
+  must never be put in the plugin config (the plugin config is packaged). **A
+  release build without `SENTRY_AUTH_TOKEN` fails at the source-map upload**;
+  the `preview` profile sets `SENTRY_DISABLE_AUTO_UPLOAD=true`, and a local
+  `./gradlew bundleRelease` needs the same.
+- **Android permissions are an allow-list in effect.** `android.blockedPermissions`
+  removes `RECORD_AUDIO`, `CAMERA`, `SYSTEM_ALERT_WINDOW`,
+  `READ/WRITE_EXTERNAL_STORAGE` and `AD_ID`, which libraries and the prebuild
+  template add and the app never uses. A new library that needs one of them has
+  to be justified against the Data Safety form first. **Do not ask for photo
+  permission on Android**: `requestMediaLibraryPermissionsAsync` asks for the
+  blocked storage permissions below Android 13 and is always refused; the photo
+  picker needs none (`ensurePhotoLibraryAccess` in `expo/src/lib/photo-access.ts`).
+- **Background audio** is `UIBackgroundModes: ["audio"]` plus one
+  `Audio.setAudioModeAsync` at start-up (`expo/src/lib/audio-session.ts`). It is
+  invisible on the web preview; check it on a device with the screen locked.
+- **Checking the manifest without EAS:** `npx expo prebuild --platform android
+  --clean` (the generated `expo/android/` is git-ignored), then
+  `SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew bundleRelease` in `expo/android`,
+  and read the `<uses-permission>` lines of
+  `app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml`.
 
 ## Build Phases (Roadmap)
 

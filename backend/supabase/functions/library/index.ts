@@ -143,6 +143,33 @@ export async function handleRequest(req: Request): Promise<Response> {
       query = query
         .or("is_public.eq.true,is_curated.eq.true")
         .neq("content_rating", "explicit");
+
+      // A signed-in browse leaves out everyone the caller has blocked, the
+      // same rule `feed`, `comments` and Explore's search apply. Read through
+      // the caller's own JWT, where `user_blocks` RLS scopes it to their own
+      // rows. A block list that fails to load fails the request rather than
+      // the block: showing somebody the writer they asked never to see again
+      // is the one outcome worse than an error.
+      if (user) {
+        const { data: blockRows, error: blockError } = await supabase
+          .from("user_blocks")
+          .select("blocked_id")
+          .eq("blocker_id", user.id)
+          // Every id goes into one `not.in.(...)` filter in the URL, so the
+          // list is capped well below PostgREST's URL limit. Nobody blocks
+          // five hundred writers; if someone does, the blocks past
+          // the cap are still honoured by comments, feed and profile.
+          .limit(500);
+        if (blockError) throw blockError;
+        const blockedIds = ((blockRows ?? []) as Record<string, unknown>[])
+          .map((row) => row.blocked_id)
+          .filter((id): id is string => typeof id === "string");
+        if (blockedIds.length > 0) {
+          // The ids come from our own query against a uuid column, never from
+          // the request, so interpolating them into the filter is safe.
+          query = query.not("author_id", "in", `(${blockedIds.join(",")})`);
+        }
+      }
     }
 
     if (genre) {

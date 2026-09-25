@@ -6,7 +6,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 /**
  * Feedback about the app, from Profile's "Send feedback" sheet.
  *
- * Posts to the `app-feedback` edge function (migration 00097), NOT `feedback`:
+ * Posts to the `app-feedback` edge function (migration 00098), NOT `feedback`:
  * that one posts a comment on a story. Works for a named account and for an
  * anonymous identity alike; `bootstrapUser` makes sure there is a session to
  * present.

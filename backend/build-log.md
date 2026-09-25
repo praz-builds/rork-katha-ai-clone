@@ -17,7 +17,7 @@ Not deployed; the orchestrator deploys after review.
 The existing `feedback` function turned out not to be app feedback: it posts a
 comment on a story and needs a story id. So this adds a separate path:
 
-- Migration `00097_app_feedback.sql`: the `app_feedback` table (service-role only,
+- Migration `00098_app_feedback.sql`: the `app_feedback` table (service-role only,
   no client grants), `submit_app_feedback` (5 an hour, 20 a day per user, under an
   advisory lock; a repeated `request_id` replays the first row and is never refused
   by the limit), and a trigger that deletes an account's rows when
@@ -42,7 +42,7 @@ through `music-storage.ts`, the same preference as the reader's mute. It has a
 
 ### Tests (each checked to fail with its fix reverted)
 
-- `migrations/00097_app_feedback_test.ts` (6): with the limit and the trigger
+- `migrations/00098_app_feedback_test.ts` (6): with the limit and the trigger
   removed, 3 fail.
 - `functions/app-feedback/index.test.ts` (8).
 - `__tests__/feedback-sheet.test.tsx` (8): with the `sent === true` check, the 429
@@ -53,8 +53,8 @@ through `music-storage.ts`, the same preference as the reader's mute. It has a
 
 ### Deploy steps (not run)
 
-1. `supabase db push` to apply `00097_app_feedback`. If another lane has taken
-   00097 by then, renumber the file.
+1. `supabase db push` to apply `00098_app_feedback` (renumbered from 00097, which #141's
+   report-queue view took first).
 2. `supabase functions deploy app-feedback`. This is a new function and needs no
    `config.toml` entry because it verifies the JWT.
 3. Ship the client (OTA is fine). Until step 2 is done, the sheet shows its
@@ -62,6 +62,155 @@ through `music-storage.ts`, the same preference as the reader's mute. It has a
 
 Roadmap: the Home "Your stories first" row was already built (`buildFeedRows`,
 pinned by `home-feed-rows.test.ts`) and is now ticked with that note.
+## 2026-09-25 UTC — Block from a comment, blocks honoured everywhere, "Kids" becomes "All-ages", and a report queue
+
+**Session:** Lane B of the Play launch push (`codex/play-ugc-safety`). Three P0 rows
+from ROADMAP § *Play Store go-live*.
+
+### Block
+
+- The audit said no client surface wrote `user_blocks`. That was stale: the story
+  and reader ⋮ sheets already had Block author. What was missing was Block on a
+  **comment**, any undo (the confirm promised "undo from your settings", a screen
+  that did not exist), and blocks honoured by the lists a session had already
+  loaded.
+- `CommentRow`'s ⋮ menu now offers "Block <name>" (not on your own comment),
+  confirmed in-sheet by `components/moderation/BlockConfirm.tsx`, which the story
+  sheet now shares. Guests are sent to sign in, as Report does.
+- `expo/src/lib/blocks.ts`: an app-wide block set, loaded after boot, cleared on
+  sign-out and re-read on sign-in. Home, Explore, an author's page, the Starred
+  shelf and open comment threads filter through it, so a block takes effect in
+  the session it was made. Undo: Profile › Blocked accounts
+  (`BlockedAccountsSheet`), or Unblock on the blocked writer's page.
+- Server: `library`'s public browse now excludes the caller's blocked authors
+  (fails closed on a failed block read), and `profile`'s `public` action returns
+  `stories: []` and `viewerBlocked: true` for an author the viewer blocked.
+  `comments`, `feed` and Explore's search already honoured blocks.
+
+### All-ages
+
+- The Create switch reads **All-ages** (visible label and accessibility name).
+  `genres.kids` is All-ages / Todas las edades / Todas as idades. The
+  `parentalControls` and `parentalControlsDesc` keys ("Kids mode and PIN gate")
+  are deleted in all three locales; nothing read them. Internal `kids` values are
+  unchanged. `STORY_GENERATION_FLOW.md` §3, AGENTS.md, docs/ACCEPTANCE.md and a
+  superseded note in `strategic-decisions.md` §10 follow.
+
+### Report queue
+
+- Migration **00097** `content_reports_open`: unresolved reports newest first, with
+  context. `security_invoker`, `service_role` only; also the first `service_role`
+  SELECT on `content_reports` (00043 never granted it). Query and resolve steps
+  are in `backend/MONITORING.md`. **The owner is not named**; that is the founder's
+  call.
+
+### Tests
+
+- New: `comment-block.test.tsx` (7), `audience-copy.test.ts` (3), two in
+  `profile-screens.test.tsx`, a store assertion in `reader-report.test.tsx`;
+  4 in `library/index.test.ts`, 4 in `_shared/profile.test.ts`, 2 in
+  `00097_content_reports_open_test.ts`. Each was run against the unfixed code and
+  failed: the comment menu (3 of 7 fail), the library filter (2), the profile
+  branch (1), the 00097 grant (2 of 2 fail with `permission denied`), the copy
+  scan (3 of 3).
+- `pnpm typecheck` clean, `pnpm lint` 0 errors, jest 135 suites / 1458 tests (two
+  suites time out under a cold parallel run and pass alone), 1069 edge-function
+  tests pass.
+
+### Deploy (not done in this session)
+
+1. `supabase db push`: `00097_content_reports_open`.
+2. `supabase functions deploy library profile`.
+3. Read the bundles back: `library` contains `user_blocks`, `profile` contains
+   `viewerBlocked`.
+## 2026-09-25 UTC — The Play Store pack: listing, graphics, Data Safety and content rating, drafted
+
+**Session:** Lane F of the go-live push. Nothing was submitted to Google and nothing was deployed.
+
+New `store/android/`: listing copy in EN / PT-BR / ES-419 (fastlane `supply` layout, checked by
+`check-listing.mjs`), the 512 icon and a 1024×500 feature graphic per language rendered from HTML
+by `graphics/render.mjs` (local fonts and Originals covers only; two runs give identical bytes),
+`data-safety.md` with a code citation on every answer, `content-rating.md` (IARC, 18+, no ads, App
+access paste text) and `screenshot-plan.md`.
+
+What the audit found that the roadmap row did not say:
+- **The OpenRouter contributor tier makes story text "shared"** under Play's definition while it
+  serves, because that provider trains on what it receives. Turn it off, or tick Shared.
+- PostHog derives a city from the event's IP unless the project discards IPs: that is Approximate
+  location unless the setting is flipped.
+- `identifyUser` is never called, so PostHog and Sentry never see the account id.
+- The reviewer account's credits are seeded by hand and it earns none; top it up before review.
+- "Block author" is already wired from the story ⋮ menus (`StoryActionsSheet`), which the P0 row
+  does not reflect. There is no in-app delete or unpublish for a story or a comment.
+
+Katha's own privacy policy, terms and a product landing page are drafted on
+`thetractionlabs-site` branch `katha-legal-v2` (PR praz-builds/thetractionlabs-site#1), not merged.
+## 2026-09-25 UTC — The release build config is done in code, and a release AAB compiles locally
+
+**Session:** Lane A of the Play launch push, branch `codex/android-build-config`.
+Every pre-push build-config row that needs no founder account.
+
+### What changed
+
+- `expo/app.json`: `version` 1.0.0 (`runtimeVersion` was already
+  `{ policy: appVersion }`); `ios.infoPlist.UIBackgroundModes: ["audio"]`;
+  `android.blockedPermissions` for `RECORD_AUDIO`, `CAMERA`,
+  `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`, `AD_ID`; the image picker
+  plugin gets `cameraPermission: false`, `microphonePermission: false`.
+- `expo/app.config.ts` (new): derives `updates.url` from `extra.eas.projectId`,
+  reads `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `APP_ENV` from the build
+  environment. `eas init` still writes to `app.json` (Expo's writer handles a
+  function config that spreads it).
+- `expo/eas.json`: `channel` on production / preview / development; preview sets
+  `SENTRY_DISABLE_AUTO_UPLOAD=true`.
+- Firebase removed: both packages, `src/lib/firebase-analytics.ts` (no callers),
+  two `allowBuilds` entries only its tree needed, and the doc references.
+- `src/lib/audio-session.ts`: one `Audio.setAudioModeAsync` at start-up
+  (background, silent switch, duck others). Every narration and music sound is an
+  expo-av `Audio.Sound`, and the mode is process-wide, so one call covers them.
+- `src/lib/photo-access.ts`: **the finding worth keeping.** Both photo pickers
+  called `requestMediaLibraryPermissionsAsync` first. On Android below 13 that
+  asks for READ/WRITE_EXTERNAL_STORAGE, so blocking them would have made every
+  avatar and character-reference pick on Android 12 and below end at "Photo
+  access needed". The system photo picker needs no permission, so Android now
+  goes straight to it; iOS still asks.
+
+### Proof: a local release build
+
+`npx expo prebuild --platform android --clean` then, in `expo/android`,
+`SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew bundleRelease` (JDK 17, all four ABIs,
+debug signing): **BUILD SUCCESSFUL in 32m 42s**, `app-release.aab` **93,903,148
+bytes** (four ABIs; Play serves per-device splits). versionName 1.0.0. The Hermes
+bundle inside contains the new audio-session code and no Firebase.
+
+`<uses-permission>` in the merged release manifest (the AAB's own proto manifest
+agrees): `INTERNET`, `ACCESS_NETWORK_STATE`, `POST_NOTIFICATIONS`, `VIBRATE`,
+`WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `MODIFY_AUDIO_SETTINGS`,
+`c2dm.permission.RECEIVE`, `USE_BIOMETRIC`, `USE_FINGERPRINT`,
+`com.android.vending.BILLING`, `BIND_GET_INSTALL_REFERRER_SERVICE`,
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, `READ_APP_BADGE` and the launcher
+badge permissions (Samsung, HTC, Sony, Huawei, Oppo, etc.). **None of
+`RECORD_AUDIO`, `CAMERA`, `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`,
+`AD_ID` is present.** None of the remaining ones is a dangerous
+permission except `POST_NOTIFICATIONS`, which the app asks for on purpose.
+
+A release build with no `SENTRY_AUTH_TOKEN` fails at the source-map upload,
+which is why the local build needed `SENTRY_DISABLE_AUTO_UPLOAD`. The founder's
+production build needs the token as an EAS secret.
+
+### Verification
+
+`pnpm typecheck` clean; `pnpm lint` 0 errors (32 pre-existing warnings, none in
+changed files); `expo-doctor` 18/18; full jest 136 suites / 1466 tests.
+Regression checks: with the Android branch of `ensurePhotoLibraryAccess` and
+the `App.tsx` call removed, `photo-access.test.ts` (2) and `app-root.test.tsx`
+(1) fail; restored, they pass.
+
+### Left for the founder
+
+`eas init`; Sentry project, then `SENTRY_DSN` / `SENTRY_ORG` / `SENTRY_PROJECT`
+/ `SENTRY_AUTH_TOKEN` as EAS environment variables; `eas build -p android
+--profile production`; the lock-screen audio check on a real phone.
 
 ---
 

@@ -1,6 +1,6 @@
 // The request shape and the verdict relay for app feedback. The bound and the
 // replay are SQL's, and are tested against real Postgres in
-// `migrations/00097_app_feedback_test.ts`.
+// `migrations/00098_app_feedback_test.ts`.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   type AppFeedbackInput,

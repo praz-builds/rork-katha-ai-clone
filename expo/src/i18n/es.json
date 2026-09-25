@@ -62,8 +62,6 @@
       "readingPrefsDesc": "Tema, tamano de letra, idioma",
       "kathaPlus": "Katha Plus",
       "kathaPlusDesc": "Suscripcion, voces, sin anuncios",
-      "parentalControls": "Control parental",
-      "parentalControlsDesc": "Modo ninos y PIN de acceso",
       "feedback": "Comentarios",
       "feedbackDesc": "Opiniones, calificacion, soporte"
     },
@@ -249,7 +247,7 @@
     "fantasy": "Fantasia",
     "historical": "Hist\u00f3rico",
     "horror": "Terror",
-    "kids": "Infantil",
+    "kids": "Todas las edades",
     "lgbtq": "LGBTQ+",
     "motivational": "Motivacional",
     "mystery": "Misterio",
@@ -267,5 +265,24 @@
     "morePoetic": "Mas poetico",
     "moreDramatic": "Mas dramatico",
     "simpler": "Mas simple"
+  },
+  "blocks": {
+    "confirmTitle": "¿Bloquear a {{name}}?",
+    "confirmBody": "Ya no verás las historias ni los comentarios de {{name}}. Puedes desbloquearlo desde Perfil, en Cuentas bloqueadas.",
+    "confirm": "Bloquear",
+    "confirming": "Bloqueando...",
+    "confirmA11y": "Confirmar bloqueo de {{name}}",
+    "cancel": "Cancelar",
+    "failed": "No se pudo guardar el bloqueo. Revisa tu conexión e inténtalo de nuevo.",
+    "menuItem": "Bloquear a {{name}}",
+    "listTitle": "Cuentas bloqueadas",
+    "listEmpty": "No has bloqueado a nadie.",
+    "listError": "No se pudieron cargar tus cuentas bloqueadas.",
+    "retry": "Intentar de nuevo",
+    "unblock": "Desbloquear",
+    "unblockA11y": "Desbloquear a {{name}}",
+    "unblockFailed": "No se guardó. Inténtalo de nuevo.",
+    "authorBlockedTitle": "Bloqueaste a este escritor",
+    "authorBlockedBody": "Sus historias y comentarios están ocultos para ti."
   }
 }

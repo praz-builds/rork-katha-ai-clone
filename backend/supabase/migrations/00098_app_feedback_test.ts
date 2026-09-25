@@ -1,4 +1,4 @@
-// 00097: app feedback -- the table behind Profile's "Send feedback" sheet.
+// 00098: app feedback -- the table behind Profile's "Send feedback" sheet.
 //
 // Every migration applied in order against a real Postgres (PGlite), because a
 // plpgsql body is parsed when it RUNS: a function that merely exists proves
