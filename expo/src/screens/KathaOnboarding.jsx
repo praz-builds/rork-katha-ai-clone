@@ -307,8 +307,13 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
             accessibilityState={{ selected: n === phase }}
             onPress={() => onDot(n)} style={styles.dotHit}>
             {/* A 6pt dot needs a 44pt target; the hit box is negative-margined
-                so the row keeps the SPEC's 6pt height. The width change is a
-                200ms CSS transition on a childless dot. */}
+                so the row keeps the SPEC's 6pt height.
+                KNOWINGLY crosses the skill's "Never Ship: animating width" row:
+                the dot is in flow, so its two siblings re-lay-out on each of
+                the 200ms frames. Accepted because it is three 6pt nodes, only
+                on a slide change, and `scaleX` (the transform alternative)
+                smears the 3pt corner radius into an oval. The transition is a
+                Reanimated 4 CSS transition, which runs on native and web. */}
             <Animated.View style={{
               width: n === phase ? 22 : 6, height: 6, borderRadius: 3,
               backgroundColor: n === phase ? C.orange : C.dotIdle,

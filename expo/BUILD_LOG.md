@@ -2,6 +2,13 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-25: Six-digit codes, moment chips that fit, and an intro that works at any window (PR #143)
+
+- **Intro (`src/screens/KathaOnboarding.jsx`)**: motion moved from RN `Animated` plus a per-frame `setState` to Reanimated 4 shared values. The carousel follows a swipe, the dots have 44pt targets, and the copy crossfades. It is a phone-width column (`controls.introMaxWidth`, 430) that scrolls on a short window, which removes the desktop-width trap. The slide curve changed to the skill's ease-in-out `(0.77, 0, 0.175, 1)`; the durations did not (`DESIGN.md` records it). A swipe that races the auto-advance used to leave a flag armed that swallowed the next slide; it now records the target phase.
+- **Code step (`src/components/onboarding/EmailCodeAuth.tsx`, `src/lib/otp.ts`)**: six digits from `OTP_LENGTH`. Formatted pastes verify on their own, an 8-digit paste is refused with a line saying why, and a code pasted while a verify is running goes out when that verify finishes. The copy comes from `auth.*` in the locales.
+- **Moment chips (`src/lib/moment-display.ts`)**: 40 characters, cut at a word, ending "…". The full moment is still sent.
+- **Verified**: Expo web :8091 at 390x844, 1440x900 and 1280x640, including a mouse-drag swipe and reduced motion. **Not verified**: a native build. The swipe feel and the Android window-height check are on the day-7 device walk in `backend/ROADMAP.md`.
+
 ## 2026-09-21: The preview had been reviewing a branch, not main
 
 Raised by the founder: *"can you check what I'm checking on my local is actually

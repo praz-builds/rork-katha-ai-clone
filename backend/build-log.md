@@ -22,6 +22,10 @@ Branch `codex/onboarding-and-create-polish` (Lane C of the Play launch push). Cl
 
 `pnpm typecheck` clean; `pnpm lint` 0 errors. New tests: `otp.test.ts`, `moment-display.test.ts`, new cases in `email-code-auth.test.tsx` and `katha-onboarding-intro.test.tsx`. Each was run against the pre-fix code and failed (13 OTP/moment cases; the intro cases fail on the old component's missing column, scroll page and 6pt dot target). Seen on Expo web :8091 at 390x844, 1440x900 and 1280x640, including a mouse-drag swipe both ways and `prefers-reduced-motion`.
 
+### After review (Fable, same day)
+
+Merged main (#138-#141; kept both `blocks` and `auth` in the locales, and main's Ambient Music row). Fixed: a swipe racing the auto-advance left a boolean armed that swallowed the next slide (now the target phase; `katha-onboarding-intro.test.tsx` reproduces the race and failed before the fix); a code pasted while a verify was in flight was never sent (verify now reports whether it ran and a finishing verify sends the waiting code; failed before the fix). The code step reads `auth.*` via `i18n.t`, length interpolated. Left as is: the typed prompt and like counter still update React state as their text changes (about 50 a second for 2s, two leaf `Text`s); moving them to an animated `TextInput` would change the prompt's fixed wrapping and is unproven on web.
+
 ### Needs the founder
 
 Set Supabase Auth's email OTP length to 6 (and the custom SMTP sender) before this client ships: it refuses 8-digit codes by design.
