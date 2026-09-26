@@ -9377,6 +9377,14 @@ reverted fix and fail there.
 ### Explore bedtime category (2026-09-26)
 
 - No backend runtime, schema, migration, function, or deployment changed.
-  Explore now queries the already-persisted `stories.audience_mode = 'kids'`
-  for its Bedtime stories category; the prompt contract documents that this is
-  a kids-safe category, not a new primary genre.
+  Explore reads only the legacy editorial `bedtime` tag already retained in
+  `stories.genre`; it does not widen the category to the `kids` audience mode.
+
+### Bedtime category review correction (2026-09-26)
+
+- No backend runtime, schema, migration, function, or deployment changed.
+  The `bedtime` array value was preserved by migration `00008`; this correction
+  makes the client query that existing historical classification rather than
+  misrepresenting every all-ages story as bedtime. New generated stories still
+  need a separately approved persisted bedtime contract before they can enter
+  this shelf.

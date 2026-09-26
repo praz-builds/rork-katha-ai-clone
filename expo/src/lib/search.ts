@@ -37,7 +37,7 @@ import {
 } from "@/lib/chapter-directions";
 import { authorFor, stories as seedStories } from "@/data/seed";
 import { GENRES } from "@/types/domain";
-import type { AudienceMode, Genre, Story } from "@/types/domain";
+import type { Genre, Story } from "@/types/domain";
 
 /** How many rows one search asks for. A browse page, not a data export. */
 export const SEARCH_PAGE_SIZE = 24;
@@ -152,8 +152,11 @@ export type SearchInput = {
   text: string;
   /** The selected genre, or null for every genre. */
   genre: Genre | null;
-  /** Bedtime Explore maps to the existing kids-safe audience mode. */
-  audienceMode?: AudienceMode | null;
+  /**
+   * Legacy editorial classification. It is deliberately distinct from the
+   * all-ages audience mode, which does not promise a sleep-ready story.
+   */
+  bedtime?: boolean;
 };
 
 export type SearchOutcome = {
@@ -221,7 +224,10 @@ export function searchLocalCatalogue(
   const term = sanitizeSearchTerm(input.text).toLowerCase();
   return catalogue.filter((story) => {
     if (input.genre && story.genre !== input.genre) return false;
-    if (input.audienceMode === "kids" && story.audienceMode !== "kids") return false;
+    // The offline catalogue has no editorially bedtime-labelled stories. Do
+    // not substitute all-ages stories and make a promise their data cannot
+    // support.
+    if (input.bedtime) return false;
     if (!term) return true;
     return (
       story.title.toLowerCase().includes(term) ||
@@ -254,7 +260,7 @@ export async function searchStories(
 
   const term = sanitizeSearchTerm(input.text);
   const genre = isKnownGenre(input.genre) ? input.genre : null;
-  const audienceMode = input.audienceMode === "kids" ? "kids" : null;
+  const bedtime = input.bedtime === true;
 
   try {
     // Author handles resolve first, because a handle lives on `profiles` and
@@ -302,7 +308,11 @@ export async function searchStories(
       query = query.or(genreClause(genre));
     }
 
-    if (audienceMode) query = query.eq("audience_mode", audienceMode);
+    // Migration 00008 retained an existing `bedtime` value in the legacy
+    // genre text[] while moving its primary genre to Adventure. This is the
+    // persisted bedtime classification; audience_mode = kids is only an
+    // all-ages safety mode and must not be broadened into this shelf.
+    if (bedtime) query = query.contains("genre", ["bedtime"]);
 
     query = query
       .order("like_count", { ascending: false })

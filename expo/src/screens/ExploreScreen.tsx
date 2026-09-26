@@ -13,7 +13,8 @@ import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import { Chip } from "@/components/KathaPrimitives";
 import { StoryFeedCard } from "@/components/feed/StoryFeedCard";
 import {
-  BEDTIME_CATEGORY_LABEL,
+  BEDTIME_CATEGORY,
+  BEDTIME_CATEGORY_SHORT_LABEL,
   ExploreCategoryStrip,
   GenreStrip,
   genreChipLabel,
@@ -70,7 +71,7 @@ export function exploreScopeLabel(
   sort: SortOption,
 ): string {
   const filters = [
-    category ? BEDTIME_CATEGORY_LABEL.replace("🌙 ", "") : null,
+    category ? BEDTIME_CATEGORY_SHORT_LABEL : null,
     genre ? genreLabels[genre] : null,
   ].filter((value): value is string => value !== null);
   if (filters.length === 0) return SORT_LABELS[sort];
@@ -101,8 +102,8 @@ const SUGGESTED_GENRES: readonly Genre[] = ["fantasy", "mystery", "romance"];
  *    author handle — debounced, cancellable, and race-guarded. See
  *    `components/explore/useStorySearch.ts` for why all three are needed and
  *    why the third is not implied by the first two.
- * 2. **Bedtime stories**, an audience category that maps to the existing
- *    kids-safe contract rather than inventing a genre.
+ * 2. **Bedtime stories**, a legacy editorial category. It never expands to
+ *    all-ages, which is a different reader promise.
  * 3. **Every genre, as one horizontal strip**, in the create brief's own chip
  *    language. Selecting one filters; selecting it again clears it.
  * 4. **The results**, as `StoryFeedCard`s — the same card Home's rails use,
@@ -169,7 +170,7 @@ export default function ExploreScreen({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const { status, stories: searched, source } = useStorySearch(
-    { text: query, genre, audienceMode: category === "bedtime" ? "kids" : null },
+    { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
     { catalogue: stories, ...searchOptions },
   );
   // The query itself leaves blocked writers out (`search.ts`), but a page
@@ -218,9 +219,6 @@ export default function ExploreScreen({
   }, []);
 
   const clearSearch = useCallback(() => setQuery(""), []);
-  const clearGenre = useCallback(() => setGenre(null), []);
-  const clearCategory = useCallback(() => setCategory(null), []);
-
   const clearAll = useCallback(() => {
     setQuery("");
     setGenre(null);
@@ -315,19 +313,25 @@ export default function ExploreScreen({
     // publish.
     if (!searching && (genre || category)) {
       const label = category
-        ? genre ? `bedtime ${genreLabels[genre]}` : "bedtime stories"
+        ? genre
+          ? `${BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()} in ${genreLabels[genre]}`
+          : BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()
         : `${genreLabels[genre!]} stories`;
+      const isOfflineBedtime = category === BEDTIME_CATEGORY && source === "local";
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
             No {label} yet
           </Text>
           <Text style={styles.emptyBody}>
-            This category is new here. More will appear as writers publish in it —
-            you could be the first.
+            {isOfflineBedtime
+              ? "Connect to browse published bedtime stories. The offline catalogue does not label stories as bedtime."
+              : category
+                ? "More bedtime stories will appear as they are published."
+                : "This genre is new here. More will appear as writers publish in it."}
           </Text>
           <Pressable
-            onPress={category ? clearCategory : clearGenre}
+            onPress={clearAll}
             accessibilityRole="button"
             style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
           >
@@ -392,7 +396,7 @@ export default function ExploreScreen({
         )}
       </View>
     );
-  }, [activeFilterCount, category, clearAll, clearCategory, clearGenre, genre, query, searching, status]);
+  }, [activeFilterCount, category, clearAll, genre, query, searching, source, status]);
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
