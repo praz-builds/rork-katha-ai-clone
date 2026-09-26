@@ -2230,3 +2230,18 @@ and `deno check` clean.
 - The test shim documentation now says precisely what happens: Jest resolves
   `fs` and `path` at runtime, while local declarations keep the Expo client
   type graph free of imported/global Node typings.
+
+## 2026-09-26: Keep public author pages free of activity calendars
+
+- Main at `07e56ea` already removes `ActivityGrid` and its calendar request
+  from `AuthorScreen`; the owner-only grid remains on Journey. A visual smoke
+  nevertheless reported the old accessibility labels (`Sep`, `No active days
+  yet`), so the public-profile regression now asserts those labels are absent
+  as well as the component test id and request. That test would fail against
+  the pre-removal AuthorScreen, which imported and rendered `ActivityGrid`.
+- The same regression also asserts the useful public content remains:
+  Followers, Following, and published Stories. No runtime profile behavior or
+  server contract changed in this guard-only follow-up.
+- Verified: `pnpm typecheck` and
+  `pnpm exec jest src/__tests__/profile-screens.test.tsx --runInBand --silent`
+  (30 tests) pass.
