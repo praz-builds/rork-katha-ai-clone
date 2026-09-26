@@ -23,8 +23,8 @@ import {
   type ReaderPreferences,
 } from "@/lib/reader-preferences";
 
-const EMPTY: ReaderPreferences = { spokenLanguages: [], homePlace: null };
-const SAVED: ReaderPreferences = { spokenLanguages: ["hi", "en"], homePlace: "Pune" };
+const EMPTY: ReaderPreferences = { spokenLanguages: [], unrecognisedLanguages: [], homePlace: null };
+const SAVED: ReaderPreferences = { spokenLanguages: ["hi", "en"], unrecognisedLanguages: [], homePlace: "Pune" };
 
 beforeEach(() => mockInvoke.mockReset());
 afterEach(cleanup);
@@ -67,7 +67,7 @@ it("a read that lands while the sheet is open does not overwrite what is being t
   await view.rerender(
     <ReaderContextSheet
       {...props}
-      value={{ spokenLanguages: ["ta"], homePlace: "Chennai" }}
+      value={{ spokenLanguages: ["ta"], unrecognisedLanguages: [], homePlace: "Chennai" }}
       status="ready"
     />,
   );
@@ -94,7 +94,7 @@ it("a save that lands after a close-and-reopen does not close the new opening", 
     resolveSave({ data: { spokenLanguages: ["hi", "en"], homePlace: "Pune" }, error: null });
   });
   // The server's answer is still reported; the new opening stays open.
-  expect(props.onSaved).toHaveBeenCalledWith({ spokenLanguages: ["hi", "en"], homePlace: "Pune" });
+  expect(props.onSaved).toHaveBeenCalledWith({ spokenLanguages: ["hi", "en"], unrecognisedLanguages: [], homePlace: "Pune" });
   expect(props.onClose).not.toHaveBeenCalled();
 });
 

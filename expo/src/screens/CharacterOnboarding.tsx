@@ -843,9 +843,14 @@ export default function CharacterOnboarding(
     setNotificationsEnabled(granted);
     go("welcome");
   }, [go]);
-  dismissPaywall.current = () => {
-    void leavePaywall();
-  };
+  // In an effect, not the render body. It is idempotent so the old placement
+  // broke nothing, but `pendingPortrait` and the BackHandler in this file both
+  // go through effects and this had no reason to be the exception.
+  useEffect(() => {
+    dismissPaywall.current = () => {
+      void leavePaywall();
+    };
+  }, [leavePaywall]);
 
   /* ── Exit ───────────────────────────────────────────────────────────── */
 

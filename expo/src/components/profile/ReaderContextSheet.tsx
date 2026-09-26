@@ -15,6 +15,7 @@ import { Button } from "@/components/Button";
 import {
   homePlaceProblem,
   MAX_SPOKEN_LANGUAGES,
+  REFUSAL_COPY,
   type ReaderPreferences,
   saveReaderPreferences,
   SPOKEN_LANGUAGES,
@@ -90,7 +91,12 @@ export default function ReaderContextSheet({
   }, [status, value, visible]);
 
   const placeProblem = homePlaceProblem(place);
-  const atCap = languages.length >= MAX_SPOKEN_LANGUAGES;
+  // Languages this build does not recognise are held on the account and go
+  // back on Save untouched, but the server counts them against the cap, so
+  // the chips have to as well -- otherwise a Save that looks in-budget is
+  // refused with "pick up to 3 languages" and the reader cannot see why.
+  const hidden = value.unrecognisedLanguages.length;
+  const atCap = languages.length + hidden >= MAX_SPOKEN_LANGUAGES;
 
   const save = async () => {
     if (placeProblem || saving) return;
@@ -99,6 +105,7 @@ export default function ReaderContextSheet({
     setFailed(null);
     const result = await saveReaderPreferences({
       spokenLanguages: languages,
+      unrecognisedLanguages: value.unrecognisedLanguages,
       homePlace: place.trim() ? place : null,
     });
     setSaving(false);
@@ -111,8 +118,18 @@ export default function ReaderContextSheet({
     }
     if (!("saved" in result)) {
       if (current) {
+        // The unknown ids we carried are the server's own, so it normally
+        // knows them -- this build is the older one. If it refuses them
+        // anyway, the generic "remove the one you added last" is advice the
+        // reader cannot follow: the offending id is not on screen to remove.
+        const cannotAct = hidden > 0 && "refused" in result &&
+          result.refused === REFUSAL_COPY.unknown_language;
         setFailed(
-          "refused" in result ? result.refused : CONNECTION_FAILURE,
+          cannotAct
+            ? "A language saved on your account is not recognised by this version of the app. Update the app to change your languages."
+            : "refused" in result
+            ? result.refused
+            : CONNECTION_FAILURE,
         );
       }
       return;
@@ -188,6 +205,13 @@ export default function ReaderContextSheet({
               <Text style={styles.hint}>
                 Pick up to {MAX_SPOKEN_LANGUAGES}.
               </Text>
+              {hidden > 0 && (
+                <Text style={styles.hint}>
+                  {hidden === 1
+                    ? "One language you set on a newer version of the app is kept on your account. It is not shown here, and saving will not remove it."
+                    : `${hidden} languages you set on a newer version of the app are kept on your account. They are not shown here, and saving will not remove them.`}
+                </Text>
+              )}
               <View style={styles.chips}>
                 {SPOKEN_LANGUAGES.map((language) => {
                   const selected = languages.includes(language.id);

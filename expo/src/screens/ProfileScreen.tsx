@@ -180,7 +180,13 @@ export default function ProfileScreen({
   const [readerPrefsStatus, setReaderPrefsStatus] = useState<
     "loading" | "ready" | "failed"
   >(() => (cachedReaderPreferences() ? "ready" : "loading"));
-  const readerPrefsChosenByUserRef = useRef(false);
+  // When this session last saved reader preferences, not whether it ever
+  // did. A boolean latched forever: after one save, no read could replace the
+  // value for the rest of the screen's life, so a save landing late (the
+  // sheet closed and reopened meanwhile) pinned a stale value behind an open
+  // sheet until the next Save. A timestamp only shadows the reads that were
+  // already in flight when the save happened, which is all it was ever for.
+  const readerPrefsSavedAtRef = useRef(0);
   const aliveRef = useRef(true);
   useEffect(() => {
     aliveRef.current = true;
@@ -192,12 +198,13 @@ export default function ProfileScreen({
     // A held value stays on screen while it refreshes; "Loading…" is only for
     // a first read.
     if (!cachedReaderPreferences()) setReaderPrefsStatus("loading");
+    const startedAt = Date.now();
     void fetchReaderPreferences({ maxAgeMs }).then((prefs) => {
       if (!aliveRef.current) return;
       // The ref guards the VALUE only: a read that lands after a save must
       // not undo it, but the status always settles, so a later caller (Try
       // again, a refresh) can never leave the row on "Loading…".
-      if (prefs && !readerPrefsChosenByUserRef.current) setReaderPrefs(prefs);
+      if (prefs && readerPrefsSavedAtRef.current <= startedAt) setReaderPrefs(prefs);
       // A failed refresh behind a held value leaves the held value editable:
       // it IS what was saved this session.
       setReaderPrefsStatus(
@@ -209,7 +216,7 @@ export default function ProfileScreen({
     loadReaderPrefs(READER_PREFERENCES_FRESH_MS);
   }, [loadReaderPrefs]);
   const saveReaderPrefs = useCallback((next: ReaderPreferences) => {
-    readerPrefsChosenByUserRef.current = true;
+    readerPrefsSavedAtRef.current = Date.now();
     setReaderPrefs(next);
     setReaderPrefsStatus("ready");
   }, []);

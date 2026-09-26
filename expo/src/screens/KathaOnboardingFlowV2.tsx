@@ -52,8 +52,9 @@
  * it on the next screen started four pills in.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -391,6 +392,28 @@ export default function KathaOnboardingFlowV2(
     const target = previousScreen(screen, purpose);
     if (target !== null) setScreen(target);
   };
+
+  /*
+    Android's hardware Back, which the arrow above has always handled but this
+    file never did. Without it, Back on any of the six questionnaire screens
+    closed the whole app -- `name`, `genres`, `genreOrder`, `purpose`,
+    `refine`, `mood` and `moment` are all local state here and nothing is
+    persisted, so reopening started at the intro with every answer gone, while
+    the arrow one line up went back a step with everything intact.
+
+    Not consumed on the first screen: `previousScreen` answers null there, so
+    Back falls through to the system and exits, which is what leaving the
+    first screen of a flow should do.
+  */
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      const target = previousScreen(screen, purpose);
+      if (target === null) return false;
+      setScreen(target);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [screen, purpose]);
 
   const { steps, currentStep } = questionStep(screen, purpose);
 

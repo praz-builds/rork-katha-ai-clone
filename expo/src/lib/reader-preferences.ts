@@ -68,11 +68,22 @@ export function isSpokenLanguage(value: unknown): value is SpokenLanguage {
 
 export type ReaderPreferences = {
   spokenLanguages: SpokenLanguage[];
+  /**
+   * Language ids the server holds that THIS build does not know.
+   *
+   * `SPOKEN_LANGUAGES` is append-only by contract, so a reader who set a
+   * language on a newer build and then opens this one would otherwise have it
+   * filtered out on read and erased by the next Save -- the read is lenient,
+   * the write was not. They are carried through the round trip untouched and
+   * counted against the cap, because the server counts them too.
+   */
+  unrecognisedLanguages: string[];
   homePlace: string | null;
 };
 
 export const EMPTY_READER_PREFERENCES: ReaderPreferences = {
   spokenLanguages: [],
+  unrecognisedLanguages: [],
   homePlace: null,
 };
 
@@ -119,13 +130,15 @@ export function readerPreferencesSummary(prefs: ReaderPreferences): string {
 function fromResponse(data: unknown): ReaderPreferences | null {
   if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
-  const languages = Array.isArray(record.spokenLanguages)
-    ? record.spokenLanguages.filter(isSpokenLanguage)
-    : [];
+  const all = Array.isArray(record.spokenLanguages) ? record.spokenLanguages : [];
+  const languages = all.filter(isSpokenLanguage);
+  const unrecognised = all.filter(
+    (value): value is string => typeof value === "string" && !isSpokenLanguage(value),
+  );
   const place = typeof record.homePlace === "string" && record.homePlace.trim()
     ? record.homePlace
     : null;
-  return { spokenLanguages: languages, homePlace: place };
+  return { spokenLanguages: languages, unrecognisedLanguages: unrecognised, homePlace: place };
 }
 
 /**
@@ -262,7 +275,8 @@ export async function saveReaderPreferences(
     const { data, error } = await supabase.functions.invoke("profile", {
       body: {
         action: "set_preferences",
-        spokenLanguages: prefs.spokenLanguages,
+        // The ids this build does not know go back exactly as they came.
+        spokenLanguages: [...prefs.spokenLanguages, ...prefs.unrecognisedLanguages],
         homePlace: prefs.homePlace?.trim() ? prefs.homePlace.trim() : null,
       },
     });

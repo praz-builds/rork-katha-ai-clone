@@ -8,8 +8,8 @@
  * here, on `onCharacterPath` not being called for a reader.
  */
 import React from "react";
-import { StyleSheet } from "react-native";
-import { fireEvent, render } from "@testing-library/react-native";
+import { BackHandler, StyleSheet } from "react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
@@ -79,6 +79,51 @@ async function answerNameAndGenres(
 }
 
 describe("KathaOnboardingFlowV2", () => {
+  it("routes Android's hardware Back like the arrow, and only exits from the first screen", async () => {
+    // Every answer here is local useState with nothing persisted, so a Back
+    // that falls through to the system does not go back a step -- it closes
+    // the app and loses the lot, while the arrow one line up goes back with
+    // everything intact. That asymmetry is the bug.
+    const handlers: (() => boolean)[] = [];
+    const spy = jest
+      .spyOn(BackHandler, "addEventListener")
+      .mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: () => {} };
+      });
+    try {
+      const view = await render(<KathaOnboardingFlowV2 onCharacterPath={jest.fn()} />);
+      const back = () => handlers[handlers.length - 1]();
+
+      // First screen: not consumed, so the system takes it and the app exits.
+      let consumed = true;
+      await act(async () => {
+        consumed = back();
+      });
+      expect(consumed).toBe(false);
+      expect(view.getByText("First, what should we call you?")).toBeTruthy();
+
+      await answerNameAndGenres(view, "Nikita");
+      await view.findByText("What brings you to Katha?");
+
+      // Consumed on a questionnaire screen, and it steps back rather than
+      // leaving -- with the name still typed in.
+      await act(async () => {
+        consumed = back();
+      });
+      expect(consumed).toBe(true);
+      expect(await view.findByText(`Continue with ${MIN_GENRE_SELECTIONS}`)).toBeTruthy();
+
+      await act(async () => {
+        consumed = back();
+      });
+      expect(consumed).toBe(true);
+      expect(view.getByDisplayValue("Nikita")).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("hands a writer to the character flow with their answers and first genre", async () => {
     const onCharacterPath = jest.fn();
     const view = await render(

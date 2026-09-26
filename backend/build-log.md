@@ -7,6 +7,59 @@
 
 ---
 
+## 2026-09-26 UTC — Review round: hardware Back was half-fixed, and a Save could erase a language
+
+**Session:** acting on the standing review of #150. Branch
+`codex/onboarding-culture-remediation`.
+
+### What changed for a person using the app
+
+- **Android's hardware Back now works on the six questionnaire screens.**
+  It was added to `CharacterOnboarding` only, so the PR's headline claim was
+  true from the Meet screen onward and false before it. On genres, purpose,
+  refine, mood or moment, Back closed the whole app -- every answer there is
+  local `useState` with nothing persisted, so reopening started at the intro
+  with the lot gone, while the arrow one line above went back a step with
+  everything intact. Back now follows the same table as the arrow and falls
+  through to the system only on the first screen, where leaving is correct.
+- **A language set on a newer build is no longer erased by the next Save.**
+  The client's read filtered unknown ids out and its write sent back only
+  what it recognised, so a reader who set a 31st language and then opened an
+  older build lost it silently on Save. `SPOKEN_LANGUAGES` is append-only by
+  contract, so this was reachable. Unknown ids are now carried through the
+  round trip untouched, counted against the cap (the server counts them, so
+  the chips must too, or an in-budget-looking Save is refused), and the sheet
+  says plainly that something it cannot show is held on the account.
+
+### Two smaller ones
+
+- `readerPrefsChosenByUserRef` was a boolean latched forever: after one save
+  no read could replace the value for the rest of the screen's life, so a
+  save landing late pinned a stale value behind a reopened sheet. It is a
+  timestamp now, which shadows only the reads already in flight at save time
+  -- all it was ever for.
+- `dismissPaywall.current` was assigned in the render body rather than an
+  effect. Idempotent, so nothing broke; `pendingPortrait` and the BackHandler
+  in the same file both use effects.
+
+### Verification
+
+- `pnpm test`: 153 suites, 1624 tests pass. `pnpm typecheck` clean. ESLint
+  clean over every changed file.
+- The two behaviour fixes are proved, not asserted: the hardware-Back test
+  was run against the code with the new effect removed and **fails**, and the
+  language round trip asserts the exact `set_preferences` body.
+- **A note on direction.** Carrying unknown ids back is safe because the
+  server is the newer of the two here -- it wrote the id, so it accepts it.
+  Its write path does reject an id it does not know, so if that ever fires
+  with hidden ids present the sheet now says the app is out of date rather
+  than "remove the one you added last", which names something the reader
+  cannot see.
+- No backend file changed in this round, so the deploy set recorded earlier
+  on this branch is unaffected.
+
+---
+
 ## 2026-09-25 UTC — Onboarding takes several answers, the stage shows three different people, and stories know the reader's languages and city
 
 **Session:** completion of the dirty `codex/onboarding-culture-remediation`
