@@ -49,6 +49,13 @@ every `.ts` file in it compared byte for byte with main — **89 of 89 identical
 zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 **zero importers**: dead code, not drift.
 
+**Pending deployment, not authorized:** this PR's `00100_reader_preferences`
+migration and the seven functions that will carry its shared reader-context
+code are not deployed: `profile`, `generate-story`, `generate-story-stream`,
+`continue-story`, `edit-story`, `reimagine-chapter`, and `shape-story`.
+Apply the migration first, then deploy that complete closure only after explicit
+authorization; merging client code does not make it live.
+
 The deploy set was eight, not the three or six either PR touched by folder:
 `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 `reimagine-chapter`, `shape-story`, `generate-character-image` and

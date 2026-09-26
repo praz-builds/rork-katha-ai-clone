@@ -7,6 +7,32 @@
 
 ---
 
+## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
+
+**Session:** rebased `codex/onboarding-culture-remediation` onto main after
+#149 merged. No production action was taken.
+
+- `ReaderContextSheet` now uses the shared `profileHeading` UI token rather
+  than the story-only display face. The global Profile typography guard covers
+  the sheet, so a future direct display-font use fails the test.
+- The reader-preferences summary test now pins both plural forms: a hidden-only
+  value is `2 languages`, while a known list remains `Hindi, 2 more`.
+- `AGENTS.md` now says plainly that `00100_reader_preferences` and the seven
+  functions in its shared-module closure are pending deployment, with migration
+  first and explicit authorization required. This is a record correction, not
+  a deployment.
+
+### Verification
+
+- Focused Jest: 3 suites / 38 tests passed (reader preferences, context sheet,
+  and Profile typography); the new plural assertion was also shown to fail
+  against the old bare-count behaviour. Affected-file ESLint and the mandatory
+  diff security scan passed. Expo typecheck was started but did not complete
+  before this session's command window ended, so it is not recorded as passing.
+  No production-level test or deployment occurred.
+
+---
+
 ## 2026-09-26 UTC — Review round: hardware Back was half-fixed, and a Save could erase a language
 
 **Session:** acting on the standing review of #150. Branch

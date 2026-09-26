@@ -21,7 +21,7 @@ import {
   SPOKEN_LANGUAGES,
   toggleSpokenLanguage,
 } from "@/lib/reader-preferences";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 /**
  * Languages and home: the cultural context new stories are written with.
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  title: { ...profileHeading, color: colors.ink, fontSize: 24 },
   close: {
     width: 36,
     height: 36,

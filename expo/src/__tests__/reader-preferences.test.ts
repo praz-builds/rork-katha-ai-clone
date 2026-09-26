@@ -251,11 +251,25 @@ it("counts a language it cannot name, rather than telling the reader they have n
   ).toBe("1 language");
   expect(
     readerPreferencesSummary({
+      spokenLanguages: [],
+      unrecognisedLanguages: ["bho", "mr"],
+      homePlace: null,
+    }),
+  ).toBe("2 languages");
+  expect(
+    readerPreferencesSummary({
       spokenLanguages: ["hi"],
       unrecognisedLanguages: ["bho"],
       homePlace: "Pune",
     }),
   ).toBe("Hindi, 1 more · Pune");
+  expect(
+    readerPreferencesSummary({
+      spokenLanguages: ["hi"],
+      unrecognisedLanguages: ["bho", "mr"],
+      homePlace: "Pune",
+    }),
+  ).toBe("Hindi, 2 more · Pune");
   expect(
     readerPreferencesSummary({
       spokenLanguages: [],
