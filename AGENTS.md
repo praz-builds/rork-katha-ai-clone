@@ -1355,17 +1355,20 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
 - Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
 - After every code-changing push, wait for **Claude Review**'s incremental review. It arrives as a pull request **comment**, not as a check: the cloud routine posts it a few minutes after the push, labelled with the head SHA it reviewed. Do not wait for a `Review the diff` check -- that check belongs to the disabled Action workflows and will never appear.
-- Merge only when Claude Review's latest comment covers the current head SHA and raises nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`. A pull request opened before 2026-09-25 may still carry a red `Review the diff` check from the Action; that check is stale and is not a merge blocker.
+- Merge only when Claude Review's latest comment covers the current head SHA and raises nothing outstanding, no message requests changes, every finding has been answered in a reply naming the commit that addressed it, required validation passes, and the branch is current with `main`. A pull request opened before 2026-09-25 may still carry a red `Review the diff` check from the Action; that check is stale and is not a merge blocker.
 - A green commit status alone is not approval. Read the latest review body.
 - **The reviewer skips drafts and bot-authored pull requests.** It reviews every open pull request that needs one on each firing, not only the one that triggered it, so a review can arrive on a pull request nobody just pushed to.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
+
+
+- Exceptions require explicit user authorization and documentation in the pull request.
 
 ### The review loop -- iterate, do not stall
 
 Claude Review is a loop, not a gate you wait at. Run it to completion yourself:
 
 1. Push. The reviewer fires on the push and posts a comment naming the head SHA it reviewed. It takes a few minutes; a comment naming an older SHA is a previous round, not this one.
-2. Read every finding. For each one, either **fix it and say so**, or **reply saying why it is wrong**. A finding you silently ignore is an open thread, and an open thread blocks the merge.
+2. Read every finding. For each one, either **fix it and say so**, or **reply saying why it is wrong**. The reviewer posts a plain pull request comment, not an inline review, so there is no **Resolve conversation** button on its findings and nothing to tick -- answer by replying with a comment naming the commit that addressed each one. A finding you silently ignore counts as outstanding and blocks the merge.
 3. Push the fixes. That fires the next round automatically.
 4. Repeat until the newest comment covers the current head SHA and raises nothing outstanding.
 
@@ -1373,14 +1376,13 @@ Only then merge. Do not stop after one round because findings exist -- findings 
 
 **What "checks are clear" means**, exactly, because getting this wrong has already stalled two pull requests:
 
-- The **CI** checks (`Typecheck + Lint + Test`, `Edge Functions — Typecheck + Test`, and `Smoke` when it runs) must pass. These are real and they block.
+- The **CI** checks (`Typecheck + Lint + Test`, `Edge Functions — Typecheck + Test`, and `Smoke`) must pass to satisfy the gate above. GitHub will not stop you merging over a red one -- there is no branch protection here, so nothing is mechanically enforced -- but unlike `Review the diff` these can turn green, so a red one is a real failure to fix rather than a stale artifact. Note that `Smoke - web bundle builds` reports **skipped** on a pull request (it is gated on `push`), and a skipped check is not a pass.
 - A red **`Review the diff`** check is **stale and is not a blocker**. It belongs to the disabled Action workflows, it can never turn green, and it will disappear from a pull request on the next push because no new run replaces it. There is no branch protection on this repository, so GitHub reports such a pull request `mergeable` and the merge button works.
 - CodeAnt's comment is advisory, not a gate.
 - The gate is **Claude Review's latest comment**, and it is a comment, not a check. A fully green check list does not mean the review happened.
 
-If a review never arrives after ten minutes, check the routine at <https://claude.ai/code/routines> rather than waiting indefinitely, and say in the pull request that you proceeded without one.
+If a review never arrives after ten minutes, do not wait indefinitely and do not merge. Check the routine at <https://claude.ai/code/routines>, say in the pull request that no review arrived and what you checked, and **stop there and ask for authorization** to merge unreviewed. Merging without a review is an exception, and the bullet above means a human grants it, not you. This matters more here than elsewhere: the gate is a comment rather than a check, so an unreviewed pull request looks identical to a reviewed one in the checks UI and nothing downstream will catch it.
 
-- Exceptions require explicit user authorization and documentation in the pull request.
 
 **Claude is the reviewer on this repository, and it runs as a cloud routine, not as a GitHub Action.** The routine is `Katha PR review` (`trig_01YEy4UFeLZxFSPvaN1p8jhm`, managed at <https://claude.ai/code/routines>). A webhook trigger fires it on `pull_request.opened`, `synchronize` and `ready_for_review`, and a daily 03:00 UTC cron catches anything the webhook missed. It clones the repository, reads this file, reviews against the contract rather than only the diff, and posts one comment per pull request naming the head SHA it reviewed. It never pushes.
 

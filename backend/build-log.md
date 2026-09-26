@@ -43,6 +43,42 @@ credit rather than platform API credit. Three things learned the hard way:
 - **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
   on the pull request.** Hence the variable gate.
 
+### Rounds 3-5: the docs were wrong in ways that would have misled an agent
+
+The reviewer kept going after the code was right, and the remaining findings
+were all documentation that contradicted the shipped state:
+
+- `README.md` told a contributor the disabled workflow was the reviewer and
+  that `@claude` works. Following it got **no reply at all**, because the job
+  never starts.
+- The contract named `.github/workflows/claude-review.yml` as where review
+  instructions are maintained. **The live prompt is in the cloud routine and
+  nothing in Git holds it** -- editing the workflow copy changes the
+  reviewer's behaviour not at all and reports no error.
+- The contract asserted CodeAnt no longer reviews this repository. **CodeAnt
+  reviewed the head on which that sentence sat.** It is still installed; its
+  findings are advisory and are not the merge gate. The entry above this one
+  is the record that got this wrong.
+- The mention prompt said "push" unconditionally, including on the fallback
+  default-branch checkout, in a job holding `contents: write`. It now receives
+  the resolved ref and is told an empty one means answer only.
+- A first attempt at the review-loop section granted itself an exception: "say
+  in the pull request that you proceeded without one" let an agent merge
+  unreviewed ten minutes after pushing, past the rule that exceptions need a
+  human. It now says stop and ask.
+- The same section called CI checks blocking. Nothing is mechanically blocking
+  here -- there is no branch protection -- and `Smoke - web bundle builds`
+  reports *skipped* on a pull request, which is not a pass.
+- The gate required "all actionable conversations resolved", but the reviewer
+  posts a plain comment, which has no **Resolve conversation** button. Answer
+  by replying with the commit that addressed each finding.
+
+`AGENTS.md` now carries **The review loop**: push, read every finding, fix it
+or say why it is wrong, push again, repeat until the newest comment covers the
+current head and raises nothing. This exists because #149 and #150 stalled --
+agents read "wait for Claude Review", waited for a check that a disabled
+workflow can never post, and reported themselves blocked.
+
 ### Round 2 and 3: the gate did not gate, and the contract went stale
 
 Two findings from the reviewer's own second pass, both real:
