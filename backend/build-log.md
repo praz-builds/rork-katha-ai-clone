@@ -56,6 +56,48 @@ the branch was behind `main`.
   enforced -- the documented gate is the only gate -- and that is now a choice
   on the record rather than a limitation.
 
+### Round 2: promoting a document is not free
+
+The reviewer caught three consequences of the promotion that the first pass
+missed, all of them the same shape -- a change announced in one place and not
+carried through to the place an agent actually reads:
+
+- `AGENTS.md`'s Repository Map said "five canonical documents" and then
+  **listed four**. The count words were fixed; the enumeration underneath them
+  was not, so an agent asking what governs typography still found four
+  documents, none about visual language, and followed the next line to
+  `expo/DESIGN.md`. Same wrong destination, now under a heading claiming five.
+- The new precedence rule said `DESIGN_SYSTEM.md` "wins on how anything looks".
+  **That document refuses that authority four lines into itself**: its scope
+  today is the onboarding flow plus the neutral ramp, and every other surface
+  deliberately keeps the existing `type` scale until migrated one at a time.
+  An agent restyling the Reader would have been sent to a document that then
+  tells it to stop. The rule now carries the boundary.
+- Promoting it made **`expo/DESIGN.md` stale by declaration** -- 559 lines that
+  open "the definitive design contract" -- while `AGENTS.md` still routed UI
+  work to it and separately forbade "parallel design-system documents". The
+  contract now says which wins where they overlap (onboarding, the paywalls,
+  the neutral ramp), that `expo/DESIGN.md` still describes the unmigrated
+  surfaces, and that the two are one system at two stages rather than a
+  violation of the no-parallel rule.
+
+### Three round-6 findings that had been carried unfixed
+
+- **The CI bullet made the gate impossible to satisfy.** It required `Smoke`
+  to pass; `Smoke` is gated on `push` so it always reports *skipped* on a pull
+  request; and the same bullet said a skipped check is not a pass. Read
+  literally, no pull request could ever clear the gate -- the exact stall this
+  section exists to prevent. The gate now names the two checks that actually
+  run on a pull request, and `Smoke` is described separately as neither a pass
+  nor a blocker.
+- **The pull request template still asked for "all actionable review
+  conversations are resolved"** one line below the box that replaced it, while
+  `AGENTS.md` in the same diff explains there is no Resolve control on the
+  reviewer's comments. Deleted.
+- **"the bullet above" pointed twenty lines past its referent.** It is the
+  sentence that routes the no-review escape through a human rather than around
+  it, so it now quotes the rule instead of its position.
+
 ### `source-of-truth/` said four canonical documents; there are five
 
 `DESIGN_SYSTEM.md` sits in that folder and opens "**This file is canonical for
@@ -81,107 +123,6 @@ redirects to `AGENTS.md`.
 
 ---
 
-## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
-
-**Session:** wiring an automatic reviewer onto every pull request, in the seat
-CodeAnt and CodeRabbit used to fill. Branches `codex/claude-pr-reviewer` (#146,
-merged) and `codex/mention-checkout-pr-head` (#148).
-
-### What shipped
-
-- `.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml`.
-  The Claude GitHub App is installed and scoped to this repository only; without
-  it the action fails at the OIDC token exchange.
-- `.coderabbit.yaml` deleted. Its per-area review instructions were not lost --
-  the expo, backend, iOS, Android and Markdown guidance moved into the review
-  prompt, which is the file that actually runs.
-- CodeAnt and CodeRabbit removed from every file that instructs someone: the
-  merge gate in `AGENTS.md`, the pull request template, `README.md`, and
-  `backend/originals/NEXT_SESSION_PROMPT.md`. Build logs and two test comments
-  still name CodeAnt; those are records of what happened, not instructions.
-
-### The reviewer actually runs in the cloud, not in Actions
-
-The two workflows are now a **fallback**, gated behind the repository variable
-`CLAUDE_ACTION_ENABLED`. The active reviewer is a cloud routine,
-`trig_01YEy4UFeLZxFSPvaN1p8jhm` ("Katha PR review"), which spends cloud session
-credit rather than platform API credit. Three things learned the hard way:
-
-- **The cloud environment has no `gh` CLI.** A prompt that says "run `gh pr
-  list`" survives only because the agent improvises with the GitHub MCP tools.
-  Say MCP explicitly.
-- **The action refuses to run when a pull request's copy of a workflow file
-  differs from `main`.** That is its prompt-injection guard, and it means the
-  `Review the diff` check reports *pass* without reviewing anything on any PR
-  that edits these workflows. Do not read that check as approval there.
-- **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
-  on the pull request.** Hence the variable gate.
-
-### Rounds 3-5: the docs were wrong in ways that would have misled an agent
-
-The reviewer kept going after the code was right, and the remaining findings
-were all documentation that contradicted the shipped state:
-
-- `README.md` told a contributor the disabled workflow was the reviewer and
-  that `@claude` works. Following it got **no reply at all**, because the job
-  never starts.
-- The contract named `.github/workflows/claude-review.yml` as where review
-  instructions are maintained. **The live prompt is in the cloud routine and
-  nothing in Git holds it** -- editing the workflow copy changes the
-  reviewer's behaviour not at all and reports no error.
-- The contract asserted CodeAnt no longer reviews this repository. **CodeAnt
-  reviewed the head on which that sentence sat.** It is still installed; its
-  findings are advisory and are not the merge gate. The entry above this one
-  is the record that got this wrong.
-- The mention prompt said "push" unconditionally, including on the fallback
-  default-branch checkout, in a job holding `contents: write`. It now receives
-  the resolved ref and is told an empty one means answer only.
-- A first attempt at the review-loop section granted itself an exception: "say
-  in the pull request that you proceeded without one" let an agent merge
-  unreviewed ten minutes after pushing, past the rule that exceptions need a
-  human. It now says stop and ask.
-- The same section called CI checks blocking. Nothing is mechanically blocking
-  here -- there is no branch protection -- and `Smoke - web bundle builds`
-  reports *skipped* on a pull request, which is not a pass.
-- The gate required "all actionable conversations resolved", but the reviewer
-  posts a plain comment, which has no **Resolve conversation** button. Answer
-  by replying with the commit that addressed each finding.
-
-`AGENTS.md` now carries **The review loop**: push, read every finding, fix it
-or say why it is wrong, push again, repeat until the newest comment covers the
-current head and raises nothing. This exists because #149 and #150 stalled --
-agents read "wait for Claude Review", waited for a check that a disabled
-workflow can never post, and reported themselves blocked. Both were merged by
-hand on 2026-09-26 once that was understood; the contract fix itself did not
-reach `main` until #148.
-
-### Round 2 and 3: the gate did not gate, and the contract went stale
-
-Two findings from the reviewer's own second pass, both real:
-
-- `vars.CLAUDE_ACTION_ENABLED == 'true' && (A) || (B) || (C) || (D)` gates
-  only `A`, because `&&` binds tighter than `||` in GitHub Actions
-  expressions. An `@claude` in a review comment -- the likeliest place to
-  write one -- still ran the job and still posted an error. The event
-  disjunction now has its own parentheses.
-- `AGENTS.md` still told every agent to wait for the `Review the diff`
-  check, which a gated-off job never posts. Agents following the contract
-  waited on nothing, and PRs #149 and #150 were reported blocked on exactly
-  that. The contract now says the reviewer's **comment** is the merge gate,
-  and that a stale red `Review the diff` is not a blocker.
-
-Both Action workflows are also disabled with `gh workflow disable`, not only
-gated, so no new red check appears on any pull request.
-
-### The mention workflow had a real bug, caught by the new reviewer
-
-`actions/checkout` with no `ref` lands on the default branch, so `@claude fix
-this` on a pull request read `main`. Resolving the head branch fixes the open
-same-repo case, but resolving it unconditionally breaks two others: a merged
-PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
-from a fork is a bare branch name that resolves against *this* repository. The
-shipped guard resolves a ref only when the pull request is open and its head
-repository is this one, and falls back to the default branch otherwise.
 ## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
 
 **Session:** rebased `codex/onboarding-culture-remediation` onto main after
@@ -292,6 +233,110 @@ repository is this one, and falls back to the default branch otherwise.
   cannot see.
 - No backend file changed in this round, so the deploy set recorded earlier
   on this branch is unaffected.
+
+---
+
+## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
+
+**Session:** wiring an automatic reviewer onto every pull request, in the seat
+CodeAnt and CodeRabbit used to fill. Branches `codex/claude-pr-reviewer` (#146,
+merged) and `codex/mention-checkout-pr-head` (#148).
+
+### What shipped
+
+- `.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml`.
+  The Claude GitHub App is installed and scoped to this repository only; without
+  it the action fails at the OIDC token exchange.
+- `.coderabbit.yaml` deleted. Its per-area review instructions were not lost --
+  the expo, backend, iOS, Android and Markdown guidance moved into the review
+  prompt, which is the file that actually runs.
+- CodeAnt and CodeRabbit removed from every file that instructs someone: the
+  merge gate in `AGENTS.md`, the pull request template, `README.md`, and
+  `backend/originals/NEXT_SESSION_PROMPT.md`. Build logs and two test comments
+  still name CodeAnt; those are records of what happened, not instructions.
+
+### The reviewer actually runs in the cloud, not in Actions
+
+The two workflows are now a **fallback**, gated behind the repository variable
+`CLAUDE_ACTION_ENABLED`. The active reviewer is a cloud routine,
+`trig_01YEy4UFeLZxFSPvaN1p8jhm` ("Katha PR review"), which spends cloud session
+credit rather than platform API credit. Three things learned the hard way:
+
+- **The cloud environment has no `gh` CLI.** A prompt that says "run `gh pr
+  list`" survives only because the agent improvises with the GitHub MCP tools.
+  Say MCP explicitly.
+- **The action refuses to run when a pull request's copy of a workflow file
+  differs from `main`.** That is its prompt-injection guard, and it means the
+  `Review the diff` check reports *pass* without reviewing anything on any PR
+  that edits these workflows. Do not read that check as approval there.
+- **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
+  on the pull request.** Hence the variable gate.
+
+### Rounds 3-5: the docs were wrong in ways that would have misled an agent
+
+The reviewer kept going after the code was right, and the remaining findings
+were all documentation that contradicted the shipped state:
+
+- `README.md` told a contributor the disabled workflow was the reviewer and
+  that `@claude` works. Following it got **no reply at all**, because the job
+  never starts.
+- The contract named `.github/workflows/claude-review.yml` as where review
+  instructions are maintained. **The live prompt is in the cloud routine and
+  nothing in Git holds it** -- editing the workflow copy changes the
+  reviewer's behaviour not at all and reports no error.
+- The contract asserted CodeAnt no longer reviews this repository. **CodeAnt
+  reviewed the head on which that sentence sat.** It is still installed; its
+  findings are advisory and are not the merge gate. The entry above this one
+  is the record that got this wrong.
+- The mention prompt said "push" unconditionally, including on the fallback
+  default-branch checkout, in a job holding `contents: write`. It now receives
+  the resolved ref and is told an empty one means answer only.
+- A first attempt at the review-loop section granted itself an exception: "say
+  in the pull request that you proceeded without one" let an agent merge
+  unreviewed ten minutes after pushing, past the rule that exceptions need a
+  human. It now says stop and ask.
+- The same section called CI checks blocking. Nothing is mechanically blocking
+  here -- there is no branch protection -- and `Smoke - web bundle builds`
+  reports *skipped* on a pull request, which is not a pass.
+- The gate required "all actionable conversations resolved", but the reviewer
+  posts a plain comment, which has no **Resolve conversation** button. Answer
+  by replying with the commit that addressed each finding.
+
+`AGENTS.md` now carries **The review loop**: push, read every finding, fix it
+or say why it is wrong, push again, repeat until the newest comment covers the
+current head and raises nothing. This exists because #149 and #150 stalled --
+agents read "wait for Claude Review", waited for a check that a disabled
+workflow can never post, and reported themselves blocked. Both were merged by
+hand on 2026-09-26 once that was understood; the contract fix itself did not
+reach `main` until #148.
+
+### Round 2 and 3: the gate did not gate, and the contract went stale
+
+Two findings from the reviewer's own second pass, both real:
+
+- `vars.CLAUDE_ACTION_ENABLED == 'true' && (A) || (B) || (C) || (D)` gates
+  only `A`, because `&&` binds tighter than `||` in GitHub Actions
+  expressions. An `@claude` in a review comment -- the likeliest place to
+  write one -- still ran the job and still posted an error. The event
+  disjunction now has its own parentheses.
+- `AGENTS.md` still told every agent to wait for the `Review the diff`
+  check, which a gated-off job never posts. Agents following the contract
+  waited on nothing, and PRs #149 and #150 were reported blocked on exactly
+  that. The contract now says the reviewer's **comment** is the merge gate,
+  and that a stale red `Review the diff` is not a blocker.
+
+Both Action workflows are also disabled with `gh workflow disable`, not only
+gated, so no new red check appears on any pull request.
+
+### The mention workflow had a real bug, caught by the new reviewer
+
+`actions/checkout` with no `ref` lands on the default branch, so `@claude fix
+this` on a pull request read `main`. Resolving the head branch fixes the open
+same-repo case, but resolving it unconditionally breaks two others: a merged
+PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
+from a fork is a bare branch name that resolves against *this* repository. The
+shipped guard resolves a ref only when the pull request is open and its head
+repository is this one, and falls back to the default branch otherwise.
 
 ---
 
@@ -445,6 +490,9 @@ files), `jest --ci` 1622 passed across 153 suites (after every review round), `e
 export wrote `index.html`. The security review of the diff found nothing: no
 secrets, the owner comes from the token, the city is kept out of AsyncStorage,
 and the RLS and grants are tested.
+
+---
+
 ## 2026-09-25 UTC — Go-live remediation: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
 
 **Session:** the acceptance failures from the last walk on `main`. Branch
@@ -906,6 +954,9 @@ review and is also undeployed, changing `_shared/story-prompts.ts`,
 folder. Migration `00099` first, then the eight, then the drift audit. Deploying
 only the folders these two PRs edited is the exact mistake that left 16 functions
 behind main on 2026-09-24.
+
+---
+
 ## 2026-09-25 UTC — Final go-live feedback: Story world, vote on what's next, reader Night mode, Explore tags, PDF plan gate
 
 **Session:** isolated `codex/go-live-final-feedback` worktree. Nothing deployed,
@@ -1092,6 +1143,9 @@ English until the app-wide i18n release). Then:
 
 Every new regression test was run against the reverted fix and fails there
 (backend 4, client service 5, app boot 1, paywall/member/catalogue 7).
+
+---
+
 ## 2026-09-25 UTC — Six-digit codes, a moment chip that fits, and an intro that works at any window
 
 Branch `codex/onboarding-and-create-polish` (Lane C of the Play launch push). Client only; nothing deployed.
@@ -1114,6 +1168,9 @@ Merged main (#138-#141; kept both `blocks` and `auth` in the locales, and main's
 ### Needs the founder
 
 Set Supabase Auth's email OTP length to 6 (and the custom SMTP sender) before this client ships: it refuses 8-digit codes by design.
+
+---
+
 ## 2026-09-25 UTC — "Send feedback" and a Background music switch on the You tab
 
 **Session:** Lane E of the launch push, branch `codex/feedback-and-music-control`.
@@ -1176,6 +1233,9 @@ the flag in the release that wires the rest of the app.
 
 Roadmap: the Home "Your stories first" row was already built (`buildFeedRows`,
 pinned by `home-feed-rows.test.ts`) and is now ticked with that note.
+
+---
+
 ## 2026-09-25 UTC — Block from a comment, blocks honoured everywhere, "Kids" becomes "All-ages", and a report queue
 
 **Session:** Lane B of the Play launch push (`codex/play-ugc-safety`). Three P0 rows
@@ -1237,6 +1297,9 @@ from ROADMAP § *Play Store go-live*.
 2. `supabase functions deploy library profile`.
 3. Read the bundles back: `library` contains `user_blocks`, `profile` contains
    `viewerBlocked`.
+
+---
+
 ## 2026-09-25 UTC — The Play Store pack: listing, graphics, Data Safety and content rating, drafted
 
 **Session:** Lane F of the go-live push. Nothing was submitted to Google and nothing was deployed.
@@ -1259,6 +1322,9 @@ What the audit found that the roadmap row did not say:
 
 Katha's own privacy policy, terms and a product landing page are drafted on
 `thetractionlabs-site` branch `katha-legal-v2` (PR praz-builds/thetractionlabs-site#1), not merged.
+
+---
+
 ## 2026-09-25 UTC — The release build config is done in code, and a release AAB compiles locally
 
 **Session:** Lane A of the Play launch push, branch `codex/android-build-config`.
@@ -2039,6 +2105,9 @@ as a failure rather than a pass.
 AGENTS.md carries the standing rule: an expensive CI job runs only when its
 inputs change, and the test for whether gating is safe is whether anything
 outside those paths can change the job's result.
+
+---
+
 ## 2026-09-20 UTC — Reimagine splits in two: the author re-prompts, the reader writes their own
 
 **Session:** story-quality lane, worktree `codex/story-quality-research`.
@@ -2310,6 +2379,9 @@ touched.
 
 00093 and the new `continue-story` are NOT applied or deployed yet — see the
 deploy entry above for the order (migration first, then the function).
+
+---
+
 ## 2026-09-19 UTC — Deployed: two migrations and six functions, and what production actually does now
 
 **Session:** the coordinating session, after #105-#113 merged. **This is the deploy entry.**
@@ -2709,6 +2781,8 @@ backend change was needed.
 - Tests: `curated-stories.test.ts`, `story-catalogue.test.ts`. Full suite
   128/128 suites, 1266 tests.
 
+---
+
 ## 2026-09-18 UTC — Cover prompts: the cast in scene genres, a safe zone for today's hero, no frames
 
 **Session:** `codex/cover-prompt-fixes` (backend, prompt text only). Not
@@ -2838,6 +2912,8 @@ Deno cases in `story-stream.test.ts`; backend suite 882 passed.
 `deno check` on every function; `deno test backend/supabase/functions/` 874
 passed. Expo on Node 22: `tsc --noEmit` clean, `pnpm lint` 0 errors, `jest`
 127 suites / 1257 tests passed.
+
+---
 
 ## 2026-09-16 UTC — Security review close on 00089: the reviewer's account, the report targets, and a read gate that believed the client
 
@@ -3606,6 +3682,9 @@ an explanation, not a warning, and deliberately *not* the gate copy, which
 would tell a writer their idea names a real living person when nobody ever
 looked), and a two-line type widening in `generation-session.ts` so the reason
 can reach the modal.
+
+---
+
 ## 2026-09-10 UTC — A report has to say what happened
 
 **Session:** Story-page lane of the "created" flow rebuild, on
@@ -4088,6 +4167,7 @@ was confirmed to fail against the pre-fix code by temporarily reverting just
 that file with `git stash` and re-running.
 
 ---
+
 ## 2026-09-08: Onboarding preview survives its own failures
 
 ### Changed
@@ -4159,6 +4239,8 @@ that file with `git stash` and re-running.
   00039 and one in 00034 retired with a note in place, because they asserted
   ceilings 00046 deletes and every migration test runs the whole stack).
 
+---
+
 ## 2026-09-08 IST — Onboarding preview wait timing and loader polish
 
 ### Changed
@@ -4192,6 +4274,8 @@ that file with `git stash` and re-running.
 - `pnpm exec expo-doctor`: 18/18 checks passing with local Node 22 in PATH.
 - `pnpm exec expo export --platform web --output-dir /tmp/katha-web-export-check` compiled the web bundle.
 - Local Expo web started on `http://localhost:8091/` because 8090 was occupied by another Katha checkout.
+
+---
 
 ## 2026-09-07 UTC — Entity grounding, a retired spice tier, and private by default
 
@@ -4418,6 +4502,8 @@ the button.
   Migration 00044 is unapplied; `regenerate-cover` is undeployed. Both must ship
   before the cover UI is exercised against production.
 
+---
+
 ## 2026-09-06 UTC — Main Create single-screen correction
 
 **Session:** Corrected the Expo main Create UI after review: the main story-generation flow is one screen, not Idea → Review. Character craft remains the only separate full-screen surface.
@@ -4426,6 +4512,8 @@ the button.
 - A later UI density pass changed only Expo-visible hierarchy/copy: Genre left with an icon, Kids Mode as a compact switch, optional Premise as the visible context label, and denser More options.
 - No Supabase functions were deployed and no production-level tests were run, so no `error_events` entry was required.
 - Verification from `expo/`: focused Create/API Jest suites passed (32 tests), `tsc --noEmit` passed, and the web export passed using the bundled Node runtime.
+
+---
 
 ## 2026-09-05 UTC — Create flow hierarchy and character-image contract
 
@@ -4437,6 +4525,9 @@ the button.
 - Extended backend generation validation and character persistence so `portrait_url` from a pre-generated draft character survives the final story call and lands on `characters.portrait_url`.
 - No production-level backend test or deploy was run in this session, so no `error_events` entry was required.
 - Verification from `expo/`: focused Create/API Jest suites passed (31 tests) and `tsc --noEmit` passed using the bundled Node runtime. Backend `deno check`, `deno test` for validation, and `deno fmt --check` passed for the touched Edge Function/shared files. `pnpm` itself was blocked by the existing ignored-build approval prompt.
+
+---
+
 ## 2026-09-06 UTC — Streaming finally reaches a user
 
 **Session:** The Create flow generates through the streamed path and renders
@@ -4936,7 +5027,6 @@ Twenty-four findings, all addressed. The ones that were real defects rather than
 ### Still open
 
 Async generation or streaming; `begin_continuation_generation` (continue-story still derives the next chapter number outside the reservation transaction, and `MAX_SERIES_CHAPTERS = 7` still contradicts the 3/7/15 contract); a stale-reservation sweeper; storage orphans on story deletion; edit allowances counted nowhere; feed and library at scale; and the client create flow, still one screen — the new backend fields have a wired contract and no UI producing them.
-
 
 ---
 
@@ -6427,6 +6517,8 @@ on.
   pass across 11 suites. No deployment, and no EAS build, so push has not been
   exercised against real APNs or FCM credentials.
 
+---
+
 ## 2026-09-06: Create Flow Density Follow-Up
 
 - Tightened the Expo Create studio single-screen layout after review feedback:
@@ -6444,6 +6536,9 @@ on.
   compiled successfully. `pnpm exec expo-doctor` passed 18/18 checks when run
   with the local Node/npm bin path on `PATH`. No backend code was changed in this
   pass.
+
+---
+
 ## 2026-09-06: Onboarding/Create Design Consistency Pass
 
 - Aligned the main Create and writer onboarding section headers around one black uppercase treatment, keeping primary screen titles separate.
@@ -6453,6 +6548,8 @@ on.
 - Converted the legacy onboarding OTP UI to the same single-field code entry pattern used by the writer sign-in path.
 - Verification: Expo typecheck passed, focused Create/writer-onboarding Jest tests passed, and the web export compiled. `expo-doctor` passed 15/18 checks but the remaining 3 failed because this shell cannot provide `npm` to Expo Doctor's dependency-tree checks.
 
+---
+
 ## 2026-09-06: Writer Onboarding Filter Chip Follow-Up
 
 - Lightened writer onboarding starter prompt card text to match the muted prompt-preview treatment in the main Create flow.
@@ -6460,6 +6557,8 @@ on.
 - Updated the details-screen section labels to match the Create `Try one` typography: black, uppercase, Hanken, compact, and separate from the primary heading.
 - Changed the Moments composer action to an icon-only plus button.
 - Verification: Expo typecheck passed, focused writer-onboarding Jest tests passed, and web export compiled.
+
+---
 
 ## 2026-09-06: Threaded Comments, Voting, Reporting, and Blocking Schema
 
@@ -6533,6 +6632,8 @@ is a separate, explicit decision for later.
   run against edge functions since none were touched. Nothing was applied to
   the live Supabase project.
 
+---
+
 ## 2026-09-06: Writer Onboarding Preview and Paywall Alignment
 
 - Finished the writer onboarding consistency pass: progress bars now appear on
@@ -6557,6 +6658,8 @@ is a separate, explicit decision for later.
   blocking `image-size` audit advisories are locally patched with pnpm
   `patchedDependencies` plus targeted GHSA ignores because the advisory's
   patched `2.0.3` version is not published on npm.
+
+---
 
 ## 2026-09-06: Writer onboarding consistency and paywall pass
 
@@ -6601,6 +6704,8 @@ is a separate, explicit decision for later.
 - Local URL `http://localhost:8090/` was opened and returned `200 OK`.
 - No production infrastructure was tested or deployed in this pass.
 
+---
+
 ## 2026-09-07: Engagement persistence RPCs and Edge Functions
 
 ### Changed
@@ -6643,6 +6748,8 @@ is a separate, explicit decision for later.
   written.
 - Not pushed or deployed.
 
+---
+
 ## 2026-09-06: Comment vote RPC review fix
 
 ### Changed
@@ -6675,6 +6782,8 @@ is a separate, explicit decision for later.
   known high `image-size` advisories ignored under the local parser patch
   documented in this session.
 
+---
+
 ## 2026-09-07: Onboarding shape-story now receives the full writer brief
 
 ### Changed
@@ -6689,6 +6798,8 @@ is a separate, explicit decision for later.
 - `deno test --allow-env --allow-net supabase/functions/_shared/story-shape.test.ts`: 17 tests passing.
 - No production-level test was run, so no `public.error_events` rows were written.
 - Not pushed or deployed.
+
+---
 
 ## 2026-09-06: The comments function, and blocked authors leave the feed
 
@@ -6723,6 +6834,8 @@ is a separate, explicit decision for later.
 - Not covered by tests: the HTTP entrypoint itself - CORS, JSON parse failures,
   the `auth.getUser()` flow and action dispatch are covered by inspection only,
   because PGlite speaks Postgres rather than the PostgREST wire protocol.
+
+---
 
 ## 2026-09-07: The narration voice library - generate on first play, not at publish
 
@@ -6836,6 +6949,8 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   `seed-voice-previews`, plus the shared modules) are deployed. No production-
   level test ran, so no `public.error_events` rows were written this session.
 - Not committed. Changes are left in the working tree per instructions.
+
+---
 
 ## 2026-09-08 UTC — The v7 genre taxonomy: four new genres, seven quietly retired from the UI, and spice off the surface
 
@@ -6957,6 +7072,8 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   production-level test ran, so no `public.error_events` rows were written
   this session.
 - Not committed. Changes are left in the working tree per instructions.
+
+---
 
 ## 2026-09-08 UTC — Genre craft research applied: folktale, educational, fanfiction rewritten; mystery absorbs thriller; sliceOfLife inherits contemporary
 
@@ -7086,6 +7203,8 @@ Run from `/Users/mac16/Katha-AI-wt-backend/backend` with
   matches are the English word "any" inside prose strings).
 - Not committed, per instructions.
 
+---
+
 ## 2026-09-10 UTC — Edge TTS narration path wired behind the existing audio cache
 
 The audio cost basis changed from "MiniMax is the only path" to "Microsoft
@@ -7126,6 +7245,9 @@ Verification:
 - No live Supabase migration was applied, no function was deployed, and no
   production-level test ran; therefore no `public.error_events` rows were
   written this session.
+
+---
+
 ## 2026-09-08: Rate-limit the grounding fallback, without reordering it
 
 ### Changed
@@ -7225,6 +7347,8 @@ Verification:
 - Nothing pushed, deployed, or run against the live project
   `iafeuxgoiknncgyjmugd`. Migration 00051 is written but not applied. No git
   commit made, per instructions.
+
+---
 
 ## 2026-09-08: Sentry push alerts for narration failures, on top of error_events
 
@@ -7395,6 +7519,9 @@ absence signal. Full reasoning is in the comment on `canGenerateNarration` in
 - Nothing pushed, deployed, or run against the live project
   `iafeuxgoiknncgyjmugd`. `SENTRY_DSN` and `sentryDsn` remain unset. No git
   commit made, per instructions.
+
+---
+
 ## 2026-09-08: The entity visibility gate, canon-character grounding for fanfiction, and confirming grounding is genre-independent
 
 ### Changed
@@ -7574,6 +7701,8 @@ Run from `backend/` with `export PATH="/Users/mac16/.deno/bin:$PATH"`:
   production-level test ran, so no `public.error_events` rows were written
   this session.
 - Not committed, per instructions.
+
+---
 
 ## 2026-09-11: Per-story image style, from the request body to the row to the regeneration
 
@@ -7885,6 +8014,8 @@ is the cover's, so the same picture is not shown twice on one page.
 - `pnpm test`: **1051 passed, 0 failed** across 107 suites.
 - Nothing deployed, committed or pushed, and no production-level test was run,
   so there is nothing to record in `public.error_events`.
+
+---
 
 ## 2026-09-11 — a character is described once, and the Craft portrait is drawn in the writer's style
 
@@ -8525,6 +8656,8 @@ the 429 path is untouched and never consults the lifetime cap, a named user is
 never asked, a 502 releases, a 400 releases and a named 502 releases nothing).
 `deno check` and `deno fmt --check` clean on every changed Deno file.
 
+---
+
 ## 2026-09-11 — The onboarding spec written this morning was superseded this afternoon
 
 **Agent K, docs only, `codex/character-onboarding`.**
@@ -8564,6 +8697,8 @@ W6=7, and the file records that mapping as the contract with the drift named, so
 the next person does not re-derive it from the HTML.
 
 **Docs only. No code, no gates, no commit.**
+
+---
 
 ## 2026-09-12 — The onboarding feedback round
 
@@ -8892,6 +9027,8 @@ a writer's title is painted in the stream's `title` event immediately rather
 than only when early naming succeeds; the offline `localGeneratedStory` keeps
 `draft.title`.
 
+---
+
 ## 2026-09-19 — The story bible: a multi-chapter story stops changing its own facts
 
 **Why.** On 2026-09-18, 83 Originals were written through the real pipeline and
@@ -9039,6 +9176,8 @@ zero" and this is not that:
 published against the current production functions by another lane; deploying
 mid-run would mean the library was written by two different pipelines. Deploy
 and migration are the owner's call, after that run finishes.
+
+---
 
 ## 2026-09-20 — Narration starts playing after one chunk, not after all of them
 
@@ -9470,6 +9609,9 @@ Backend `deno test --allow-all supabase/functions/` 1067 passed (+2),
 suite green. Client `pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci`
 1360 passed across 129 suites. Both new behavioural tests were run against the
 reverted fix and fail there.
+
+---
+
 ## 2026-09-25 UTC — PR #149 reviewer follow-up: truthful Explore and voice states
 
 - Profile, public profile, Journey, and Profile-owned sheet headings, display
@@ -9548,3 +9690,5 @@ reverted fix and fail there.
 - No backend runtime, schema, function, or deployment changed. The Expo
   public-profile test now pins the existing owner-only calendar boundary after
   a visual smoke reported stale calendar accessibility labels on main.
+
+---

@@ -12,6 +12,7 @@
   - `STORY_GENERATION_FLOW.md` -- the create flow: every field, label, ordering rule and post-generation step.
   - `STORY_PROMPT_SYSTEM.md` -- the prompt architecture (was `backend/prompts/story-generator.md`).
   - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the blocked-credits sheet. (The one-time offer was removed 2026-09-10; §14 records why.)
+  - `DESIGN_SYSTEM.md` -- the visual language: type, colour, elevation, radius, the semantic spacing rhythm, and the control recipes built from them. **Scoped**: it governs the onboarding flow today, plus the neutral ramp on every surface. Every other surface keeps the existing `type` scale and `lucide-react-native` until migrated deliberately, one at a time -- see its §2 for that boundary, and `expo/DESIGN.md` for the surfaces still on the old system.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `docs/research/*.md` -- tracked craft-research memos backing specific `GENRE_VOICES` modules (an explicit exception in `.gitignore`; the rest of `docs/research/` and all of `docs/design/` stay gitignored, local-only agent working artifacts).
@@ -22,14 +23,14 @@
 
 ## Working Rules
 
-- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
+- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding. **Where `expo/DESIGN.md` and `source-of-truth/DESIGN_SYSTEM.md` overlap -- which is onboarding, the paywalls, and the neutral ramp -- `DESIGN_SYSTEM.md` wins**, because it is canonical and `expo/DESIGN.md` is Reference Material. Outside that scope `expo/DESIGN.md` is still the description of what those surfaces actually do, and it is not superseded: the migration is deliberate and one surface at a time.
 - Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
 - **Read the relevant `source-of-truth/` document before touching what it governs** -- pricing/credits, the create flow, the prompt system, or onboarding. They are canonical; never hardcode a value that contradicts one, and never copy their tables into another file. A change that crosses two of them updates both in the same commit.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
 - Never commit `.env` files, service-role keys, provider secrets, build output, dependencies, or local Supabase state.
-- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents.
+- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents. `source-of-truth/DESIGN_SYSTEM.md` and `expo/DESIGN.md` are not a violation of that last one while the migration is in progress: they are one system at two stages, with the precedence above deciding between them. Do not add a third.
 - **Rule:** Money, credits, API keys, and trusted generation logic stay in the backend. User-facing UI stays in Expo. When a feature spans both, update the contract and both workspaces in the same pull request.
 - **Build log:** Every session that modifies code, schema, or infrastructure MUST append an entry to `backend/build-log.md`.
 
@@ -1388,12 +1389,13 @@ Only then merge. Do not stop after one round because findings exist -- findings 
 
 **What "checks are clear" means**, exactly, because getting this wrong has already stalled two pull requests:
 
-- The **CI** checks (`Typecheck + Lint + Test`, `Edge Functions — Typecheck + Test`, and `Smoke`) must pass to satisfy the gate above. GitHub will not stop you merging over a red one -- there is no branch protection here, so nothing is mechanically enforced -- but unlike `Review the diff` these can turn green, so a red one is a real failure to fix rather than a stale artifact. Note that `Smoke - web bundle builds` reports **skipped** on a pull request (it is gated on `push`), and a skipped check is not a pass.
+- The two **CI** checks that run on a pull request -- `Typecheck + Lint + Test` and `Edge Functions — Typecheck + Test` -- must pass to satisfy the gate above. GitHub will not stop you merging over a red one, because there is no branch protection here, but unlike `Review the diff` these can turn green, so a red one is a real failure to fix rather than a stale artifact.
+- `Smoke - web bundle builds` is **not** part of that gate. It is gated on `push` (`ci.yml`), so on a pull request it always reports **skipped** -- which is neither a pass nor a blocker. Do not wait for it to go green; it never will until the branch is on `main`.
 - A red **`Review the diff`** check is **stale and is not a blocker**. It belongs to the disabled Action workflows, it can never turn green, and it will disappear from a pull request on the next push because no new run replaces it. There is no branch protection on this repository, so GitHub reports such a pull request `mergeable` and the merge button works.
 - CodeAnt's comment is advisory, not a gate.
 - The gate is **Claude Review's latest comment**, and it is a comment, not a check. A fully green check list does not mean the review happened.
 
-If a review never arrives after ten minutes, do not wait indefinitely and do not merge. Check the routine at <https://claude.ai/code/routines>, say in the pull request that no review arrived and what you checked, and **stop there and ask for authorization** to merge unreviewed. Merging without a review is an exception, and the bullet above means a human grants it, not you. This matters more here than elsewhere: the gate is a comment rather than a check, so an unreviewed pull request looks identical to a reviewed one in the checks UI and nothing downstream will catch it.
+If a review never arrives after ten minutes, do not wait indefinitely and do not merge. Check the routine at <https://claude.ai/code/routines>, say in the pull request that no review arrived and what you checked, and **stop there and ask for authorization** to merge unreviewed. Merging without a review is an exception, and *"Exceptions require explicit user authorization and documentation in the pull request"* means a human grants it, not you. This matters more here than elsewhere: the gate is a comment rather than a check, so an unreviewed pull request looks identical to a reviewed one in the checks UI and nothing downstream will catch it.
 
 
 **Claude is the reviewer on this repository, and it runs as a cloud routine, not as a GitHub Action.** The routine is `Katha PR review` (`trig_01YEy4UFeLZxFSPvaN1p8jhm`, managed at <https://claude.ai/code/routines>). A webhook trigger fires it on `pull_request.opened`, `synchronize` and `ready_for_review`, and a daily 03:00 UTC cron catches anything the webhook missed. It clones the repository, reads this file, reviews against the contract rather than only the diff, and posts one comment per pull request naming the head SHA it reviewed. It never pushes.

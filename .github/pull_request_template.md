@@ -13,7 +13,6 @@
 - [ ] Branch name uses `codex/<task-slug>`.
 - [ ] Latest Claude Review comment covers the current head commit and raises nothing outstanding.
 - [ ] Every finding is answered in a reply naming the commit that addressed it, or with a reason it is wrong.
-- [ ] All actionable review conversations are resolved.
 - [ ] Branch is current with `main`.
 
 ### Commands

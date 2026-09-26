@@ -13,7 +13,7 @@ one of these, the file here is right and the other is stale** — including
 | [`STORY_GENERATION_FLOW.md`](STORY_GENERATION_FLOW.md) | The create flow — every field, label, placeholder, ordering rule, mode behaviour and post-generation step | `expo/src/screens/CreateStudioScreen.tsx`, the story view, drafts |
 | [`STORY_PROMPT_SYSTEM.md`](STORY_PROMPT_SYSTEM.md) | The prompt architecture — layers, genres, safety rules, anti-slop rules, output schema | `backend/supabase/functions/_shared/story-prompts.ts` |
 | [`ONBOARDING_FLOW.md`](ONBOARDING_FLOW.md) | Onboarding, both paywalls, the one-time offer, the blocked-credits sheet | `expo/src/screens/onboarding/`, the paywall surfaces |
-| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | The visual language — type, colour, elevation, radius, the semantic spacing rhythm, and the control recipes built from them | `expo/src/theme/`, every component and screen |
+| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | The visual language — type, colour, elevation, radius, the semantic spacing rhythm, and the control recipes built from them | `expo/src/theme/`; the onboarding surfaces today, and the neutral ramp everywhere. See its §2 for what is not yet migrated |
 
 ## Precedence between them
 
@@ -28,10 +28,17 @@ They overlap deliberately, so the order matters:
    TypeScript implementation is the runtime authority — where the two differ, the
    code is what ships and the document is the bug.
 4. **`ONBOARDING_FLOW.md` wins on everything before a user reaches Home.**
-5. **`DESIGN_SYSTEM.md` wins on how anything looks**, across all four of the
-   above: a flow document may say a screen has a heading, not what face or
-   weight that heading is in. Where a flow document draws a specific control,
-   the recipe here is the one it draws.
+5. **`DESIGN_SYSTEM.md` wins on how a thing looks, within the scope it claims.**
+   A flow document may say a screen has a heading; it may not say what face or
+   weight that heading is in. But read that document's own boundary before
+   applying it: today it governs **the onboarding flow**, plus **the neutral
+   ramp on every surface** (§4.1, where the token names did not change). Every
+   other surface deliberately keeps the existing `type` scale, its existing
+   colour usage and `lucide-react-native` until it is migrated one at a time --
+   §2 names that boundary exactly. Outside the migrated scope, `expo/DESIGN.md`
+   still describes what those surfaces do. Restyling an unmigrated surface is a
+   migration, not a bug fix: it is a deliberate decision, not something this
+   precedence rule authorises on its own.
 
 ## Changing one
 
