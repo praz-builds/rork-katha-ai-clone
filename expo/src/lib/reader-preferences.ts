@@ -116,10 +116,16 @@ export function toggleSpokenLanguage(
 
 /** The row's subtitle on You. */
 export function readerPreferencesSummary(prefs: ReaderPreferences): string {
-  const languages = prefs.spokenLanguages
+  const labels = prefs.spokenLanguages
     .map((id) => SPOKEN_LANGUAGES.find((l) => l.id === id)?.label)
-    .filter(Boolean)
-    .join(", ");
+    .filter(Boolean);
+  // A language this build cannot name still counts as one the reader has.
+  // Without this the row told a reader whose only language is a newer id to
+  // "add the languages you speak", one tap from a sheet saying it is held.
+  const hidden = prefs.unrecognisedLanguages.length;
+  const languages = hidden > 0
+    ? [...labels, hidden === 1 ? "1 more" : `${hidden} more`].join(", ")
+    : labels.join(", ");
   const place = prefs.homePlace?.trim();
   if (languages && place) return `${languages} · ${place}`;
   if (languages) return languages;

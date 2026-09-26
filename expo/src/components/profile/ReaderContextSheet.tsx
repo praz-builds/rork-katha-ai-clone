@@ -60,6 +60,10 @@ export default function ReaderContextSheet({
   onClose: () => void;
 }) {
   const [languages, setLanguages] = useState(value.spokenLanguages);
+  // Snapshotted with `languages`, not read live: the two halves of one form
+  // must come from the same moment, or a read landing mid-edit can lock the
+  // chips while what is typed stays from before it.
+  const [hidden, setHidden] = useState(value.unrecognisedLanguages);
   const [place, setPlace] = useState(value.homePlace ?? "");
   const [saving, setSaving] = useState(false);
   /**
@@ -86,6 +90,7 @@ export default function ReaderContextSheet({
     if (status !== "ready" || seeded.current) return;
     seeded.current = true;
     setLanguages(value.spokenLanguages);
+    setHidden(value.unrecognisedLanguages);
     setPlace(value.homePlace ?? "");
     setFailed(null);
   }, [status, value, visible]);
@@ -95,8 +100,8 @@ export default function ReaderContextSheet({
   // back on Save untouched, but the server counts them against the cap, so
   // the chips have to as well -- otherwise a Save that looks in-budget is
   // refused with "pick up to 3 languages" and the reader cannot see why.
-  const hidden = value.unrecognisedLanguages.length;
-  const atCap = languages.length + hidden >= MAX_SPOKEN_LANGUAGES;
+  const hiddenCount = hidden.length;
+  const atCap = languages.length + hiddenCount >= MAX_SPOKEN_LANGUAGES;
 
   const save = async () => {
     if (placeProblem || saving) return;
@@ -105,7 +110,7 @@ export default function ReaderContextSheet({
     setFailed(null);
     const result = await saveReaderPreferences({
       spokenLanguages: languages,
-      unrecognisedLanguages: value.unrecognisedLanguages,
+      unrecognisedLanguages: hidden,
       homePlace: place.trim() ? place : null,
     });
     setSaving(false);
@@ -122,7 +127,7 @@ export default function ReaderContextSheet({
         // knows them -- this build is the older one. If it refuses them
         // anyway, the generic "remove the one you added last" is advice the
         // reader cannot follow: the offending id is not on screen to remove.
-        const cannotAct = hidden > 0 && "refused" in result &&
+        const cannotAct = hiddenCount > 0 && "refused" in result &&
           result.refused === REFUSAL_COPY.unknown_language;
         setFailed(
           cannotAct
@@ -203,13 +208,17 @@ export default function ReaderContextSheet({
               <>
               <Text style={styles.label}>Languages you speak</Text>
               <Text style={styles.hint}>
-                Pick up to {MAX_SPOKEN_LANGUAGES}.
+                {hiddenCount === 0
+                  ? `Pick up to ${MAX_SPOKEN_LANGUAGES}.`
+                  : hiddenCount === 1
+                  ? `Pick up to ${MAX_SPOKEN_LANGUAGES}. One is taken by a language set on a newer version of the app.`
+                  : `Pick up to ${MAX_SPOKEN_LANGUAGES}. ${hiddenCount} are taken by languages set on a newer version of the app.`}
               </Text>
-              {hidden > 0 && (
+              {hiddenCount > 0 && (
                 <Text style={styles.hint}>
-                  {hidden === 1
-                    ? "One language you set on a newer version of the app is kept on your account. It is not shown here, and saving will not remove it."
-                    : `${hidden} languages you set on a newer version of the app are kept on your account. They are not shown here, and saving will not remove them.`}
+                  {hiddenCount === 1
+                    ? "It is kept on your account and saving will not remove it, but this version cannot show it."
+                    : "They are kept on your account and saving will not remove them, but this version cannot show them."}
                 </Text>
               )}
               <View style={styles.chips}>

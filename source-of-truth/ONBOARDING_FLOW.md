@@ -834,8 +834,19 @@ scale and opacity, with no entrance.
 
 **Back is one table for the character path (2026-09-25).** `backFrom(step,
 emailVerified)` in `CharacterOnboarding.tsx` answers for both the top bar's
-arrow and Android's hardware Back, which is now always consumed -- unhandled,
-it closed the app mid-onboarding with a portrait in flight.
+arrow and Android's hardware Back, which on this path is always consumed --
+unhandled, it closed the app mid-onboarding with a portrait in flight.
+
+**On the questionnaire the rule is the same but the exception differs
+(2026-09-26).** `previousScreen(screen, purpose)` in
+`KathaOnboardingFlowV2.tsx` answers for both the arrow and hardware Back
+there, screen for screen. It consumes Back on every screen except the first
+(`name`), where it answers null and Back falls through to the system and
+exits -- leaving the first screen of a flow should leave. That is the one
+place the two paths differ: on the character path `welcome` swallows Back
+instead. Before this the questionnaire registered no handler at all, so Back
+closed the app from any of the six screens and took every answer with it;
+they are local state and nothing is persisted.
 
 | From | Before the code verifies | After it verifies |
 |---|---|---|

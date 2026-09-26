@@ -237,3 +237,30 @@ it("has reader copy for every refusal code the server can send", () => {
   expect(serverCodes.length).toBeGreaterThan(0);
   expect(Object.keys(REFUSAL_COPY).sort()).toEqual([...serverCodes].sort());
 });
+
+it("counts a language it cannot name, rather than telling the reader they have none", () => {
+  // The row is the surface the reader sees first. Before this it read "Add
+  // the languages you speak and your city" to somebody whose only language
+  // was a newer id -- one tap from a sheet saying that language is held.
+  expect(
+    readerPreferencesSummary({
+      spokenLanguages: [],
+      unrecognisedLanguages: ["bho"],
+      homePlace: null,
+    }),
+  ).toBe("1 more");
+  expect(
+    readerPreferencesSummary({
+      spokenLanguages: ["hi"],
+      unrecognisedLanguages: ["bho"],
+      homePlace: "Pune",
+    }),
+  ).toBe("Hindi, 1 more · Pune");
+  expect(
+    readerPreferencesSummary({
+      spokenLanguages: [],
+      unrecognisedLanguages: [],
+      homePlace: null,
+    }),
+  ).toBe("Add the languages you speak and your city");
+});

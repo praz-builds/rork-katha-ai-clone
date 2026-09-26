@@ -207,3 +207,51 @@ it("a save that lands after an account switch closes the sheet and reports nothi
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(view.queryByTestId("reader-context-error")).toBeNull();
 });
+
+it("counts a language it cannot show against the cap, and says so", async () => {
+  // A reader who set a 31st language on a newer build. This build cannot name
+  // it, but the server counts it against the three, so the chips must too --
+  // and the reader has to be told, or a dead chip has no explanation.
+  const withHidden: ReaderPreferences = {
+    spokenLanguages: ["hi", "en"],
+    unrecognisedLanguages: ["bho"],
+    homePlace: "Pune",
+  };
+  const view = await render(
+    <ReaderContextSheet
+      visible
+      value={withHidden}
+      status="ready"
+      onRetry={jest.fn()}
+      onSaved={jest.fn()}
+      onClose={jest.fn()}
+    />,
+  );
+
+  expect(
+    view.getByText("Pick up to 3. One is taken by a language set on a newer version of the app."),
+  ).toBeTruthy();
+
+  // Two lit plus one hidden is the cap, so an unpicked chip is dead.
+  const unpicked = view.getByTestId("reader-context-language-ta");
+  expect(unpicked.props.accessibilityState.disabled).toBe(true);
+  // A picked one stays pressable, so it can still be removed.
+  const picked = view.getByTestId("reader-context-language-hi");
+  expect(picked.props.accessibilityState.disabled).toBe(false);
+
+  // And Save sends it back untouched rather than erasing it.
+  mockInvoke.mockResolvedValueOnce({
+    data: { spokenLanguages: ["hi", "en", "bho"], homePlace: "Pune" },
+    error: null,
+  });
+  await act(async () => {
+    await fireEvent.press(view.getByTestId("reader-context-save"));
+  });
+  expect(mockInvoke).toHaveBeenCalledWith("profile", {
+    body: {
+      action: "set_preferences",
+      spokenLanguages: ["hi", "en", "bho"],
+      homePlace: "Pune",
+    },
+  });
+});

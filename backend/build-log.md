@@ -42,9 +42,28 @@
   effect. Idempotent, so nothing broke; `pendingPortrait` and the BackHandler
   in the same file both use effects.
 
+### Round 2 of the review: the new field had a surface it had not reached
+
+- **The You row told a reader with one hidden language that they had none.**
+  `readerPreferencesSummary` reads `spokenLanguages` only and was not
+  revisited when `unrecognisedLanguages` was added, so a reader whose only
+  language is a newer id saw "Add the languages you speak and your city" one
+  tap from a sheet saying that language is held. It counts them now
+  ("Hindi, 1 more").
+- **"Pick up to 3" sat above chips the reader could not pick.** The hidden
+  language takes a slot, which the copy never said, so the remaining chips
+  were simply dead. The hint now names it.
+- **`hidden` read the live prop while `languages` was snapshotted**, so a read
+  landing mid-edit could lock the chips while the typed values stayed from
+  before it. Both are seeded in the same effect now.
+- `ONBOARDING_FLOW.md` said hardware Back "is now always consumed". True on
+  the character path, and this branch is what made it false elsewhere: the
+  questionnaire deliberately does not consume it on `name`. The contract
+  records both rules and the one place they differ.
+
 ### Verification
 
-- `pnpm test`: 153 suites, 1624 tests pass. `pnpm typecheck` clean. ESLint
+- `pnpm test`: 153 suites, 1626 tests pass. `pnpm typecheck` clean. ESLint
   clean over every changed file.
 - The two behaviour fixes are proved, not asserted: the hardware-Back test
   was run against the code with the new effect removed and **fails**, and the
