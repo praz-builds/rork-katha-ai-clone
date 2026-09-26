@@ -1,11 +1,9 @@
 import { fonts, profileHeading } from "@/theme";
 
-// `@types/node` is deliberately not a dependency (see button-recipe.test.ts),
-// so the Node functions this test needs are declared, not imported. Three
-// other suites in this directory do the same and typecheck clean --
-// store-catalog.test.ts, story-world.test.ts and create-flow-more-options
-// .test.ts -- so reading source files here is an established pattern, not a
-// constraint of the Expo test environment.
+// Keep this source scan independent of ambient Node declarations. The test
+// runner supplies these modules; these narrow declarations describe only the
+// calls this test makes, instead of making the Expo client type graph depend
+// on a Node import.
 declare const __dirname: string;
 declare function require(id: string): unknown;
 const { readFileSync, readdirSync } = require("fs") as {
@@ -33,7 +31,61 @@ function profileSources(): { name: string; body: string }[] {
   return [...sheets, ...screens];
 }
 
+const DISPLAY_TYPE_STEPS = [
+  "largeTitle",
+  "title",
+  "section",
+  "titleSmall",
+] as const;
+
+/**
+ * A display-ramp spread is safe only when the approved UI token follows it in
+ * the same style object; later object properties win at runtime. This catches
+ * `...type.section` just as surely as a literal `fonts.display`.
+ */
+function unoverriddenDisplayRampSpreads(source: string): string[] {
+  const found: string[] = [];
+  for (const step of DISPLAY_TYPE_STEPS) {
+    const matcher = new RegExp(`\\.\\.\\.type\\.${step}\\b`, "g");
+    for (const match of source.matchAll(matcher)) {
+      const restOfStyle = source.slice(match.index!);
+      const end = restOfStyle.indexOf("}");
+      const styleBody = end === -1 ? restOfStyle : restOfStyle.slice(0, end);
+      if (!/\.\.\.profileHeading\b/.test(styleBody)) {
+        found.push(`type.${step}`);
+      }
+    }
+  }
+  for (const match of source.matchAll(/\.\.\.onboardingType\.title\b/g)) {
+    const restOfStyle = source.slice(match.index!);
+    const end = restOfStyle.indexOf("}");
+    const styleBody = end === -1 ? restOfStyle : restOfStyle.slice(0, end);
+    if (!/\.\.\.profileHeading\b/.test(styleBody)) {
+      found.push("onboardingType.title");
+    }
+  }
+  return found;
+}
+
 describe("Profile typography", () => {
+  it("rejects display-ramp spreads unless profileHeading overrides them", () => {
+    expect(
+      unoverriddenDisplayRampSpreads(
+        "heading: { ...type.section, color: colors.ink }",
+      ),
+    ).toEqual(["type.section"]);
+    expect(
+      unoverriddenDisplayRampSpreads(
+        "heading: { ...type.titleSmall, ...profileHeading, color: colors.ink }",
+      ),
+    ).toEqual([]);
+    expect(
+      unoverriddenDisplayRampSpreads(
+        "heading: { ...onboardingType.title, color: colors.ink }",
+      ),
+    ).toEqual(["onboardingType.title"]);
+  });
+
   it("uses the approved UI family rather than display, brand, or reader text", () => {
     expect(profileHeading).toMatchObject({
       fontFamily: fonts.ui,
@@ -62,5 +114,6 @@ describe("Profile typography", () => {
     expect(body).not.toMatch(/fonts\.display/);
     expect(body).not.toMatch(/fonts\.brand/);
     expect(body).not.toMatch(/fonts\.reader/);
+    expect(unoverriddenDisplayRampSpreads(body)).toEqual([]);
   });
 });

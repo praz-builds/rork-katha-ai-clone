@@ -9081,3 +9081,18 @@ reverted fix and fail there.
   authorization gap, unbounded input, or client PII storage was introduced.
   `pnpm audit --prod` still reports the repository's two pre-existing high
   advisories and no critical advisory.
+
+### Follow-up review correction (2026-09-26)
+
+- The taxonomy lockstep test now reads migration `00049` and asserts that the
+  `stories_primary_genre_check` values exactly equal backend `PRIMARY_GENRES`.
+  This protects the SQL contract, rather than only comparing a client mapping
+  against a TypeScript union.
+- The Explore query note now accurately records that `primary_genre` has been
+  `NOT NULL` since migration `00008`: its null-primary compatibility arms and
+  bounded overfetch are intentionally deferred legacy-query cleanup, not a
+  currently reachable database path.
+- Corrected the test-shim wording: it uses local declarations to avoid an
+  ambient client import, not because Node types are categorically absent.
+- `deno test --allow-read supabase/functions/_shared/types.test.ts` passes all
+  10 checks, including the migration-to-backend taxonomy contract.

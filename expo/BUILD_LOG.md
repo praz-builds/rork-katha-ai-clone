@@ -2204,3 +2204,19 @@ and `deno check` clean.
   profile-screen imports; no test failed.
 - Expo Doctor and a full web export began but exceeded this environment's
   30-second command window, so they are not claimed as passes.
+
+### Follow-up review correction (2026-09-26)
+
+- The Profile typography source scan now also rejects display type-ramp spreads
+  (`type.largeTitle`, `title`, `section`, `titleSmall`, and
+  `onboardingType.title`) unless `profileHeading` follows in the same style
+  object. This closes the indirect-font bypass; the test exercises both a
+  rejected spread and the approved override ordering.
+- `AuthorScreen`'s seeded statistic uses `profileHeading`, keeping its metric
+  at the approved UI family and 700 weight.
+- The local test declarations are intentionally narrow to avoid making client
+  typechecking rely on an ambient Node import. They do not claim that Node
+  types are unavailable from the overall test graph.
+- `pnpm typecheck`, targeted ESLint, and the four focused Jest suites pass
+  (74 tests). The existing Expo notification and React `act` warnings from
+  profile-screen imports remain non-failing test-environment noise.

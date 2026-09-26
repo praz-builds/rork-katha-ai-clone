@@ -43,12 +43,12 @@ import type { Genre, Story } from "@/types/domain";
 export const SEARCH_PAGE_SIZE = 24;
 
 /**
- * The genre query may include an old row whose `genre` array merely CONTAINS
- * the selected genre. We settle that row on the array's first value before it
- * can become a card, so fetch a bounded extra page before that defensive
- * filter. Explore has no pagination; returning a short page because those
- * false legacy matches consumed its only 24 slots would be worse than the
- * small, fixed metadata read. The result is always clipped back to 24.
+ * Historical compatibility budget. `primary_genre` has been NOT NULL since
+ * migration 00008, so the null-primary legacy arms in `genreClause` cannot
+ * match on the current schema. They and this bounded double fetch are retained
+ * deliberately until the legacy query-shape cleanup is its own change; do not
+ * mistake the defensive card filter for a currently reachable legacy path.
+ * The result is always clipped back to the 24-card page.
  */
 export const GENRE_SEARCH_FETCH_SIZE = SEARCH_PAGE_SIZE * 2;
 

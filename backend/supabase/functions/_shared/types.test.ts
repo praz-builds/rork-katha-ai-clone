@@ -35,6 +35,24 @@ Deno.test("PRIMARY_GENRES has exactly 19 members: 15 pre-v7 plus 4 new", () => {
   }
 });
 
+Deno.test("the stories primary-genre CHECK matches PRIMARY_GENRES", async () => {
+  // The migration is the seam a taxonomy widening travels. A new value that
+  // only widens this CHECK is storable by SQL yet invisible to client code
+  // that follows PRIMARY_GENRES, so pin the database contract to the backend
+  // list rather than merely checking either list's current size.
+  const migration = await Deno.readTextFile(
+    new URL("../../migrations/00049_genre_taxonomy_v7.sql", import.meta.url),
+  );
+  const check = migration.match(
+    /stories_primary_genre_check\s+CHECK\s+\(primary_genre IN \(([\s\S]*?)\)\)/,
+  );
+  assert(check !== null, "stories_primary_genre_check was not found");
+  const migrationGenres = [...check[1].matchAll(/'([A-Za-z]+)'/g)].map(
+    (match) => match[1],
+  );
+  assertEquals([...PRIMARY_GENRES].sort(), migrationGenres.sort());
+});
+
 // This is the list the client reads to know what a removed genre is not
 // offered as, and what a new genre is offered as. Backend owns this
 // membership; the client owns the actual creation-screen component.

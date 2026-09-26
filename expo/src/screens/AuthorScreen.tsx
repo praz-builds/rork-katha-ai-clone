@@ -602,7 +602,7 @@ const styles = {
       justifyContent: "center",
       marginBottom: spacing.xl,
     },
-    stat: { fontFamily: fonts.ui, color: colors.ink, fontWeight: "800" },
+    stat: { ...profileHeading, color: colors.ink },
     empty: {
       marginTop: spacing.lg,
       textAlign: "center",
