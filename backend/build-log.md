@@ -9367,3 +9367,9 @@ reverted fix and fail there.
   `stories_primary_genre_check`, then compares that CHECK list exactly with
   backend `PRIMARY_GENRES`. A later widening therefore cannot leave the test
   validating an obsolete migration.
+
+### Public-profile visual smoke follow-up (2026-09-26)
+
+- No backend runtime, schema, function, or deployment changed. The Expo
+  public-profile test now pins the existing owner-only calendar boundary after
+  a visual smoke reported stale calendar accessibility labels on main.

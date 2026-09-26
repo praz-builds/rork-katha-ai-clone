@@ -411,7 +411,17 @@ describe("somebody else's profile", () => {
     // The owner's calendar lives on Journey. A visitor came for the work.
     expect(view.queryAllByTestId(/^activity-grid/)).toHaveLength(0);
     expect(view.queryByText(/days? this year|day streak/i)).toBeNull();
+    // These are calendar labels exposed through the accessibility tree in the
+    // visual smoke. Checking them as well as the component test id means a
+    // future visual reimplementation cannot bring the public activity grid
+    // back under a different test id.
+    expect(view.queryByText("No active days yet")).toBeNull();
+    expect(view.queryByText("Sep")).toBeNull();
     expect(mockFetchActivityCalendar).not.toHaveBeenCalled();
+    // Removing activity is not permission to remove the public page's useful
+    // content: relationship counts and published work remain its purpose.
+    expect(view.getByText("Followers")).toBeTruthy();
+    expect(view.getByText("Following")).toBeTruthy();
     expect(view.getByText("Stories")).toBeTruthy();
   });
 
