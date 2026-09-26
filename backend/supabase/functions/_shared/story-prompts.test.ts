@@ -23,6 +23,7 @@ import {
   wordBandFor,
 } from "./types.ts";
 import { BANNED_WORDS } from "./ban-lists.ts";
+import { storyWorldPromptName } from "./story-world-countries.ts";
 import {
   emptyStoryBible,
   mergeStoryBible,
@@ -2333,7 +2334,10 @@ Deno.test("the story-world preference is a fixed phrase that yields to the brief
   });
   assertStringIncludes(prompt, "Story world preference:");
   assertStringIncludes(prompt, "rooted in Brazil");
-  assertStringIncludes(prompt, "If the brief points anywhere else, follow the brief");
+  assertStringIncludes(
+    prompt,
+    "If the brief points anywhere else, follow the brief",
+  );
 
   const none = buildUserPrompt({
     primaryGenre: "romance",
@@ -2352,4 +2356,10 @@ Deno.test("the story-world preference is a fixed phrase that yields to the brief
       bogus,
     );
   }
+});
+
+Deno.test("story-world prompt names use the checked-in article where English needs one", () => {
+  assertEquals(storyWorldPromptName("US"), "the United States");
+  assertEquals(storyWorldPromptName("NL"), "the Netherlands");
+  assertEquals(storyWorldPromptName("IN"), "India");
 });

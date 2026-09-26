@@ -14,6 +14,10 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 /* eslint-disable import/first */
 import {
+  COUNTRY_WORLDS,
+  matchesCountryWorld,
+} from "../../../backend/supabase/functions/_shared/story-world-countries";
+import {
   __resetStoryWorld,
   COUNTRY_CODES,
   currentStoryWorld,
@@ -76,22 +80,11 @@ it("ignores a stored value it does not know", async () => {
   expect(isStoryWorld("in")).toBe(false);
 });
 
-it("offers exactly the assigned ISO codes the server accepts, plus the client-only default", () => {
-  // Read from the backend source rather than copied, so the two lists cannot
-  // drift: an id the server does not know is silently dropped there.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fs = require("fs") as { readFileSync: (file: string, encoding: "utf8") => string };
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require("path") as { join: (...parts: string[]) => string };
-  const source = fs.readFileSync(
-    path.join(__dirname, "../../../backend/supabase/functions/_shared/types.ts"),
-    "utf8",
-  );
-  const block = source.match(/export const CULTURAL_COUNTRY_CODES = \[([\s\S]*?)\] as const;/);
-  expect(block).not.toBeNull();
-  const serverIds = [...block![1].matchAll(/"([A-Z]{2})"/g)].map((m) => m[1]);
-  expect(serverIds).toHaveLength(249);
+it("uses the one shared assigned-ISO table on client and server", () => {
   expect(COUNTRY_CODES).toHaveLength(249);
+  expect("XK" in COUNTRY_WORLDS).toBe(false);
   expect(STORY_WORLDS.map((world) => world.id).filter((id) => id !== "global").sort())
-    .toEqual([...serverIds].sort());
+    .toEqual([...COUNTRY_CODES].sort());
+  expect(matchesCountryWorld(COUNTRY_WORLDS.GB, "England")).toBe(true);
+  expect(matchesCountryWorld(COUNTRY_WORLDS.NL, "Holland")).toBe(true);
 });

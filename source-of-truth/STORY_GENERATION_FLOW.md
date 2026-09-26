@@ -21,7 +21,7 @@
 > modal. Onboarding may use its own two-step preview, but main Create does not
 > have a separate Shape or Review screen.
 >
-> Last revised 2026-09-11. Sentences that are inference rather than shipped
+> Last revised 2026-09-26. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---

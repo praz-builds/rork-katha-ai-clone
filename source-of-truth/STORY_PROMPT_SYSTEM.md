@@ -455,8 +455,10 @@ directly after the setting layer (`buildStoryWorldBlock` in
 `_shared/story-prompts.ts`):
 
 - **It is a closed list, never free text.** The request carries an id
-  (`cultural_setting`); the server maps it to a phrase in `CULTURAL_SETTINGS`
-  (`_shared/types.ts`). An unknown id, a prototype key or a non-string is
+  (`cultural_setting`); the server maps it to a phrase from the checked-in
+  shared country table (`_shared/story-world-countries.ts`).
+  The table fixes the display name and any required English article, so Expo
+  and the prompt cannot drift with device or server ICU data. An unknown id, a prototype key or a non-string is
   dropped, never refused -- the story is written as if no preference were set.
   *Anywhere* is never sent.
 - **The brief always wins.** The block tells the model to ground names, places,

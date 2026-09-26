@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Check, X } from "lucide-react-native";
+import { COUNTRY_WORLDS, matchesCountryWorld } from "../../../../backend/supabase/functions/_shared/story-world-countries";
 import { STORY_WORLDS, type StoryWorld } from "@/lib/story-world";
 import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
@@ -25,14 +26,23 @@ export default function StoryWorldSheet({
   const [query, setQuery] = useState("");
   const options = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return needle ? STORY_WORLDS.filter((world) => world.label.toLocaleLowerCase().includes(needle)) : STORY_WORLDS;
+    if (!needle) return STORY_WORLDS;
+    return STORY_WORLDS.filter((world) =>
+      world.id === "global"
+        ? world.label.toLocaleLowerCase().includes(needle)
+        : world.id.toLocaleLowerCase().includes(needle) || matchesCountryWorld(COUNTRY_WORLDS[world.id], needle),
+    );
   }, [query]);
+  const close = () => {
+    setQuery("");
+    onClose();
+  };
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <View style={styles.root}>
         <Pressable
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={close}
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
         />
@@ -40,7 +50,7 @@ export default function StoryWorldSheet({
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">Story world</Text>
             <Pressable
-              onPress={onClose}
+              onPress={close}
               accessibilityRole="button"
               accessibilityLabel="Close"
               style={styles.close}
@@ -60,23 +70,25 @@ export default function StoryWorldSheet({
             accessibilityLabel="Search countries"
             style={styles.search}
           />
-          <ScrollView
+          <FlatList
             style={styles.list}
             contentContainerStyle={styles.listContent}
             accessibilityRole="radiogroup"
-          >
-            {options.map((world) => {
+            data={options}
+            keyExtractor={(world) => world.id}
+            ListEmptyComponent={<Text style={styles.empty}>No countries found.</Text>}
+            renderItem={({ item: world }) => {
               const selected = world.id === value;
               return (
                 <Pressable
                   key={world.id}
                   onPress={() => {
                     onChange(world.id);
-                    onClose();
+                    close();
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
-                  accessibilityLabel={`${world.label}. ${world.hint}`}
+                  accessibilityLabel={world.hint ? `${world.label}. ${world.hint}` : world.label}
                   style={[styles.option, selected && styles.optionOn]}
                   testID={`story-world-${world.id}`}
                 >
@@ -87,8 +99,8 @@ export default function StoryWorldSheet({
                   {selected ? <Check size={18} color={colors.accent} strokeWidth={3} /> : null}
                 </Pressable>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         </View>
       </View>
     </Modal>
@@ -121,6 +133,7 @@ const styles = StyleSheet.create({
   search: { fontFamily: fonts.ui, color: colors.ink, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, minHeight: 44, paddingHorizontal: spacing.md },
   list: { flexGrow: 0 },
   listContent: { gap: spacing.sm },
+  empty: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14, paddingVertical: spacing.xl, textAlign: "center" },
   option: {
     flexDirection: "row",
     alignItems: "center",

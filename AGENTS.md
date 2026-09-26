@@ -53,6 +53,16 @@ zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 `00100_reader_preferences`, its profile actions, and its generation prompt
 path must not be applied or deployed; no account data was created.
 
+**Country Story world has no migration, but it does have a deploy order.** The
+checked-in ISO country contract changes `_shared/types.ts` and
+`_shared/story-prompts.ts`; deploy these **nine functions before the client**:
+`continue-story`, `edit-story`, `generate-story`, `generate-story-stream`,
+`reimagine-chapter`, `shape-story`, `generate-character-image`,
+`regenerate-cover`, and `profile`. Until they run, the production validation
+silently drops the new two-letter ids, so a newly shipped client preference
+would appear to do nothing. No client build or OTA is currently configured;
+this is the required order when one is.
+
 The deploy set was eight, not the three or six either PR touched by folder:
 `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 `reimagine-chapter`, `shape-story`, `generate-character-image` and

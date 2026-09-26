@@ -29,6 +29,10 @@ module.exports = {
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // The pure Story-world contract lives beside the edge functions. Resolve
+    // Babel helpers from this Expo workspace when Jest transforms that shared
+    // TypeScript file rather than walking up from backend/.
+    '^@babel/runtime/(.*)$': '<rootDir>/node_modules/@babel/runtime/$1',
     // See src/__mocks__/expo-fetch.ts: the real module needs the native runtime.
     '^expo/fetch$': '<rootDir>/src/__mocks__/expo-fetch.ts',
   },

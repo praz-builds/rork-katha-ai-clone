@@ -17,6 +17,20 @@
 - Verification: Expo typecheck, changed-file ESLint, Story-world/API contract
   tests and the Profile Story-world interaction regression passed.
 
+### Review follow-up
+
+- The picker now uses the shared checked-in country contract rather than
+  `Intl.DisplayNames`; that removes a Hermes startup risk and makes client and
+  server labels identical. It virtualizes country rows, clears searches on
+  close, has useful aliases and a no-results state, and does not repeat
+  “Country” on every row.
+- There is no Story-world migration. On explicit release authorization, deploy
+  the nine affected edge functions before a client build or OTA; the exact list
+  and reasoning are recorded in `../AGENTS.md` and `../backend/build-log.md`.
+- Verification after the review follow-up: Expo typecheck, changed-file ESLint,
+  web export, Story-world/API contracts and the full Profile screen suite
+  (30/30) passed.
+
 ## 2026-09-25: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
 
 - **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.

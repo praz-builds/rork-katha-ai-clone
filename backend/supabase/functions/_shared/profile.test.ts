@@ -476,7 +476,7 @@ Deno.test("handleProfile rejects a malformed body before anything else", async (
 
 Deno.test("the owner's own profile needs a session; a guest is refused", async () => {
   for (
-    const action of ["me", "username", "bio", "avatar"]
+    const action of ["me", "creature", "ledger", "username", "bio", "avatar"]
   ) {
     const response = await handleProfile(
       new Request("https://example.com/profile", {

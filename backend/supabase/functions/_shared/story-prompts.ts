@@ -31,7 +31,6 @@ import type {
 } from "./types.ts";
 import {
   characterAppearance,
-  CULTURAL_SETTINGS,
   type CulturalSetting,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
@@ -40,6 +39,7 @@ import {
   type PlannedChapterCount,
   wordBandFor,
 } from "./types.ts";
+import { storyWorldPromptName } from "./story-world-countries.ts";
 
 // ---------------------------------------------------------------------------
 // Banned vocabulary
@@ -1473,13 +1473,13 @@ function buildPlanSection(
  * -- a reader who chooses a country and writes "a heist in 1920s
  * Chicago" gets Chicago.
  *
- * The phrase comes from `CULTURAL_SETTINGS`, never from the request, so no
+ * The phrase comes from the checked-in country contract, never from the request, so no
  * client text reaches the prompt through this block. An unknown id renders
  * nothing: the story is written as if no preference had been set.
  */
 export function buildStoryWorldBlock(setting?: CulturalSetting): string {
   if (!isCulturalSetting(setting)) return "";
-  const world = CULTURAL_SETTINGS[setting];
+  const world = storyWorldPromptName(setting);
   return `Story world preference:\nThe reader prefers stories rooted in ${world}. Where the idea, the setting and the characters' names leave the culture open, ground the names, places, food, customs, idiom and everyday objects there, specifically rather than generically. If the brief points anywhere else, follow the brief; this preference never overrides it.`;
 }
 
@@ -1650,7 +1650,6 @@ export function buildUserPrompt(params: {
 
   const storyWorld = buildStoryWorldBlock(params.culturalSetting);
   if (storyWorld) parts.push(storyWorld);
-
 
   if (params.audienceMode === "kids" && params.storyValues?.length) {
     parts.push(

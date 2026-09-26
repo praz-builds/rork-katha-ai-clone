@@ -457,6 +457,7 @@ export default function ProfileScreen({
             onPress={() => setStoryWorldOpen(true)}
             testID="profile-story-world"
             grouped
+            last
           />
         </View>
 

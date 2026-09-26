@@ -34,6 +34,24 @@
   audit --json` still reports the repository's two existing high dependency
   advisories with no advisory payload; this change adds no dependency.
 
+### Review follow-up
+
+- Replaced both runtime `Intl.DisplayNames` lookups with one checked-in shared
+  country contract. It is bundled by Expo and imported by edge functions, so
+  Hermes cannot fail during app bootstrap and client/server country wording is
+  stable. The contract also carries English articles for phrases such as *the
+  United States* and searchable aliases such as UK, USA, Holland and
+  Deutschland.
+- **Deployment, when explicitly authorized:** there is no migration. Deploy
+  the nine functions **before** any client build or OTA: `continue-story`,
+  `edit-story`, `generate-story`, `generate-story-stream`, `reimagine-chapter`,
+  `shape-story`, `generate-character-image`, `regenerate-cover`, and `profile`.
+  Today's server otherwise drops an ISO id silently, by its intentional
+  unknown-setting fallback.
+- Verification after the review follow-up: focused Deno contract suite **252
+  passed**. It includes the fixed article regression for the United States and
+  the Netherlands.
+
 ---
 
 ## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
