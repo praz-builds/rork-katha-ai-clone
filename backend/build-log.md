@@ -9096,3 +9096,11 @@ reverted fix and fail there.
   ambient client import, not because Node types are categorically absent.
 - `deno test --allow-read supabase/functions/_shared/types.test.ts` passes all
   10 checks, including the migration-to-backend taxonomy contract.
+
+### Final review guard correction (2026-09-26)
+
+- The taxonomy test no longer names migration `00049`. It scans the migration
+  directory, selects the highest-numbered SQL migration that defines
+  `stories_primary_genre_check`, then compares that CHECK list exactly with
+  backend `PRIMARY_GENRES`. A later widening therefore cannot leave the test
+  validating an obsolete migration.

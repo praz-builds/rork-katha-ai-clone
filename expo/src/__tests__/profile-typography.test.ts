@@ -1,9 +1,8 @@
 import { fonts, profileHeading } from "@/theme";
 
-// Keep this source scan independent of ambient Node declarations. The test
-// runner supplies these modules; these narrow declarations describe only the
-// calls this test makes, instead of making the Expo client type graph depend
-// on a Node import.
+// Jest resolves these CommonJS modules at test runtime. These narrow local
+// declarations describe only the calls below, so the Expo client type graph
+// does not need to import Node modules or rely on global Node ambient types.
 declare const __dirname: string;
 declare function require(id: string): unknown;
 const { readFileSync, readdirSync } = require("fs") as {
@@ -36,31 +35,50 @@ const DISPLAY_TYPE_STEPS = [
   "title",
   "section",
   "titleSmall",
+  "reader",
 ] as const;
 
 /**
  * A display-ramp spread is safe only when the approved UI token follows it in
  * the same style object; later object properties win at runtime. This catches
- * `...type.section` just as surely as a literal `fonts.display`.
+ * `...type.section` and `...type.reader` just as surely as a literal
+ * `fonts.display`.
  */
-function unoverriddenDisplayRampSpreads(source: string): string[] {
+function hasProfileHeadingOverrideInStyleObject(
+  source: string,
+  afterSpread: number,
+): boolean {
+  // The matching spread is already inside its containing style object. Start
+  // at depth one and stop only at that object's matching closing brace, so a
+  // nested style object cannot truncate the scan or donate its own override.
+  let depth = 1;
+  for (let index = afterSpread; index < source.length; index += 1) {
+    if (depth === 1 && source.startsWith("...profileHeading", index)) {
+      return true;
+    }
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return false;
+    }
+  }
+  return false;
+}
+
+function unoverriddenForbiddenRampSpreads(source: string): string[] {
   const found: string[] = [];
   for (const step of DISPLAY_TYPE_STEPS) {
     const matcher = new RegExp(`\\.\\.\\.type\\.${step}\\b`, "g");
     for (const match of source.matchAll(matcher)) {
-      const restOfStyle = source.slice(match.index!);
-      const end = restOfStyle.indexOf("}");
-      const styleBody = end === -1 ? restOfStyle : restOfStyle.slice(0, end);
-      if (!/\.\.\.profileHeading\b/.test(styleBody)) {
+      const afterSpread = match.index! + match[0].length;
+      if (!hasProfileHeadingOverrideInStyleObject(source, afterSpread)) {
         found.push(`type.${step}`);
       }
     }
   }
   for (const match of source.matchAll(/\.\.\.onboardingType\.title\b/g)) {
-    const restOfStyle = source.slice(match.index!);
-    const end = restOfStyle.indexOf("}");
-    const styleBody = end === -1 ? restOfStyle : restOfStyle.slice(0, end);
-    if (!/\.\.\.profileHeading\b/.test(styleBody)) {
+    const afterSpread = match.index! + match[0].length;
+    if (!hasProfileHeadingOverrideInStyleObject(source, afterSpread)) {
       found.push("onboardingType.title");
     }
   }
@@ -70,20 +88,30 @@ function unoverriddenDisplayRampSpreads(source: string): string[] {
 describe("Profile typography", () => {
   it("rejects display-ramp spreads unless profileHeading overrides them", () => {
     expect(
-      unoverriddenDisplayRampSpreads(
+      unoverriddenForbiddenRampSpreads(
         "heading: { ...type.section, color: colors.ink }",
       ),
     ).toEqual(["type.section"]);
     expect(
-      unoverriddenDisplayRampSpreads(
+      unoverriddenForbiddenRampSpreads(
         "heading: { ...type.titleSmall, ...profileHeading, color: colors.ink }",
       ),
     ).toEqual([]);
     expect(
-      unoverriddenDisplayRampSpreads(
+      unoverriddenForbiddenRampSpreads(
         "heading: { ...onboardingType.title, color: colors.ink }",
       ),
     ).toEqual(["onboardingType.title"]);
+    expect(
+      unoverriddenForbiddenRampSpreads(
+        "heading: { ...type.reader, nested: { ...profileHeading } }",
+      ),
+    ).toEqual(["type.reader"]);
+    expect(
+      unoverriddenForbiddenRampSpreads(
+        "heading: { ...type.reader, nested: { depth: 1 }, ...profileHeading }",
+      ),
+    ).toEqual([]);
   });
 
   it("uses the approved UI family rather than display, brand, or reader text", () => {
@@ -114,6 +142,6 @@ describe("Profile typography", () => {
     expect(body).not.toMatch(/fonts\.display/);
     expect(body).not.toMatch(/fonts\.brand/);
     expect(body).not.toMatch(/fonts\.reader/);
-    expect(unoverriddenDisplayRampSpreads(body)).toEqual([]);
+    expect(unoverriddenForbiddenRampSpreads(body)).toEqual([]);
   });
 });

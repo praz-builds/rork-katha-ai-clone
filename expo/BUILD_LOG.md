@@ -2220,3 +2220,13 @@ and `deno check` clean.
 - `pnpm typecheck`, targeted ESLint, and the four focused Jest suites pass
   (74 tests). The existing Expo notification and React `act` warnings from
   profile-screen imports remain non-failing test-environment noise.
+
+### Final review guard correction (2026-09-26)
+
+- The Profile scanner now treats `type.reader` as a forbidden non-story ramp
+  too. Its object-boundary walk tracks nested braces, so a nested object cannot
+  either stop the scan early or make its own `profileHeading` spread approve
+  the outer heading.
+- The test shim documentation now says precisely what happens: Jest resolves
+  `fs` and `path` at runtime, while local declarations keep the Expo client
+  type graph free of imported/global Node typings.
