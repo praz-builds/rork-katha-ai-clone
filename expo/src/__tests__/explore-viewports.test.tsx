@@ -45,7 +45,6 @@ const atWidth = async (width: number) => {
     <ExploreScreen
       stories={seedStories}
       onStory={jest.fn()}
-      onProfile={jest.fn()}
       searchOptions={{ debounceMs: 0, prefetchTimeoutMs: 0 }}
     />,
   );

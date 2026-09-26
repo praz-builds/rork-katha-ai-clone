@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Check, X } from "lucide-react-native";
 import { STORY_WORLDS, type StoryWorld } from "@/lib/story-world";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 /**
  * Story world: where new stories are rooted when the brief leaves it open.
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     maxHeight: "88%",
   },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  title: { ...profileHeading, color: colors.ink, fontSize: 24 },
   close: {
     width: 36,
     height: 36,

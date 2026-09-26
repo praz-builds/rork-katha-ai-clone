@@ -157,3 +157,24 @@ describe("the greeting", () => {
     expect(view.queryByText(/^Good (morning|afternoon|evening), /)).toBeNull();
   });
 });
+
+describe("the exit into Explore", () => {
+  it("is a compact secondary 'Explore all', not a full-width 'See everything'", async () => {
+    const onSeeAll = jest.fn();
+    const view = await renderHome({ onSeeAll });
+    expect(view.queryByText("See everything")).toBeNull();
+
+    const button = view.getByRole("button", { name: "Explore all" });
+    // The pressable's style is a function of `pressed`; resolve it the way
+    // React Native does and flatten what comes back.
+    const raw = button.props.style;
+    const resolved = typeof raw === "function" ? raw({ pressed: false }) : raw;
+    const flat = Object.assign({}, ...[resolved].flat(Infinity).filter(Boolean));
+    // Hugging its label and centred - never stretched across the feed.
+    expect(flat.alignSelf).toBe("center");
+    expect(flat.alignSelf).not.toBe("stretch");
+
+    await fireEvent.press(button);
+    expect(onSeeAll).toHaveBeenCalledTimes(1);
+  });
+});

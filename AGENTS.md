@@ -1077,6 +1077,8 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`source-of-truth/CREDITS_AND_PRICING.md` decision 5).
 
+**Voice samples on the Voices screen** (2026-09-25, `expo/src/lib/voice-preview.ts`): each voice with a `preview_url` from the `voices` function gets a separate 44pt play button. It plays that static file and nothing else -- no provider call, no credit -- with loading, playing (tap to stop) and error states, one sample at a time, stopped on leaving the screen. **Playing a sample never saves the voice**; only pressing the row does. **The clips do not exist in production yet**: `seed-voice-previews` has never been run, so every `voice-previews/*.mp3` in the `audio` bucket answers 404 and every sample shows its error state until an operator runs it. Running it spends RunPod time and is an operational step, not a deploy of this code.
+
 ### Pipeline
 
 - Audio generated at publish time (both voices), cached permanently in Supabase Storage bucket `audio`.
@@ -1223,7 +1225,9 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - `TabKey` (`expo/src/types/domain.ts`): `"home" | "explore" | "create" | "library" | "profile"`. Profile is a real tab, not an avatar overlay.
 - Every tab screen pads its scroll content by `TAB_BAR_CLEARANCE` (exported from `BottomTabs.tsx`), never a literal.
 - **Home** (`expo/src/screens/HomeScreen.tsx`, one pure row-builder): Your stories -> Continue reading -> **Tonight** (`expo/src/lib/home-tonight.ts`, only when a reader answered the mood question in onboarding this session) -> Katha Originals -> one rail per onboarding genre, ordered by reads. Tonight is session-only by design ("Tonight only"); it is never persisted, and choosing Writing on the way back clears it. The order is the product owner's; do not reorder it in code.
-- **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86).
+- **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86). **No header row** -- the "You" link that sat top-right was removed 2026-09-25; Profile is its own tab. A genre chip filters on `primary_genre`, and on the legacy `genre` array **only for a row with no `primary_genre`** (`genreClause` in `expo/src/lib/search.ts`): the array lists secondary genres too, and matching it unconditionally put mysteries and sci-fi under Adventure. The eyebrow names the sort order (`Trending` by default) with no genre, and only the genre when one is chosen, unless the reader picked a non-default sort.
+- **Home's exit into Explore** is a compact secondary **Explore all** button, centred and hugging its label -- not a full-width button, which read as the screen's main action.
+- **Somebody's public profile** (`expo/src/screens/AuthorScreen.tsx`) has **no streak calendar**: follow counts, then a named **Stories** list of their public stories, with an honest empty state ("@handle has not published a story yet") and a distinct could-not-load state. The owner's calendar lives on Journey only. The server side is unchanged: the `profile` function's `calendar` action still returns another author's days when they have published (`_shared/profile.ts`, `activity_calendar`), so the calendar is hidden, not private; nothing in the app asks for another person's any more.
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Characters. Characters lists `saved_characters` and creates or edits one on the brief's Craft character screen.

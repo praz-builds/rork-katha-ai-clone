@@ -152,7 +152,7 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Family | Role | Bundled files |
 | --- | --- | --- |
 | `Baloo2` | Brand wordmark only | `Baloo2.ttf` |
-| `BricolageGrotesque` | Display headings on Home, Profile and onboarding; important numbers. Never a button label, never a create-flow heading | `BricolageGrotesque.ttf` |
+| `BricolageGrotesque` | Display headings on Home and onboarding. Never a button label, Profile UI heading, or create-flow heading | `BricolageGrotesque.ttf` |
 | `HankenGrotesk` | UI labels, body copy, metadata, inputs | `HankenGrotesk.ttf` |
 | `Literata` | Long-form story reading | `Literata.ttf` |
 | `LiterataItalic` | Long-form italic reading | `Literata-Italic.ttf` |
@@ -179,7 +179,11 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Metadata | Hanken | 400 to 700 | 11 to 13 / 17 to 19 | Hints, labels, prices |
 | Story text in intro | Hanken | 400 | 13.2 / 19 | Generated story lines |
 
-**Bricolage is for Home and Profile display titles, onboarding headings, and numbers only.** The create flow is a working surface, so its headings are Hanken bold (`type.createTitle`); Bricolage at 32 there read as a poster rather than a form.
+**Bricolage is for Home display titles and onboarding headings only.** Profile,
+public profile, Journey, and Profile-owned sheet headings, display names, and
+metrics use Hanken 700; this supersedes the earlier Profile-display exception.
+The create flow is a working surface, so its headings are Hanken bold
+(`type.createTitle`); Bricolage at 32 there read as a poster rather than a form.
 
 The design rule is zero letter spacing for visible text. The only currently tolerated positive tracking is tiny uppercase metadata such as `NEW STORY`, cover-author labels, rating stars, and paywall badges. Do not add tracking to headings, body copy, buttons, or the wordmark.
 

@@ -35,6 +35,49 @@ Deno.test("PRIMARY_GENRES has exactly 19 members: 15 pre-v7 plus 4 new", () => {
   }
 });
 
+const PRIMARY_GENRE_CHECK = "stories_primary_genre_check";
+const PRIMARY_GENRE_CHECK_DEFINITION = new RegExp(
+  `ADD\\s+CONSTRAINT\\s+${PRIMARY_GENRE_CHECK}\\b`,
+  "i",
+);
+
+async function latestPrimaryGenreCheckMigration(): Promise<string> {
+  const migrations = new URL("../../migrations/", import.meta.url);
+  const candidates: { version: number; contents: string }[] = [];
+
+  for await (const entry of Deno.readDir(migrations)) {
+    const match = entry.name.match(/^(\d+)_.*\.sql$/);
+    if (!entry.isFile || !match) continue;
+    const contents = await Deno.readTextFile(new URL(entry.name, migrations));
+    if (PRIMARY_GENRE_CHECK_DEFINITION.test(contents)) {
+      candidates.push({ version: Number(match[1]), contents });
+    }
+  }
+
+  if (candidates.length === 0) {
+    throw new Error(`${PRIMARY_GENRE_CHECK} definition was not found`);
+  }
+  return candidates.reduce((latest, candidate) =>
+    candidate.version > latest.version ? candidate : latest
+  ).contents;
+}
+
+Deno.test("the latest stories primary-genre CHECK matches PRIMARY_GENRES", async () => {
+  // The migration is the seam a taxonomy widening travels. A new value that
+  // only widens this CHECK is storable by SQL yet invisible to client code
+  // that follows PRIMARY_GENRES, so pin the database contract to the backend
+  // list rather than merely checking either list's current size.
+  const migration = await latestPrimaryGenreCheckMigration();
+  const check = migration.match(
+    /stories_primary_genre_check\s+CHECK\s+\(primary_genre IN \(([\s\S]*?)\)\)/,
+  );
+  assert(check !== null, "stories_primary_genre_check was not found");
+  const migrationGenres = [...check[1].matchAll(/'([A-Za-z]+)'/g)].map(
+    (match) => match[1],
+  );
+  assertEquals([...PRIMARY_GENRES].sort(), migrationGenres.sort());
+});
+
 // This is the list the client reads to know what a removed genre is not
 // offered as, and what a new genre is offered as. Backend owns this
 // membership; the client owns the actual creation-screen component.

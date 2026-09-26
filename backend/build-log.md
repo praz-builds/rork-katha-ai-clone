@@ -7,6 +7,77 @@
 
 ---
 
+## 2026-09-25 UTC — Go-live remediation: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
+
+**Session:** the acceptance failures from the last walk on `main`. Branch
+`codex/go-live-remediation`. **Client-only; nothing deployed, no migration, no
+function change.** It reaches a phone only through an EAS build.
+
+### What changed, as a reader meets it
+
+- **Explore, Adventure selected, showed mysteries, fantasies and sci-fi.** Cause:
+  the genre clause matched the legacy `stories.genre` array unconditionally,
+  and that array carries a story's *secondary* genres (`{mystery, adventure}`).
+  Checked against production with the anon key: the old clause returned 24 rows
+  over seven primary genres for Adventure; the new one,
+  `primary_genre.eq.X,and(primary_genre.is.null,genre.cs.{X})` (`genreClause` in
+  `expo/src/lib/search.ts`), returns the 7 whose primary genre is Adventure. A
+  second guard drops any row whose mapped card genre differs, so a legacy row
+  whose array leads with another genre cannot render under the wrong chip.
+- **Explore's stray top-right "You"** link is gone, with the `onProfile` prop.
+- **The Explore eyebrow** named "Most loved" over a list sorted by reads. It now
+  names the actual order (`Trending` by default), and with a genre chosen shows
+  only the genre unless the reader picked a non-default sort
+  (`exploreScopeLabel`).
+- **Home's full-width "See everything"** is a compact, centred, secondary
+  **Explore all** (`size="sm"`, `fullWidth={false}`).
+- **Voice samples** on the Voices screen (`expo/src/lib/voice-preview.ts`):
+  plays the `preview_url` the `voices` function already returns. Loading,
+  playing/stop and error states; one at a time; a superseded load is unloaded;
+  stops on unmount; **never writes the preferred voice**.
+- **Public profile** (`AuthorScreen`): the streak calendar and its
+  `fetchActivityCalendar` call are removed; a **Stories** heading, an empty
+  state naming the writer, and a distinct could-not-load state.
+- **You:** "How credits work" subtitle is now "Prices and free credits".
+
+### Blockers found, not worked around
+
+- **Every voice sample 404s in production.** `voice-previews/{aria,kai,onyx,nova,echo,fable,elvira,alvaro}.mp3`
+  do not exist in the `audio` bucket (checked 2026-09-25): `seed-voice-previews`
+  has never run. A bounded operator attempt against the deployed function
+  stopped at its service-role check with HTTP 401, before any RunPod job could
+  start; its durable `generation.audio` fingerprint is
+  `a25f3c5df3dca9301fa52e59f5259c53` (`voice_preview_seed_unauthorized`). The
+  function's configured service-role secret must be reconciled before one
+  idempotent seed run can create the clips. The button correctly shows its
+  error state until then.
+- **Story detail's 4–5 line summary is not buildable from the current
+  contract.** The page shows chapter 1's `first_line`. The only multi-sentence
+  summary stored is `chapters.previously_summary`, written for the model's
+  continuation context, and it gives away the ending (production example: "The
+  capsule splashed down safely in the Atlantic after their timed burn worked").
+  `stories.topic` is the creator's prompt, which the story page deliberately
+  stopped showing. A real summary needs a spoiler-free `blurb` in the
+  structured output (`source-of-truth/STORY_PROMPT_SYSTEM.md`), a column, the
+  parser and persistence in every generate path, a backfill for existing
+  stories, and a deploy. Nothing was faked client-side.
+- **The `profile` function still serves another author's calendar** to a direct
+  caller when they have published. The app no longer asks; whether the server
+  should refuse is a product decision left open.
+
+### Verification
+
+- `pnpm exec jest`: 152 suites, 1608 tests passing.
+- New and changed tests were each run against the unfixed code and failed:
+  Explore (6 failures with `search.ts` and `ExploreScreen.tsx` reverted), public
+  profile (3), voice samples (the superseded-load test, with the token guard
+  removed).
+- `pnpm typecheck` clean; `pnpm lint` 0 errors (32 pre-existing warnings, none
+  in the changed files); `expo-doctor` 18/18; `expo export --platform web`
+  compiled.
+
+---
+
 ## 2026-09-25 UTC — Deployed: 00099 and eight functions, 89/89 byte-identical, and the smoke back to 43/43
 
 **Session:** the deploy #145 said to do, with the drift audit and the production
@@ -8961,3 +9032,75 @@ Backend `deno test --allow-all supabase/functions/` 1067 passed (+2),
 suite green. Client `pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci`
 1360 passed across 129 suites. Both new behavioural tests were run against the
 reverted fix and fail there.
+## 2026-09-25 UTC — PR #149 reviewer follow-up: truthful Explore and voice states
+
+- Profile, public profile, Journey, and Profile-owned sheet headings, display
+  names, initials, and metric values now use the existing Hanken UI family at
+  700. Reader/story prose and the brand/reader faces are untouched. The visual
+  contract now explicitly supersedes Profile's old Bricolage exception.
+- Explore now maps all 19 runtime `PrimaryGenre` values to a queryable card
+  label. The two backend-only stored values remain visible under their
+  documented replacements (`cozyFantasy` -> Fantasy and
+  `paranormalRomance` -> Romance); malformed carried genres are dropped rather
+  than falsely labelled Adventure.
+- A genre browse fetches a bounded 48 metadata rows, defensively removes legacy
+  secondary-genre matches, then returns at most the 24-card page. This prevents
+  the client-side accuracy guard from consuming an otherwise full page.
+- Voice preview failures are now persistent per voice and additive to, rather
+  than replacements for, the language/gender subtitle. The public-profile
+  Stories heading waits for a load result, and the own-calendar helper no
+  longer advertises a public-profile parameter it does not use.
+- No backend runtime, schema, secret, or deployed function changed.
+
+### Verification
+
+- The `profileHeading` token was added and every scoped heading/metric now
+  consumes it, including `BlockedAccountsSheet`, which had kept the two values
+  spelled out.
+- **Correction to an earlier claim in this entry.** It previously said the
+  original regression test was removed because it used Node `fs`/`path` and
+  `process.cwd`, "which Expo's TypeScript environment intentionally does not
+  type". That reason is wrong, and recording it would have taught the next
+  agent to route around a constraint that does not exist. Three suites in the
+  same directory read source files and typecheck clean -- `store-catalog
+  .test.ts`, `story-world.test.ts` and `create-flow-more-options.test.tsx` --
+  by declaring the two Node functions rather than importing `@types/node`.
+  The file scan is restored alongside the token, now as a glob over
+  `src/components/profile/*.tsx` plus the three Profile screens, because the
+  token on its own only constrains the token: nothing stopped a NEW heading
+  from spelling `fonts.display` directly in a screen. Both guards were
+  verified by deliberately introducing the drift and confirming the suite
+  fails, then reverting.
+- `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing. Existing Expo notification and React `act` warnings remain outside these changes.
+- `pnpm typecheck`: clean. ESLint over every changed Expo source/test file:
+  0 errors and two pre-existing `react/no-unescaped-entities` warnings in
+  `MemberSheet` and `JourneyScreen`.
+- Expo Doctor and the full web export exceeded this environment's 30-second
+  command window after starting; neither is recorded as a pass here.
+- Security scan completed before push: no new credential exposure, injection,
+  authorization gap, unbounded input, or client PII storage was introduced.
+  `pnpm audit --prod` still reports the repository's two pre-existing high
+  advisories and no critical advisory.
+
+### Follow-up review correction (2026-09-26)
+
+- The taxonomy lockstep test now reads migration `00049` and asserts that the
+  `stories_primary_genre_check` values exactly equal backend `PRIMARY_GENRES`.
+  This protects the SQL contract, rather than only comparing a client mapping
+  against a TypeScript union.
+- The Explore query note now accurately records that `primary_genre` has been
+  `NOT NULL` since migration `00008`: its null-primary compatibility arms and
+  bounded overfetch are intentionally deferred legacy-query cleanup, not a
+  currently reachable database path.
+- Corrected the test-shim wording: it uses local declarations to avoid an
+  ambient client import, not because Node types are categorically absent.
+- `deno test --allow-read supabase/functions/_shared/types.test.ts` passes all
+  10 checks, including the migration-to-backend taxonomy contract.
+
+### Final review guard correction (2026-09-26)
+
+- The taxonomy test no longer names migration `00049`. It scans the migration
+  directory, selects the highest-numbered SQL migration that defines
+  `stories_primary_genre_check`, then compares that CHECK list exactly with
+  backend `PRIMARY_GENRES`. A later widening therefore cannot leave the test
+  validating an obsolete migration.

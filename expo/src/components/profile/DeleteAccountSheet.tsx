@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { AlertTriangle, Check, X } from "lucide-react-native";
 import { deleteAccount } from "@/lib/profile";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 /**
  * Deleting an account, in three deliberate steps.
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerTitle: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  headerTitle: { ...profileHeading, color: colors.ink, fontSize: 24 },
   closeButton: { padding: 4 },
   body: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
   lead: {
