@@ -49,6 +49,13 @@ every `.ts` file in it compared byte for byte with main — **89 of 89 identical
 zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 **zero importers**: dead code, not drift.
 
+**Pending deployment, not authorized:** this PR's `00100_reader_preferences`
+migration and the seven functions that will carry its shared reader-context
+code are not deployed: `profile`, `generate-story`, `generate-story-stream`,
+`continue-story`, `edit-story`, `reimagine-chapter`, and `shape-story`.
+Apply the migration first, then deploy that complete closure only after explicit
+authorization; merging client code does not make it live.
+
 The deploy set was eight, not the three or six either PR touched by folder:
 `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 `reimagine-chapter`, `shape-story`, `generate-character-image` and
@@ -519,6 +526,7 @@ Schema is in `backend/supabase/migrations/`. Remote production has every migrati
 | **00092 (Story bible)** | `stories.story_bible` -- nullable, server-owned, append-only jsonb holding a multi-chapter story's settled facts, its clock, its fixed truth and the scenes already shown. Written only by `mergeStoryBible`; the model proposes and never writes. NULL means the story predates it and reads as an empty bible. **Never sent to a client** |
 | **00097 (Report queue)** | `content_reports_open` view: unresolved reports newest first with story, comment and author context; `security_invoker`, readable by `service_role` only (plus the dashboard). Also the first `service_role` SELECT grant on `content_reports`. Query and resolve steps: `backend/MONITORING.md` § *The report queue* |
 | **00098 (App feedback)** | `app_feedback` (service-role only) and `submit_app_feedback`; a trigger on `profiles.deleted_at` erases an account's rows when it is deleted |
+| **00100 (Reader preferences)** | `reader_preferences` (service-role only, RLS on, no client grants) and `set_reader_preferences`; spoken languages + optional city for the prompt's *Reader context*. Written only through `profile` (`set_preferences`); erased by a trigger on `profiles.deleted_at`. **Not yet applied to production** |
 | **00091 (Entity gate removed)** | Drops both 00050 constraints, clears `stories.entity_gate_reason` on every row and leaves the column nullable and unused for older clients; re-issues `public_profile`, `profile_comments` and `activity_calendar` without the gate clause. A writer's publish toggle is honoured. |
 
 ### Credit Ledger Pattern
@@ -1231,7 +1239,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Characters. Characters lists `saved_characters` and creates or edits one on the brief's Craft character screen.
-- **You -- settings added 2026-09-25:** *Story world* (the cultural preference above, `lib/story-world.ts`) and *Vote on what's next* (`components/profile/FeatureVoteSheet.tsx`, migration 00099, no edge function). Votes are on team-written topics only -- readers never post public text there, so it adds no moderation surface; anything else goes through Send feedback. Votes grant no credits.
+- **You -- settings added 2026-09-25:** *Story world* (the cultural preference above, `lib/story-world.ts`) and *Vote on what's next* (`components/profile/FeatureVoteSheet.tsx`, migration 00099, no edge function). Votes are on team-written topics only -- readers never post public text there, so it adds no moderation surface; anything else goes through Send feedback. Votes grant no credits. *Languages and home* (`components/profile/ReaderContextSheet.tsx`, migration 00100) sits with Story world under a *Global preferences* heading; it is stored on the account, not the device, because a city is personal data (`source-of-truth/STORY_PROMPT_SYSTEM.md` *Reader context*).
 - **You** (`expo/src/screens/ProfileScreen.tsx`): since 2026-09-16 the header is the avatar and the handle on one row with a pencil at the right, and the pencil is the only control that opens the identity editor. **There is no guest card.** The "Sign in to keep all of this" prompt is gone, because the product has no guests past the email step. **Sign out routes to the sign-in screen and leaves the device with no session** -- `signOutToSignIn` in `expo/src/lib/session.ts` clears the stored session (`scope: "local"`) and does *not* mint a replacement guest; the old `restartGuestSession` left a live anonymous identity behind the sign-in screen. Do not reintroduce it.
 
 ### Onboarding

@@ -7,6 +7,269 @@
 
 ---
 
+## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
+
+**Session:** rebased `codex/onboarding-culture-remediation` onto main after
+#149 merged. No production action was taken.
+
+- `ReaderContextSheet` now uses the shared `profileHeading` UI token rather
+  than the story-only display face. The global Profile typography guard covers
+  the sheet, so a future direct display-font use fails the test.
+- The reader-preferences summary test now pins both plural forms: a hidden-only
+  value is `2 languages`, while a known list remains `Hindi, 2 more`.
+- `AGENTS.md` now says plainly that `00100_reader_preferences` and the seven
+  functions in its shared-module closure are pending deployment, with migration
+  first and explicit authorization required. This is a record correction, not
+  a deployment.
+
+### Verification
+
+- Focused Jest: 3 suites / 38 tests passed (reader preferences, context sheet,
+  and Profile typography); the new plural assertion was also shown to fail
+  against the old bare-count behaviour. Affected-file ESLint and the mandatory
+  diff security scan passed. Expo typecheck was started but did not complete
+  before this session's command window ended, so it is not recorded as passing.
+  No production-level test or deployment occurred.
+
+---
+
+## 2026-09-26 UTC — Review round: hardware Back was half-fixed, and a Save could erase a language
+
+**Session:** acting on the standing review of #150. Branch
+`codex/onboarding-culture-remediation`.
+
+### What changed for a person using the app
+
+- **Android's hardware Back now works on the six questionnaire screens.**
+  It was added to `CharacterOnboarding` only, so the PR's headline claim was
+  true from the Meet screen onward and false before it. On genres, purpose,
+  refine, mood or moment, Back closed the whole app -- every answer there is
+  local `useState` with nothing persisted, so reopening started at the intro
+  with the lot gone, while the arrow one line above went back a step with
+  everything intact. Back now follows the same table as the arrow and falls
+  through to the system only on the first screen, where leaving is correct.
+- **A language set on a newer build is no longer erased by the next Save.**
+  The client's read filtered unknown ids out and its write sent back only
+  what it recognised, so a reader who set a 31st language and then opened an
+  older build lost it silently on Save. `SPOKEN_LANGUAGES` is append-only by
+  contract, so this was reachable. Unknown ids are now carried through the
+  round trip untouched, counted against the cap (the server counts them, so
+  the chips must too, or an in-budget-looking Save is refused), and the sheet
+  says plainly that something it cannot show is held on the account.
+
+### Two smaller ones
+
+- `readerPrefsChosenByUserRef` was a boolean latched forever: after one save
+  no read could replace the value for the rest of the screen's life, so a
+  save landing late pinned a stale value behind a reopened sheet. It is a
+  timestamp now, which shadows only the reads already in flight at save time
+  -- all it was ever for.
+- `dismissPaywall.current` was assigned in the render body rather than an
+  effect. Idempotent, so nothing broke; `pendingPortrait` and the BackHandler
+  in the same file both use effects.
+
+### Round 2 of the review: the new field had a surface it had not reached
+
+- **The You row told a reader with one hidden language that they had none.**
+  `readerPreferencesSummary` reads `spokenLanguages` only and was not
+  revisited when `unrecognisedLanguages` was added, so a reader whose only
+  language is a newer id saw "Add the languages you speak and your city" one
+  tap from a sheet saying that language is held. It counts them now
+  ("Hindi, 1 more").
+- **"Pick up to 3" sat above chips the reader could not pick.** The hidden
+  language takes a slot, which the copy never said, so the remaining chips
+  were simply dead. The hint now names it.
+- **`hidden` read the live prop while `languages` was snapshotted**, so a read
+  landing mid-edit could lock the chips while the typed values stayed from
+  before it. Both are seeded in the same effect now.
+- `ONBOARDING_FLOW.md` said hardware Back "is now always consumed". True on
+  the character path, and this branch is what made it false elsewhere: the
+  questionnaire deliberately does not consume it on `name`. The contract
+  records both rules and the one place they differ.
+
+### Round 3 of the review: the replacement copy was not readable
+
+- **"1 more" was the whole subtitle** for the reader this branch fixed it
+  for. The count form only reads as a count when a list precedes it, and with
+  no known languages there is no list -- "1 more" than what. With a city it
+  read as a truncated list that was never there. The empty-label case has its
+  own branch now: "1 language".
+- **The sheet's second sentence lost its subject.** React Native makes each
+  `<Text>` its own accessibility element, so VoiceOver and TalkBack read "It
+  is kept on your account..." with the antecedent in a different element.
+  Both sentences are one `<Text>` now.
+
+### Verification
+
+- At this head, the focused reader-preferences regressions pass: 2 suites, 20
+  tests. `pnpm typecheck` is clean and ESLint is clean over every changed file.
+  The earlier 153-suite / 1626-test full-suite total is retained as historical
+  baseline only; this round did not complete a fresh full-suite run, so it is
+  not claimed as this head's local result.
+- The two behaviour fixes are proved, not asserted: the hardware-Back test
+  was run against the code with the new effect removed and **fails**, and the
+  language round trip asserts the exact `set_preferences` body.
+- **A note on direction.** Carrying unknown ids back is safe because the
+  server is the newer of the two here -- it wrote the id, so it accepts it.
+  Its write path does reject an id it does not know, so if that ever fires
+  with hidden ids present the sheet now says the app is out of date rather
+  than "remove the one you added last", which names something the reader
+  cannot see.
+- No backend file changed in this round, so the deploy set recorded earlier
+  on this branch is unaffected.
+
+---
+
+## 2026-09-25 UTC — Onboarding takes several answers, the stage shows three different people, and stories know the reader's languages and city
+
+**Session:** completion of the dirty `codex/onboarding-culture-remediation`
+worktree. Not deployed. The later deploy is migration `00100` first, then
+**seven** functions -- every one whose bundle now includes
+`_shared/reader-preferences.ts` (`deno info` over each `index.ts`):
+`profile`, `generate-story`, `generate-story-stream`, and, through
+`_shared/story-prompts.ts`, `continue-story`, `edit-story`,
+`reimagine-chapter` and `shape-story`. Deploying only the first three would
+leave four functions behind main.
+
+### Onboarding
+
+- **Multi-select where the question allows it.** `selectionFor` is the table:
+  the writer's two intent questions and the reader's mood and routine are
+  multi-select; purpose, R-how and the "both" questions stay single because
+  they route or already offer the combination. Answers are `string[]` in tap
+  order; the first is the primary (`primaryMood` keys Home's Tonight rail).
+  *Surprise me* and *Whenever I get time* are exclusive. Session state only.
+- **Back is one table** (`backFrom`) for the arrow and Android hardware Back.
+  After the code verifies, W4 and W6 point at each other and nothing earlier
+  is reachable. Hardware Back is always consumed; it used to close the app.
+- **Three different people on W3's stage** (`STAGE_CAST`, three 450 × 630
+  WebPs with no baked frame). The two old PNGs are deleted.
+
+### Reader context (migration 00100)
+
+- `reader_preferences`: up to three spoken languages (closed list of 30 ISO
+  639 ids) and an optional city. RLS on, all client grants revoked, written
+  only by `set_reader_preferences` (security definer, `search_path = ''`,
+  execute granted to `service_role` only). Every real function is
+  `pg_catalog`-qualified, including `btrim` and `char_length` inside the
+  CHECKs and the `now()` default. A trigger on the `profiles.deleted_at`
+  tombstone deletes the row, and a late save from a tombstoned account
+  returns `gone`.
+- `profile` gains `preferences` / `set_preferences`, keyed on the verified
+  token and never on the body. The endpoint validates first (Unicode letters
+  and marks, digits, `. , ' ( ) -`, 60 characters) and the CHECKs are the
+  backstop.
+- Generation reads the row as service role for the first chapter and renders
+  `buildReaderContextBlock` after Story world: cultural context, **never** the
+  output language, and the brief wins. The city is fenced with `userField`.
+  A failed read produces no block. **Known gap:** `shape-story` does not
+  receive it yet.
+- You: a *Global preferences* heading over voices, music, Story world and the
+  new *Languages and home* sheet. Send feedback moves to the next group.
+
+### Fixes made while completing
+
+From the review round (Opus subagent, CHANGES REQUESTED, six findings, all
+fixed):
+
+- Deploy list was three functions; it is seven (above).
+- The *Languages and home* sheet showed an empty form when the first read
+  failed, and Save replaces both fields, so one tap could erase a saved city.
+  The form now appears only once the value has loaded (Try again on failure),
+  and it is seeded once per opening so a late read cannot overwrite typing.
+  `reader-context-sheet.test.tsx`.
+- Back from a verified W4 to W6 carried an unsubmitted edit, so Meet showed a
+  new name beside a portrait (and a saved row) drawn for the old one. Back now
+  restores the drawn sheet; the test fails with the fix removed.
+- The docs named an S3 option "Reading and Writing"; it is **A bit of both**.
+- `home-place` added to `USER_FIELD_LABELS`, so the fence tests cover it.
+- The city can shape published stories; the sheet and STORY_PROMPT_SYSTEM.md
+  now say so.
+
+From CodeAnt on the PR (four threads):
+
+- **Fixed.** A save racing an account deletion could pass the tombstone
+  check and commit a city beside a deleted account. `set_reader_preferences`
+  now reads the profile `FOR SHARE`, which conflicts with the tombstone
+  UPDATE, so the two serialise.
+- **Fixed.** A save that lands after the sheet was closed and reopened closed
+  the new opening. It now reports the stored value and leaves the new opening
+  alone.
+- **Declined, with reasons on the thread:** reading preferences at request
+  start (a snapshot per request is the contract), and updating `drawnSheet`
+  before the draw resolves (it mirrors `portraitKey`, and `redraw` clears the
+  old face at once).
+
+From the standing reviewer (cloud routine, head `b46cc50`). Worked by this
+session and a concurrent agent in the same worktree; its tests are kept
+alongside these:
+
+- **Fixed (asked before merge).** The CTA at the reimagine cap went to the
+  paywall with the undrawn edit still in state, and `finish` handed on the
+  new name with the old face. It now restores the drawn sheet as Back does.
+- **Fixed.** Every server refusal on Save read "check your connection".
+  `saveReaderPreferences` now returns `saved` / `refused` (the server's own
+  400 message, or a deleted-account line for 404) / `failed`, and the sheet
+  shows the reason. A client one language ahead of a deployed function now
+  says so instead of looking like an outage.
+- **Fixed.** Android Back on the paywall was a dead key. `backFrom("paywall")`
+  is `"dismiss"`, the × path; `leavePaywall` is now one-shot so two exits
+  cannot raise two permission prompts. Welcome stays inert.
+- **Fixed.** You read preferences on every mount. They are held in memory for
+  the session (`READER_PREFERENCES_FRESH_MS`, 5 min, never AsyncStorage),
+  drawn at once on return, replaced on save, and dropped by `clearOwnProfile`
+  and on an account switch.
+- **Fixed (second standing review, of `8d235e3`).** The city field's
+  `maxLength` silently cut a long paste and made the length message
+  unreachable; it is removed, so the message explains and Save stays off.
+  `readerPrefsChosenByUserRef` now guards only the value, so a later read
+  always settles the status and the row can never stick on "Loading…".
+  `drawnSheet`'s comment now says what it holds: the sheet the current
+  request was fired for, in step with `portraitKey`.
+- **Fixed (standing reviews of `759b56d` and `bc6eae8`).** A save that lands
+  after an account switch now returns `stale` and is reported to nobody, as
+  the read already was -- for symmetry with the read, not a reachable path:
+  every epoch bump happens with the tab tree unmounted. `set_preferences` refusals
+  carry a stable `reason` code and the client words its own copy from it --
+  the reader never sees "spokenLanguages has an unknown language" -- and a
+  404 means "account deleted" only when the body says `account_deleted`, not
+  for a gateway 404. The hardware-Back comment matched the old paywall row.
+  From `bc6eae8`: the length test now asserts the absent `maxLength` prop
+  (the harness never enforces it, so the old assertion could not fail), and
+  an indentation slip is fixed.
+- **Fixed (standing review of `4304e87`, non-blocking).** Changing a chip
+  clears a refusal, so "remove the one you added last" goes away once the
+  reader does it. A test pins `REFUSAL_COPY` to the server's
+  `PreferencesRefusalReason` union, the third place in the three-way pin. The
+  inline length message says "60 characters or fewer", matching the rule. A
+  non-list `spokenLanguages` is `invalid_request`, not `unknown_language`.
+  Component tests cover the refused, no-reason (pre-deploy function) and
+  stale branches.
+
+Found before the review:
+
+- `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`
+  and its doc comment, which left that comment attached to the wrong function.
+  Moved.
+- The 00100 CHECK called `btrim` / `char_length` unqualified. Now qualified,
+  with a test that fails on any bare real function or any qualified parser
+  construct.
+- New migration tests: RLS is enabled, and `service_role` can call the setter
+  and read the row.
+- `reader-preferences.test.ts` (Expo) failed typecheck: it used a default
+  import of `path`, which the node shims do not declare. Changed to named
+  imports.
+
+### Gates
+
+`deno test` functions: 1118 passed. `deno check` on every function
+`index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
+passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
+`pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
+files), `jest --ci` 1622 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
+export wrote `index.html`. The security review of the diff found nothing: no
+secrets, the owner comes from the token, the city is kept out of AsyncStorage,
+and the RLS and grants are tested.
 ## 2026-09-25 UTC — Go-live remediation: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
 
 **Session:** the acceptance failures from the last walk on `main`. Branch

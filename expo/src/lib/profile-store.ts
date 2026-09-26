@@ -8,6 +8,7 @@ import {
   type PublicProfileResult,
 } from "@/lib/profile";
 import { getViewerId } from "@/lib/ownership";
+import { clearReaderPreferencesCache } from "@/lib/reader-preferences";
 import {
   LEGACY_OWN_PROFILE_CACHE_KEYS,
   OWN_PROFILE_CACHE_KEY,
@@ -303,6 +304,7 @@ export function refreshOwnProfile(
           // held or in flight for the previous one is theirs, not this one's:
           // a new epoch makes an old calendar request land nowhere.
           epoch += 1;
+          clearReaderPreferencesCache();
           calendarInFlight = null;
           calendarFetchedAt = 0;
           publicProfiles.clear();
@@ -396,6 +398,7 @@ export function markOwnProfileStale(): void {
 /** Everything belonged to the account that just left. */
 export function clearOwnProfile(): void {
   epoch += 1;
+  clearReaderPreferencesCache();
   profileFetchedAt = 0;
   calendarFetchedAt = 0;
   profileInFlight = null;

@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -70,8 +71,7 @@ import {
 } from "@/theme";
 import { Button } from "@/components/Button";
 import type { Genre } from "@/types/domain";
-import portraitAarav from "../../assets/onboarding/portrait-aarav.png";
-import portraitPriya from "../../assets/onboarding/portrait-priya.png";
+import { STAGE_CAST } from "@/lib/onboarding-cast";
 
 /**
  * The character path through onboarding: W3 to W7 of the 2026-09-11 hand-off.
@@ -118,8 +118,8 @@ export type CharacterOnboardingEntryContext = {
   name: string;
   genreInterests: string[];
   otherGenre?: string;
-  refine?: string;
-  moment?: string;
+  refine?: string[];
+  moment?: string[];
 };
 
 export type OnboardingCharacter = {
@@ -156,7 +156,48 @@ type Props = {
   onExit?: () => void;
 };
 
-type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
+export type Step = "w3" | "w4" | "w5" | "code" | "w6" | "paywall" | "welcome";
+
+/**
+ * Where Back goes from each screen. The one table: the top bar's arrow and
+ * Android's hardware Back both read it, so they cannot disagree.
+ *
+ * AFTER THE CODE HAS VERIFIED, NOTHING BEHIND IT IS REACHABLE (2026-09-25).
+ * The email box, the code screen, W3's pitch and the questionnaire before it
+ * are all screens for somebody who has not signed in yet. Walking back into
+ * them from a signed-in session asked for an address that was already
+ * confirmed, or dropped the person into the intro with a live account and a
+ * portrait in flight. So a verified W4 -- reached to fix the sheet -- goes
+ * back to the face it is editing, and the Meet screen goes back to W4. The two
+ * post-auth screens point at each other and at nothing earlier.
+ *
+ * `"exit"` is W3 leaving to the questionnaire (the caller's `onExit`). `null`
+ * is a screen with no Back: the paywall has its own close, and the welcome
+ * screen is an animation that is already leaving.
+ */
+export function backFrom(
+  step: Step,
+  emailVerified: boolean,
+): Step | "exit" | "dismiss" | null {
+  switch (step) {
+    case "w3":
+      return "exit";
+    case "w4":
+      return emailVerified ? "w6" : "w3";
+    case "w5":
+      return "w4";
+    case "code":
+      return "w5";
+    case "w6":
+      return "w4";
+    // The paywall is dismissible, and on Android Back IS that gesture: the
+    // same path as its own close (`leavePaywall`).
+    case "paywall":
+      return "dismiss";
+    default:
+      return null;
+  }
+}
 
 /**
  * THERE IS NO GENDER FIELD, and there is no gender on the wire either.
@@ -411,6 +452,60 @@ export default function CharacterOnboarding(
     setStep(next);
   }, [haptic]);
 
+  /**
+   * The sheet the current portrait request was fired for -- set when the draw
+   * starts, in step with `portraitKey`, not when it lands. `redraw` clears the
+   * old face at the same moment, so W6 shows either this sheet's portrait or
+   * its failure card with Try again, never another sheet's face.
+   *
+   * W6 shows this name beside that face and `finish` hands it on with the
+   * saved row, so an edit made on a verified W4 and then abandoned -- by Back,
+   * or by the CTA at the reimagine cap -- must not survive: the name would sit
+   * beside a portrait (and a library row) drawn for the old one.
+   */
+  const drawnSheet = useRef<{ name: string; appearance: string } | null>(null);
+  /** Put the drawn sheet back: every exit from W4 that is not a submit. */
+  const restoreDrawnSheet = useCallback(() => {
+    if (!drawnSheet.current) return;
+    setName(drawnSheet.current.name);
+    setAppearance(drawnSheet.current.appearance);
+  }, []);
+  /** `leavePaywall` is defined further down; Back reaches it through this. */
+  const dismissPaywall = useRef<() => void>(() => {});
+
+  /** Back, by the table. See `backFrom`. */
+  const back = useCallback(() => {
+    const target = backFrom(step, emailVerified);
+    if (target === "exit") {
+      onExit?.();
+      return;
+    }
+    if (target === "dismiss") {
+      dismissPaywall.current();
+      return;
+    }
+    if (!target) return;
+    // Back is "never mind", not "submit": put the drawn sheet back.
+    if (step === "w4" && target === "w6") restoreDrawnSheet();
+    go(target);
+  }, [emailVerified, go, onExit, restoreDrawnSheet, step]);
+
+  /*
+    Android's hardware Back follows the same table as the arrow. Unhandled, it
+    closed the whole app from the middle of onboarding -- with a portrait in
+    flight and, after the code, a signed-in session left on a questionnaire
+    it had already answered. Always consumed: on the paywall it dismisses, the
+    same one-shot path as the × (`backFrom` answers "dismiss"); on the welcome
+    screen, where it answers null, it does nothing rather than exit.
+  */
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      back();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [back]);
+
   /* ── The portrait ───────────────────────────────────────────────────── */
 
   const pendingPortrait = useRef<PendingPortrait | null>(null);
@@ -635,12 +730,16 @@ export default function CharacterOnboarding(
     }
     if (emailVerified) {
       if (reimaginesUsed >= REIMAGINE_BUDGET) {
+        // Not drawn, so not kept: the paywall leads to `finish`, which hands
+        // on the name beside the face, and the face is the drawn sheet's.
+        restoreDrawnSheet();
         go("paywall");
         return;
       }
       setReimaginesUsed((used) => used + 1);
     }
     const sheet = { name: name.trim(), appearance: appearance.trim() };
+    drawnSheet.current = { name, appearance };
     void saveCharacter(fingerprint, null, sheet);
     redraw(fingerprint, sheet);
     go(next);
@@ -653,6 +752,7 @@ export default function CharacterOnboarding(
     portraitKey,
     redraw,
     reimaginesUsed,
+    restoreDrawnSheet,
     saveCharacter,
     sheetReady,
   ]);
@@ -677,6 +777,7 @@ export default function CharacterOnboarding(
       const trimmed = nextAppearance.trim();
       if (!trimmed) return;
       setAppearance(nextAppearance);
+      drawnSheet.current = { name, appearance: nextAppearance };
       setReimaginesUsed((used) => used + 1);
       const fp = sheetFingerprint(name, nextAppearance);
       redraw(fp, { name: name.trim(), appearance: trimmed });
@@ -702,7 +803,12 @@ export default function CharacterOnboarding(
    * dismissed. The second case is the one that actually happened; see the
    * bounded wait below.
    */
+  const leavingPaywall = useRef(false);
   const leavePaywall = useCallback(async () => {
+    // One leave: the ×, the dismiss path and Android's Back can all fire, and
+    // each would otherwise raise its own permission request.
+    if (leavingPaywall.current) return;
+    leavingPaywall.current = true;
     /*
       A permission request can HANG, not only throw.
 
@@ -737,6 +843,14 @@ export default function CharacterOnboarding(
     setNotificationsEnabled(granted);
     go("welcome");
   }, [go]);
+  // In an effect, not the render body. It is idempotent so the old placement
+  // broke nothing, but `pendingPortrait` and the BackHandler in this file both
+  // go through effects and this had no reason to be the exception.
+  useEffect(() => {
+    dismissPaywall.current = () => {
+      void leavePaywall();
+    };
+  }, [leavePaywall]);
 
   /* ── Exit ───────────────────────────────────────────────────────────── */
 
@@ -805,7 +919,8 @@ export default function CharacterOnboarding(
       {step === "w3"
         ? (
           <Frame
-            onBack={onExit}
+            // No exit, no arrow: an arrow that does nothing is worse than none.
+            onBack={onExit ? back : undefined}
             steps={progress.total}
             currentStep={progress.w3}
             glow
@@ -844,7 +959,7 @@ export default function CharacterOnboarding(
         : step === "w4"
         ? (
           <Frame
-            onBack={() => go("w3")}
+            onBack={back}
             steps={progress.total}
             currentStep={progress.character}
             cta={
@@ -931,7 +1046,7 @@ export default function CharacterOnboarding(
         : step === "w5"
         ? (
           <Frame
-            onBack={() => go("w4")}
+            onBack={back}
             steps={progress.total}
             currentStep={progress.character}
             cta={
@@ -1002,7 +1117,7 @@ export default function CharacterOnboarding(
             email={email.trim()}
             headline="Check your inbox"
             sub={`Enter the 6-digit code we sent to ${email.trim()}.`}
-            onBack={() => go("w5")}
+            onBack={back}
             onVerified={() => {
               setEmailVerified(true);
               go("w6");
@@ -1023,7 +1138,7 @@ export default function CharacterOnboarding(
             canReimagine={reimaginesUsed < REIMAGINE_BUDGET}
             steps={progress.total}
             currentStep={progress.character}
-            onBack={() => go("w4")}
+            onBack={back}
             onRedraw={redrawEdited}
             onPaywall={() => go("paywall")}
             onRetry={retryPortrait}
@@ -1322,19 +1437,23 @@ function CharacterStage() {
     <View
       style={{ width: 300 * scale, height: 290 * scale, alignSelf: "center" }}
       accessible
-      accessibilityLabel="Three character portraits"
+      accessibilityLabel={`Three character portraits: ${
+        STAGE_CAST.map((member) => member.label).join("; ")
+      }`}
     >
       <SideCard
         progress={side}
         dir={1}
         card={card}
         position={{ left: 0, top: 34 * scale }}
+        source={STAGE_CAST[1].source}
       />
       <SideCard
         progress={side}
         dir={-1}
         card={card}
         position={{ right: 0, top: 34 * scale }}
+        source={STAGE_CAST[2].source}
       />
       <Animated.View
         style={[
@@ -1346,9 +1465,10 @@ function CharacterStage() {
         ]}
       >
         <Image
-          source={portraitAarav}
+          source={STAGE_CAST[0].source}
           resizeMode="cover"
           style={styles.stageImage}
+          testID="stage-card-hero"
         />
       </Animated.View>
     </View>
@@ -1367,11 +1487,14 @@ function SideCard({
   dir,
   card,
   position,
+  source,
 }: {
   progress: { value: number };
   dir: 1 | -1;
   card: { width: number; height: number };
   position: StyleProp<ViewStyle>;
+  /** A different person per card; see `STAGE_CAST`. */
+  source: number;
 }) {
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -1390,9 +1513,10 @@ function SideCard({
       style={[styles.stageCard, card, position, animatedStyle]}
     >
       <Image
-        source={portraitPriya}
+        source={source}
         resizeMode="cover"
         style={styles.stageImage}
+        testID={`stage-card-${dir === 1 ? "left" : "right"}`}
       />
     </Animated.View>
   );

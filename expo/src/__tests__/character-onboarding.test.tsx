@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo, StyleSheet } from "react-native";
+import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockGenerateCharacterImage = jest.fn();
@@ -187,8 +187,10 @@ jest.mock("@/components/onboarding/WelcomeScreen", () => {
 
 /* eslint-disable import/first */
 import CharacterOnboarding, {
+  backFrom,
   PORTRAIT_WAIT_CAPTION,
 } from "@/screens/CharacterOnboarding";
+import { STAGE_CAST } from "@/lib/onboarding-cast";
 import type { OnboardingPurpose } from "@/screens/CharacterOnboarding";
 /* eslint-enable import/first */
 
@@ -905,7 +907,7 @@ describe("character onboarding", () => {
     reanimated.withTiming.mockClear();
     reanimated.withRepeat.mockClear();
 
-    const stage = view.getByLabelText("Three character portraits");
+    const stage = view.getByLabelText(/^Three character portraits/);
     const cards = stage.children as unknown as { props: { style: unknown } }[];
     for (const card of cards) {
       const flattened = StyleSheet.flatten(card.props.style) as Record<string, unknown>;
@@ -943,5 +945,229 @@ describe("character onboarding", () => {
     );
     await fireEvent.press(view.getByLabelText("Back"));
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+  /*
+    2026-09-25: the stage held one hero and the same side portrait twice, and
+    the PNGs carried a frame of their own that showed as a second edge inside
+    the card. Three different people now, cut to the card's ratio.
+  */
+  it("puts three different people on W3's stage, each described", async () => {
+    const view = await mount();
+    const sources = ["stage-card-hero", "stage-card-left", "stage-card-right"]
+      .map((id) => view.getByTestId(id).props.source);
+    expect(new Set(sources).size).toBe(3);
+    expect(sources).toEqual(STAGE_CAST.map((member) => member.source));
+    const label = view.getByLabelText(/^Three character portraits/).props
+      .accessibilityLabel as string;
+    for (const member of STAGE_CAST) expect(label).toContain(member.label);
+  });
+
+  /*
+    After the code verifies, the screens behind it are for somebody who has
+    not signed in. Back from the face goes to the sheet, and Back from the
+    sheet goes to the face -- never to the email box, the code, W3 or out.
+  */
+  it("never walks back behind the code once it has verified", async () => {
+    const onExit = jest.fn();
+    const view = await render(
+      <CharacterOnboarding
+        purpose="write"
+        initialGenre="mystery"
+        onDone={jest.fn()}
+        onExit={onExit}
+      />,
+    );
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    view.getByText("Craft your lead");
+    await fireEvent.press(view.getByLabelText("Back"));
+    await view.findByText(`Meet ${NAME}.`);
+    expect(view.queryByLabelText("Email address")).toBeNull();
+    expect(view.queryByLabelText("Verification code")).toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
+    // Walking back and forth spends nothing.
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("an edit abandoned with Back on a verified W4 does not reach the Meet screen", async () => {
+    const onDone = jest.fn();
+    const view = await mount("write", onDone);
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    await fireEvent.press(view.getByLabelText("Back"));
+    view.getByText("Craft your lead");
+    await fireEvent.changeText(view.getByLabelText("Name"), "Somebody Else");
+    await fireEvent.press(view.getByLabelText("Back"));
+
+    // The face was drawn for the old sheet, so the old name comes back with it.
+    await view.findByText(`Meet ${NAME}.`);
+    expect(view.queryByText("Meet Somebody Else.")).toBeNull();
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the drawn sheet before a capped W4 edit opens the paywall", async () => {
+    const onDone = jest.fn();
+    const view = await mount("write", onDone);
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    // Spend the one redraw, then return to W4 and change only the name.
+    await fireEvent.press(view.getByLabelText("Reimagine"));
+    const appearanceField = view.getAllByLabelText("Appearance")[0];
+    await fireEvent.changeText(appearanceField, "A green jacket and round glasses");
+    await fireEvent.press(view.getByLabelText("Redraw"));
+    await view.findByText(`Meet ${NAME}.`);
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Somebody Else");
+    await fireEvent.press(view.getByLabelText("Bring Somebody Else to life"));
+    await view.findByText(`Paywall write ${NAME}`);
+
+    // A capped edit is not a redraw. Its paywall may finish the flow, so it
+    // must hand on the name and appearance that match the portrait on screen.
+    await fireEvent.press(view.getByLabelText("Dismiss paywall"));
+    await view.findByText("Welcome");
+    await fireEvent.press(view.getByLabelText("Open Katha"));
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({
+      // The one real redraw changed the appearance. The capped W4 edit must
+      // not overwrite either half of that drawn sheet.
+      character: expect.objectContaining({
+        name: NAME,
+        appearance: "A green jacket and round glasses",
+      }),
+    }));
+  });
+
+  it("an edit sent to the paywall at the reimagine cap is not handed on beside the old face", async () => {
+    const onDone = jest.fn();
+    const view = await mount("write", onDone);
+    await fillSheet(view);
+    await submitSave(view);
+    await verify(view);
+    await view.findByText(`Meet ${NAME}.`);
+
+    // Spend the one reimagine on a changed sheet.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Meera");
+    await fireEvent.press(view.getByLabelText("Bring Meera to life"));
+    await view.findByText("Meet Meera.");
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(2);
+
+    // Edit again with nothing left: the CTA goes to the paywall, undrawn.
+    await fireEvent.press(view.getByLabelText("Back"));
+    await fireEvent.changeText(view.getByLabelText("Name"), "Somebody Else");
+    await fireEvent.press(view.getByLabelText("Bring Somebody Else to life"));
+    await fireEvent.press(await view.findByLabelText("Dismiss paywall"));
+    await fireEvent.press(await view.findByLabelText("Open Katha"));
+
+    expect(mockGenerateCharacterImage).toHaveBeenCalledTimes(2);
+    expect(onDone.mock.calls[0][0].character.name).toBe("Meera");
+  });
+
+  it("Android's Back on the paywall is its close, not a dead key", async () => {
+    const handlers: (() => boolean)[] = [];
+    const spy = jest
+      .spyOn(BackHandler, "addEventListener")
+      .mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: () => {} };
+      });
+    try {
+      const view = await mount();
+      await fillSheet(view);
+      await submitSave(view);
+      await verify(view);
+      await view.findByText(`Meet ${NAME}.`);
+      await fireEvent.press(view.getByLabelText(`Keep ${NAME}`));
+      await view.findByText(`Paywall write ${NAME}`);
+      let consumed = false;
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      await view.findByText("Welcome");
+      // One leave, one permission request.
+      expect(mockEnableNotifications).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("routes Android's hardware Back by the same table, and never closes the app", async () => {
+    const handlers: (() => boolean)[] = [];
+    const spy = jest
+      .spyOn(BackHandler, "addEventListener")
+      .mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: () => {} };
+      });
+    try {
+      const onExit = jest.fn();
+      const view = await render(
+        <CharacterOnboarding
+          purpose="write"
+          initialGenre="mystery"
+          onDone={jest.fn()}
+          onExit={onExit}
+        />,
+      );
+      await fillSheet(view);
+      await submitSave(view);
+      await verify(view);
+      await view.findByText(`Meet ${NAME}.`);
+
+      // The latest registration is the live one.
+      let consumed = false;
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      view.getByText("Craft your lead");
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      await view.findByText(`Meet ${NAME}.`);
+
+      // After the single redraw, Back from the paywall is its own close, not
+      // an inert consumed press. Welcome itself remains inert by the table.
+      await fireEvent.press(view.getByLabelText("Reimagine"));
+      const appearanceField = view.getAllByLabelText("Appearance")[0];
+      await fireEvent.changeText(appearanceField, "A blue coat");
+      await fireEvent.press(view.getByLabelText("Redraw"));
+      await view.findByText(`Meet ${NAME}.`);
+      await fireEvent.press(view.getByLabelText("Reimagine"));
+      await view.findByText(`Paywall write ${NAME}`);
+      await act(async () => {
+        consumed = handlers[handlers.length - 1]();
+      });
+      expect(consumed).toBe(true);
+      await view.findByText("Welcome");
+      expect(mockEnableNotifications).toHaveBeenCalledTimes(1);
+      expect(onExit).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("keeps the whole back table in one place", () => {
+    expect(backFrom("w3", false)).toBe("exit");
+    expect(backFrom("w4", false)).toBe("w3");
+    expect(backFrom("w5", false)).toBe("w4");
+    expect(backFrom("code", false)).toBe("w5");
+    expect(backFrom("w6", true)).toBe("w4");
+    // Verified: W4 leads back to the face, not to the pitch.
+    expect(backFrom("w4", true)).toBe("w6");
+    // Dismissible: Android's Back is its close.
+    expect(backFrom("paywall", true)).toBe("dismiss");
+    expect(backFrom("welcome", true)).toBeNull();
   });
 });
