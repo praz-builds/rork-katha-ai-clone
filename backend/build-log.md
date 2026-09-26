@@ -43,6 +43,24 @@ credit rather than platform API credit. Three things learned the hard way:
 - **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
   on the pull request.** Hence the variable gate.
 
+### Round 2 and 3: the gate did not gate, and the contract went stale
+
+Two findings from the reviewer's own second pass, both real:
+
+- `vars.CLAUDE_ACTION_ENABLED == 'true' && (A) || (B) || (C) || (D)` gates
+  only `A`, because `&&` binds tighter than `||` in GitHub Actions
+  expressions. An `@claude` in a review comment -- the likeliest place to
+  write one -- still ran the job and still posted an error. The event
+  disjunction now has its own parentheses.
+- `AGENTS.md` still told every agent to wait for the `Review the diff`
+  check, which a gated-off job never posts. Agents following the contract
+  waited on nothing, and PRs #149 and #150 were reported blocked on exactly
+  that. The contract now says the reviewer's **comment** is the merge gate,
+  and that a stale red `Review the diff` is not a blocker.
+
+Both Action workflows are also disabled with `gh workflow disable`, not only
+gated, so no new red check appears on any pull request.
+
 ### The mention workflow had a real bug, caught by the new reviewer
 
 `actions/checkout` with no `ref` lands on the default branch, so `@claude fix

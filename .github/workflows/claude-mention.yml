@@ -28,12 +28,17 @@ jobs:
     name: Respond to @claude
     runs-on: ubuntu-latest
     # Fallback only: see claude-review.yml.
+    # The event disjunction needs its own parentheses: && binds tighter than
+    # ||, so without them the gate covers only the first branch and an
+    # @claude inside a review comment still runs the job.
     if: >-
       vars.CLAUDE_ACTION_ENABLED == 'true' &&
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )
     steps:
       # An issue_comment payload carries no head ref, so a bare checkout lands
       # on the default branch: asking @claude to fix something on a pull
@@ -58,12 +63,18 @@ jobs:
           set -euo pipefail
           ref=""
           if [ -n "${PR_NUMBER:-}" ]; then
+            # A transient API error must fall back to the default branch, not
+            # fail the step: the comment still deserves an answer.
             pr=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
-                   --json state,headRefName,headRepositoryOwner)
-            state=$(printf '%s' "$pr" | jq -r '.state')
-            owner=$(printf '%s' "$pr" | jq -r '.headRepositoryOwner.login // ""')
-            if [ "$state" = "OPEN" ] && [ "$owner" = "${GITHUB_REPOSITORY_OWNER}" ]; then
-              ref=$(printf '%s' "$pr" | jq -r '.headRefName')
+                   --json state,headRefName,headRepository || echo '')
+            if [ -n "$pr" ]; then
+              state=$(printf '%s' "$pr" | jq -r '.state')
+              # Compare the full nameWithOwner, the same test claude-review.yml
+              # makes, not just the owner.
+              head_repo=$(printf '%s' "$pr" | jq -r '.headRepository.nameWithOwner // ""')
+              if [ "$state" = "OPEN" ] && [ "$head_repo" = "${GITHUB_REPOSITORY}" ]; then
+                ref=$(printf '%s' "$pr" | jq -r '.headRefName')
+              fi
             fi
           fi
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
