@@ -56,9 +56,9 @@ path must not be applied or deployed; no account data was created.
 **Country Story world has no migration.** Its checked-in contract changed six
 non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,
 `_shared/story-world-countries.ts`, `_shared/story-shape.ts`,
-`_shared/profile.ts`, and the deleted `_shared/reader-preferences.ts` — so the
-importer closure was these **nine functions, deployed on 2026-09-26 UTC before
-any client release**:
+`_shared/profile.ts`, and the deleted `_shared/reader-preferences.ts`; combined
+with functions whose own files changed, their importer closure was these **nine
+functions, deployed on 2026-09-26 UTC before any client release**:
 `continue-story`, `edit-story`, `generate-story`, `generate-story-stream`,
 `reimagine-chapter`, `shape-story`, `generate-character-image`,
 `regenerate-cover`, and `profile`. Their versions advanced. The downloaded
@@ -66,8 +66,10 @@ any client release**:
 source byte-for-byte; the other four story paths matched the reachable country
 contract files (`_shared/story-world-countries.ts`, `types.ts`, and
 `story-prompts.ts` where imported), the two image paths matched their reachable
-country files, and Profile's deployed index and shared profile source matched
-main with the removed reader-preference actions absent. Production smoke passed
+country files, and the deployed `generate-story` and `generate-story-stream`
+indexes matched main with their reader-preferences path absent. Profile's
+deployed index and shared profile source also matched main with the removed
+reader-preference actions absent. Production smoke passed
 **43/43** after the deploy.
 No client build or OTA is currently configured; a future client release must
 continue to follow the functions-first order, because an older server silently

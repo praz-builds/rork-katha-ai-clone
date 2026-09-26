@@ -18,7 +18,9 @@
   the remaining four story paths matched every reachable country contract file;
   the two image paths matched their reachable country files; Profile's index
   and shared profile source matched, with `set_preferences` and
-  `reader_preferences` absent.
+  `reader_preferences` absent; and `generate-story` plus
+  `generate-story-stream` indexes matched main with the removed
+  reader-preferences path absent.
 - `scripts/smoke-app-surface.py` passed **43/43** against production after the
   deploy, including generation, edit, publish, public-cover delivery and
   audio-status. Its disposable fixtures were removed. No failures occurred, so
