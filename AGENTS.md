@@ -1359,15 +1359,36 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - A green commit status alone is not approval. Read the latest review body.
 - **The reviewer skips drafts and bot-authored pull requests.** It reviews every open pull request that needs one on each firing, not only the one that triggered it, so a review can arrive on a pull request nobody just pushed to.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
+
+### The review loop -- iterate, do not stall
+
+Claude Review is a loop, not a gate you wait at. Run it to completion yourself:
+
+1. Push. The reviewer fires on the push and posts a comment naming the head SHA it reviewed. It takes a few minutes; a comment naming an older SHA is a previous round, not this one.
+2. Read every finding. For each one, either **fix it and say so**, or **reply saying why it is wrong**. A finding you silently ignore is an open thread, and an open thread blocks the merge.
+3. Push the fixes. That fires the next round automatically.
+4. Repeat until the newest comment covers the current head SHA and raises nothing outstanding.
+
+Only then merge. Do not stop after one round because findings exist -- findings are the normal result of round one, and rounds two and three routinely find real bugs in the fixes from round one. Do not wait for a human to relay the review to you; read it from the pull request yourself.
+
+**What "checks are clear" means**, exactly, because getting this wrong has already stalled two pull requests:
+
+- The **CI** checks (`Typecheck + Lint + Test`, `Edge Functions — Typecheck + Test`, and `Smoke` when it runs) must pass. These are real and they block.
+- A red **`Review the diff`** check is **stale and is not a blocker**. It belongs to the disabled Action workflows, it can never turn green, and it will disappear from a pull request on the next push because no new run replaces it. There is no branch protection on this repository, so GitHub reports such a pull request `mergeable` and the merge button works.
+- CodeAnt's comment is advisory, not a gate.
+- The gate is **Claude Review's latest comment**, and it is a comment, not a check. A fully green check list does not mean the review happened.
+
+If a review never arrives after ten minutes, check the routine at <https://claude.ai/code/routines> rather than waiting indefinitely, and say in the pull request that you proceeded without one.
+
 - Exceptions require explicit user authorization and documentation in the pull request.
 
 **Claude is the reviewer on this repository, and it runs as a cloud routine, not as a GitHub Action.** The routine is `Katha PR review` (`trig_01YEy4UFeLZxFSPvaN1p8jhm`, managed at <https://claude.ai/code/routines>). A webhook trigger fires it on `pull_request.opened`, `synchronize` and `ready_for_review`, and a daily 03:00 UTC cron catches anything the webhook missed. It clones the repository, reads this file, reviews against the contract rather than only the diff, and posts one comment per pull request naming the head SHA it reviewed. It never pushes.
 
 **The reviewer's comment is the merge gate.** It is a comment, not a status check, so a green check list does not mean the review happened and a missing review is not visible in the checks UI -- read the comments.
 
-`.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml` are a **disabled fallback**. They are disabled at the workflow level and additionally gated behind the repository variable `CLAUDE_ACTION_ENABLED`, because they authenticate with `ANTHROPIC_API_KEY`, which is not set; without it the action posts "Claude encountered an error" on every pull request and leaves a red `Review the diff` check that blocks merges. Re-enabling them takes three things together: the secret, the variable set to `true`, and `gh workflow enable`. Two properties to know if you ever do: the action refuses to run when a pull request's copy of a workflow file differs from `main`, which is a prompt-injection guard, so `Review the diff` reports *pass* without reviewing anything on such a pull request; and a fork pull request receives no secrets, so it is skipped.
+`.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml` are a **disabled fallback**. They are disabled at the workflow level and additionally gated behind the repository variable `CLAUDE_ACTION_ENABLED`, because they authenticate with `ANTHROPIC_API_KEY`, which is not set; without it the action posts "Claude encountered an error" on every pull request and leaves a red `Review the diff` check. That check blocks nothing in GitHub -- there is no branch protection on this repository, and such a pull request still reports `mergeable`. What it blocks is the documented gate above, and any agent reading it. Re-enabling them takes three things together: the secret, the variable set to `true`, and `gh workflow enable`. Two properties to know if you ever do: the action refuses to run when a pull request's copy of a workflow file differs from `main`, which is a prompt-injection guard, so `Review the diff` reports *pass* without reviewing anything on such a pull request; and a fork pull request receives no secrets, so it is skipped.
 
-Neither CodeAnt nor CodeRabbit reviews this repository any more, and `.coderabbit.yaml` has been deleted -- its per-area review instructions were folded into the review prompt in `.github/workflows/claude-review.yml`, which is where they are now maintained. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable on this repository's current plan, so this documented merge gate remains mandatory.
+CodeRabbit no longer reviews this repository. **CodeAnt still does**: the `codeant-ai` app is still installed and posts an incremental review on every pull request, including drafts. Those findings are **advisory** -- Claude Review's comment is the merge gate, not CodeAnt's -- but read them, because they are sometimes right. `.coderabbit.yaml` has been deleted -- its per-area review instructions were folded into the reviewer's prompt. **That prompt lives in the cloud routine, not in this repository** -- nothing in Git holds it, and the copy inside `.github/workflows/claude-review.yml` belongs to the disabled fallback and changes nothing. To change how the reviewer treats an area, edit the routine at <https://claude.ai/code/routines>; editing the workflow file has no effect and reports no error. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable on this repository's current plan, so this documented merge gate remains mandatory.
 
 ## Reference Material
 

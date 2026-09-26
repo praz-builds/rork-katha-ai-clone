@@ -97,7 +97,13 @@ jobs:
             repository contract and it routes you to the right workspace guide
             and skill.
 
-            Answer the @claude request in this thread. If it asks for a change,
-            make it on this PR's branch and push, then say in one short comment
-            what changed in user-flow terms. If it asks a question, answer it
-            and change nothing.
+            The branch checked out for you is "${{ steps.target.outputs.ref }}".
+            When that is empty you are on the default branch, which means this
+            is a plain issue, a merged pull request, a fork, or a failed
+            lookup. In that case answer only: never commit and never push,
+            whatever the request asks for, and say which you are doing.
+
+            Otherwise answer the @claude request in this thread. If it asks for
+            a change, make it on that branch and push, then say in one short
+            comment what changed in user-flow terms. If it asks a question,
+            answer it and change nothing.
