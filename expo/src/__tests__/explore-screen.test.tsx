@@ -90,6 +90,20 @@ it("offers every genre the app knows, as selectable chips", async () => {
   }
 });
 
+it("offers Bedtime stories as a kids-safe category alongside genres", async () => {
+  const view = await renderExplore();
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+
+  const bedtime = view.getByLabelText("Bedtime stories");
+  expect(bedtime.props.accessibilityState).toMatchObject({ selected: false });
+  await fireEvent.press(bedtime);
+  await waitFor(() =>
+    expect(view.getByText(/^Bedtime stories/)).toBeTruthy()
+  );
+  expect(view.getByLabelText("Bedtime stories").props.accessibilityState)
+    .toMatchObject({ selected: true });
+});
+
 it("narrows the list as the reader types, without losing the field", async () => {
   const view = await renderExplore();
   const field = view.getByPlaceholderText(SEARCH_PLACEHOLDER);

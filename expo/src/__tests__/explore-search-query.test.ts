@@ -122,6 +122,14 @@ beforeEach(() => {
 });
 
 describe("the visibility clauses survive every other filter", () => {
+  it("queries bedtime as the existing kids-safe audience, not a fake genre", async () => {
+    await searchStories({ text: "", genre: null, audienceMode: "kids" });
+
+    expect(had("eq", "audience_mode", "kids")).toBe(true);
+    expect(calls.filter((call) => call.method === "or").map((call) => call.args[0]))
+      .not.toContain(expect.stringContaining("bedtime"));
+  });
+
   it("keeps them when a genre is selected as well as a term", async () => {
     blockRows = [{ blocked_id: "blocked-author" }];
 

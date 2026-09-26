@@ -35,6 +35,14 @@ export function genreChipLabel(genre: Genre): string {
 }
 
 /**
+ * A browse category, deliberately separate from `Genre`. Bedtime maps to the
+ * existing kids audience contract; it must never become a fake primary genre.
+ */
+export const BEDTIME_CATEGORY = "bedtime";
+export type ExploreCategory = typeof BEDTIME_CATEGORY;
+export const BEDTIME_CATEGORY_LABEL = "🌙 Bedtime stories";
+
+/**
  * The shared `Chip` primitive's look, plus the accessibility a FILTER needs.
  *
  * `Chip` renders a bare `Pressable` with no role and no selected state, which
@@ -103,11 +111,55 @@ export function GenreStrip({
   );
 }
 
+/** A composable category row. Genre remains independently selectable below. */
+export function ExploreCategoryStrip({
+  selected,
+  onSelect,
+}: {
+  selected: ExploreCategory | null;
+  onSelect: (category: ExploreCategory | null) => void;
+}) {
+  const bedtimeSelected = selected === BEDTIME_CATEGORY;
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.categoryRow}
+      accessibilityLabel="Filter by category"
+      keyboardShouldPersistTaps="handled"
+    >
+      <Pressable
+        onPress={() => onSelect(bedtimeSelected ? null : BEDTIME_CATEGORY)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: bedtimeSelected }}
+        accessibilityLabel="Bedtime stories"
+        accessibilityHint={bedtimeSelected
+          ? "Selected. Tap to show every audience again"
+          : "Show only bedtime stories"}
+        style={({ pressed }) => [
+          styles.chip,
+          bedtimeSelected && styles.chipSelected,
+          pressed && styles.chipPressed,
+        ]}
+      >
+        <Text style={[styles.chipText, bedtimeSelected && styles.chipTextSelected]}>
+          {BEDTIME_CATEGORY_LABEL}
+        </Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
     gap: spacing.sm,
+  },
+  categoryRow: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
   },
   chip: {
     paddingHorizontal: spacing.lg,

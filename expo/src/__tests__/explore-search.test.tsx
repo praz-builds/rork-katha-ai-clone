@@ -215,6 +215,15 @@ describe("the offline fallback", () => {
     );
     expect(byGenre.length).toBeGreaterThan(0);
     for (const story of byGenre) expect(story.genre).toBe("fantasy");
+
+    const bedtime = searchLocalCatalogue(
+      { text: "", genre: null, audienceMode: "kids" },
+      [
+        { ...target, id: "kids", audienceMode: "kids" },
+        { ...target, id: "adult", audienceMode: "adult" },
+      ],
+    );
+    expect(bedtime.map((story) => story.id)).toEqual(["kids"]);
   });
 });
 

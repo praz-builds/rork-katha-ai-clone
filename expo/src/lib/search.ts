@@ -37,7 +37,7 @@ import {
 } from "@/lib/chapter-directions";
 import { authorFor, stories as seedStories } from "@/data/seed";
 import { GENRES } from "@/types/domain";
-import type { Genre, Story } from "@/types/domain";
+import type { AudienceMode, Genre, Story } from "@/types/domain";
 
 /** How many rows one search asks for. A browse page, not a data export. */
 export const SEARCH_PAGE_SIZE = 24;
@@ -152,6 +152,8 @@ export type SearchInput = {
   text: string;
   /** The selected genre, or null for every genre. */
   genre: Genre | null;
+  /** Bedtime Explore maps to the existing kids-safe audience mode. */
+  audienceMode?: AudienceMode | null;
 };
 
 export type SearchOutcome = {
@@ -219,6 +221,7 @@ export function searchLocalCatalogue(
   const term = sanitizeSearchTerm(input.text).toLowerCase();
   return catalogue.filter((story) => {
     if (input.genre && story.genre !== input.genre) return false;
+    if (input.audienceMode === "kids" && story.audienceMode !== "kids") return false;
     if (!term) return true;
     return (
       story.title.toLowerCase().includes(term) ||
@@ -251,6 +254,7 @@ export async function searchStories(
 
   const term = sanitizeSearchTerm(input.text);
   const genre = isKnownGenre(input.genre) ? input.genre : null;
+  const audienceMode = input.audienceMode === "kids" ? "kids" : null;
 
   try {
     // Author handles resolve first, because a handle lives on `profiles` and
@@ -297,6 +301,8 @@ export async function searchStories(
       // each card labelled with its real genre.
       query = query.or(genreClause(genre));
     }
+
+    if (audienceMode) query = query.eq("audience_mode", audienceMode);
 
     query = query
       .order("like_count", { ascending: false })

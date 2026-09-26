@@ -2245,3 +2245,14 @@ and `deno check` clean.
 - Verified: `pnpm typecheck` and
   `pnpm exec jest src/__tests__/profile-screens.test.tsx --runInBand --silent`
   (30 tests) pass.
+
+## 2026-09-26: Bedtime stories is an Explore category
+
+- Added a visible **🌙 Bedtime stories** category chip above Explore's genre
+  strip. It is independently selectable, so a reader can further narrow it by
+  genre without adding a pretend `bedtime` genre to the application taxonomy.
+- The category maps to `audience_mode = 'kids'` in the live PostgREST query
+  and to `Story.audienceMode === 'kids'` in the offline fallback. The eyebrow
+  and empty state name the category rather than leaving the old sort caption.
+- Verified: targeted Explore Jest suites (41 tests), `pnpm typecheck`, and
+  ESLint over every changed Explore source and test file.
