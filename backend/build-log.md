@@ -61,9 +61,21 @@
   questionnaire deliberately does not consume it on `name`. The contract
   records both rules and the one place they differ.
 
+### Round 3 of the review: the replacement copy was not readable
+
+- **"1 more" was the whole subtitle** for the reader this branch fixed it
+  for. The count form only reads as a count when a list precedes it, and with
+  no known languages there is no list -- "1 more" than what. With a city it
+  read as a truncated list that was never there. The empty-label case has its
+  own branch now: "1 language".
+- **The sheet's second sentence lost its subject.** React Native makes each
+  `<Text>` its own accessibility element, so VoiceOver and TalkBack read "It
+  is kept on your account..." with the antecedent in a different element.
+  Both sentences are one `<Text>` now.
+
 ### Verification
 
-- `pnpm test`: 153 suites, 1626 tests pass. `pnpm typecheck` clean. ESLint
+- `pnpm test`: 153 suites, 1626 tests pass (unchanged at this head: the two fixes changed copy that existing tests assert). `pnpm typecheck` clean. ESLint
   clean over every changed file.
 - The two behaviour fixes are proved, not asserted: the hardware-Back test
   was run against the code with the new effect removed and **fails**, and the

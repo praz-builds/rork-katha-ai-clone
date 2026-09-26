@@ -123,9 +123,14 @@ export function readerPreferencesSummary(prefs: ReaderPreferences): string {
   // Without this the row told a reader whose only language is a newer id to
   // "add the languages you speak", one tap from a sheet saying it is held.
   const hidden = prefs.unrecognisedLanguages.length;
-  const languages = hidden > 0
-    ? [...labels, hidden === 1 ? "1 more" : `${hidden} more`].join(", ")
-    : labels.join(", ");
+  // "1 more" only reads as a count when a list precedes it. With no labels
+  // there is no list, and the row would have said "1 more" -- more than what
+  // -- to the exact reader this branch exists for.
+  const languages = hidden === 0
+    ? labels.join(", ")
+    : labels.length === 0
+    ? `${hidden} ${hidden === 1 ? "language" : "languages"}`
+    : [...labels, `${hidden} more`].join(", ");
   const place = prefs.homePlace?.trim();
   if (languages && place) return `${languages} · ${place}`;
   if (languages) return languages;

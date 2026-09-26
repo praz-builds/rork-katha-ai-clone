@@ -229,7 +229,9 @@ it("counts a language it cannot show against the cap, and says so", async () => 
   );
 
   expect(
-    view.getByText("Pick up to 3. One is taken by a language set on a newer version of the app."),
+    view.getByText(
+      "Pick up to 3. One is taken by a language you set on a newer version of the app: it is kept on your account and saving will not remove it, but this version cannot show it.",
+    ),
   ).toBeTruthy();
 
   // Two lit plus one hidden is the cap, so an unpicked chip is dead.

@@ -248,7 +248,7 @@ it("counts a language it cannot name, rather than telling the reader they have n
       unrecognisedLanguages: ["bho"],
       homePlace: null,
     }),
-  ).toBe("1 more");
+  ).toBe("1 language");
   expect(
     readerPreferencesSummary({
       spokenLanguages: ["hi"],

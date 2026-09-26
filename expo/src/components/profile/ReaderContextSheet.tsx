@@ -211,16 +211,9 @@ export default function ReaderContextSheet({
                 {hiddenCount === 0
                   ? `Pick up to ${MAX_SPOKEN_LANGUAGES}.`
                   : hiddenCount === 1
-                  ? `Pick up to ${MAX_SPOKEN_LANGUAGES}. One is taken by a language set on a newer version of the app.`
-                  : `Pick up to ${MAX_SPOKEN_LANGUAGES}. ${hiddenCount} are taken by languages set on a newer version of the app.`}
+                  ? `Pick up to ${MAX_SPOKEN_LANGUAGES}. One is taken by a language you set on a newer version of the app: it is kept on your account and saving will not remove it, but this version cannot show it.`
+                  : `Pick up to ${MAX_SPOKEN_LANGUAGES}. ${hiddenCount} are taken by languages you set on a newer version of the app: they are kept on your account and saving will not remove them, but this version cannot show them.`}
               </Text>
-              {hiddenCount > 0 && (
-                <Text style={styles.hint}>
-                  {hiddenCount === 1
-                    ? "It is kept on your account and saving will not remove it, but this version cannot show it."
-                    : "They are kept on your account and saving will not remove them, but this version cannot show them."}
-                </Text>
-              )}
               <View style={styles.chips}>
                 {SPOKEN_LANGUAGES.map((language) => {
                   const selected = languages.includes(language.id);
