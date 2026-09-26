@@ -11,28 +11,25 @@ import { useSyncExternalStore } from "react";
  *
  * The brief always wins. A preference only shapes what the idea, the setting
  * and the cast's names leave open, so "a heist in 1920s Chicago" is still set
- * in Chicago for somebody who prefers South Asian stories.
+ * in Chicago for somebody whose default is India.
  *
  * Device-local, like the listening preferences in `listen-prefs.ts`: it costs
  * nothing to re-pick and it needs no column. `global` is the default and is
  * never sent -- it means "infer from the brief", which is how every story was
  * written before the preference existed.
  */
-export const STORY_WORLDS = [
+/** ISO 3166-1 alpha-2 assigned country and territory codes. `XK` is not ISO. */
+export const COUNTRY_CODES = [
+  "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
+] as const;
+export type CountryCode = (typeof COUNTRY_CODES)[number];
+const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+export const STORY_WORLDS: readonly { id: StoryWorld; label: string; hint: string }[] = [
   { id: "global", label: "Anywhere", hint: "Katha follows each story's own cues" },
-  { id: "south_asian", label: "South Asian", hint: "India, Pakistan, Bangladesh, Sri Lanka, Nepal" },
-  { id: "east_asian", label: "East Asian", hint: "China, Japan, Korea, Taiwan" },
-  { id: "southeast_asian", label: "Southeast Asian", hint: "Indonesia, the Philippines, Vietnam, Thailand, Malaysia" },
-  { id: "middle_eastern", label: "Middle Eastern & North African", hint: "From Morocco to the Gulf" },
-  { id: "african", label: "African", hint: "Sub-Saharan Africa" },
-  { id: "latin_american", label: "Latin American", hint: "Mexico to Argentina" },
-  { id: "caribbean", label: "Caribbean", hint: "The islands and their diaspora" },
-  { id: "european", label: "European", hint: "From Lisbon to Warsaw" },
-  { id: "north_american", label: "North American", hint: "The United States and Canada" },
-  { id: "oceanian", label: "Oceanian", hint: "Australia, New Zealand, the Pacific Islands" },
+  ...COUNTRY_CODES.map((id) => ({ id, label: displayNames.of(id) ?? id, hint: "Country" })),
 ] as const;
 
-export type StoryWorld = (typeof STORY_WORLDS)[number]["id"];
+export type StoryWorld = "global" | CountryCode;
 
 export const DEFAULT_STORY_WORLD: StoryWorld = "global";
 

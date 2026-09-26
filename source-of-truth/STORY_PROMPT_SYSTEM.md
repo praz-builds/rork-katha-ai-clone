@@ -446,9 +446,10 @@ value so it cannot be closed early.
 
 Two of those layers carry rules of their own.
 
-### Story world (the reader's cultural preference, 2026-09-25)
+### Story world (the reader's cultural preference, 2026-09-26)
 
-A reader can set a standing **Story world** on You -- one of ten regions, or
+A reader can set a standing **Story world** on You -- one of the 249 assigned
+ISO 3166-1 alpha-2 country and territory codes, or
 *Anywhere* (the default). It reaches the prompt as one fixed sentence placed
 directly after the setting layer (`buildStoryWorldBlock` in
 `_shared/story-prompts.ts`):
@@ -459,14 +460,14 @@ directly after the setting layer (`buildStoryWorldBlock` in
   dropped, never refused -- the story is written as if no preference were set.
   *Anywhere* is never sent.
 - **The brief always wins.** The block tells the model to ground names, places,
-  food, customs, idiom and everyday objects in the region only where the idea,
+  food, customs, idiom and everyday objects in the chosen country only where the idea,
   the setting and the cast's names leave culture open, and to follow the brief
   wherever it points elsewhere.
 - **Shaping receives it too.** `shape-story` is where *Where and when* and the
   cast's names are first inferred, and generation then treats them as the
   brief. So the shaper gets the same id and one fixed sentence
   (`buildStoryShapePrompt` in `_shared/story-shape.ts`): where the idea names
-  no place, culture or people, infer the setting and names from the region;
+  no place, culture or people, infer the setting and names from the country;
   creator-supplied names are never changed. Without this, the shaper's guess
   would become the "brief" that overrides the preference it never saw.
 - **Chapter one only; not stored.** Later chapters, continuations and
@@ -478,48 +479,6 @@ This amends the older rule (AGENTS.md *Cultural Context*) that there is no
 explicit culture field. There is still no ethnicity field and no per-character
 culture: inference from names, traits and setting remains the design, and the
 preference is only the default for what the brief leaves open.
-
-### Reader context (languages and home, 2026-09-25)
-
-A reader can also set **Languages and home** on You (*Global preferences*):
-up to three languages they speak, from a closed list of 30 ISO 639 ids, and
-optionally the city they live in. It reaches the first chapter's prompt as the
-**Reader context** block, placed directly after Story world
-(`buildReaderContextBlock` in `_shared/story-prompts.ts`).
-
-- **It is not an output language.** The prose is written in the brief's
-  `language` and nothing else. A reader who speaks Hindi and reads in English
-  gets English prose; the block says the languages are cultural context, and
-  allows at most a single word where a character would naturally say it.
-- **The brief always wins**, exactly as for Story world: names,
-  neighbourhoods, food, idiom and everyday texture lean toward the reader only
-  where the idea, the setting and the cast's names leave it open.
-- **Read from the account, never from the request.** It is stored in
-  `reader_preferences` (migration 00100) and the generation functions load it
-  as service role keyed on the verified user id (`loadReaderContext` in
-  `_shared/reader-preferences.ts`). No generation request field carries it, so
-  a client cannot inject another account's context or text of its own here.
-- **Languages are fixed labels; the city is fenced.** Language ids map to
-  names in `SPOKEN_LANGUAGES`; an id this build does not know is dropped. The
-  city is the one piece of reader text: validated on write (letters and marks
-  in any script, digits, spaces and `. , ' ( ) -`, at most 60 characters,
-  whitespace collapsed) and backstopped by the table's CHECKs, and it still
-  reaches the prompt inside `userField("home-place", ...)` as untrusted text.
-- **A published story can reflect the city.** That is the point of the
-  block, and it is also a disclosure: a public story may hint at where its
-  author lives. The sheet says so under the city field ("Stories you publish
-  may reflect it"), and it asks for a city or region, never a street address.
-- **The sheet cannot save from a stand-in.** Save replaces both fields, so
-  the form on You is shown only once the saved value has loaded; a failed read
-  shows Try again rather than an empty form that would erase it.
-- **Never blocks a story.** A failed read is no block; a reader with nothing
-  set gets a prompt byte-identical to one from before the preference.
-- **Chapter one only**, like Story world, via both `generate-story` and
-  `generate-story-stream`. Later chapters inherit the opening. **Known gap:**
-  `shape-story`, which pre-fills *Where and when* and the cast's names, does
-  not receive it, so when the shaper runs, the names it infers are already the
-  "brief" and the block shapes only what is left (texture, food, idiom).
-  Passing it to the shaper is a follow-up.
 
 Reader phrase seeds were removed on 2026-09-24 with the reader's Save phrase
 feature: generation no longer reads a reader's saved phrases, and the layer and

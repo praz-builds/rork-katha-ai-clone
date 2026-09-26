@@ -20,7 +20,7 @@ import {
   setPreferredVoiceId,
 } from "@/lib/voices";
 import { useVoicePreview, type VoicePreviewStatus } from "@/lib/voice-preview";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
 /**
@@ -281,7 +281,7 @@ const styles = {
       justifyContent: "center",
       marginLeft: -8,
     },
-    title: { fontFamily: fonts.display, color: colors.ink, fontSize: 26 },
+    title: { ...profileHeading, color: colors.ink, fontSize: 26 },
     lead: {
       marginBottom: spacing.lg,
       fontFamily: fonts.ui,

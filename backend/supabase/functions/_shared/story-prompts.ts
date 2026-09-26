@@ -18,11 +18,6 @@ import { BANNED_NAMES, BANNED_PHRASES, BANNED_WORDS } from "./ban-lists.ts";
 import { buildGroundingBlock } from "./grounding-card.ts";
 import type { GroundingCard } from "./grounding-types.ts";
 import { formatStoryBibleBlock, type StoryBible } from "./story-bible.ts";
-import {
-  isSpokenLanguage,
-  type ReaderContext,
-  SPOKEN_LANGUAGES,
-} from "./reader-preferences.ts";
 import type {
   AudienceMode,
   ChapterRole,
@@ -1405,7 +1400,6 @@ export const USER_FIELD_LABELS = [
   "writing-style",
   "avoid",
   "next-chapter",
-  "home-place",
 ] as const;
 
 /** Render one labelled, fenced span of user-authored text. */
@@ -1476,7 +1470,7 @@ function buildPlanSection(
  * the setting and the cast's names are what this writer asked for in this
  * story; the preference is what they asked for in general. So it applies only
  * where the brief leaves culture open, and the block says so in as many words
- * -- a reader who prefers South Asian stories and writes "a heist in 1920s
+ * -- a reader who chooses a country and writes "a heist in 1920s
  * Chicago" gets Chicago.
  *
  * The phrase comes from `CULTURAL_SETTINGS`, never from the request, so no
@@ -1489,51 +1483,11 @@ export function buildStoryWorldBlock(setting?: CulturalSetting): string {
   return `Story world preference:\nThe reader prefers stories rooted in ${world}. Where the idea, the setting and the characters' names leave the culture open, ground the names, places, food, customs, idiom and everyday objects there, specifically rather than generically. If the brief points anywhere else, follow the brief; this preference never overrides it.`;
 }
 
-/**
- * The reader's own context, from Global preferences on You: the languages
- * they speak and, optionally, where they live. Read from the account by the
- * server (`_shared/reader-preferences.ts`), never from the request.
- *
- * Two rules the wording carries, and the tests pin:
- *
- * - IT IS NOT AN OUTPUT LANGUAGE. The story is written in the brief's
- *   language, full stop. A reader who speaks Hindi and reads in English gets
- *   English prose; the Hindi is culture the story may draw on, and at most a
- *   word a character would naturally say.
- * - THE BRIEF WINS, as it does for Story world. This shapes only what the
- *   idea, the setting and the cast leave open.
- *
- * The languages are fixed labels from a closed list. The place is the one
- * piece of reader text here: it was validated on the way in (letters, digits
- * and place punctuation, 60 characters) and it is fenced anyway, because a
- * prompt treats every user field as untrusted whatever was checked upstream.
- */
-export function buildReaderContextBlock(context?: ReaderContext): string {
-  if (!context) return "";
-  const languages = context.spokenLanguages
-    .filter(isSpokenLanguage)
-    .map((id) => SPOKEN_LANGUAGES[id]);
-  const place = context.homePlace?.trim();
-  if (languages.length === 0 && !place) return "";
-  const lines = ["Reader context (from the reader's own profile):"];
-  if (languages.length) {
-    lines.push(`Languages the reader speaks: ${languages.join(", ")}.`);
-  }
-  if (place) {
-    lines.push(`Where the reader lives:\n${userField("home-place", place)}`);
-  }
-  lines.push(
-    "Where the idea, the setting and the characters' names leave it open, let the story feel close to this reader: names, neighbourhoods, food, idiom and the texture of everyday life, specific rather than generic. Keep writing in the story's own language; the languages above are cultural context, not a request to change it. A single word from them is fine where a character would naturally say it, never more than the moment needs. If the brief points anywhere else, follow the brief; this context never overrides it.",
-  );
-  return lines.join("\n");
-}
-
 export function buildUserPrompt(params: {
   primaryGenre: string;
   genres?: string[];
   whereAndWhen?: string;
   culturalSetting?: CulturalSetting;
-  readerContext?: ReaderContext;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1613,8 +1567,6 @@ export function buildUserPrompt(params: {
   whereAndWhen?: string;
   /** The reader's story-world preference; see `buildStoryWorldBlock`. */
   culturalSetting?: CulturalSetting;
-  /** Languages and home place, from the account; see `buildReaderContextBlock`. */
-  readerContext?: ReaderContext;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1699,8 +1651,6 @@ export function buildUserPrompt(params: {
   const storyWorld = buildStoryWorldBlock(params.culturalSetting);
   if (storyWorld) parts.push(storyWorld);
 
-  const readerContext = buildReaderContextBlock(params.readerContext);
-  if (readerContext) parts.push(readerContext);
 
   if (params.audienceMode === "kids" && params.storyValues?.length) {
     parts.push(

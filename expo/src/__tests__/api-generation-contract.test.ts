@@ -483,19 +483,19 @@ describe("world and beats fields", () => {
 
   it("waits for the stored Story world before the first request of a session", async () => {
     __resetStoryWorld();
-    mockStorage.set("katha.story-world.v1", "oceanian");
+    mockStorage.set("katha.story-world.v1", "NZ");
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
     await generateStory(draft, "req-story-world-cold");
-    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("oceanian");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("NZ");
     mockStorage.delete("katha.story-world.v1");
     __resetStoryWorld();
   });
 
   it("sends the Story world preference, and nothing for Anywhere", async () => {
-    await setStoryWorld("south_asian");
+    await setStoryWorld("IN");
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
     await generateStory(draft, "req-story-world");
-    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("south_asian");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("IN");
 
     await setStoryWorld("global");
     mockInvoke.mockResolvedValueOnce(storyResponse("standalone"));
@@ -621,13 +621,13 @@ describe("the story plan", () => {
   });
 
   it("sends the Story world to shaping, where the setting and names are first guessed", async () => {
-    await setStoryWorld("east_asian");
+    await setStoryWorld("JP");
     mockInvoke.mockResolvedValueOnce({
       data: { shape: { genres: ["mystery"], characters: [] } },
       error: null,
     });
     await shapeStoryIdea("A quiet mystery.");
-    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("east_asian");
+    expect(bodyOf(mockInvoke.mock.calls[0]).cultural_setting).toBe("JP");
     await setStoryWorld("global");
   });
 });

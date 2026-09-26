@@ -19,10 +19,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "./cors.ts";
 import { logError } from "./errors.ts";
 import { parseUuid, readJsonObject } from "./operations.ts";
-import {
-  normalizeReaderPreferences,
-  readerContextFromRow,
-} from "./reader-preferences.ts";
 
 // ---------------------------------------------------------------------------
 // Handles
@@ -904,57 +900,6 @@ export async function handleProfile(req: Request): Promise<Response> {
       });
       if (error) throw error;
       return respond({ displayName: raw.length === 0 ? null : raw });
-    }
-
-    if (action === "preferences") {
-      // Global preferences: the languages this reader speaks and where they
-      // live, read back for the You screen. Owner-only by construction --
-      // `viewerId` is the verified token's, never the body's -- and the table
-      // has no client grants at all (00100).
-      const { data, error } = await (service as unknown as {
-        from(table: string): {
-          select(columns: string): {
-            eq(column: string, value: string): {
-              maybeSingle(): PromiseLike<{ data: unknown; error: unknown }>;
-            };
-          };
-        };
-      })
-        .from("reader_preferences")
-        .select("spoken_languages, home_place")
-        .eq("user_id", viewerId)
-        .maybeSingle();
-      if (error) throw error;
-      const context = readerContextFromRow(data);
-      return respond({
-        spokenLanguages: context?.spokenLanguages ?? [],
-        homePlace: context?.homePlace ?? null,
-      });
-    }
-
-    if (action === "set_preferences") {
-      // Validated here for a specific answer, and again by the table's CHECKs,
-      // which decide. An unknown language is refused rather than dropped: this
-      // is somebody saving a setting, and saving less than they chose would
-      // look like a bug.
-      const input = normalizeReaderPreferences(body);
-      if ("error" in input) {
-        return respond({ error: input.error, reason: input.reason }, 400);
-      }
-      const { data, error } = await service.rpc("set_reader_preferences", {
-        p_user_id: viewerId,
-        p_spoken_languages: input.spokenLanguages,
-        p_home_place: input.homePlace,
-      });
-      if (error) throw error;
-      // A tombstoned account (00070) saves nothing; see the migration.
-      if (first(data)?.gone === true) {
-        return respond({ error: "Not found", reason: "account_deleted" }, 404);
-      }
-      return respond({
-        spokenLanguages: input.spokenLanguages,
-        homePlace: input.homePlace,
-      });
     }
 
     if (action === "calendar") {

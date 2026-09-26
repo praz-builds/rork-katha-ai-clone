@@ -1,4 +1,5 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Check, X } from "lucide-react-native";
 import { STORY_WORLDS, type StoryWorld } from "@/lib/story-world";
 import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
@@ -21,6 +22,11 @@ export default function StoryWorldSheet({
   onChange: (next: StoryWorld) => void;
   onClose: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const options = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    return needle ? STORY_WORLDS.filter((world) => world.label.toLocaleLowerCase().includes(needle)) : STORY_WORLDS;
+  }, [query]);
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.root}>
@@ -43,16 +49,23 @@ export default function StoryWorldSheet({
             </Pressable>
           </View>
           <Text style={styles.sub}>
-            Where new stories are rooted — names, places, food and everyday
-            detail. Your idea always wins: set a story somewhere and it goes
-            there.
+            Choose a country for grounded names, places, food, customs and
+            everyday references. Your story brief always wins.
           </Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search countries"
+            placeholderTextColor={colors.tertiary}
+            accessibilityLabel="Search countries"
+            style={styles.search}
+          />
           <ScrollView
             style={styles.list}
             contentContainerStyle={styles.listContent}
             accessibilityRole="radiogroup"
           >
-            {STORY_WORLDS.map((world) => {
+            {options.map((world) => {
               const selected = world.id === value;
               return (
                 <Pressable
@@ -105,6 +118,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   sub: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14, lineHeight: 20 },
+  search: { fontFamily: fonts.ui, color: colors.ink, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, minHeight: 44, paddingHorizontal: spacing.md },
   list: { flexGrow: 0 },
   listContent: { gap: spacing.sm },
   option: {

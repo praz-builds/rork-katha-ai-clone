@@ -44,7 +44,6 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { loadReaderContext } from "../_shared/reader-preferences.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
@@ -203,12 +202,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       serviceRoleKey,
     );
-
-    // The reader's languages and home place (Global preferences on You), read
-    // from their account rather than the request. Started now and awaited at
-    // the prompt, so the one indexed read overlaps the work in between. Never
-    // rejects: a failed read writes the story without it.
-    const readerContextRequest = loadReaderContext(serviceClient, user.id);
 
     // A brief may pull a character from the writer's saved library by id.
     // Resolved before the credit is reserved, so the prompt and the cast rows
@@ -534,7 +527,6 @@ serve(async (req) => {
             characters,
             whereAndWhen,
             culturalSetting,
-            readerContext: await readerContextRequest,
             moments,
             beats,
             chapterNumber: 1,

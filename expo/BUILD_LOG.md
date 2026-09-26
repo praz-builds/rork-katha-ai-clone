@@ -2,6 +2,21 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-26: Country-based Story world; removed unshipped reader context
+
+- Replaced the ten regional Story-world choices with a searchable, closed
+  picker of the 249 assigned ISO 3166-1 alpha-2 country and territory codes.
+  `Anywhere` remains the client-only default; a selected code is sent to the
+  backend, which maps it to its own country name before prompt construction.
+- Removed the unshipped Languages and home row, sheet, storage cache and
+  client tests. The related backend endpoint, prompt layer and unapplied
+  migration are removed in the same change, so no reader-entered place or
+  language reaches generation.
+- Switched the Audiobook voices screen title to the established Profile heading
+  token. Story prose and reader typography are unchanged.
+- Verification: Expo typecheck, changed-file ESLint, Story-world/API contract
+  tests and the Profile Story-world interaction regression passed.
+
 ## 2026-09-25: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
 
 - **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.
