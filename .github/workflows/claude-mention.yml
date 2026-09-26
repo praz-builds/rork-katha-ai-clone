@@ -27,15 +27,64 @@ jobs:
   respond:
     name: Respond to @claude
     runs-on: ubuntu-latest
+    # Fallback only: see claude-review.yml.
+    # The event disjunction needs its own parentheses: && binds tighter than
+    # ||, so without them the gate covers only the first branch and an
+    # @claude inside a review comment still runs the job.
     if: >-
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      vars.CLAUDE_ACTION_ENABLED == 'true' &&
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )
     steps:
+      # An issue_comment payload carries no head ref, so a bare checkout lands
+      # on the default branch: asking @claude to fix something on a pull
+      # request would read main and push to the wrong place. Resolve the real
+      # head branch -- but only when checking it out is both possible and safe.
+      #
+      # Left empty (the default branch) when:
+      #   - the comment is on a plain issue, which has no branch;
+      #   - the pull request is closed or merged, because the branch is deleted
+      #     after merge and checkout would fail on a ref that no longer exists;
+      #   - the pull request came from a fork, because headRefName is a bare
+      #     branch name that checkout resolves against THIS repository, so a
+      #     fork PR from its own main would check out our main -- and the job
+      #     holds contents: write and reads AGENTS.md from whatever it checks
+      #     out.
+      - name: Resolve the branch to check out
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          ref=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            # A transient API error must fall back to the default branch, not
+            # fail the step: the comment still deserves an answer.
+            pr=$(gh pr view "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" \
+                   --json state,headRefName,headRepository || echo '')
+            if [ -n "$pr" ]; then
+              state=$(printf '%s' "$pr" | jq -r '.state')
+              # Compare the full nameWithOwner, the same test claude-review.yml
+              # makes, not just the owner.
+              head_repo=$(printf '%s' "$pr" | jq -r '.headRepository.nameWithOwner // ""')
+              if [ "$state" = "OPEN" ] && [ "$head_repo" = "${GITHUB_REPOSITORY}" ]; then
+                ref=$(printf '%s' "$pr" | jq -r '.headRefName')
+              fi
+            fi
+          fi
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          # Empty means the default branch, which is the safe fallback for a
+          # plain issue, a merged pull request, and a fork.
+          ref: ${{ steps.target.outputs.ref }}
 
       - uses: anthropics/claude-code-action@d9fa72aedd427e79c6dcec0388f2656619eb3c6a # v1
         with:
@@ -48,7 +97,13 @@ jobs:
             repository contract and it routes you to the right workspace guide
             and skill.
 
-            Answer the @claude request in this thread. If it asks for a change,
-            make it on this PR's branch and push, then say in one short comment
-            what changed in user-flow terms. If it asks a question, answer it
-            and change nothing.
+            The branch checked out for you is "${{ steps.target.outputs.ref }}".
+            When that is empty you are on the default branch, which means this
+            is a plain issue, a merged pull request, a fork, or a failed
+            lookup. In that case answer only: never commit and never push,
+            whatever the request asks for, and say which you are doing.
+
+            Otherwise answer the @claude request in this thread. If it asks for
+            a change, make it on that branch and push, then say in one short
+            comment what changed in user-flow terms. If it asks a question,
+            answer it and change nothing.

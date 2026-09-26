@@ -7,11 +7,12 @@
 
 ## Repository Map
 
-- `source-of-truth/` -- **the four canonical documents. If any other file in this repository disagrees with one of them, the file there is right and the other is stale -- this file included.** See [`source-of-truth/README.md`](source-of-truth/README.md) for precedence between them.
+- `source-of-truth/` -- **the five canonical documents. If any other file in this repository disagrees with one of them, the file there is right and the other is stale -- this file included.** See [`source-of-truth/README.md`](source-of-truth/README.md) for precedence between them.
   - `CREDITS_AND_PRICING.md` -- every credit price, plan price, grant, store SKU, earn mechanic, render tier and unit cost. Any pricing question is answered there and nowhere else.
   - `STORY_GENERATION_FLOW.md` -- the create flow: every field, label, ordering rule and post-generation step.
   - `STORY_PROMPT_SYSTEM.md` -- the prompt architecture (was `backend/prompts/story-generator.md`).
   - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the blocked-credits sheet. (The one-time offer was removed 2026-09-10; §14 records why.)
+  - `DESIGN_SYSTEM.md` -- the visual language: type, colour, elevation, radius, the semantic spacing rhythm, and the control recipes built from them. **Scoped**: it governs the onboarding flow today, plus the neutral ramp on every surface. Every other surface keeps the existing `type` scale and `lucide-react-native` until migrated deliberately, one at a time -- see its §2 for that boundary, and `expo/DESIGN.md` for the surfaces still on the old system.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `docs/research/*.md` -- tracked craft-research memos backing specific `GENRE_VOICES` modules (an explicit exception in `.gitignore`; the rest of `docs/research/` and all of `docs/design/` stay gitignored, local-only agent working artifacts).
@@ -22,14 +23,14 @@
 
 ## Working Rules
 
-- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
+- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding. **Where `expo/DESIGN.md` and `source-of-truth/DESIGN_SYSTEM.md` overlap -- which is onboarding, the paywalls, and the neutral ramp -- `DESIGN_SYSTEM.md` wins**, because it is canonical and `expo/DESIGN.md` is Reference Material. Outside that scope `expo/DESIGN.md` is still the description of what those surfaces actually do, and it is not superseded: the migration is deliberate and one surface at a time.
 - Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
 - **Read the relevant `source-of-truth/` document before touching what it governs** -- pricing/credits, the create flow, the prompt system, or onboarding. They are canonical; never hardcode a value that contradicts one, and never copy their tables into another file. A change that crosses two of them updates both in the same commit.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
 - Never commit `.env` files, service-role keys, provider secrets, build output, dependencies, or local Supabase state.
-- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents.
+- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents. `source-of-truth/DESIGN_SYSTEM.md` and `expo/DESIGN.md` are not a violation of that last one while the migration is in progress: they are one system at two stages, with the precedence above deciding between them. Do not add a third.
 - **Rule:** Money, credits, API keys, and trusted generation logic stay in the backend. User-facing UI stays in Expo. When a feature spans both, update the contract and both workspaces in the same pull request.
 - **Build log:** Every session that modifies code, schema, or infrastructure MUST append an entry to `backend/build-log.md`.
 
@@ -1366,22 +1367,48 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Never commit or push directly to `main`.
 - Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
 - Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
-- After every code-changing push, wait for **Claude Review**'s incremental review (the `Review the diff` check).
-- Merge only when Claude Review's latest review completed successfully and raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
+- After every code-changing push, wait for **Claude Review**'s incremental review. It arrives as a pull request **comment**, not as a check: the cloud routine posts it a few minutes after the push, labelled with the head SHA it reviewed. Do not wait for a `Review the diff` check -- that check belongs to the disabled Action workflows and will never appear.
+- Merge only when Claude Review's latest comment covers the current head SHA and raises nothing outstanding, no message requests changes, every finding has been answered in a reply naming the commit that addressed it, required validation passes, and the branch is current with `main`. A pull request opened before 2026-09-25 may still carry a red `Review the diff` check from the Action; that check is stale and is not a merge blocker.
 - A green commit status alone is not approval. Read the latest review body.
-- **A pull request whose every file is an ignored path gets no review at all** -- lockfiles, `expo/assets/**`, `.agents/**`, and image and audio files are filtered out of the trigger to save credit. A generated asset drop therefore lands unreviewed. When such a PR also carries code worth looking at, ask for the review explicitly with an `@claude` comment naming the paths.
+- **The reviewer skips drafts and bot-authored pull requests.** It reviews every open pull request that needs one on each firing, not only the one that triggered it, so a review can arrive on a pull request nobody just pushed to.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
+
+
 - Exceptions require explicit user authorization and documentation in the pull request.
 
-**Claude is the reviewer on this repository**, through `.github/workflows/claude-review.yml`: a full pass when a pull request opens or leaves draft, and an incremental pass on each push. It reads this file first and reviews against the contract, not only the diff. It posts inline findings and one sticky summary comment. Fork pull requests are skipped -- they receive no secrets -- as are drafts, bot authors, and pull requests whose every file is an ignored path. `@claude` in any issue, pull request, or review comment reaches `.github/workflows/claude-mention.yml`, which answers the question or pushes the fix; only users with write access can invoke it.
+### The review loop -- iterate, do not stall
 
-Both workflows authenticate with the `ANTHROPIC_API_KEY` repository secret and spend prepaid Anthropic Console credit, so review stops when that balance runs out rather than billing onward. Two things keep the burn down: a `paths-ignore` filter means an asset-only or lockfile-only pull request starts no run, and `cancel-in-progress` means a rapid series of pushes costs one review rather than one per push. The Claude GitHub App must stay installed on the repository -- without it the action fails at the token exchange. The action also refuses to run when a pull request's copy of a workflow file differs from the copy on `main`, which is a prompt-injection guard: a change to the reviewer's own instructions cannot be reviewed by the changed version, so such a pull request shows the review as skipped and must be judged by hand.
+Claude Review is a loop, not a gate you wait at. Run it to completion yourself:
 
-Neither CodeAnt nor CodeRabbit reviews this repository any more, and `.coderabbit.yaml` has been deleted -- its per-area review instructions were folded into the review prompt in `.github/workflows/claude-review.yml`, which is where they are now maintained. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. GitHub branch protection is unavailable on this repository's current plan, so this documented merge gate remains mandatory.
+1. Push. The reviewer fires on the push and posts a comment naming the head SHA it reviewed. It takes a few minutes; a comment naming an older SHA is a previous round, not this one.
+2. Read every finding. For each one, either **fix it and say so**, or **reply saying why it is wrong**. The reviewer posts a plain pull request comment, not an inline review, so there is no **Resolve conversation** button on its findings and nothing to tick -- answer by replying with a comment naming the commit that addressed each one. A finding you silently ignore counts as outstanding and blocks the merge.
+3. Push the fixes. That fires the next round automatically.
+4. Repeat until the newest comment covers the current head SHA and raises nothing outstanding.
+
+Only then merge. Do not stop after one round because findings exist -- findings are the normal result of round one, and rounds two and three routinely find real bugs in the fixes from round one. Do not wait for a human to relay the review to you; read it from the pull request yourself.
+
+**What "checks are clear" means**, exactly, because getting this wrong has already stalled two pull requests:
+
+- The two **CI** checks that run on a pull request -- `Typecheck + Lint + Test` and `Edge Functions — Typecheck + Test` -- must pass to satisfy the gate above. GitHub will not stop you merging over a red one, because there is no branch protection here, but unlike `Review the diff` these can turn green, so a red one is a real failure to fix rather than a stale artifact.
+- `Smoke - web bundle builds` is **not** part of that gate. It is gated on `push` (`ci.yml`), so on a pull request it always reports **skipped** -- which is neither a pass nor a blocker. Do not wait for it to go green; it never will until the branch is on `main`.
+- A red **`Review the diff`** check is **stale and is not a blocker**. It belongs to the disabled Action workflows, it can never turn green, and it will disappear from a pull request on the next push because no new run replaces it. There is no branch protection on this repository, so GitHub reports such a pull request `mergeable` and the merge button works.
+- CodeAnt's comment is advisory, not a gate.
+- The gate is **Claude Review's latest comment**, and it is a comment, not a check. A fully green check list does not mean the review happened.
+
+If a review never arrives after ten minutes, do not wait indefinitely and do not merge. Check the routine at <https://claude.ai/code/routines>, say in the pull request that no review arrived and what you checked, and **stop there and ask for authorization** to merge unreviewed. Merging without a review is an exception, and *"Exceptions require explicit user authorization and documentation in the pull request"* means a human grants it, not you. This matters more here than elsewhere: the gate is a comment rather than a check, so an unreviewed pull request looks identical to a reviewed one in the checks UI and nothing downstream will catch it.
+
+
+**Claude is the reviewer on this repository, and it runs as a cloud routine, not as a GitHub Action.** The routine is `Katha PR review` (`trig_01YEy4UFeLZxFSPvaN1p8jhm`, managed at <https://claude.ai/code/routines>). A webhook trigger fires it on `pull_request.opened`, `synchronize` and `ready_for_review`, and a daily 03:00 UTC cron catches anything the webhook missed. It clones the repository, reads this file, reviews against the contract rather than only the diff, and posts one comment per pull request naming the head SHA it reviewed. It never pushes.
+
+**The reviewer's comment is the merge gate.** It is a comment, not a status check, so a green check list does not mean the review happened and a missing review is not visible in the checks UI -- read the comments.
+
+`.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml` are a **disabled fallback**. They are disabled at the workflow level and additionally gated behind the repository variable `CLAUDE_ACTION_ENABLED`, because they authenticate with `ANTHROPIC_API_KEY`, which is not set; without it the action posts "Claude encountered an error" on every pull request and leaves a red `Review the diff` check. That check blocks nothing in GitHub -- there is no branch protection on this repository, and such a pull request still reports `mergeable`. What it blocks is the documented gate above, and any agent reading it. Re-enabling them takes three things together: the secret, the variable set to `true`, and `gh workflow enable`. Two properties to know if you ever do: the action refuses to run when a pull request's copy of a workflow file differs from `main`, which is a prompt-injection guard, so `Review the diff` reports *pass* without reviewing anything on such a pull request; and a fork pull request receives no secrets, so it is skipped.
+
+CodeRabbit no longer reviews this repository. **CodeAnt still does**: the `codeant-ai` app is still installed and posts an incremental review on every pull request, including drafts. Those findings are **advisory** -- Claude Review's comment is the merge gate, not CodeAnt's -- but read them, because they are sometimes right. `.coderabbit.yaml` has been deleted -- its per-area review instructions were folded into the reviewer's prompt. **That prompt lives in the cloud routine, not in this repository** -- nothing in Git holds it, and the copy inside `.github/workflows/claude-review.yml` belongs to the disabled fallback and changes nothing. To change how the reviewer treats an area, edit the routine at <https://claude.ai/code/routines>; editing the workflow file has no effect and reports no error. The tracked `.githooks/pre-push` guard blocks direct local pushes to `main`; run `scripts/setup-repo.sh` once in each clone. **No branch protection is configured** -- `branches/main/protection` returns "Branch not protected" and there are no rulesets -- so nothing in the list above is mechanically enforced and this documented gate is the only thing enforcing it. The repository is currently **public**, which means protection *is* available to configure should you want CI made blocking; an earlier version of this paragraph said it was unavailable on this plan, which was true when the repository was private.
 
 ## Reference Material
 
-> The four canonical documents are in `source-of-truth/` (see the Repository Map). Everything below is secondary and yields to them.
+> The five canonical documents are in `source-of-truth/` (see the Repository Map). Everything below is secondary and yields to them.
 
 - **Strategic decisions:** `backend/references/strategic-decisions.md` -- overrides Blueprint where they conflict.
 - **Product blueprint:** `backend/references/story-generator-app.md` -- original architecture spec.

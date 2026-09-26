@@ -33,6 +33,6 @@ The Supabase project id is committed in `backend/supabase/config.toml`; credenti
 
 ## Pull Request Reviews
 
-Pull requests targeting `main`, including incremental updates, are reviewed automatically by **Claude** via [`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml). Writing `@claude` in any thread reaches the same reviewer for a question or a fix. Direct work on `main` is prohibited; the complete merge gate is defined in [`CLAUDE.md`](CLAUDE.md).
+Pull requests targeting `main`, including incremental updates, are reviewed automatically by **Claude**, running as a cloud routine rather than a GitHub Action. The review arrives as a pull request comment naming the head commit it covers, usually a few minutes after a push. The workflows under `.github/workflows/claude-*.yml` are a **disabled** fallback, so `@claude` in a comment currently reaches nobody and gets no reply. Direct work on `main` is prohibited; the complete merge gate is defined in [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` and `CODEX.md` only redirect there).
 
 Run `scripts/setup-repo.sh` after cloning to enable the tracked pre-push guard that rejects direct local pushes to `main`.

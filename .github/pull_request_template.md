@@ -11,9 +11,8 @@
 ## Review Gate
 
 - [ ] Branch name uses `codex/<task-slug>`.
-- [ ] Latest Claude Review completed successfully and raised nothing outstanding.
-- [ ] No review comment requests changes, and every actionable thread is answered.
-- [ ] All actionable review conversations are resolved.
+- [ ] Latest Claude Review comment covers the current head commit and raises nothing outstanding.
+- [ ] Every finding is answered in a reply naming the commit that addressed it, or with a reason it is wrong.
 - [ ] Branch is current with `main`.
 
 ### Commands
