@@ -7,6 +7,27 @@
 
 ---
 
+## 2026-09-26 UTC — Deploy country Story world backend contract
+
+- No migration was needed. Deployed the nine functions before any client build
+  or OTA: `continue-story`, `edit-story`, `generate-story`,
+  `generate-story-stream`, `reimagine-chapter`, `shape-story`,
+  `generate-character-image`, `regenerate-cover`, and `profile`.
+- Downloaded production verification matched main at `66b16cf`: `generate-story`
+  and `shape-story` matched their shared country contract source byte-for-byte;
+  the remaining four story paths matched every reachable country contract file;
+  the two image paths matched their reachable country files; Profile's index
+  and shared profile source matched, with `set_preferences` and
+  `reader_preferences` absent; and `generate-story` plus
+  `generate-story-stream` indexes matched main with the removed
+  reader-preferences path absent.
+- `scripts/smoke-app-surface.py` passed **43/43** against production after the
+  deploy, including generation, edit, publish, public-cover delivery and
+  audio-status. Its disposable fixtures were removed. No failures occurred, so
+  no `public.error_events` row was required.
+
+---
+
 ## 2026-09-26 UTC — Replace reader preferences with country-based Story world
 
 - Removed the unshipped Languages and home feature end-to-end: its Expo sheet,
@@ -42,12 +63,9 @@
   stable. The contract also carries English articles for phrases such as *the
   United States* and searchable aliases such as UK, USA, Holland and
   Deutschland.
-- **Deployment, when explicitly authorized:** there is no migration. Deploy
-  the nine functions **before** any client build or OTA: `continue-story`,
-  `edit-story`, `generate-story`, `generate-story-stream`, `reimagine-chapter`,
-  `shape-story`, `generate-character-image`, `regenerate-cover`, and `profile`.
-  Today's server otherwise drops an ISO id silently, by its intentional
-  unknown-setting fallback.
+- Production deployment is recorded separately above. Future client releases
+  must keep this functions-first order, because an older server intentionally
+  drops an unknown ISO id.
 - Verification after the review follow-up: focused Deno contract suite **252
   passed**. It includes the fixed article regression for the United States and
   the Netherlands.
