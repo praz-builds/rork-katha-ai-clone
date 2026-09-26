@@ -53,9 +53,12 @@ zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 `00100_reader_preferences`, its profile actions, and its generation prompt
 path must not be applied or deployed; no account data was created.
 
-**Country Story world has no migration.** The checked-in ISO country contract
-changes `_shared/types.ts` and `_shared/story-prompts.ts`; these **nine
-functions were deployed on 2026-09-26 UTC before any client release**:
+**Country Story world has no migration.** Its checked-in contract changed six
+non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,
+`_shared/story-world-countries.ts`, `_shared/story-shape.ts`,
+`_shared/profile.ts`, and the deleted `_shared/reader-preferences.ts` — so the
+importer closure was these **nine functions, deployed on 2026-09-26 UTC before
+any client release**:
 `continue-story`, `edit-story`, `generate-story`, `generate-story-stream`,
 `reimagine-chapter`, `shape-story`, `generate-character-image`,
 `regenerate-cover`, and `profile`. Their versions advanced. The downloaded
@@ -86,8 +89,9 @@ aborted at 8s. Note that 5.3 only asserts a model name is present, so the pass
 itself does not pin which one; the printed value is the evidence, and a
 contributor-tier abort would have printed `meta/muse-spark-1.3` instead.
 
-Earlier audits, for the record and not to be mistaken for the one above: 33 of 33
-identical on 2026-09-24, and 89 of 89 earlier on 2026-09-25, before this deploy.
+Earlier audits, for the record and not to be mistaken for the 2026-09-26 country
+deploy above: 33 of 33 identical on 2026-09-24, and 89 of 89 earlier on
+2026-09-25, before the country deploy.
 The function count went 37→33 when the four phrase functions (`save-phrase`,
 `unsave-phrase`, `phrases`, `record-practice`) were deleted in #135 — which is the
 33 above — and then →34 when `app-feedback` was added in #140.
