@@ -94,6 +94,7 @@ function stubTables() {
     };
     chain.select = record("select");
     chain.eq = record("eq");
+    chain.contains = record("contains");
     chain.neq = record("neq");
     chain.or = record("or");
     chain.not = record("not");
@@ -122,6 +123,15 @@ beforeEach(() => {
 });
 
 describe("the visibility clauses survive every other filter", () => {
+  it("queries bedtime as its persisted editorial tag, not a fake primary genre", async () => {
+    await searchStories({ text: "", genre: "fantasy", bedtime: true });
+
+    expect(had("contains", "genre", ["bedtime"])).toBe(true);
+    const ors = calls.filter((call) => call.method === "or").map((call) => call.args[0]);
+    expect(ors).toContain(genreClause("fantasy"));
+    expect(ors).not.toContain("primary_genre.eq.bedtime,genre.cs.{bedtime}");
+  });
+
   it("keeps them when a genre is selected as well as a term", async () => {
     blockRows = [{ blocked_id: "blocked-author" }];
 

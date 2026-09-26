@@ -9373,3 +9373,18 @@ reverted fix and fail there.
 - No backend runtime, schema, function, or deployment changed. The Expo
   public-profile test now pins the existing owner-only calendar boundary after
   a visual smoke reported stale calendar accessibility labels on main.
+
+### Explore bedtime category (2026-09-26)
+
+- No backend runtime, schema, migration, function, or deployment changed.
+  Explore reads only the legacy editorial `bedtime` tag already retained in
+  `stories.genre`; it does not widen the category to the `kids` audience mode.
+
+### Bedtime category review correction (2026-09-26)
+
+- No backend runtime, schema, migration, function, or deployment changed.
+  The `bedtime` array value was preserved by migration `00008`; this correction
+  makes the client query that existing historical classification rather than
+  misrepresenting every all-ages story as bedtime. New generated stories still
+  need a separately approved persisted bedtime contract before they can enter
+  this shelf.

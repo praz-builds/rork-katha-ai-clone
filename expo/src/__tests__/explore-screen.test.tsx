@@ -90,6 +90,39 @@ it("offers every genre the app knows, as selectable chips", async () => {
   }
 });
 
+it("offers Bedtime stories as a separately classified category alongside genres", async () => {
+  const view = await renderExplore();
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+
+  const bedtime = view.getByLabelText("Bedtime stories");
+  expect(bedtime.props.accessibilityState).toMatchObject({ selected: false });
+  await fireEvent.press(bedtime);
+  await waitFor(() =>
+    expect(view.getByText(/^Bedtime stories/)).toBeTruthy()
+  );
+  expect(view.getByLabelText("Bedtime stories").props.accessibilityState)
+    .toMatchObject({ selected: true });
+  expect(view.getByText("Connect to browse published bedtime stories. The offline catalogue does not label stories as bedtime.")).toBeTruthy();
+});
+
+it("clears bedtime and genre together from the category empty state", async () => {
+  const view = await renderExplore();
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+
+  await fireEvent.press(view.getByLabelText("Bedtime stories"));
+  await fireEvent.press(view.getByLabelText("Fantasy"));
+  await waitFor(() =>
+    expect(view.getByText("No bedtime stories in Fantasy yet")).toBeTruthy()
+  );
+
+  await fireEvent.press(view.getByText("See every story"));
+  await waitFor(() => expect(titlesInOrder(view).length).toBeGreaterThan(0));
+  expect(view.getByLabelText("Bedtime stories").props.accessibilityState)
+    .toMatchObject({ selected: false });
+  expect(view.getByLabelText("Fantasy").props.accessibilityState)
+    .toMatchObject({ selected: false });
+});
+
 it("narrows the list as the reader types, without losing the field", async () => {
   const view = await renderExplore();
   const field = view.getByPlaceholderText(SEARCH_PLACEHOLDER);

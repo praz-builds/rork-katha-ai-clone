@@ -24,7 +24,7 @@
  * popularity, not reordered to put the selection first: a reader learns
  * where Horror is and should find it in the same place tomorrow.
  */
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { GENRE_EMOJI } from "@/lib/genre-content";
 import { colors, fonts, genreLabels, radius, spacing } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
@@ -33,6 +33,15 @@ import type { Genre } from "@/types/domain";
 export function genreChipLabel(genre: Genre): string {
   return `${GENRE_EMOJI[genre]} ${genreLabels[genre]}`;
 }
+
+/**
+ * A browse category, deliberately separate from `Genre`. Bedtime is an
+ * editorial legacy classification, never a synonym for all-ages.
+ */
+export const BEDTIME_CATEGORY = "bedtime";
+export type ExploreCategory = typeof BEDTIME_CATEGORY;
+export const BEDTIME_CATEGORY_LABEL = "🌙 Bedtime stories";
+export const BEDTIME_CATEGORY_SHORT_LABEL = "Bedtime stories";
 
 /**
  * The shared `Chip` primitive's look, plus the accessibility a FILTER needs.
@@ -44,24 +53,26 @@ export function genreChipLabel(genre: Genre): string {
  * deliberately `Chip`'s own values so the two rows stay visually identical -
  * if that primitive gains `accessibilityState`, this collapses back into it.
  */
-function GenreChip({
-  genre,
+function FilterChip({
+  label,
   selected,
   onPress,
+  accessibilityLabel,
+  accessibilityHint,
 }: {
-  genre: Genre;
+  label: string;
   selected: boolean;
   onPress: () => void;
+  accessibilityLabel: string;
+  accessibilityHint: string;
 }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={genreLabels[genre]}
-      accessibilityHint={selected
-        ? "Selected. Tap to show every genre again"
-        : `Show only ${genreLabels[genre]} stories`}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       style={({ pressed }) => [
         styles.chip,
         selected && styles.chipSelected,
@@ -69,7 +80,7 @@ function GenreChip({
       ]}
     >
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-        {genreChipLabel(genre)}
+        {label}
       </Text>
     </Pressable>
   );
@@ -92,14 +103,45 @@ export function GenreStrip({
       keyboardShouldPersistTaps="handled"
     >
       {UI_GENRES.map((genre) => (
-        <GenreChip
+        <FilterChip
           key={genre}
-          genre={genre}
+          label={genreChipLabel(genre)}
           selected={selected === genre}
           onPress={() => onSelect(selected === genre ? null : genre)}
+          accessibilityLabel={genreLabels[genre]}
+          accessibilityHint={selected === genre
+            ? "Selected. Tap to show every genre again"
+            : `Show only ${genreLabels[genre]} stories`}
         />
       ))}
     </ScrollView>
+  );
+}
+
+/** A composable category row. Genre remains independently selectable below. */
+export function ExploreCategoryStrip({
+  selected,
+  onSelect,
+}: {
+  selected: ExploreCategory | null;
+  onSelect: (category: ExploreCategory | null) => void;
+}) {
+  const bedtimeSelected = selected === BEDTIME_CATEGORY;
+  return (
+    <View
+      style={styles.categoryRow}
+      accessibilityLabel="Filter by category"
+    >
+      <FilterChip
+        label={BEDTIME_CATEGORY_LABEL}
+        onPress={() => onSelect(bedtimeSelected ? null : BEDTIME_CATEGORY)}
+        selected={bedtimeSelected}
+        accessibilityLabel={BEDTIME_CATEGORY_SHORT_LABEL}
+        accessibilityHint={bedtimeSelected
+          ? "Selected. Tap to show every story again"
+          : "Show published bedtime stories"}
+      />
+    </View>
   );
 }
 
@@ -108,6 +150,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
     gap: spacing.sm,
+  },
+  categoryRow: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
   },
   chip: {
     paddingHorizontal: spacing.lg,

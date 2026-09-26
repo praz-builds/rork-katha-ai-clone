@@ -7,7 +7,7 @@
 > the product and engineering contract for the prompt architecture across
 > Supabase, Expo, cover prompts, and tests.
 >
-> Last revised 2026-09-08.
+> Last revised 2026-09-26.
 
 ## Product Goal
 
@@ -56,8 +56,15 @@ writer, not by a generic assistant. The prompt system must optimize for:
   either genre keeps reading in its own, unmerged module forever — see
   **Mystery**, **Thriller**, **Contemporary**, and **Slice of Life** below.
 - **Kids is an audience mode, not an adult genre peer.** Backend generation uses
-  `adult | kids`; any future bedtime UX should map to kids-safe constraints
-  unless a separate backend mode is introduced.
+  `adult | kids`. A future *newly generated* bedtime mode needs its own stored
+  classification and prompt contract; it must not relabel every all-ages story.
+- **Bedtime stories is an Explore category, not a primary genre (2026-09-26).**
+  It reads the legacy editorial `bedtime` tag from `stories.genre`, can compose
+  with a genre, and never writes `bedtime` into `primary_genre` or broadens to
+  `audience_mode = 'kids'`. Kids is an all-ages safety mode; the Kids bedtime
+  register is style guidance only, not a stored classification. The offline
+  catalogue has no bedtime-labelled stories and must say that it needs a
+  connection rather than substitute all-ages stories.
 - **Spice is a genre-aware layer with two tiers.** Backend enum values are
   `sweet` and `steamy`. The clamp is downward only: a genre may lower a
   requested tier, never raise it.

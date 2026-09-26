@@ -2245,3 +2245,29 @@ and `deno check` clean.
 - Verified: `pnpm typecheck` and
   `pnpm exec jest src/__tests__/profile-screens.test.tsx --runInBand --silent`
   (30 tests) pass.
+
+## 2026-09-26: Bedtime stories is an Explore category
+
+- Added a visible **🌙 Bedtime stories** category chip above Explore's genre
+  strip. It is independently selectable, so a reader can further narrow it by
+  genre without adding a pretend `bedtime` genre to the application taxonomy.
+- The category originally mapped to `audience_mode = 'kids'`; that was
+  corrected in the review follow-up below because all-ages is not a bedtime
+  promise. The eyebrow and empty state name the category rather than leaving
+  the old sort caption.
+- Verified: targeted Explore Jest suites (41 tests), `pnpm typecheck`, and
+  ESLint over every changed Explore source and test file.
+
+### Bedtime category review correction (2026-09-26)
+
+- Bedtime is not a second name for **All-ages**. Explore now queries the
+  legacy editorial `bedtime` entry preserved in the `stories.genre` array by
+  migration `00008`; the client does not broaden that shelf to
+  `audience_mode = 'kids'`.
+- The offline catalogue has no independently-labelled bedtime work, so its
+  empty state asks the reader to connect rather than presenting ordinary
+  all-ages stories as sleep-ready. The category composes with genre, and
+  **See every story** now clears both category and genre in one press.
+- The category and genre rows share the same accessible filter-chip primitive;
+  the plain-text Bedtime label is a named constant rather than derived by
+  removing an emoji from display copy.

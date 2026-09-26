@@ -152,6 +152,11 @@ export type SearchInput = {
   text: string;
   /** The selected genre, or null for every genre. */
   genre: Genre | null;
+  /**
+   * Legacy editorial classification. It is deliberately distinct from the
+   * all-ages audience mode, which does not promise a sleep-ready story.
+   */
+  bedtime?: boolean;
 };
 
 export type SearchOutcome = {
@@ -219,6 +224,10 @@ export function searchLocalCatalogue(
   const term = sanitizeSearchTerm(input.text).toLowerCase();
   return catalogue.filter((story) => {
     if (input.genre && story.genre !== input.genre) return false;
+    // The offline catalogue has no editorially bedtime-labelled stories. Do
+    // not substitute all-ages stories and make a promise their data cannot
+    // support.
+    if (input.bedtime) return false;
     if (!term) return true;
     return (
       story.title.toLowerCase().includes(term) ||
@@ -251,6 +260,7 @@ export async function searchStories(
 
   const term = sanitizeSearchTerm(input.text);
   const genre = isKnownGenre(input.genre) ? input.genre : null;
+  const bedtime = input.bedtime === true;
 
   try {
     // Author handles resolve first, because a handle lives on `profiles` and
@@ -297,6 +307,12 @@ export async function searchStories(
       // each card labelled with its real genre.
       query = query.or(genreClause(genre));
     }
+
+    // Migration 00008 retained an existing `bedtime` value in the legacy
+    // genre text[] while moving its primary genre to Adventure. This is the
+    // persisted bedtime classification; audience_mode = kids is only an
+    // all-ages safety mode and must not be broadened into this shelf.
+    if (bedtime) query = query.contains("genre", ["bedtime"]);
 
     query = query
       .order("like_count", { ascending: false })

@@ -12,7 +12,14 @@ import { ChevronDown, SlidersHorizontal } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import { Chip } from "@/components/KathaPrimitives";
 import { StoryFeedCard } from "@/components/feed/StoryFeedCard";
-import { GenreStrip, genreChipLabel } from "@/components/explore/GenreStrip";
+import {
+  BEDTIME_CATEGORY,
+  BEDTIME_CATEGORY_SHORT_LABEL,
+  ExploreCategoryStrip,
+  GenreStrip,
+  genreChipLabel,
+  type ExploreCategory,
+} from "@/components/explore/GenreStrip";
 import { SearchField } from "@/components/explore/SearchField";
 import {
   useStorySearch,
@@ -58,11 +65,19 @@ const SORT_LABELS: Record<SortOption, string> = {
  * filter that was never applied. The order is named only once the reader has
  * picked one themselves.
  */
-export function exploreScopeLabel(genre: Genre | null, sort: SortOption): string {
-  if (!genre) return SORT_LABELS[sort];
+export function exploreScopeLabel(
+  genre: Genre | null,
+  category: ExploreCategory | null,
+  sort: SortOption,
+): string {
+  const filters = [
+    category ? BEDTIME_CATEGORY_SHORT_LABEL : null,
+    genre ? genreLabels[genre] : null,
+  ].filter((value): value is string => value !== null);
+  if (filters.length === 0) return SORT_LABELS[sort];
   return sort === DEFAULT_SORT
-    ? genreLabels[genre]
-    : `${genreLabels[genre]} · ${SORT_LABELS[sort]}`;
+    ? filters.join(" · ")
+    : `${filters.join(" · ")} · ${SORT_LABELS[sort]}`;
 }
 
 /** A row this dense stops discriminating past a dozen or so choices. */
@@ -81,18 +96,20 @@ const SUGGESTED_GENRES: readonly Genre[] = ["fantasy", "mystery", "romance"];
  * same thing, and a curated home page with a search bar on it is really just
  * a search page with some rails above it.
  *
- * THREE THINGS MAKE UP THIS SCREEN, in the order a reader meets them:
+ * FOUR THINGS MAKE UP THIS SCREEN, in the order a reader meets them:
  *
  * 1. **A search field** that queries the live catalogue — title, summary and
  *    author handle — debounced, cancellable, and race-guarded. See
  *    `components/explore/useStorySearch.ts` for why all three are needed and
  *    why the third is not implied by the first two.
- * 2. **Every genre, as one horizontal strip**, in the create brief's own chip
+ * 2. **Bedtime stories**, a legacy editorial category. It never expands to
+ *    all-ages, which is a different reader promise.
+ * 3. **Every genre, as one horizontal strip**, in the create brief's own chip
  *    language. Selecting one filters; selecting it again clears it.
- * 3. **The results**, as `StoryFeedCard`s — the same card Home's rails use,
+ * 4. **The results**, as `StoryFeedCard`s — the same card Home's rails use,
  *    so a story looks like itself wherever the reader meets it.
  *
- * THE DEFAULT STATE IS NOT BLANK. With nothing typed and no genre chosen,
+ * THE DEFAULT STATE IS NOT BLANK. With nothing typed and no filter chosen,
  * this runs the same query with no filters: the page the server picks by
  * `like_count`, shown in the default Trending order (most read first). That is
  * the right default for a discovery page for a reason worth stating: a reader
@@ -147,12 +164,13 @@ export default function ExploreScreen({
 
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState<Genre | null>(null);
+  const [category, setCategory] = useState<ExploreCategory | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const { status, stories: searched, source } = useStorySearch(
-    { text: query, genre },
+    { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
     { catalogue: stories, ...searchOptions },
   );
   // The query itself leaves blocked writers out (`search.ts`), but a page
@@ -201,11 +219,10 @@ export default function ExploreScreen({
   }, []);
 
   const clearSearch = useCallback(() => setQuery(""), []);
-  const clearGenre = useCallback(() => setGenre(null), []);
-
   const clearAll = useCallback(() => {
     setQuery("");
     setGenre(null);
+    setCategory(null);
     clearFilters();
   }, [clearFilters]);
 
@@ -270,11 +287,11 @@ export default function ExploreScreen({
     if (status === "loading" && visible.length === 0) return "Searching";
     const scope = searching
       ? `${visible.length} ${visible.length === 1 ? "result" : "results"}`
-      : exploreScopeLabel(genre, sort);
+      : exploreScopeLabel(genre, category, sort);
     return source === "local" && !searching
       ? `${scope} · offline catalogue`
       : scope;
-  }, [genre, searching, sort, source, status, visible.length]);
+  }, [category, genre, searching, sort, source, status, visible.length]);
 
   const listEmpty = useMemo(() => {
     // Still fetching, with nothing to show underneath. A spinner rather than
@@ -294,18 +311,27 @@ export default function ExploreScreen({
     // problem, so both the copy and the way out differ from a search miss:
     // this is a gap in the catalogue, it is honest, and it closes as writers
     // publish.
-    if (!searching && genre) {
+    if (!searching && (genre || category)) {
+      const label = category
+        ? genre
+          ? `${BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()} in ${genreLabels[genre]}`
+          : BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()
+        : `${genreLabels[genre!]} stories`;
+      const isOfflineBedtime = category === BEDTIME_CATEGORY && source === "local";
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
-            No {genreLabels[genre]} stories yet
+            No {label} yet
           </Text>
           <Text style={styles.emptyBody}>
-            This genre is new here. More will appear as writers publish in it —
-            you could be the first.
+            {isOfflineBedtime
+              ? "Connect to browse published bedtime stories. The offline catalogue does not label stories as bedtime."
+              : category
+                ? "More bedtime stories will appear as they are published."
+                : "This genre is new here. More will appear as writers publish in it."}
           </Text>
           <Pressable
-            onPress={clearGenre}
+            onPress={clearAll}
             accessibilityRole="button"
             style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
           >
@@ -370,7 +396,7 @@ export default function ExploreScreen({
         )}
       </View>
     );
-  }, [activeFilterCount, clearAll, clearGenre, genre, query, searching, status]);
+  }, [activeFilterCount, category, clearAll, genre, query, searching, source, status]);
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -387,6 +413,8 @@ export default function ExploreScreen({
             busy={status === "loading"}
             genre={genre}
             onGenreChange={setGenre}
+            category={category}
+            onCategoryChange={setCategory}
             eyebrow={eyebrow}
             filtersOpen={filtersOpen}
             onToggleFilters={() => setFiltersOpen((open) => !open)}
@@ -433,6 +461,8 @@ function ExploreListHeader({
   busy,
   genre,
   onGenreChange,
+  category,
+  onCategoryChange,
   eyebrow,
   filtersOpen,
   onToggleFilters,
@@ -450,6 +480,8 @@ function ExploreListHeader({
   busy: boolean;
   genre: Genre | null;
   onGenreChange: (value: Genre | null) => void;
+  category: ExploreCategory | null;
+  onCategoryChange: (value: ExploreCategory | null) => void;
   eyebrow: string;
   filtersOpen: boolean;
   onToggleFilters: () => void;
@@ -476,10 +508,13 @@ function ExploreListHeader({
         busy={busy}
       />
 
-      {/* 2. Every genre, scrollable, one at a time. */}
+      {/* 2. Bedtime is a kids-safe category, not a genre; it composes with the row. */}
+      <ExploreCategoryStrip selected={category} onSelect={onCategoryChange} />
+
+      {/* 3. Every genre, scrollable, one at a time. */}
       <GenreStrip selected={genre} onSelect={onGenreChange} />
 
-      {/* 3. Filters pill (inline panel, no modal) + what you're looking at. */}
+      {/* 4. Filters pill (inline panel, no modal) + what you're looking at. */}
       <View style={styles.controlRow}>
         <Pressable
           onPress={onToggleFilters}

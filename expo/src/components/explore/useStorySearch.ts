@@ -226,7 +226,7 @@ export function useStorySearch(
   const latestRun = useRef(0);
   const inFlight = useRef<AbortController | null>(null);
 
-  const { text, genre } = input;
+  const { text, genre, bedtime = false } = input;
 
   const run = useCallback(
     (searchInput: SearchInput) => {
@@ -287,12 +287,12 @@ export function useStorySearch(
 
   useEffect(() => {
     if (debounceMs <= 0) {
-      run({ text, genre });
+      run({ text, genre, bedtime });
       return;
     }
-    const timer = setTimeout(() => run({ text, genre }), debounceMs);
+    const timer = setTimeout(() => run({ text, genre, bedtime }), debounceMs);
     return () => clearTimeout(timer);
-  }, [text, genre, debounceMs, run]);
+  }, [text, genre, bedtime, debounceMs, run]);
 
   // Abort whatever is open when the screen goes away. Without this, leaving
   // Explore mid-search leaves a request running and a `setState` aimed at an

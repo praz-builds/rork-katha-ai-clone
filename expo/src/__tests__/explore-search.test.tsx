@@ -215,6 +215,18 @@ describe("the offline fallback", () => {
     );
     expect(byGenre.length).toBeGreaterThan(0);
     for (const story of byGenre) expect(story.genre).toBe("fantasy");
+
+    const bedtime = searchLocalCatalogue(
+      { text: "", genre: null, bedtime: true },
+      [
+        { ...target, id: "all-ages", audienceMode: "kids" },
+        { ...target, id: "adult", audienceMode: "adult" },
+      ],
+    );
+    // Bedtime is not a friendlier name for all-ages. The bundled fallback
+    // has no editorial bedtime tags, so the screen explains that it needs a
+    // connection rather than re-labelling either row.
+    expect(bedtime).toEqual([]);
   });
 });
 
