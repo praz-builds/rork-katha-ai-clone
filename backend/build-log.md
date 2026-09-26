@@ -7,6 +7,80 @@
 
 ---
 
+## 2026-09-26 UTC — The contract catches up with the reviewer that is actually running
+
+**Session:** reconciling the docs with what shipped, on branch
+`codex/mention-checkout-pr-head` (#148) after #146, #149 and #150 merged.
+
+### Why this was urgent rather than tidy
+
+`main`'s `AGENTS.md` still told every agent to "wait for **Claude Review**'s
+incremental review (the `Review the diff` check)". That check belongs to the
+GitHub Action workflows, which are `disabled_manually` and gated behind an
+unset `CLAUDE_ACTION_ENABLED`, so it can never post. Agents following the
+contract waited for something that cannot happen and reported themselves
+blocked -- which is exactly what #149 and #150 did before they were merged by
+hand. The fix existed on this branch the whole time and could not land because
+the branch was behind `main`.
+
+### What the contract says now
+
+- **The reviewer is a cloud routine, not a GitHub Action.** `Katha PR review`
+  (`trig_01YEy4UFeLZxFSPvaN1p8jhm`), fired by a webhook on
+  `pull_request.opened`, `synchronize` and `ready_for_review`, with a daily
+  03:00 UTC cron as a safety net.
+- **Its comment is the merge gate, not a check.** A fully green check list
+  does not mean a review happened. There is no **Resolve conversation** button
+  on a plain PR comment, so a finding is answered by replying with the commit
+  that addressed it.
+- **The review loop is a loop.** Push, read every finding, fix it or say why
+  it is wrong, push again, repeat until the newest comment covers the current
+  head. Stopping after round one because findings exist is the failure this
+  section exists to prevent.
+- **A red `Review the diff` is stale and blocks nothing.**
+- **The reviewer's prompt is not in this repository.** It lives in the routine.
+  Editing the copy in `.github/workflows/claude-review.yml` changes nothing and
+  reports no error.
+
+### Two factual corrections, both load-bearing
+
+- **`AGENTS.md` claimed neither CodeAnt nor CodeRabbit reviews this repository.
+  CodeAnt does.** The app is still installed and comments on every pull
+  request including drafts. It is recorded as advisory, and explicitly not the
+  gate, so an agent meeting a second bot's findings knows what weight they
+  carry.
+- **`AGENTS.md` claimed branch protection is unavailable on this plan.** That
+  was true when the repository was private; it is public now, so protection is
+  available and simply is not configured. `branches/main/protection` returns
+  "Branch not protected" and there are no rulesets. Nothing is mechanically
+  enforced -- the documented gate is the only gate -- and that is now a choice
+  on the record rather than a limitation.
+
+### `source-of-truth/` said four canonical documents; there are five
+
+`DESIGN_SYSTEM.md` sits in that folder and opens "**This file is canonical for
+visual language**", but the README's table, its precedence list, and both
+`AGENTS.md` references all said four and omitted it. An agent asking the
+contract what governs type or colour was pointed at four documents, none of
+which was the one that does. It is in the table and the precedence order now,
+placed last because it governs how the other four look rather than what they
+decide.
+
+`README.md` also pointed at `CLAUDE.md` for the merge gate; that file only
+redirects to `AGENTS.md`.
+
+### Verification
+
+- Docs only. No source file, schema, or edge function changed, so there is no
+  deploy obligation and no test to run.
+- Every claim written here was checked against the live systems rather than
+  inherited: the routine's `enabled` flag and last run status through the API,
+  the workflows' `disabled_manually` state through `gh workflow list`, branch
+  protection and rulesets through the REST API, and CodeAnt's presence from
+  its own comments on #148 and #150.
+
+---
+
 ## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
 
 **Session:** wiring an automatic reviewer onto every pull request, in the seat
@@ -77,7 +151,9 @@ were all documentation that contradicted the shipped state:
 or say why it is wrong, push again, repeat until the newest comment covers the
 current head and raises nothing. This exists because #149 and #150 stalled --
 agents read "wait for Claude Review", waited for a check that a disabled
-workflow can never post, and reported themselves blocked.
+workflow can never post, and reported themselves blocked. Both were merged by
+hand on 2026-09-26 once that was understood; the contract fix itself did not
+reach `main` until #148.
 
 ### Round 2 and 3: the gate did not gate, and the contract went stale
 
