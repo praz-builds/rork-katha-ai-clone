@@ -75,8 +75,11 @@
 
 ### Verification
 
-- `pnpm test`: 153 suites, 1626 tests pass (unchanged at this head: the two fixes changed copy that existing tests assert). `pnpm typecheck` clean. ESLint
-  clean over every changed file.
+- At this head, the focused reader-preferences regressions pass: 2 suites, 20
+  tests. `pnpm typecheck` is clean and ESLint is clean over every changed file.
+  The earlier 153-suite / 1626-test full-suite total is retained as historical
+  baseline only; this round did not complete a fresh full-suite run, so it is
+  not claimed as this head's local result.
 - The two behaviour fixes are proved, not asserted: the hardware-Back test
   was run against the code with the new effect removed and **fails**, and the
   language round trip asserts the exact `set_preferences` body.
