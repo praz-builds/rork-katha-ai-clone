@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { formatNumber } from "@/components/KathaPrimitives";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 export type Stat = {
   label: string;
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   value: {
-    fontFamily: fonts.display,
+    ...profileHeading,
     color: colors.ink,
     fontSize: 20,
   },

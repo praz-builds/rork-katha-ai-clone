@@ -27,6 +27,23 @@
  * that follows is expected rather than a detour. Writers and "both" keep their
  * two.
  *
+ * ## Which questions take several answers (2026-09-25)
+ *
+ * The writer's two questions ("What do you want to write?", "What usually
+ * stops you?") and the reader's mood and routine questions take several
+ * answers; everything else takes one. `selectionFor` is the table.
+ * Purpose stays single-select because it routes: the screens after it are
+ * that purpose's own, and "A bit of both" is already an option. The
+ * reader's "How do you like your stories?" and the two "both" questions stay
+ * single too, because one of their options IS the combination ("A mix of
+ * both", "Balance both") or the question asks for the one that fits most.
+ *
+ * Every answer leaves as a list in TAP ORDER, and the first tap is the
+ * primary: it is what a consumer that needs one value reads (Home's Tonight
+ * rail keys on the first mood). An option marked `exclusive` ("Surprise me",
+ * "Whenever I get time") is a whole answer on its own: choosing it clears the
+ * others, and choosing another clears it.
+ *
  * ## The progress row
  *
  * The same short pills the character screens draw, from the first question,
@@ -35,8 +52,9 @@
  * it on the next screen started four pills in.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -70,7 +88,7 @@ import {
 } from "@/theme";
 import { UI_GENRES } from "@/types/domain";
 import type { Genre, OnboardingPurpose } from "@/types/domain";
-import portraitPriya from "../../assets/onboarding/portrait-priya.png";
+import { STAGE_CAST } from "@/lib/onboarding-cast";
 
 /**
  * How many genre interests a reader must pick before Continue activates on
@@ -86,16 +104,21 @@ type QuestionScreen = QuestionStep;
 /** Clearance under a pinned CTA, before the safe-area inset. `CharacterOnboarding`'s. */
 const CTA_BOTTOM = 40;
 
-/** What the questions collected, handed on to the character flow. */
+/**
+ * What the questions collected, handed on to the character flow.
+ *
+ * The three answer lists are option keys in the order they were tapped; the
+ * first is the primary. A single-select question leaves a list of one.
+ */
 export type KathaOnboardingAnswers = {
   name: string;
   genres: string[];
   otherGenre: string;
-  refine: string;
+  refine: string[];
   /** The reader's "what are you in the mood for". Empty on the other paths. */
-  mood: string;
+  mood: string[];
   /** Empty when a reader skipped "when do you usually read". */
-  moment: string;
+  moment: string[];
 };
 
 export type KathaCharacterPathPayload = {
@@ -110,7 +133,63 @@ export type KathaOnboardingFlowV2Props = {
   onCharacterPath: (payload: KathaCharacterPathPayload) => void;
 };
 
-type Option = { k: string; icon: string; label: string; sub?: string };
+type Option = {
+  k: string;
+  icon: string;
+  label: string;
+  sub?: string;
+  /**
+   * A whole answer on its own, on a multi-select screen: choosing it clears
+   * the other picks, and choosing another option clears it. "Surprise me"
+   * alongside "Something emotional" is not an answer anybody means.
+   */
+  exclusive?: boolean;
+};
+
+/** One answer, or as many as apply. */
+export type Selection = "single" | "multi";
+
+/**
+ * Which questions take several answers. The one table; the screens and the
+ * tests read it. See the file header for why each single-select stays single.
+ */
+export function selectionFor(
+  screen: QuestionScreen,
+  purpose: OnboardingPurpose | "",
+): Selection {
+  switch (screen) {
+    case "refine":
+      return purpose === "write" ? "multi" : "single";
+    case "mood":
+      return "multi";
+    case "moment":
+      return purpose === "both" ? "single" : "multi";
+    default:
+      return "single";
+  }
+}
+
+/**
+ * The answer list after a tap. Pure, so the rules are tested without a screen.
+ *
+ * Single-select replaces (and a second tap on the chosen row keeps it, the
+ * way a radio does). Multi-select toggles, keeps tap order, and honours
+ * `exclusive` options in both directions.
+ */
+export function toggleAnswer(
+  current: readonly string[],
+  key: string,
+  mode: Selection,
+  options: readonly Option[],
+): string[] {
+  if (mode === "single") return [key];
+  if (current.includes(key)) return current.filter((k) => k !== key);
+  const exclusive = new Set(
+    options.filter((option) => option.exclusive).map((option) => option.k),
+  );
+  if (exclusive.has(key)) return [key];
+  return [...current.filter((k) => !exclusive.has(k)), key];
+}
 
 // ── Static data ─────────────────────────────────────────────────────────────
 const PURPOSES: readonly Option[] = [
@@ -146,7 +225,7 @@ export const MOODS: readonly Option[] = [
   { k: "emotional", icon: "💔", label: "Something emotional", sub: "Ache, catharsis, connection." },
   { k: "quick", icon: "⚡", label: "Something quick", sub: "Under 20 minutes." },
   { k: "comforting", icon: "🕯️", label: "Something comforting", sub: "Warm, low-stakes, safe." },
-  { k: "surprise", icon: "🎲", label: "Surprise me", sub: "Katha picks based on your genres." },
+  { k: "surprise", icon: "🎲", label: "Surprise me", sub: "Katha picks based on your genres.", exclusive: true },
 ];
 
 /** The reader's "when do you usually read". One line each: a routine, not a pitch. */
@@ -155,7 +234,7 @@ const MOMENTS_READ: readonly Option[] = [
   { k: "commute", icon: "🚇", label: "During commutes" },
   { k: "breaks", icon: "☕", label: "Short breaks" },
   { k: "weekend", icon: "🌞", label: "Weekends" },
-  { k: "whenever", icon: "🕒", label: "Whenever I get time" },
+  { k: "whenever", icon: "🕒", label: "Whenever I get time", exclusive: true },
 ];
 const MOMENTS_WRITE: readonly Option[] = [
   { k: "draft", icon: "💡", label: "Turn an idea into a draft", sub: "Help me get from blank page to first version" },
@@ -222,9 +301,9 @@ export default function KathaOnboardingFlowV2(
   const [genres, setGenres] = useState<Partial<Record<Genre, boolean>>>({});
   const [genreOrder, setGenreOrder] = useState<Genre[]>([]);
   const [purpose, setPurpose] = useState<OnboardingPurpose | "">("");
-  const [refine, setRefine] = useState("");
-  const [mood, setMood] = useState("");
-  const [moment, setMoment] = useState("");
+  const [refine, setRefine] = useState<string[]>([]);
+  const [mood, setMood] = useState<string[]>([]);
+  const [moment, setMoment] = useState<string[]>([]);
 
   /**
    * Changing the purpose clears the answers that belong to the old one.
@@ -238,9 +317,9 @@ export default function KathaOnboardingFlowV2(
   const choosePurpose = (next: OnboardingPurpose) => {
     if (next === purpose) return;
     setPurpose(next);
-    setRefine("");
-    setMood("");
-    setMoment("");
+    setRefine([]);
+    setMood([]);
+    setMoment([]);
   };
 
   const fname = name.trim() || "there";
@@ -278,7 +357,7 @@ export default function KathaOnboardingFlowV2(
    * downstream differs. `purpose` rides along so the character flow can voice
    * itself without re-asking.
    */
-  const finish = (finalMoment: string) => {
+  const finish = (finalMoment: string[]) => {
     if (purpose === "") return;
     onCharacterPath({
       purpose,
@@ -313,6 +392,28 @@ export default function KathaOnboardingFlowV2(
     const target = previousScreen(screen, purpose);
     if (target !== null) setScreen(target);
   };
+
+  /*
+    Android's hardware Back, which the arrow above has always handled but this
+    file never did. Without it, Back on any of the six questionnaire screens
+    closed the whole app -- `name`, `genres`, `genreOrder`, `purpose`,
+    `refine`, `mood` and `moment` are all local state here and nothing is
+    persisted, so reopening started at the intro with every answer gone, while
+    the arrow one line up went back a step with everything intact.
+
+    Not consumed on the first screen: `previousScreen` answers null there, so
+    Back falls through to the system and exits, which is what leaving the
+    first screen of a flow should do.
+  */
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      const target = previousScreen(screen, purpose);
+      if (target === null) return false;
+      setScreen(target);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [screen, purpose]);
 
   const { steps, currentStep } = questionStep(screen, purpose);
 
@@ -366,7 +467,7 @@ export default function KathaOnboardingFlowV2(
           onNext={next}
           // Skip is the reader's, and it leaves with no answer rather than
           // with whatever was tapped and then reconsidered.
-          onSkip={purpose === "read" ? () => finish("") : undefined}
+          onSkip={purpose === "read" ? () => finish([]) : undefined}
         />
       )}
     </View>
@@ -413,15 +514,19 @@ function OptionRow({
   label,
   sub,
   selected,
+  multi,
   onPress,
-}: Option & { selected: boolean; onPress: () => void }) {
+}: Option & { selected: boolean; multi: boolean; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="radio"
+      // A checkbox on a screen that takes several answers, a radio on one
+      // that takes one: the role is how a screen reader user learns which
+      // kind of question this is before they have tapped anything.
+      accessibilityRole={multi ? "checkbox" : "radio"}
       accessibilityLabel={label}
       accessibilityHint={sub}
-      // A radio announces "checked"; `selected` stays so the state reads the
+      // Both announce "checked"; `selected` stays so the state reads the
       // same way as the genre chips' in the tree.
       accessibilityState={{ selected, checked: selected }}
       style={[styles.optRow, selected && styles.optRowSelected]}
@@ -444,15 +549,24 @@ function OptionRow({
   );
 }
 
-/** A screen of single-select rows under a heading, with a pinned CTA. */
+/**
+ * Option rows under a heading, with a pinned CTA.
+ *
+ * `mode` decides whether a tap replaces the answer or adds to it
+ * (`toggleAnswer`). A multi-select screen says so in a line under the
+ * heading, because the rows look the same either way and a person who
+ * cannot tell will pick one and move on.
+ */
+const MULTI_HINT = "Pick as many as you like.";
+
 function OptionScreen({
   title,
   sub,
   options,
   value,
   onChange,
+  mode = "single",
   cta,
-  enabled,
   onNext,
   wordmark,
   footer,
@@ -461,10 +575,10 @@ function OptionScreen({
   title: string;
   sub?: string;
   options: readonly Option[];
-  value: string;
-  onChange: (value: string) => void;
+  value: readonly string[];
+  onChange: (value: string[]) => void;
+  mode?: Selection;
   cta: string;
-  enabled: boolean;
   onNext: () => void;
   wordmark?: boolean;
   /** Under the CTA: the reader's Skip. */
@@ -484,20 +598,25 @@ function OptionScreen({
           : null}
         <Text style={styles.h1} accessibilityRole="header">{title}</Text>
         {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+        {mode === "multi" ? <Text style={styles.multiHint}>{MULTI_HINT}</Text> : null}
       </View>
       <ScrollView style={styles.grow} contentContainerStyle={styles.optionBody}>
         {options.map((o) => (
           <OptionRow
             key={o.k}
             {...o}
-            selected={value === o.k}
-            onPress={() => onChange(o.k)}
+            multi={mode === "multi"}
+            selected={value.includes(o.k)}
+            onPress={() => onChange(toggleAnswer(value, o.k, mode, options))}
           />
         ))}
         {after}
       </ScrollView>
       <View style={styles.footPad}>
-        <PrimaryButton label={cta} enabled={enabled} onPress={onNext} />
+        {/* Validation is one rule for every screen here: at least one answer.
+            The reader's routine question is the only one that can be left,
+            and it leaves through Skip, not through an enabled Continue. */}
+        <PrimaryButton label={cta} enabled={value.length > 0} onPress={onNext} />
         {footer}
       </View>
     </View>
@@ -648,10 +767,10 @@ function PurposeScreen({
       title="What brings you to Katha?"
       sub="We will shape your first experience around what matters most."
       options={PURPOSES}
-      value={purpose}
-      onChange={(value) => setPurpose(value as OnboardingPurpose)}
+      value={purpose ? [purpose] : []}
+      // Always single: the purpose decides which screens follow.
+      onChange={(value) => setPurpose(value[0] as OnboardingPurpose)}
       cta="Continue"
-      enabled={Boolean(purpose)}
       onNext={onNext}
     />
   );
@@ -667,8 +786,8 @@ function RefineScreen({
 }: {
   fname: string;
   purpose: OnboardingPurpose | "";
-  refine: string;
-  setRefine: (value: string) => void;
+  refine: string[];
+  setRefine: (value: string[]) => void;
   onNext: () => void;
 }) {
   const opts = purpose === "read"
@@ -695,8 +814,8 @@ function RefineScreen({
       options={opts}
       value={refine}
       onChange={setRefine}
+      mode={selectionFor("refine", purpose)}
       cta="Continue"
-      enabled={Boolean(refine)}
       onNext={onNext}
     />
   );
@@ -710,8 +829,8 @@ function MoodScreen({
   onNext,
 }: {
   fname: string;
-  mood: string;
-  setMood: (value: string) => void;
+  mood: string[];
+  setMood: (value: string[]) => void;
   onNext: () => void;
 }) {
   return (
@@ -724,8 +843,8 @@ function MoodScreen({
       options={MOODS}
       value={mood}
       onChange={setMood}
+      mode={selectionFor("mood", "read")}
       cta="Continue"
-      enabled={Boolean(mood)}
       onNext={onNext}
     />
   );
@@ -742,8 +861,8 @@ function MomentScreen({
 }: {
   fname: string;
   purpose: OnboardingPurpose | "";
-  moment: string;
-  setMoment: (value: string) => void;
+  moment: string[];
+  setMoment: (value: string[]) => void;
   onNext: () => void;
   onSkip?: () => void;
 }) {
@@ -769,10 +888,10 @@ function MomentScreen({
       options={opts}
       value={moment}
       onChange={setMoment}
+      mode={selectionFor("moment", purpose)}
       // "Build my profile" pointed at a progress ring that no longer exists;
       // every purpose goes to the same next screen, and the button says so.
       cta="Continue"
-      enabled={Boolean(moment)}
       onNext={onNext}
       after={purpose === "read" ? <UpNextCard /> : null}
       footer={onSkip
@@ -798,7 +917,7 @@ function MomentScreen({
  * The next screen puts three portraits in front of somebody who has only
  * answered questions so far, and a person who does not know why a character
  * is suddenly being offered reads it as a detour. This card says it a screen
- * early, in the design's words, with the side-card portrait the next screen
+ * early, in the design's words, with the hero portrait the next screen
  * fans open. Not a control: it has no press and is one accessible element.
  */
 function UpNextCard() {
@@ -809,7 +928,9 @@ function UpNextCard() {
       accessibilityLabel="Up next: be the lead in these stories. Describe yourself once. Katha writes you in."
     >
       <Image
-        source={portraitPriya}
+        // The next screen's hero, so the face here is the one that steps
+        // forward there.
+        source={STAGE_CAST[0].source}
         resizeMode="cover"
         style={styles.upNextPortrait}
       />
@@ -863,6 +984,13 @@ const styles = StyleSheet.create({
   wordmarkSlot: { marginBottom: spacing.xxxl, marginTop: spacing.xs },
   h1: { ...onboardingType.title, color: colors.ink },
   sub: { ...onboardingType.helper, color: colors.muted, marginTop: spacing.related },
+  // Ink, not accent: the orange is under 3:1 on this ground at helper size.
+  multiHint: {
+    ...onboardingType.helper,
+    color: colors.ink,
+    fontWeight: "700",
+    marginTop: spacing.related,
+  },
   /*
     One step below the sub, not two. The field sat `spacing.xxl` under a sub
     that already carries its own `related` top margin, which read as a gap

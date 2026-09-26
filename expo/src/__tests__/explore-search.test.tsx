@@ -59,7 +59,6 @@ const renderWith = (
     <ExploreScreen
       stories={seedStories}
       onStory={jest.fn()}
-      onProfile={jest.fn()}
       searchOptions={{ search, debounceMs }}
     />,
   );

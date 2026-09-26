@@ -647,14 +647,19 @@ export type CharacterEntryContext = {
   name: string;
   genreInterests: string[];
   otherGenre?: string;
-  refine?: string;
   /**
-   * The reader's "what are you in the mood for", as a `MOODS` key. Session
-   * state only: the question says "tonight", so Home reads it for the
-   * Tonight rail and it is not persisted. Absent on the other paths.
+   * The answer lists are option keys in tap order, and the first is the
+   * primary (`KathaOnboardingFlowV2`, `selectionFor`). A single-select
+   * question leaves a list of one.
    */
-  mood?: string;
-  moment?: string;
+  refine?: string[];
+  /**
+   * The reader's "what are you in the mood for", as `MOODS` keys. Session
+   * state only: the question says "tonight", so Home reads the FIRST one for
+   * the Tonight rail and it is not persisted. Empty on the other paths.
+   */
+  mood?: string[];
+  moment?: string[];
 };
 
 export type Screen =

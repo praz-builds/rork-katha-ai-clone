@@ -710,17 +710,16 @@ export async function saveDisplayName(
  * rather than an empty year -- a grid of blank squares says "you did nothing"
  * to somebody who may well have done something.
  *
- * With no `authorId` this is the caller's own calendar; with one it is that
- * author's, which is what the public profile draws.
+ * This client only asks for the caller's own calendar. Public profiles show
+ * an author's published stories instead; another person's activity is not a
+ * visitor-facing signal.
  */
-export async function fetchActivityCalendar(
-  authorId?: string,
-): Promise<string[] | null> {
+export async function fetchActivityCalendar(): Promise<string[] | null> {
   if (!isSupabaseConfigured) return null;
   try {
     await bootstrapUser();
     const { data, error } = await supabase.functions.invoke("profile", {
-      body: { action: "calendar", ...(authorId ? { authorId } : {}) },
+      body: { action: "calendar" },
     });
     if (error || !Array.isArray(data?.days)) return null;
     return (data.days as unknown[]).filter(

@@ -11,6 +11,7 @@
  */
 import { buildFeedRows, continueReading, yourStories } from "@/screens/HomeScreen";
 import { dailyFeedSeed } from "@/lib/feed-shuffle";
+import { primaryMood } from "@/lib/home-tonight";
 import { stories } from "@/data/seed";
 import { genreLabels } from "@/theme";
 import type { Genre, Story } from "@/types/domain";
@@ -348,5 +349,19 @@ describe("variety across the rails", () => {
       field, [], [], [], null, dailyFeedSeed("reader-a", new Date(2026, 8, 24)),
     );
     expect(rows.find((row) => row.key === "trending")!.stories[0].id).toBe(popular.id);
+  });
+});
+
+/*
+  The mood question takes several answers since 2026-09-25, and the rail has
+  one title. It is keyed on the first mood tapped; a key that is not a mood
+  is passed over rather than blanking the rail.
+*/
+describe("primaryMood", () => {
+  it("is the first known mood, in tap order", () => {
+    expect(primaryMood(["emotional", "escape"])).toBe("emotional");
+    expect(primaryMood(["constructor", "guessing"])).toBe("guessing");
+    expect(primaryMood([])).toBeNull();
+    expect(primaryMood(undefined)).toBeNull();
   });
 });

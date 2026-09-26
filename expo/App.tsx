@@ -96,6 +96,7 @@ import {
 } from "@/lib/welcome-flight";
 import { genreLabels } from "@/theme";
 import { loadDraft } from "@/lib/draft-storage";
+import { primaryMood } from "@/lib/home-tonight";
 import type {
   CharacterEntryContext,
   CreateDraft,
@@ -1202,7 +1203,9 @@ export default function App() {
             onPaywall={() => setScreen({ name: "paywall" })}
             preferredGenres={toGenreKeys(onboardingEntry?.genreInterests)}
             // "Tonight only", so it lives for this session and no longer.
-            mood={onboardingEntry?.mood ?? null}
+            // The mood question takes several answers; the rail is keyed on
+            // the first one tapped, which is the primary by contract.
+            mood={primaryMood(onboardingEntry?.mood)}
             generatedStories={generatedStories}
             stories={browsableStories}
             onStory={openStory}
@@ -1220,7 +1223,6 @@ export default function App() {
             stories={browsableStories}
             onStory={openStory}
             onOpenStory={(story) => void openDiscoveredStory(story)}
-            onProfile={() => goTabs("profile")}
           />
         );
       case "create":

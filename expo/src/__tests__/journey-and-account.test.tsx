@@ -36,6 +36,11 @@ jest.mock("@/lib/profile", () => ({
   fetchOwnProfile: (...args: unknown[]) => mockFetchOwnProfile(...args),
   deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
+// VoicesScreen plays samples through expo-av, which has no native module in
+// Jest. The samples themselves are covered in voice-preview.test.tsx.
+jest.mock("expo-av", () => ({
+  Audio: { Sound: { createAsync: jest.fn(() => new Promise(() => {})) } },
+}));
 jest.mock("@/lib/voices", () => ({
   fetchNarrationVoices: (...args: unknown[]) =>
     mockFetchNarrationVoices(...args),

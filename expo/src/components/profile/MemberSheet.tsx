@@ -3,7 +3,7 @@ import { Check, Crown, X } from "lucide-react-native";
 import i18n from "@/i18n";
 import { revenueCatService } from "@/lib/revenuecat";
 import { manageSubscriptionsUrl } from "@/lib/store-catalog";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { Button } from "@/components/Button";
 
 /**
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: spacing.sm,
-    fontFamily: fonts.display,
+    ...profileHeading,
     color: colors.ink,
     fontSize: 24,
   },

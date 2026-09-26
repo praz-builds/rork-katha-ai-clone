@@ -106,6 +106,337 @@ PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
 from a fork is a bare branch name that resolves against *this* repository. The
 shipped guard resolves a ref only when the pull request is open and its head
 repository is this one, and falls back to the default branch otherwise.
+## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
+
+**Session:** rebased `codex/onboarding-culture-remediation` onto main after
+#149 merged. No production action was taken.
+
+- `ReaderContextSheet` now uses the shared `profileHeading` UI token rather
+  than the story-only display face. The global Profile typography guard covers
+  the sheet, so a future direct display-font use fails the test.
+- The reader-preferences summary test now pins both plural forms: a hidden-only
+  value is `2 languages`, while a known list remains `Hindi, 2 more`.
+- `AGENTS.md` now says plainly that `00100_reader_preferences` and the seven
+  functions in its shared-module closure are pending deployment, with migration
+  first and explicit authorization required. This is a record correction, not
+  a deployment.
+
+### Verification
+
+- Focused Jest: 3 suites / 38 tests passed (reader preferences, context sheet,
+  and Profile typography); the new plural assertion was also shown to fail
+  against the old bare-count behaviour. Affected-file ESLint and the mandatory
+  diff security scan passed. Expo typecheck was started but did not complete
+  before this session's command window ended, so it is not recorded as passing.
+  No production-level test or deployment occurred.
+
+---
+
+## 2026-09-26 UTC — Review round: hardware Back was half-fixed, and a Save could erase a language
+
+**Session:** acting on the standing review of #150. Branch
+`codex/onboarding-culture-remediation`.
+
+### What changed for a person using the app
+
+- **Android's hardware Back now works on the six questionnaire screens.**
+  It was added to `CharacterOnboarding` only, so the PR's headline claim was
+  true from the Meet screen onward and false before it. On genres, purpose,
+  refine, mood or moment, Back closed the whole app -- every answer there is
+  local `useState` with nothing persisted, so reopening started at the intro
+  with the lot gone, while the arrow one line above went back a step with
+  everything intact. Back now follows the same table as the arrow and falls
+  through to the system only on the first screen, where leaving is correct.
+- **A language set on a newer build is no longer erased by the next Save.**
+  The client's read filtered unknown ids out and its write sent back only
+  what it recognised, so a reader who set a 31st language and then opened an
+  older build lost it silently on Save. `SPOKEN_LANGUAGES` is append-only by
+  contract, so this was reachable. Unknown ids are now carried through the
+  round trip untouched, counted against the cap (the server counts them, so
+  the chips must too, or an in-budget-looking Save is refused), and the sheet
+  says plainly that something it cannot show is held on the account.
+
+### Two smaller ones
+
+- `readerPrefsChosenByUserRef` was a boolean latched forever: after one save
+  no read could replace the value for the rest of the screen's life, so a
+  save landing late pinned a stale value behind a reopened sheet. It is a
+  timestamp now, which shadows only the reads already in flight at save time
+  -- all it was ever for.
+- `dismissPaywall.current` was assigned in the render body rather than an
+  effect. Idempotent, so nothing broke; `pendingPortrait` and the BackHandler
+  in the same file both use effects.
+
+### Round 2 of the review: the new field had a surface it had not reached
+
+- **The You row told a reader with one hidden language that they had none.**
+  `readerPreferencesSummary` reads `spokenLanguages` only and was not
+  revisited when `unrecognisedLanguages` was added, so a reader whose only
+  language is a newer id saw "Add the languages you speak and your city" one
+  tap from a sheet saying that language is held. It counts them now
+  ("Hindi, 1 more").
+- **"Pick up to 3" sat above chips the reader could not pick.** The hidden
+  language takes a slot, which the copy never said, so the remaining chips
+  were simply dead. The hint now names it.
+- **`hidden` read the live prop while `languages` was snapshotted**, so a read
+  landing mid-edit could lock the chips while the typed values stayed from
+  before it. Both are seeded in the same effect now.
+- `ONBOARDING_FLOW.md` said hardware Back "is now always consumed". True on
+  the character path, and this branch is what made it false elsewhere: the
+  questionnaire deliberately does not consume it on `name`. The contract
+  records both rules and the one place they differ.
+
+### Round 3 of the review: the replacement copy was not readable
+
+- **"1 more" was the whole subtitle** for the reader this branch fixed it
+  for. The count form only reads as a count when a list precedes it, and with
+  no known languages there is no list -- "1 more" than what. With a city it
+  read as a truncated list that was never there. The empty-label case has its
+  own branch now: "1 language".
+- **The sheet's second sentence lost its subject.** React Native makes each
+  `<Text>` its own accessibility element, so VoiceOver and TalkBack read "It
+  is kept on your account..." with the antecedent in a different element.
+  Both sentences are one `<Text>` now.
+
+### Verification
+
+- At this head, the focused reader-preferences regressions pass: 2 suites, 20
+  tests. `pnpm typecheck` is clean and ESLint is clean over every changed file.
+  The earlier 153-suite / 1626-test full-suite total is retained as historical
+  baseline only; this round did not complete a fresh full-suite run, so it is
+  not claimed as this head's local result.
+- The two behaviour fixes are proved, not asserted: the hardware-Back test
+  was run against the code with the new effect removed and **fails**, and the
+  language round trip asserts the exact `set_preferences` body.
+- **A note on direction.** Carrying unknown ids back is safe because the
+  server is the newer of the two here -- it wrote the id, so it accepts it.
+  Its write path does reject an id it does not know, so if that ever fires
+  with hidden ids present the sheet now says the app is out of date rather
+  than "remove the one you added last", which names something the reader
+  cannot see.
+- No backend file changed in this round, so the deploy set recorded earlier
+  on this branch is unaffected.
+
+---
+
+## 2026-09-25 UTC — Onboarding takes several answers, the stage shows three different people, and stories know the reader's languages and city
+
+**Session:** completion of the dirty `codex/onboarding-culture-remediation`
+worktree. Not deployed. The later deploy is migration `00100` first, then
+**seven** functions -- every one whose bundle now includes
+`_shared/reader-preferences.ts` (`deno info` over each `index.ts`):
+`profile`, `generate-story`, `generate-story-stream`, and, through
+`_shared/story-prompts.ts`, `continue-story`, `edit-story`,
+`reimagine-chapter` and `shape-story`. Deploying only the first three would
+leave four functions behind main.
+
+### Onboarding
+
+- **Multi-select where the question allows it.** `selectionFor` is the table:
+  the writer's two intent questions and the reader's mood and routine are
+  multi-select; purpose, R-how and the "both" questions stay single because
+  they route or already offer the combination. Answers are `string[]` in tap
+  order; the first is the primary (`primaryMood` keys Home's Tonight rail).
+  *Surprise me* and *Whenever I get time* are exclusive. Session state only.
+- **Back is one table** (`backFrom`) for the arrow and Android hardware Back.
+  After the code verifies, W4 and W6 point at each other and nothing earlier
+  is reachable. Hardware Back is always consumed; it used to close the app.
+- **Three different people on W3's stage** (`STAGE_CAST`, three 450 × 630
+  WebPs with no baked frame). The two old PNGs are deleted.
+
+### Reader context (migration 00100)
+
+- `reader_preferences`: up to three spoken languages (closed list of 30 ISO
+  639 ids) and an optional city. RLS on, all client grants revoked, written
+  only by `set_reader_preferences` (security definer, `search_path = ''`,
+  execute granted to `service_role` only). Every real function is
+  `pg_catalog`-qualified, including `btrim` and `char_length` inside the
+  CHECKs and the `now()` default. A trigger on the `profiles.deleted_at`
+  tombstone deletes the row, and a late save from a tombstoned account
+  returns `gone`.
+- `profile` gains `preferences` / `set_preferences`, keyed on the verified
+  token and never on the body. The endpoint validates first (Unicode letters
+  and marks, digits, `. , ' ( ) -`, 60 characters) and the CHECKs are the
+  backstop.
+- Generation reads the row as service role for the first chapter and renders
+  `buildReaderContextBlock` after Story world: cultural context, **never** the
+  output language, and the brief wins. The city is fenced with `userField`.
+  A failed read produces no block. **Known gap:** `shape-story` does not
+  receive it yet.
+- You: a *Global preferences* heading over voices, music, Story world and the
+  new *Languages and home* sheet. Send feedback moves to the next group.
+
+### Fixes made while completing
+
+From the review round (Opus subagent, CHANGES REQUESTED, six findings, all
+fixed):
+
+- Deploy list was three functions; it is seven (above).
+- The *Languages and home* sheet showed an empty form when the first read
+  failed, and Save replaces both fields, so one tap could erase a saved city.
+  The form now appears only once the value has loaded (Try again on failure),
+  and it is seeded once per opening so a late read cannot overwrite typing.
+  `reader-context-sheet.test.tsx`.
+- Back from a verified W4 to W6 carried an unsubmitted edit, so Meet showed a
+  new name beside a portrait (and a saved row) drawn for the old one. Back now
+  restores the drawn sheet; the test fails with the fix removed.
+- The docs named an S3 option "Reading and Writing"; it is **A bit of both**.
+- `home-place` added to `USER_FIELD_LABELS`, so the fence tests cover it.
+- The city can shape published stories; the sheet and STORY_PROMPT_SYSTEM.md
+  now say so.
+
+From CodeAnt on the PR (four threads):
+
+- **Fixed.** A save racing an account deletion could pass the tombstone
+  check and commit a city beside a deleted account. `set_reader_preferences`
+  now reads the profile `FOR SHARE`, which conflicts with the tombstone
+  UPDATE, so the two serialise.
+- **Fixed.** A save that lands after the sheet was closed and reopened closed
+  the new opening. It now reports the stored value and leaves the new opening
+  alone.
+- **Declined, with reasons on the thread:** reading preferences at request
+  start (a snapshot per request is the contract), and updating `drawnSheet`
+  before the draw resolves (it mirrors `portraitKey`, and `redraw` clears the
+  old face at once).
+
+From the standing reviewer (cloud routine, head `b46cc50`). Worked by this
+session and a concurrent agent in the same worktree; its tests are kept
+alongside these:
+
+- **Fixed (asked before merge).** The CTA at the reimagine cap went to the
+  paywall with the undrawn edit still in state, and `finish` handed on the
+  new name with the old face. It now restores the drawn sheet as Back does.
+- **Fixed.** Every server refusal on Save read "check your connection".
+  `saveReaderPreferences` now returns `saved` / `refused` (the server's own
+  400 message, or a deleted-account line for 404) / `failed`, and the sheet
+  shows the reason. A client one language ahead of a deployed function now
+  says so instead of looking like an outage.
+- **Fixed.** Android Back on the paywall was a dead key. `backFrom("paywall")`
+  is `"dismiss"`, the × path; `leavePaywall` is now one-shot so two exits
+  cannot raise two permission prompts. Welcome stays inert.
+- **Fixed.** You read preferences on every mount. They are held in memory for
+  the session (`READER_PREFERENCES_FRESH_MS`, 5 min, never AsyncStorage),
+  drawn at once on return, replaced on save, and dropped by `clearOwnProfile`
+  and on an account switch.
+- **Fixed (second standing review, of `8d235e3`).** The city field's
+  `maxLength` silently cut a long paste and made the length message
+  unreachable; it is removed, so the message explains and Save stays off.
+  `readerPrefsChosenByUserRef` now guards only the value, so a later read
+  always settles the status and the row can never stick on "Loading…".
+  `drawnSheet`'s comment now says what it holds: the sheet the current
+  request was fired for, in step with `portraitKey`.
+- **Fixed (standing reviews of `759b56d` and `bc6eae8`).** A save that lands
+  after an account switch now returns `stale` and is reported to nobody, as
+  the read already was -- for symmetry with the read, not a reachable path:
+  every epoch bump happens with the tab tree unmounted. `set_preferences` refusals
+  carry a stable `reason` code and the client words its own copy from it --
+  the reader never sees "spokenLanguages has an unknown language" -- and a
+  404 means "account deleted" only when the body says `account_deleted`, not
+  for a gateway 404. The hardware-Back comment matched the old paywall row.
+  From `bc6eae8`: the length test now asserts the absent `maxLength` prop
+  (the harness never enforces it, so the old assertion could not fail), and
+  an indentation slip is fixed.
+- **Fixed (standing review of `4304e87`, non-blocking).** Changing a chip
+  clears a refusal, so "remove the one you added last" goes away once the
+  reader does it. A test pins `REFUSAL_COPY` to the server's
+  `PreferencesRefusalReason` union, the third place in the three-way pin. The
+  inline length message says "60 characters or fewer", matching the rule. A
+  non-list `spokenLanguages` is `invalid_request`, not `unknown_language`.
+  Component tests cover the refused, no-reason (pre-deploy function) and
+  stale branches.
+
+Found before the review:
+
+- `buildReaderContextBlock` had been inserted between `buildStoryWorldBlock`
+  and its doc comment, which left that comment attached to the wrong function.
+  Moved.
+- The 00100 CHECK called `btrim` / `char_length` unqualified. Now qualified,
+  with a test that fails on any bare real function or any qualified parser
+  construct.
+- New migration tests: RLS is enabled, and `service_role` can call the setter
+  and read the row.
+- `reader-preferences.test.ts` (Expo) failed typecheck: it used a default
+  import of `path`, which the node shims do not declare. Changed to named
+  imports.
+
+### Gates
+
+`deno test` functions: 1118 passed. `deno check` on every function
+`index.ts`: clean. 00100 migration test: 7 passed; full migration suite: 314
+passed. `check-migration-numbers.sh`: OK (00100 is above 00099). Expo
+`pnpm typecheck` clean, `pnpm lint` 0 errors (32 warnings, none in changed
+files), `jest --ci` 1622 passed across 153 suites (after every review round), `expo-doctor` 18/18, web
+export wrote `index.html`. The security review of the diff found nothing: no
+secrets, the owner comes from the token, the city is kept out of AsyncStorage,
+and the RLS and grants are tested.
+## 2026-09-25 UTC — Go-live remediation: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
+
+**Session:** the acceptance failures from the last walk on `main`. Branch
+`codex/go-live-remediation`. **Client-only; nothing deployed, no migration, no
+function change.** It reaches a phone only through an EAS build.
+
+### What changed, as a reader meets it
+
+- **Explore, Adventure selected, showed mysteries, fantasies and sci-fi.** Cause:
+  the genre clause matched the legacy `stories.genre` array unconditionally,
+  and that array carries a story's *secondary* genres (`{mystery, adventure}`).
+  Checked against production with the anon key: the old clause returned 24 rows
+  over seven primary genres for Adventure; the new one,
+  `primary_genre.eq.X,and(primary_genre.is.null,genre.cs.{X})` (`genreClause` in
+  `expo/src/lib/search.ts`), returns the 7 whose primary genre is Adventure. A
+  second guard drops any row whose mapped card genre differs, so a legacy row
+  whose array leads with another genre cannot render under the wrong chip.
+- **Explore's stray top-right "You"** link is gone, with the `onProfile` prop.
+- **The Explore eyebrow** named "Most loved" over a list sorted by reads. It now
+  names the actual order (`Trending` by default), and with a genre chosen shows
+  only the genre unless the reader picked a non-default sort
+  (`exploreScopeLabel`).
+- **Home's full-width "See everything"** is a compact, centred, secondary
+  **Explore all** (`size="sm"`, `fullWidth={false}`).
+- **Voice samples** on the Voices screen (`expo/src/lib/voice-preview.ts`):
+  plays the `preview_url` the `voices` function already returns. Loading,
+  playing/stop and error states; one at a time; a superseded load is unloaded;
+  stops on unmount; **never writes the preferred voice**.
+- **Public profile** (`AuthorScreen`): the streak calendar and its
+  `fetchActivityCalendar` call are removed; a **Stories** heading, an empty
+  state naming the writer, and a distinct could-not-load state.
+- **You:** "How credits work" subtitle is now "Prices and free credits".
+
+### Blockers found, not worked around
+
+- **Every voice sample 404s in production.** `voice-previews/{aria,kai,onyx,nova,echo,fable,elvira,alvaro}.mp3`
+  do not exist in the `audio` bucket (checked 2026-09-25): `seed-voice-previews`
+  has never run. A bounded operator attempt against the deployed function
+  stopped at its service-role check with HTTP 401, before any RunPod job could
+  start; its durable `generation.audio` fingerprint is
+  `a25f3c5df3dca9301fa52e59f5259c53` (`voice_preview_seed_unauthorized`). The
+  function's configured service-role secret must be reconciled before one
+  idempotent seed run can create the clips. The button correctly shows its
+  error state until then.
+- **Story detail's 4–5 line summary is not buildable from the current
+  contract.** The page shows chapter 1's `first_line`. The only multi-sentence
+  summary stored is `chapters.previously_summary`, written for the model's
+  continuation context, and it gives away the ending (production example: "The
+  capsule splashed down safely in the Atlantic after their timed burn worked").
+  `stories.topic` is the creator's prompt, which the story page deliberately
+  stopped showing. A real summary needs a spoiler-free `blurb` in the
+  structured output (`source-of-truth/STORY_PROMPT_SYSTEM.md`), a column, the
+  parser and persistence in every generate path, a backfill for existing
+  stories, and a deploy. Nothing was faked client-side.
+- **The `profile` function still serves another author's calendar** to a direct
+  caller when they have published. The app no longer asks; whether the server
+  should refuse is a product decision left open.
+
+### Verification
+
+- `pnpm exec jest`: 152 suites, 1608 tests passing.
+- New and changed tests were each run against the unfixed code and failed:
+  Explore (6 failures with `search.ts` and `ExploreScreen.tsx` reverted), public
+  profile (3), voice samples (the superseded-load test, with the token guard
+  removed).
+- `pnpm typecheck` clean; `pnpm lint` 0 errors (32 pre-existing warnings, none
+  in the changed files); `expo-doctor` 18/18; `expo export --platform web`
+  compiled.
 
 ---
 
@@ -9063,3 +9394,81 @@ Backend `deno test --allow-all supabase/functions/` 1067 passed (+2),
 suite green. Client `pnpm typecheck` clean, `pnpm lint` 0 errors, `jest --ci`
 1360 passed across 129 suites. Both new behavioural tests were run against the
 reverted fix and fail there.
+## 2026-09-25 UTC — PR #149 reviewer follow-up: truthful Explore and voice states
+
+- Profile, public profile, Journey, and Profile-owned sheet headings, display
+  names, initials, and metric values now use the existing Hanken UI family at
+  700. Reader/story prose and the brand/reader faces are untouched. The visual
+  contract now explicitly supersedes Profile's old Bricolage exception.
+- Explore now maps all 19 runtime `PrimaryGenre` values to a queryable card
+  label. The two backend-only stored values remain visible under their
+  documented replacements (`cozyFantasy` -> Fantasy and
+  `paranormalRomance` -> Romance); malformed carried genres are dropped rather
+  than falsely labelled Adventure.
+- A genre browse fetches a bounded 48 metadata rows, defensively removes legacy
+  secondary-genre matches, then returns at most the 24-card page. This prevents
+  the client-side accuracy guard from consuming an otherwise full page.
+- Voice preview failures are now persistent per voice and additive to, rather
+  than replacements for, the language/gender subtitle. The public-profile
+  Stories heading waits for a load result, and the own-calendar helper no
+  longer advertises a public-profile parameter it does not use.
+- No backend runtime, schema, secret, or deployed function changed.
+
+### Verification
+
+- The `profileHeading` token was added and every scoped heading/metric now
+  consumes it, including `BlockedAccountsSheet`, which had kept the two values
+  spelled out.
+- **Correction to an earlier claim in this entry.** It previously said the
+  original regression test was removed because it used Node `fs`/`path` and
+  `process.cwd`, "which Expo's TypeScript environment intentionally does not
+  type". That reason is wrong, and recording it would have taught the next
+  agent to route around a constraint that does not exist. Three suites in the
+  same directory read source files and typecheck clean -- `store-catalog
+  .test.ts`, `story-world.test.ts` and `create-flow-more-options.test.tsx` --
+  by declaring the two Node functions rather than importing `@types/node`.
+  The file scan is restored alongside the token, now as a glob over
+  `src/components/profile/*.tsx` plus the three Profile screens, because the
+  token on its own only constrains the token: nothing stopped a NEW heading
+  from spelling `fonts.display` directly in a screen. Both guards were
+  verified by deliberately introducing the drift and confirming the suite
+  fails, then reverting.
+- `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing. Existing Expo notification and React `act` warnings remain outside these changes.
+- `pnpm typecheck`: clean. ESLint over every changed Expo source/test file:
+  0 errors and two pre-existing `react/no-unescaped-entities` warnings in
+  `MemberSheet` and `JourneyScreen`.
+- Expo Doctor and the full web export exceeded this environment's 30-second
+  command window after starting; neither is recorded as a pass here.
+- Security scan completed before push: no new credential exposure, injection,
+  authorization gap, unbounded input, or client PII storage was introduced.
+  `pnpm audit --prod` still reports the repository's two pre-existing high
+  advisories and no critical advisory.
+
+### Follow-up review correction (2026-09-26)
+
+- The taxonomy lockstep test now reads migration `00049` and asserts that the
+  `stories_primary_genre_check` values exactly equal backend `PRIMARY_GENRES`.
+  This protects the SQL contract, rather than only comparing a client mapping
+  against a TypeScript union.
+- The Explore query note now accurately records that `primary_genre` has been
+  `NOT NULL` since migration `00008`: its null-primary compatibility arms and
+  bounded overfetch are intentionally deferred legacy-query cleanup, not a
+  currently reachable database path.
+- Corrected the test-shim wording: it uses local declarations to avoid an
+  ambient client import, not because Node types are categorically absent.
+- `deno test --allow-read supabase/functions/_shared/types.test.ts` passes all
+  10 checks, including the migration-to-backend taxonomy contract.
+
+### Final review guard correction (2026-09-26)
+
+- The taxonomy test no longer names migration `00049`. It scans the migration
+  directory, selects the highest-numbered SQL migration that defines
+  `stories_primary_genre_check`, then compares that CHECK list exactly with
+  backend `PRIMARY_GENRES`. A later widening therefore cannot leave the test
+  validating an obsolete migration.
+
+### Public-profile visual smoke follow-up (2026-09-26)
+
+- No backend runtime, schema, function, or deployment changed. The Expo
+  public-profile test now pins the existing owner-only calendar boundary after
+  a visual smoke reported stale calendar accessibility labels on main.

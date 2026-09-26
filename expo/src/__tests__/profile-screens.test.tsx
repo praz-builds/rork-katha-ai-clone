@@ -219,6 +219,30 @@ describe("following an author", () => {
 // ---------------------------------------------------------------------------
 
 describe("somebody else's profile", () => {
+  it("does not show a bare Stories heading while the public profile is loading", async () => {
+    let resolveProfile!: (value: null) => void;
+    mockFetchPublicProfile.mockReturnValue(new Promise((resolve) => {
+      resolveProfile = resolve;
+    }));
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    expect(view.queryByTestId("author-stories-heading")).toBeNull();
+
+    await act(async () => {
+      resolveProfile(null);
+    });
+    await waitFor(() => view.getByTestId("author-stories-error"));
+    expect(view.getByTestId("author-stories-heading")).toBeTruthy();
+  });
+
   it("shows only what the server listed, never the local story array", async () => {
     mockFetchPublicProfile.mockResolvedValue({
       profile: publicProfile,
@@ -362,6 +386,59 @@ describe("somebody else's profile", () => {
 
     await waitFor(() => view.getByTestId("author-no-stories"));
     expect(view.queryByText("An Unpublished Draft")).toBeNull();
+    // Named, and said about this writer, not a bare "nothing here".
+    expect(view.getByText("Stories")).toBeTruthy();
+    expect(view.getByText("@ada has not published a story yet.")).toBeTruthy();
+  });
+
+  it("draws no streak calendar and never asks for one", async () => {
+    mockFetchPublicProfile.mockResolvedValue({
+      profile: publicProfile,
+      stories: [publicStory],
+    });
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        canEngage
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByText("A Public Story"));
+    // The owner's calendar lives on Journey. A visitor came for the work.
+    expect(view.queryAllByTestId(/^activity-grid/)).toHaveLength(0);
+    expect(view.queryByText(/days? this year|day streak/i)).toBeNull();
+    // These are calendar labels exposed through the accessibility tree in the
+    // visual smoke. Checking them as well as the component test id means a
+    // future visual reimplementation cannot bring the public activity grid
+    // back under a different test id.
+    expect(view.queryByText("No active days yet")).toBeNull();
+    expect(view.queryByText("Sep")).toBeNull();
+    expect(mockFetchActivityCalendar).not.toHaveBeenCalled();
+    // Removing activity is not permission to remove the public page's useful
+    // content: relationship counts and published work remain its purpose.
+    expect(view.getByText("Followers")).toBeTruthy();
+    expect(view.getByText("Following")).toBeTruthy();
+    expect(view.getByText("Stories")).toBeTruthy();
+  });
+
+  it("says the stories could not load rather than that there are none", async () => {
+    mockFetchPublicProfile.mockResolvedValue(null);
+
+    const view = await render(
+      <AuthorScreen
+        authorId={AUTHOR}
+        stories={[]}
+        onBack={jest.fn()}
+        onStory={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => view.getByTestId("author-stories-error"));
+    expect(view.queryByTestId("author-no-stories")).toBeNull();
   });
 
   it("gates the follow button behind sign-in for a guest", async () => {
@@ -536,6 +613,14 @@ describe("the reader's own profile", () => {
     for (const gone of ["Reads", "Likes", "Chapters", "Stories"]) {
       expect(view.queryByText(gone)).toBeNull();
     }
+  });
+
+  it("describes How credits work in plain words", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const view = await render(<ProfileScreen {...profileProps()} />);
+    await waitFor(() => view.getByTestId("profile-faq"));
+    expect(view.getByText("Prices and free credits")).toBeTruthy();
+    expect(view.queryByText("Every price, streaks and invites")).toBeNull();
   });
 
   // No page title: the tab bar already said "You" in a word they just tapped.

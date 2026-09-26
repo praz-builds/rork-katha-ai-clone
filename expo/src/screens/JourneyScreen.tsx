@@ -33,7 +33,7 @@ import {
   refreshOwnProfile,
   useOwnProfileStore,
 } from "@/lib/profile-store";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 import { sharedStyles } from "@/screens/shared";
 
 /**
@@ -358,7 +358,7 @@ const styles = {
       justifyContent: "center",
       marginLeft: -8,
     },
-    title: { fontFamily: fonts.display, color: colors.ink, fontSize: 26 },
+    title: { ...profileHeading, color: colors.ink, fontSize: 26 },
     memberSince: {
       flexDirection: "row",
       alignItems: "center",
@@ -390,7 +390,7 @@ const styles = {
       borderColor: colors.border,
     },
     statValue: {
-      fontFamily: fonts.display,
+      ...profileHeading,
       color: colors.ink,
       fontSize: 40,
       lineHeight: 46,
@@ -420,7 +420,7 @@ const styles = {
     sectionTitle: {
       marginTop: spacing.betweenGroups,
       marginBottom: spacing.md,
-      fontFamily: fonts.display,
+      ...profileHeading,
       color: colors.ink,
       fontSize: 22,
     },
