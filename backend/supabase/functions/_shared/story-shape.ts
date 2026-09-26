@@ -4,7 +4,6 @@ import {
   type ChapterLength,
   characterAppearance,
   type CharacterInput,
-  CULTURAL_SETTINGS,
   type CulturalSetting,
   DEFAULT_CHAPTER_LENGTH,
   DEFAULT_PLANNED_CHAPTER_COUNT,
@@ -23,6 +22,7 @@ import {
   type PrimaryGenre,
   UI_GENRE_ORDER,
 } from "./types.ts";
+import { storyWorldPromptName } from "./story-world-countries.ts";
 
 export type StoryShape = {
   genres: PrimaryGenre[];
@@ -228,7 +228,7 @@ export function buildStoryShapePrompt(
   if (isCulturalSetting(brief.culturalSetting)) {
     parts.push(
       `The creator prefers stories rooted in ${
-        CULTURAL_SETTINGS[brief.culturalSetting]
+        storyWorldPromptName(brief.culturalSetting)
       }. Where the idea does not name a place, a culture or its people, set whereAndWhen there and give any characters you infer names from there. If the idea points anywhere else, follow the idea; creator-supplied names are never changed.`,
     );
   }

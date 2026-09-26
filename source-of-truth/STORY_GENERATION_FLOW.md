@@ -21,7 +21,7 @@
 > modal. Onboarding may use its own two-step preview, but main Create does not
 > have a separate Shape or Review screen.
 >
-> Last revised 2026-09-11. Sentences that are inference rather than shipped
+> Last revised 2026-09-26. Sentences that are inference rather than shipped
 > behavior say so.
 
 ---
@@ -627,27 +627,15 @@ mostly write one line and leave. A user faced with four boxes Katha already
 filled will fix the two that are wrong — and the resulting character is far
 richer than the one they would have written from empty.
 
-**Story world is a standing preference, not a Create field (2026-09-25).** The
-reader sets it once on You (*Story world*: Anywhere or one of ten regions) and
+**Story world is a standing preference, not a Create field (2026-09-26).** The
+reader sets it once on You (*Story world*: Anywhere or one of the 249 assigned
+ISO 3166-1 alpha-2 country and territory codes) and
 every new story's request -- and the shaping call that pre-fills *Where and
 when* and the cast -- carries it as `cultural_setting`, omitted for
 Anywhere. Create does not ask it and shows no chip for it: it is the default
 for what the brief leaves open, and the brief -- idea, *Where and when*, the
 cast's names -- always overrides it. Contract and prompt wording:
 `STORY_PROMPT_SYSTEM.md` *Story world*.
-
-**Languages and home are a standing account preference too (2026-09-25).** On
-You, *Global preferences* -> *Languages and home* sets up to three spoken
-languages and an optional city, saved through the `profile` function
-(`preferences` / `set_preferences`, token-owner only) into `reader_preferences`
-(migration 00100). A refused save returns a stable `reason` code
-(`unknown_language`, `too_many_languages`, `place_too_long`, `place_invalid`,
-or `account_deleted` on the tombstone's 404); the client words its copy from
-the code and never shows the developer `error` text. The Create request carries **nothing** for it: the
-generation functions read the row server-side for the verified user when the
-first chapter is written. It is cultural context, never the output language,
-and the brief overrides it. Contract and prompt wording:
-`STORY_PROMPT_SYSTEM.md` *Reader context*.
 
 ---
 

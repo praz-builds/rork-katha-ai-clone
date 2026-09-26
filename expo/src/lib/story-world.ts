@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSyncExternalStore } from "react";
+import {
+  COUNTRY_CODES,
+  COUNTRY_WORLDS,
+  type CountryCode,
+} from "../../../backend/supabase/functions/_shared/story-world-countries";
 
 /**
  * Story world: the reader's standing cultural preference for new stories.
@@ -11,28 +16,20 @@ import { useSyncExternalStore } from "react";
  *
  * The brief always wins. A preference only shapes what the idea, the setting
  * and the cast's names leave open, so "a heist in 1920s Chicago" is still set
- * in Chicago for somebody who prefers South Asian stories.
+ * in Chicago for somebody whose default is India.
  *
  * Device-local, like the listening preferences in `listen-prefs.ts`: it costs
  * nothing to re-pick and it needs no column. `global` is the default and is
  * never sent -- it means "infer from the brief", which is how every story was
  * written before the preference existed.
  */
-export const STORY_WORLDS = [
+export const STORY_WORLDS: readonly { id: StoryWorld; label: string; hint: string }[] = [
   { id: "global", label: "Anywhere", hint: "Katha follows each story's own cues" },
-  { id: "south_asian", label: "South Asian", hint: "India, Pakistan, Bangladesh, Sri Lanka, Nepal" },
-  { id: "east_asian", label: "East Asian", hint: "China, Japan, Korea, Taiwan" },
-  { id: "southeast_asian", label: "Southeast Asian", hint: "Indonesia, the Philippines, Vietnam, Thailand, Malaysia" },
-  { id: "middle_eastern", label: "Middle Eastern & North African", hint: "From Morocco to the Gulf" },
-  { id: "african", label: "African", hint: "Sub-Saharan Africa" },
-  { id: "latin_american", label: "Latin American", hint: "Mexico to Argentina" },
-  { id: "caribbean", label: "Caribbean", hint: "The islands and their diaspora" },
-  { id: "european", label: "European", hint: "From Lisbon to Warsaw" },
-  { id: "north_american", label: "North American", hint: "The United States and Canada" },
-  { id: "oceanian", label: "Oceanian", hint: "Australia, New Zealand, the Pacific Islands" },
+  ...COUNTRY_CODES.map((id) => ({ id, label: COUNTRY_WORLDS[id].label, hint: "" })),
 ] as const;
 
-export type StoryWorld = (typeof STORY_WORLDS)[number]["id"];
+export type StoryWorld = "global" | CountryCode;
+export { COUNTRY_CODES };
 
 export const DEFAULT_STORY_WORLD: StoryWorld = "global";
 

@@ -7,6 +7,53 @@
 
 ---
 
+## 2026-09-26 UTC — Replace reader preferences with country-based Story world
+
+- Removed the unshipped Languages and home feature end-to-end: its Expo sheet,
+  cache, profile actions, shared reader-context module, prompt block, migration
+  `00100`, and tests. It was never deployed or applied, so no rollback
+  migration is needed.
+- Story world remains device-local, now using a searchable closed ISO 3166-1
+  alpha-2 country picker. The request contains only an allowlisted code; the
+  backend maps it to a country name before prompt construction. The brief
+  still wins over names, places, food, customs and everyday references.
+- Audiobook voices now uses the shared Profile heading treatment.
+
+### Verification
+
+- Deno focused contract suite: **251 passed** across validation, story shaping,
+  story prompts and Profile. It proves a known country reaches the generation
+  and shaping prompt as a server-owned name, while unknown ids including `XK`
+  are omitted.
+- Expo: `pnpm typecheck`, changed-file ESLint, the Story-world/API contract
+  tests (9 passed), and the Profile Story-world interaction regression (1
+  passed) are clean. The client test reads the backend's declared tuple and
+  pins the same 249 assigned ISO codes on both sides.
+- Mandatory diff security scan: no new secrets, dynamic execution, injection
+  sink, auth bypass or client-side sensitive storage was introduced. `pnpm
+  audit --json` still reports the repository's two existing high dependency
+  advisories with no advisory payload; this change adds no dependency.
+
+### Review follow-up
+
+- Replaced both runtime `Intl.DisplayNames` lookups with one checked-in shared
+  country contract. It is bundled by Expo and imported by edge functions, so
+  Hermes cannot fail during app bootstrap and client/server country wording is
+  stable. The contract also carries English articles for phrases such as *the
+  United States* and searchable aliases such as UK, USA, Holland and
+  Deutschland.
+- **Deployment, when explicitly authorized:** there is no migration. Deploy
+  the nine functions **before** any client build or OTA: `continue-story`,
+  `edit-story`, `generate-story`, `generate-story-stream`, `reimagine-chapter`,
+  `shape-story`, `generate-character-image`, `regenerate-cover`, and `profile`.
+  Today's server otherwise drops an ISO id silently, by its intentional
+  unknown-setting fallback.
+- Verification after the review follow-up: focused Deno contract suite **252
+  passed**. It includes the fixed article regression for the United States and
+  the Netherlands.
+
+---
+
 ## 2026-09-26 UTC — #150 rebase: Profile typography and deployment record
 
 **Session:** rebased `codex/onboarding-culture-remediation` onto main after

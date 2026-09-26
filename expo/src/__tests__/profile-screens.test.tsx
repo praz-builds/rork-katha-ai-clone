@@ -762,11 +762,18 @@ describe("the reader's own profile", () => {
     await waitFor(() => view.getByTestId("profile-story-world"));
     expect(view.getByText(/Anywhere — Katha follows/)).toBeTruthy();
     await fireEvent.press(view.getByTestId("profile-story-world"));
-    await fireEvent.press(view.getByTestId("story-world-latin_american"));
+    await fireEvent.changeText(view.getByLabelText("Search countries"), "India");
+    await fireEvent.press(view.getByTestId("story-world-IN"));
     await waitFor(() =>
-      expect(view.getByText("Latin American — where new stories are rooted")).toBeTruthy()
+      expect(view.getByText("India — where new stories are rooted")).toBeTruthy()
     );
-    expect(currentStoryWorld()).toBe("latin_american");
+    expect(currentStoryWorld()).toBe("IN");
+
+    await fireEvent.press(view.getByTestId("profile-story-world"));
+    // A previous search is not held hostage when the sheet is reopened.
+    expect(view.getByTestId("story-world-AD")).toBeTruthy();
+    await fireEvent.changeText(view.getByLabelText("Search countries"), "zzzzzz");
+    expect(view.getByText("No countries found.")).toBeTruthy();
   });
 
   it("opens the vote on what's next from You", async () => {

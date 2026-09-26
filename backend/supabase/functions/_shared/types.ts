@@ -6,6 +6,11 @@
  */
 import type { CoverArtStyle } from "./cover-prompts.ts";
 import type { EntityMention, GroundingCard } from "./grounding-types.ts";
+import {
+  COUNTRY_CODES,
+  COUNTRY_WORLDS,
+  type CountryCode,
+} from "./story-world-countries.ts";
 
 // ---------------------------------------------------------------------------
 // Primary Genre
@@ -191,25 +196,16 @@ export const IDENTITY_LENSES: ReadonlySet<string> = new Set<IdentityLens>([
  * The brief always wins. The preference shapes only what the idea, the setting
  * and the cast leave open (`buildStoryWorldBlock` in story-prompts.ts).
  */
-export const CULTURAL_SETTINGS = {
-  south_asian: "South Asia (India, Pakistan, Bangladesh, Sri Lanka, Nepal)",
-  east_asian: "East Asia (China, Japan, Korea, Taiwan)",
-  southeast_asian:
-    "Southeast Asia (Indonesia, the Philippines, Vietnam, Thailand, Malaysia)",
-  middle_eastern: "the Middle East and North Africa",
-  african: "Sub-Saharan Africa",
-  latin_american: "Latin America",
-  caribbean: "the Caribbean",
-  european: "Europe",
-  north_american: "the United States and Canada",
-  oceanian: "Australia, New Zealand and the Pacific Islands",
-} as const;
-
-export type CulturalSetting = keyof typeof CULTURAL_SETTINGS;
+export const CULTURAL_COUNTRY_CODES = COUNTRY_CODES;
+export type CulturalSetting = CountryCode;
+export const CULTURAL_SETTINGS: Readonly<Record<CulturalSetting, string>> =
+  Object.fromEntries(
+    COUNTRY_CODES.map((code) => [code, COUNTRY_WORLDS[code].label]),
+  ) as Record<CulturalSetting, string>;
 
 export function isCulturalSetting(value: unknown): value is CulturalSetting {
   return typeof value === "string" &&
-    Object.prototype.hasOwnProperty.call(CULTURAL_SETTINGS, value);
+    CULTURAL_COUNTRY_CODES.includes(value as CulturalSetting);
 }
 
 // ---------------------------------------------------------------------------

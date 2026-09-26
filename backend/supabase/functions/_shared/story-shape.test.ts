@@ -365,14 +365,14 @@ Deno.test("a genre that survived v7 is still returned as itself", () => {
 });
 
 Deno.test("shaping infers the world and names from the Story world, never over the idea", () => {
-  const brief = normalizeStoryShapeBrief({ culturalSetting: "south_asian" });
-  assertEquals(brief.culturalSetting, "south_asian");
+  const brief = normalizeStoryShapeBrief({ culturalSetting: "IN" });
+  assertEquals(brief.culturalSetting, "IN");
   const prompt = buildStoryShapePrompt(
     "Two rivals share a train compartment.",
     undefined,
     brief,
   );
-  assert(prompt.includes("rooted in South Asia"));
+  assert(prompt.includes("rooted in India"));
   assert(prompt.includes("set whereAndWhen there"));
   assert(prompt.includes("If the idea points anywhere else, follow the idea"));
 

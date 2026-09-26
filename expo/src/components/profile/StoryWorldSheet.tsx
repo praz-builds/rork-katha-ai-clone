@@ -1,5 +1,7 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Check, X } from "lucide-react-native";
+import { COUNTRY_WORLDS, matchesCountryWorld } from "../../../../backend/supabase/functions/_shared/story-world-countries";
 import { STORY_WORLDS, type StoryWorld } from "@/lib/story-world";
 import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
@@ -21,12 +23,26 @@ export default function StoryWorldSheet({
   onChange: (next: StoryWorld) => void;
   onClose: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const options = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return STORY_WORLDS;
+    return STORY_WORLDS.filter((world) =>
+      world.id === "global"
+        ? world.label.toLocaleLowerCase().includes(needle)
+        : world.id.toLocaleLowerCase().includes(needle) || matchesCountryWorld(COUNTRY_WORLDS[world.id], needle),
+    );
+  }, [query]);
+  const close = () => {
+    setQuery("");
+    onClose();
+  };
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <View style={styles.root}>
         <Pressable
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={close}
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
         />
@@ -34,7 +50,7 @@ export default function StoryWorldSheet({
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">Story world</Text>
             <Pressable
-              onPress={onClose}
+              onPress={close}
               accessibilityRole="button"
               accessibilityLabel="Close"
               style={styles.close}
@@ -43,27 +59,36 @@ export default function StoryWorldSheet({
             </Pressable>
           </View>
           <Text style={styles.sub}>
-            Where new stories are rooted — names, places, food and everyday
-            detail. Your idea always wins: set a story somewhere and it goes
-            there.
+            Choose a country for grounded names, places, food, customs and
+            everyday references. Your story brief always wins.
           </Text>
-          <ScrollView
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search countries"
+            placeholderTextColor={colors.tertiary}
+            accessibilityLabel="Search countries"
+            style={styles.search}
+          />
+          <FlatList
             style={styles.list}
             contentContainerStyle={styles.listContent}
             accessibilityRole="radiogroup"
-          >
-            {STORY_WORLDS.map((world) => {
+            data={options}
+            keyExtractor={(world) => world.id}
+            ListEmptyComponent={<Text style={styles.empty}>No countries found.</Text>}
+            renderItem={({ item: world }) => {
               const selected = world.id === value;
               return (
                 <Pressable
                   key={world.id}
                   onPress={() => {
                     onChange(world.id);
-                    onClose();
+                    close();
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
-                  accessibilityLabel={`${world.label}. ${world.hint}`}
+                  accessibilityLabel={world.hint ? `${world.label}. ${world.hint}` : world.label}
                   style={[styles.option, selected && styles.optionOn]}
                   testID={`story-world-${world.id}`}
                 >
@@ -74,8 +99,8 @@ export default function StoryWorldSheet({
                   {selected ? <Check size={18} color={colors.accent} strokeWidth={3} /> : null}
                 </Pressable>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         </View>
       </View>
     </Modal>
@@ -105,8 +130,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   sub: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14, lineHeight: 20 },
+  search: { fontFamily: fonts.ui, color: colors.ink, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, minHeight: 44, paddingHorizontal: spacing.md },
   list: { flexGrow: 0 },
   listContent: { gap: spacing.sm },
+  empty: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14, paddingVertical: spacing.xl, textAlign: "center" },
   option: {
     flexDirection: "row",
     alignItems: "center",
