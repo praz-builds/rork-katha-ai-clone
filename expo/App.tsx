@@ -1223,7 +1223,6 @@ export default function App() {
             stories={browsableStories}
             onStory={openStory}
             onOpenStory={(story) => void openDiscoveredStory(story)}
-            onProfile={() => goTabs("profile")}
           />
         );
       case "create":

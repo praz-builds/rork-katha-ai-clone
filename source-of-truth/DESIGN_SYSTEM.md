@@ -23,7 +23,7 @@
 > [`CREDITS_AND_PRICING.md`](CREDITS_AND_PRICING.md) is canonical for prices,
 > credits, trials, grants, and store products, and pricing wins on any conflict.
 >
-> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-12.
+> Reference frame: 390 × 844 pt, light theme only. Last revised 2026-09-25.
 > *Inference* marks a decision not yet shipped.
 
 ---
@@ -67,12 +67,19 @@ crafting loader, and any new component built for onboarding. These use
 `onboardingType`, `colors.strong` for icons, `colors.track` for dividers, and
 the layered `shadows`.
 
-**Out of scope now.** Home, Library, Reader, Create Studio, Profile, and the
-paywalls. They keep `type`, keep `colors.border` where they already use it, and
-keep their current elevation. The layered rewrite of `card`, `raised`, and
-`overlay` reaches them because the token names did not change, and that is
-intended: it is a like-for-like quality improvement at the same three
-elevations, not a redesign.
+**Out of scope now.** Home, Library, Reader, Create Studio, and the paywalls.
+They keep `type`, keep `colors.border` where they already use it, and keep their
+current elevation. The layered rewrite of `card`, `raised`, and `overlay`
+reaches them because the token names did not change, and that is intended: it
+is a like-for-like quality improvement at the same three elevations, not a
+redesign.
+
+**Profile typography exception (2026-09-25).** Profile, public profile,
+Journey, and Profile-owned sheets remain out of scope for this system's broader
+surface migration, but their headings, display names, and metric values use
+`fonts.ui` at weight 700. `fonts.display` is reserved there no longer. This is
+an intentional readability correction, not permission to change their spacing,
+elevation, colours, or reader/story typography.
 
 **How a surface migrates.** One pull request per surface. Swap `type` for
 `onboardingType`, swap icon colours to `colors.strong`, swap divider borders for
@@ -111,6 +118,9 @@ Rules:
    token.
 5. A size never moves without its line height. The pairs above are single values.
 6. `fonts.brand` stays wordmark and accent only. `fonts.reader` stays prose only.
+7. **Profile UI uses `fonts.ui` / 700 for headings and metrics.** This includes
+   Profile, public profiles, Journey, and Profile-owned sheets; stories and
+   reader prose retain their own typography.
 
 ### 3.0 The ramp: 28 / 16 / 14.5 / 12, and one eyebrow beside it
 

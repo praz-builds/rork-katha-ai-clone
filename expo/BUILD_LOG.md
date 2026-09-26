@@ -2,6 +2,16 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-25: Explore filters by the genre it shows, Explore all, voice samples, public profiles without the calendar
+
+- **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.
+- **Home (`src/screens/HomeScreen.tsx`)**: "See everything" full-width became a compact centred secondary **Explore all**.
+- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips 404 in production until `seed-voice-previews` runs.
+- **Public profile (`src/screens/AuthorScreen.tsx`)**: no streak calendar; a **Stories** heading with an empty state naming the writer and a could-not-load state. Journey keeps the owner's calendar.
+- **You**: "How credits work" reads "Prices and free credits".
+- **Not changed**: the story page's one-line teaser. No spoiler-free summary exists in the contract; see `../backend/build-log.md` for what one needs.
+- **Verified**: jest 152 suites / 1608 tests, typecheck, lint (0 errors), expo-doctor 18/18, web export. **Not verified**: a browser walk or a native build.
+
 ## 2026-09-25: Six-digit codes, moment chips that fit, and an intro that works at any window (PR #143)
 
 - **Intro (`src/screens/KathaOnboarding.jsx`)**: motion moved from RN `Animated` plus a per-frame `setState` to Reanimated 4 shared values. The carousel follows a swipe, the dots have 44pt targets, and the copy crossfades. It is a phone-width column (`controls.introMaxWidth`, 430) that scrolls on a short window, which removes the desktop-width trap. The slide curve changed to the skill's ease-in-out `(0.77, 0, 0.175, 1)`; the durations did not (`DESIGN.md` records it). A swipe that races the auto-advance used to leave a flag armed that swallowed the next slide; it now records the target phase.
@@ -2144,3 +2154,79 @@ and `deno check` clean.
   injection sinks, auth regressions, or PII logging were found in the changed
   surfaces. `pnpm audit` reports 2 high vulnerabilities, both ignored by the
   existing patched advisory policy.
+## 2026-09-25: PR #149 reviewer follow-up
+
+### Changed
+
+- Replaced the display face with the existing Hanken 700 UI heading treatment
+  across Profile, public profile, Journey, and Profile-owned sheet headings,
+  display names, and metrics. Reader/story typography and the brand wordmark
+  remain unchanged; `DESIGN.md` and the canonical design-system document now
+  supersede Profile's former display-font exception.
+- Made Explore's card label and genre query agree for the full 19-value backend
+  genre contract. Server-only Cozy Fantasy and Paranormal Romance now join their
+  visible Fantasy and Romance filters, while malformed genre rows are not
+  misrepresented as Adventure.
+- Bounded a genre query's defensive over-fetch to 48 metadata rows before
+  keeping the 24 visible cards, so legacy secondary genres cannot leave a
+  selected genre page empty or short.
+- Kept per-voice sample errors visible on their own rows without replacing the
+  language/gender descriptions; retries clear only that voice's prior error.
+- Delayed the Author Stories heading until the profile request resolves and
+  removed the stale public-calendar argument from the client helper.
+
+### Verification
+
+- `profile-typography.test.ts` now does both: it asserts the shared
+  `profileHeading` token, and it scans every Profile-owned source file for a
+  non-UI font family. An earlier version of this entry said the file scan was
+  dropped because Expo's TypeScript environment does not type Node's `fs`;
+  that is not true -- three suites in this directory read files and typecheck
+  clean by declaring the functions rather than importing `@types/node` -- and
+  the token alone cannot catch a new heading that spells `fonts.display` in a
+  screen. `BlockedAccountsSheet` now consumes the token too.
+- `useVoicePreview().toggle` now takes `url: string` rather than
+  `string | null`, and its unreachable `if (!url)` arm is gone. VoicesScreen
+  renders the preview button only for a voice with a truthy `previewUrl`
+  (`voice-preview.test.tsx` covers that path with a null-URL voice in its
+  fixture), so the arm could never run. A type the compiler checks beats a
+  branch no test can reach.
+- Added a lockstep test over the genre taxonomy: the backend's
+  `PRIMARY_GENRES` and the client's `DISPLAY_GENRE_BY_RUNTIME_GENRE` must
+  agree. Without it, a 20th backend genre makes those stories disappear from
+  Explore and from title/topic search with nothing failing, because
+  `mapSearchRow` returns null for an unknown value and null rows are dropped.
+- `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing.
+- `pnpm typecheck`: clean. ESLint over every changed source/test file: 0 errors
+  and two pre-existing `react/no-unescaped-entities` warnings in `MemberSheet`
+  and `JourneyScreen`.
+- Existing Expo notification and React `act` warnings were emitted by unrelated
+  profile-screen imports; no test failed.
+- Expo Doctor and a full web export began but exceeded this environment's
+  30-second command window, so they are not claimed as passes.
+
+### Follow-up review correction (2026-09-26)
+
+- The Profile typography source scan now also rejects display type-ramp spreads
+  (`type.largeTitle`, `title`, `section`, `titleSmall`, and
+  `onboardingType.title`) unless `profileHeading` follows in the same style
+  object. This closes the indirect-font bypass; the test exercises both a
+  rejected spread and the approved override ordering.
+- `AuthorScreen`'s seeded statistic uses `profileHeading`, keeping its metric
+  at the approved UI family and 700 weight.
+- The local test declarations are intentionally narrow to avoid making client
+  typechecking rely on an ambient Node import. They do not claim that Node
+  types are unavailable from the overall test graph.
+- `pnpm typecheck`, targeted ESLint, and the four focused Jest suites pass
+  (74 tests). The existing Expo notification and React `act` warnings from
+  profile-screen imports remain non-failing test-environment noise.
+
+### Final review guard correction (2026-09-26)
+
+- The Profile scanner now treats `type.reader` as a forbidden non-story ramp
+  too. Its object-boundary walk tracks nested braces, so a nested object cannot
+  either stop the scan early or make its own `profileHeading` spread approve
+  the outer heading.
+- The test shim documentation now says precisely what happens: Jest resolves
+  `fs` and `path` at runtime, while local declarations keep the Expo client
+  type graph free of imported/global Node typings.

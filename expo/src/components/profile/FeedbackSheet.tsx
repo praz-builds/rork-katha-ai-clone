@@ -20,7 +20,7 @@ import {
   createAppFeedbackRequestId,
   sendAppFeedback,
 } from "@/lib/app-feedback";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
 
 const t = (key: string, options?: Record<string, unknown>) =>
   i18n.t(`profile.feedbackSheet.${key}`, options);
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 24 },
+  title: { ...profileHeading, color: colors.ink, fontSize: 24 },
   close: {
     width: 36,
     height: 36,
