@@ -44,6 +44,7 @@ jest.mock("@/lib/supabase", () => ({
 
 /* eslint-disable import/first */
 import {
+  DISPLAY_GENRE_BY_RUNTIME_GENRE,
   GENRE_SEARCH_FETCH_SIZE,
   genreClause,
   loadStoryChapters,
@@ -401,4 +402,26 @@ describe("live rows carry their themes as tags", () => {
     expect(themeTags("grief")).toEqual([]);
     expect(mapSearchRow({ id: "t2", title: "Bare" })!.tags).toEqual([]);
   });
+});
+
+it("carries every backend taxonomy value, so no genre can vanish from Explore", () => {
+  // `mapSearchRow` returns null for a runtime genre this map does not know
+  // (search.ts), and null rows are dropped. So a 20th value added to the
+  // backend's PRIMARY_GENRES and not added here does not error -- those
+  // stories simply disappear from Explore and from title/topic search, with
+  // nothing failing. Read the server's list and assert the two agree, the
+  // same shape story-world.test.ts uses for cultural settings.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require("fs") as { readFileSync: (file: string, encoding: "utf8") => string };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require("path") as { join: (...parts: string[]) => string };
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../../backend/supabase/functions/_shared/types.ts"),
+    "utf8",
+  );
+  const block = source.match(/export const PRIMARY_GENRES: ReadonlySet<string> = new Set<PrimaryGenre>\(\[([\s\S]*?)\]\);/);
+  expect(block).not.toBeNull();
+  const serverGenres = [...block![1].matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]);
+  expect(serverGenres.length).toBeGreaterThan(0);
+  expect(Object.keys(DISPLAY_GENRE_BY_RUNTIME_GENRE).sort()).toEqual([...serverGenres].sort());
 });

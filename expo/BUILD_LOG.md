@@ -2177,9 +2177,25 @@ and `deno check` clean.
 
 ### Verification
 
-- Reworked `profile-typography.test.ts` to test the shared React-Native-safe
-  `profileHeading` token rather than Node-only filesystem APIs. Every scoped
-  heading/metric now consumes that token.
+- `profile-typography.test.ts` now does both: it asserts the shared
+  `profileHeading` token, and it scans every Profile-owned source file for a
+  non-UI font family. An earlier version of this entry said the file scan was
+  dropped because Expo's TypeScript environment does not type Node's `fs`;
+  that is not true -- three suites in this directory read files and typecheck
+  clean by declaring the functions rather than importing `@types/node` -- and
+  the token alone cannot catch a new heading that spells `fonts.display` in a
+  screen. `BlockedAccountsSheet` now consumes the token too.
+- `useVoicePreview().toggle` now takes `url: string` rather than
+  `string | null`, and its unreachable `if (!url)` arm is gone. VoicesScreen
+  renders the preview button only for a voice with a truthy `previewUrl`
+  (`voice-preview.test.tsx` covers that path with a null-URL voice in its
+  fixture), so the arm could never run. A type the compiler checks beats a
+  branch no test can reach.
+- Added a lockstep test over the genre taxonomy: the backend's
+  `PRIMARY_GENRES` and the client's `DISPLAY_GENRE_BY_RUNTIME_GENRE` must
+  agree. Without it, a 20th backend genre makes those stories disappear from
+  Explore and from title/topic search with nothing failing, because
+  `mapSearchRow` returns null for an unknown value and null rows are dropped.
 - `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing.
 - `pnpm typecheck`: clean. ESLint over every changed source/test file: 0 errors
   and two pre-existing `react/no-unescaped-entities` warnings in `MemberSheet`

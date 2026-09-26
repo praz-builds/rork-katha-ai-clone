@@ -72,16 +72,16 @@ export function useVoicePreview(options: { timeoutMs?: number } = {}) {
   }, [release]);
 
   const toggle = useCallback(
-    (voiceId: string, url: string | null) => {
+    // `url` is non-nullable: VoicesScreen renders the preview button only for
+    // a voice whose `previewUrl` is truthy, so this was never called without
+    // one. The old `if (!url)` arm here was unreachable, and a type is a
+    // better guard than a branch no test can reach.
+    (voiceId: string, url: string) => {
       const active = state.voiceId === voiceId &&
         (state.status === "loading" || state.status === "playing");
       release();
       if (active) {
         setState(IDLE);
-        return;
-      }
-      if (!url) {
-        setState({ voiceId, status: "error" });
         return;
       }
 

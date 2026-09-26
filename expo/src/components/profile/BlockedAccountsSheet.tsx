@@ -17,7 +17,7 @@ import {
   unblockAuthorEverywhere,
   type BlockedAccount,
 } from "@/lib/blocks";
-import { colors, fonts, radius, spacing, type } from "@/theme";
+import { colors, fonts, profileHeading, radius, spacing, type } from "@/theme";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -198,8 +198,7 @@ const styles = StyleSheet.create({
   title: {
     // The 20pt step of the ramp, in the UI face like the other sheet titles.
     ...type.titleSmall,
-    fontFamily: fonts.ui,
-    fontWeight: "700",
+    ...profileHeading,
     color: colors.ink,
   },
   close: {

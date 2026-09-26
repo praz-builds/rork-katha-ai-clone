@@ -110,7 +110,7 @@ const GENRE_SET: ReadonlySet<string> = new Set(GENRES);
  * when that visible genre is selected. Keep this list in lockstep with the
  * backend's `PrimaryGenre`, not just the picker list.
  */
-const DISPLAY_GENRE_BY_RUNTIME_GENRE: Readonly<Record<string, Genre>> = {
+export const DISPLAY_GENRE_BY_RUNTIME_GENRE: Readonly<Record<string, Genre>> = {
   romance: "romance",
   romantasy: "romantasy",
   darkRomance: "darkRomance",

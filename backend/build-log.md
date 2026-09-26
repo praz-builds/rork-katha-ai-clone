@@ -9054,11 +9054,23 @@ reverted fix and fail there.
 
 ### Verification
 
-- The original Profile typography regression test used Node `fs`/`path` and
-  `process.cwd`, which Expo's TypeScript environment intentionally does not
-  type. It was replaced with the shared, React-Native-safe `profileHeading`
-  token used by every scoped heading/metric; its test asserts the token is UI
-  font 700 and not display, brand, or reader text.
+- The `profileHeading` token was added and every scoped heading/metric now
+  consumes it, including `BlockedAccountsSheet`, which had kept the two values
+  spelled out.
+- **Correction to an earlier claim in this entry.** It previously said the
+  original regression test was removed because it used Node `fs`/`path` and
+  `process.cwd`, "which Expo's TypeScript environment intentionally does not
+  type". That reason is wrong, and recording it would have taught the next
+  agent to route around a constraint that does not exist. Three suites in the
+  same directory read source files and typecheck clean -- `store-catalog
+  .test.ts`, `story-world.test.ts` and `create-flow-more-options.test.tsx` --
+  by declaring the two Node functions rather than importing `@types/node`.
+  The file scan is restored alongside the token, now as a glob over
+  `src/components/profile/*.tsx` plus the three Profile screens, because the
+  token on its own only constrains the token: nothing stopped a NEW heading
+  from spelling `fonts.display` directly in a screen. Both guards were
+  verified by deliberately introducing the drift and confirming the suite
+  fails, then reverting.
 - `pnpm exec jest src/__tests__/explore-search-query.test.ts src/__tests__/voice-preview.test.tsx src/__tests__/profile-screens.test.tsx src/__tests__/profile-typography.test.ts --runInBand`: 4 suites, 57 tests passing. Existing Expo notification and React `act` warnings remain outside these changes.
 - `pnpm typecheck`: clean. ESLint over every changed Expo source/test file:
   0 errors and two pre-existing `react/no-unescaped-entities` warnings in
