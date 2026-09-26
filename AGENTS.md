@@ -37,9 +37,9 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (2026-09-25)
+## Production state (last verified 2026-09-26)
 
-**Production is current with main, file for file.** Verified after the 2026-09-25
+**The 2026-09-25 baseline audit was current with main, file for file.** Verified after the 2026-09-25
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied
 (local and remote aligned through `00099`, nothing pending — the range is not
 contiguous, `00016`, `00024`, `00081` and `00083` are deliberately absent), the
@@ -58,20 +58,27 @@ changes `_shared/types.ts` and `_shared/story-prompts.ts`; these **nine
 functions were deployed on 2026-09-26 UTC before any client release**:
 `continue-story`, `edit-story`, `generate-story`, `generate-story-stream`,
 `reimagine-chapter`, `shape-story`, `generate-character-image`,
-`regenerate-cover`, and `profile`. Their versions advanced and the downloaded
-`generate-story` and `shape-story` bundles matched the committed country
-contract byte-for-byte. Production smoke passed **43/43** after the deploy.
+`regenerate-cover`, and `profile`. Their versions advanced. The downloaded
+`generate-story` and `shape-story` bundles matched their country contract
+source byte-for-byte; the other four story paths matched the reachable country
+contract files (`_shared/story-world-countries.ts`, `types.ts`, and
+`story-prompts.ts` where imported), the two image paths matched their reachable
+country files, and Profile's deployed index and shared profile source matched
+main with the removed reader-preference actions absent. Production smoke passed
+**43/43** after the deploy.
 No client build or OTA is currently configured; a future client release must
 continue to follow the functions-first order, because an older server silently
 drops an unknown two-letter id.
 
-The deploy set was eight, not the three or six either PR touched by folder:
+**Historical 2026-09-25 #144/#145 deploy.** The deploy set was eight, not the
+three or six either PR touched by folder:
 `generate-story`, `generate-story-stream`, `continue-story`, `edit-story`,
 `reimagine-chapter`, `shape-story`, `generate-character-image` and
 `regenerate-cover`. The last two reach the change only through `_shared/types.ts`
 — exactly the kind of reach that left 16 functions behind main on 2026-09-24.
 
-`backend/scripts/smoke-app-surface.py` then passed **43/43 against production**,
+`backend/scripts/smoke-app-surface.py` then passed **43/43 against production**
+on 2026-09-25,
 including step 2.1, which had been failing since the probe-deadline bug. Step 5.3
 *printed* the model that served the edit — `meta/muse-spark-1.3-contributor` —
 which is the fix working as designed: the cheaper tier writing instead of being
