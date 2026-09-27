@@ -36,6 +36,7 @@ import { setAuthorFollow, setStoryBookmark } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import StoryActionsSheet from "@/components/moderation/StoryActionsSheet";
 import { imageAssets } from "@/data/images";
+import { coverUrl } from "@/lib/cover-url";
 import {
   colors,
   fonts,
@@ -521,8 +522,11 @@ export default function StoryDetailScreen({
   // The generated cover first, the bundled seed asset second. See the note in
   // ReaderScreen: reading only `coverImage` meant a story the user generated
   // showed its art in the studio and lost it everywhere else.
-  const coverImage = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // `hero`, not `card`: this one fills the width of the screen, so it is the
+  // one surface that genuinely needs the pixels. See `lib/cover-url.ts`.
+  const heroUri = coverUrl(story.coverImageUrl, "hero");
+  const coverImage = heroUri
+    ? { uri: heroUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;

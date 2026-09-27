@@ -45,7 +45,7 @@ const atWidth = async (width: number) => {
     <ExploreScreen
       stories={seedStories}
       onStory={jest.fn()}
-      searchOptions={{ debounceMs: 0, prefetchTimeoutMs: 0 }}
+      searchOptions={{ debounceMs: 0 }}
     />,
   );
   await waitFor(() => view.getAllByTestId("story-feed-cover-frame"));

@@ -211,6 +211,87 @@ Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
 checks are the `curl`s above, run against the live project. No migration. One
 function to deploy, `seed-voice-previews`, and only for the docblock — the
 seeding itself was an invocation of an already-deployed function.
+## 2026-09-27 UTC — Covers arrive at 70 KB instead of 2 MB
+
+**Session:** fourth and last branch of the pre-launch polish round. Branch
+`codex/cover-image-speed`, in its own worktree, off `ca4a68e`. Client only: no
+migration, no function, no deploy.
+
+### The measurement, before the change
+
+A published cover is a full-size PNG in the `covers` bucket. One sampled from
+production:
+
+| What | Bytes |
+|---|---|
+| `…/object/public/covers/covers/<id>/cover.png` | **1,978,908** |
+| `…/render/image/public/…?width=350&quality=60` | 865,744 *(still PNG)* |
+| the same, with `Accept: image/webp` | **70,810** |
+
+Explore draws that into a box about 116x155pt, six at a time. **28x**, and the
+transform endpoint is already enabled on this project — nothing had to be
+turned on.
+
+**The `Accept` header is the whole trick and it is easy to miss.** Supabase
+decides WebP from the request header; there is no `format=webp` parameter. The
+identical transform URL fetched without it comes back as PNG at 866 KB —
+better, and twelve times worse than it needs to be, with nothing failing.
+
+### Why the previous attempt could not have worked
+
+PR #119 added a cover "prefetch warm-up" to `useStorySearch`: `Image.prefetch`
+on the first six covers, raced against a **180 ms** timeout before the rows
+were handed to the list. It is deleted here, along with its test, and it is
+worth writing down why rather than quietly removing it:
+
+- It delayed the first paint by up to 180 ms to get a head start on a ~2 MB
+  download. The race was designed to lose.
+- `Image.prefetch` on React Native warms the in-memory/HTTP cache for the
+  session only. There was no persistent cache to warm.
+- It never changed a single byte fetched.
+
+What was actually needed was fewer bytes and a real disk cache.
+
+### What landed
+
+- **`expo/src/lib/cover-url.ts`** rewrites `/object/public/` to
+  `/render/image/public/` and appends a width per surface (mini 232, card 350,
+  hero 800, all at `quality=60&resize=cover`). It is a **no-op on anything it
+  does not recognise** — an uploaded cover on another host, a data URI, a
+  bundled asset, null — and idempotent, so two callers resizing the same URL
+  cannot produce `?width=350?width=232`. Being wrong here has to mean "no
+  faster", never "no image".
+- **`expo-image@3.0.11`** (the SDK 54 version) replaces RN's `Image` inside
+  `FocalImage`, which is the single chokepoint every cover goes through. The
+  reason is the header, not the cache: RN's `Image` gives no way to set one,
+  and `expo-image` takes `headers` on the source. `cachePolicy="disk"`,
+  `transition`, `recyclingKey` and real `contentPosition` come along with it.
+  Native honoured no focal point at all before this; it center-cropped.
+- **The hand-rolled fade is gone from `StoryFeedCard`.** It was an
+  `Animated.Value` driven from `onLoad` and it was wrong in both directions
+  before it was right: first revealing too late (a fast `onLoad` beat the mount
+  effect that zeroed it, which is the "first screenful of Explore is gradients
+  forever" report), then too early (a regenerated cover reused the old value of
+  1). Both are one bug — a fade whose correctness depends on the ordering of a
+  callback and an effect — and `transition` removes the ordering question
+  along with the state.
+- `recyclingKey={story.id}`, because `FlatList` reuses rows and without it a
+  recycled row paints the previous story's cover until the new one decodes.
+  That looks like a correct card until you read the title beside it.
+
+### Verification
+
+Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors, and the
+web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
+native dependency.
+
+Seven new tests on `coverUrl`, six of them about *not* breaking an image, and
+one pinning the rewrite to the `Accept` header so the two halves cannot drift
+apart. `story-feed-card.test.tsx` lost its three opacity tests — they tested a
+mechanism that is now the library's — and gained three on what the card still
+decides for itself: the URL it asks for, the URL it leaves alone, and the
+recycling key. Both of those fail silently, which is why they are asserted: a
+full-size cover looks identical, just slower.
 
 ---
 

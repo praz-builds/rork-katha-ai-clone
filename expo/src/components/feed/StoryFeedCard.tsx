@@ -1,15 +1,15 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { BookOpen, ChevronRight, Heart } from "lucide-react-native";
-import { memo, useEffect, useMemo, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { memo } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FocalImage, formatNumber } from "@/components/KathaPrimitives";
+import { coverUrl } from "@/lib/cover-url";
 import { imageAssets } from "@/data/images";
 import {
   colors,
   fonts,
   genreGradients,
   genreLabels,
-  motion,
   radius,
   shadows,
   spacing,
@@ -144,8 +144,8 @@ export function feedCardMetrics(
  * whose painting failed, shows its genre's gradient and nothing else: no
  * spinner, no "Painting..." copy, no retry. A feed card is a reader's glance
  * at a story, and a progress report on its artwork is not something they
- * asked for. When the URL arrives the picture fades in over the gradient in
- * `motion.base`, so the swap reads as the art arriving rather than the card
+ * asked for. When the art arrives the picture cross-fades in over the
+ * gradient, so the swap reads as the art arriving rather than the card
  * flickering.
  *
  * The generated cover (`coverImageUrl`) is read first and the bundled seed
@@ -159,68 +159,40 @@ export function feedCardMetrics(
  * then never appear at all — the catalogue would silently shrink. The
  * gradient IS the card until the art arrives.
  *
- * WHAT ACTUALLY WENT WRONG (the first screenful of Explore showing gradients
- * forever): the reveal used to be an `Animated.Value` reset to 0 in a mount
- * effect. A cover that resolves fast — a warm HTTP cache, an already-decoded
- * image, anything prefetched — fires `onLoad` BEFORE that effect runs, so the
- * fade started and the effect then put it straight back to 0, and nothing
- * fired `onLoad` a second time. Cards mounted later during a scroll fetch
- * cold, their `onLoad` landed after the effect, and they revealed correctly:
- * exactly the "top of the list is broken, the rest is fine" report.
+ * WHY THERE IS NO FADE STATE HERE ANY MORE, and it is worth knowing what was
+ * removed. The reveal used to be an `Animated.Value` driven from `onLoad`,
+ * and it was wrong in both directions before it was right. First it revealed
+ * too LATE: the value was reset to 0 in a mount effect, and a cover that
+ * resolves fast — a warm cache, an already-decoded image — fires `onLoad`
+ * BEFORE that effect runs, so the fade started and the effect put it straight
+ * back to 0 with nothing to fire `onLoad` again. That was "the top of the list
+ * is broken and the rest is fine". Then, once the value was keyed to the
+ * source, a REGENERATED cover reused the old value of 1 and appeared at full
+ * strength instead of fading up.
  *
- * The fix is to stop treating "loaded" as an event that has to be caught at
- * the right moment. `shownKey` REMEMBERS which source has loaded, so a load
- * that arrives before first paint is still true afterwards and cannot be
- * undone by anything that runs later. The fade is a consequence of that fact,
- * not of the callback's timing.
+ * Both bugs are the same bug: a fade whose correctness depends on the order of
+ * a callback and an effect. `expo-image`'s `transition` does the cross-fade
+ * itself, with no state to sequence, so the ordering question no longer
+ * exists. `FocalImage` owns it now.
+ *
+ * THE COVER IS ALSO FETCHED SMALL. See `lib/cover-url.ts`: the full-size PNG
+ * this box used to download is ~2 MB and the box is 116x155pt.
  */
 function CardCover(
   { story, width, height }: { story: Story; width: number; height: number },
 ) {
-  const image = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // Ask Supabase for the cover at roughly the size this box draws it. A
+  // published cover is a full-size PNG -- one sampled from production is
+  // 1,978,908 bytes -- and this box is about 116x155pt. See `lib/cover-url.ts`
+  // for the measurements, and for why the `Accept` header is the other half of
+  // the saving.
+  const coverUri = coverUrl(story.coverImageUrl, "card");
+  const image = coverUri
+    ? { uri: coverUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
   const focalY = Math.max(0, (story.focalY ?? 0.5) - 0.07);
-  const imageKey = story.coverImageUrl ?? story.coverImage ?? null;
-
-  // Which source has reported itself loaded. Comparing it against the CURRENT
-  // source is what keeps a regenerated cover honest: the key changes, the
-  // remembered one no longer matches, and the new art fades in like the first
-  // rather than popping in under the old one's opacity.
-  const [shownKey, setShownKey] = useState<string | null>(null);
-  const revealed = imageKey !== null && shownKey === imageKey;
-
-  /*
-    A NEW SOURCE GETS A NEW, ZEROED OPACITY — IN THE RENDER THAT CHANGES THE
-    KEY, not in an effect after it.
-
-    `useRef` gave every source the same value, so a regenerated cover was
-    painted once at the OLD opacity of 1 and only then reset by the passive
-    effect below: the new art popped in at full strength instead of fading up
-    from the gradient. That is the same bug this card was fixed for, pointing
-    the other way — the first one revealed too late, this one too early.
-
-    Keying the value to `imageKey` makes the reset structural. There is no
-    ordering left to get wrong, because the frame that first shows a source is
-    also the frame that owns its zero.
-  */
-  const opacity = useMemo(
-    () => new Animated.Value(0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [imageKey],
-  );
-
-  useEffect(() => {
-    // `opacity` is already 0 for an unrevealed source; nothing to undo.
-    if (!revealed) return;
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: motion.base,
-      useNativeDriver: true,
-    }).start();
-  }, [revealed, opacity]);
 
   return (
     <View testID="story-feed-cover-frame" style={[styles.cover, { width, height }]}>
@@ -228,20 +200,31 @@ function CardCover(
         colors={genreGradients[story.genre]}
         style={StyleSheet.absoluteFill}
       />
+      {/*
+        NO HAND-ROLLED FADE ANY MORE. This was an `Animated.View` whose opacity
+        was keyed to the source and driven from `onLoad`, and it existed
+        because RN's `Image` pops in. It was subtly wrong twice: once revealing
+        too LATE -- a fast `onLoad` beat the mount effect that zeroed the
+        opacity, so the first screenful of Explore stayed invisible -- and once
+        too EARLY, when a regenerated cover reused the previous value of 1 and
+        appeared at full strength instead of fading up from the gradient.
+        `expo-image`'s `transition` is the same cross-fade with no state to
+        sequence, so neither bug has anywhere left to live.
+      */}
       {image
         ? (
-          <Animated.View
-            testID="story-feed-cover"
-            style={[StyleSheet.absoluteFill, { opacity }]}
-          >
+          <View testID="story-feed-cover" style={StyleSheet.absoluteFill}>
             <FocalImage
               source={image}
               focalX={story.focalX ?? 0.5}
               focalY={focalY}
               style={{ width: "100%", height: "100%" }}
-              onLoad={() => setShownKey(imageKey)}
+              // The story id, not the URL. A regenerated cover keeps the same
+              // card and should cross-fade; a RECYCLED row is a different
+              // story and must never show the previous one's art.
+              recyclingKey={story.id}
             />
-          </Animated.View>
+          </View>
         )
         : null}
       {/*
@@ -337,7 +320,7 @@ function StoryFeedCardComponent({
 /**
  * Memoised because a Home rail holds a dozen of these and Home re-renders on
  * anything App does -- a credits tick, a generation publishing, a tab switch.
- * Each card owns a cover image and an `Animated` fade, so re-rendering every
+ * Each card owns a cover image that decodes and cross-fades, so re-rendering
  * one of them for a change none of them shows is work that makes a rail
  * stutter under the thumb. It only holds if `onPress` is stable: see
  * `RailCard` in `FeedRail`.

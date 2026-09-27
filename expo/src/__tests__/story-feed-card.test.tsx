@@ -1,26 +1,28 @@
 /**
- * The cover that never appeared.
+ * The cover the card asks for, and the one it is allowed to show.
  *
- * Explore showed the first screenful of cards as genre gradients forever,
- * while cards met further down the scroll showed their art. The difference
- * was not the stories — it was WHEN the image answered. A cover that resolves
- * fast (warm cache, already decoded, prefetched) fires `onLoad` before the
- * card's mount effect runs; the old code reset the fade to 0 in that effect,
- * so the reveal that had already happened was undone and nothing fired
- * `onLoad` again for the life of the mount.
+ * WHAT THIS FILE USED TO TEST, AND WHY IT NO LONGER DOES. Explore showed the
+ * first screenful of cards as genre gradients forever while cards further down
+ * showed their art, because the reveal was a hand-rolled `Animated.Value`
+ * driven from `onLoad`: a cover that resolved fast fired `onLoad` before the
+ * mount effect that zeroed the opacity, so the reveal was undone and nothing
+ * fired again. Fixing that introduced the mirror bug, where a regenerated
+ * cover reused the old value of 1 and popped in at full strength.
  *
- * The first test below is that exact ordering: the mocked image reports
- * itself loaded from a LAYOUT effect, which React runs before the parent's
- * passive mount effect. Against the old implementation the cover ends at
- * opacity 0; against the fixed one it ends visible.
+ * Both were the same bug -- a fade whose correctness depended on the ordering
+ * of a callback and an effect -- and `expo-image`'s `transition` removed the
+ * ordering question along with the state. There is nothing left to assert
+ * about opacity, so the three tests that did are gone rather than rewritten
+ * against a mechanism that is now the library's.
  *
- * `Animated.timing` is stubbed to settle immediately because the native
- * driver does not tick under Jest — the animation is not what is being
- * tested, the end state is.
+ * What replaces them is the two things the card still decides for itself: the
+ * URL it asks Supabase for, and the recycling key that stops a reused row
+ * showing the previous story's art. Both fail silently -- a full-size cover
+ * looks identical, just slower, and a stale cover looks like the right one
+ * until you read the title next to it.
  */
 import React from "react";
-import { act, render } from "@testing-library/react-native";
-import { Animated } from "react-native";
+import { render } from "@testing-library/react-native";
 
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("lucide-react-native", () => {
@@ -32,18 +34,9 @@ jest.mock("lucide-react-native", () => {
 });
 
 /**
- * An image that reports itself loaded BEFORE the card's mount effect. A child
- * layout effect is the earliest a test can reach; React runs every layout
- * effect at commit and the parent's `useEffect` only afterwards, which is the
- * real-world race with a cached cover.
+ * `FocalImage`, reduced to the two props the card is responsible for choosing.
+ * They are put on the host element so a query can read them back.
  */
-/**
- * Called from inside the image's layout effect, i.e. DURING the commit that
- * first rendered a new source and BEFORE anything reacts to its load. It is
- * the only place a test can look at the frame a reader would actually see.
- */
-let mockOnSourceCommitted: ((key: string) => void) | null = null;
-
 jest.mock("@/components/KathaPrimitives", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactModule = require("react");
@@ -51,26 +44,16 @@ jest.mock("@/components/KathaPrimitives", () => {
   return {
     ...actual,
     FocalImage: (
-      { source, onLoad }: {
+      { source, recyclingKey }: {
         source: number | { uri: string };
-        onLoad?: () => void;
+        recyclingKey?: string;
       },
-    ) => {
-      const key = typeof source === "object" && source !== null
-        ? source.uri
-        : String(source);
-      // ONCE PER SOURCE, like a real image. Firing on every render would hide
-      // the very bug under test: a second `onLoad` after the mount effect
-      // would repair a reveal that the effect had just undone.
-      const fired = ReactModule.useRef(null);
-      ReactModule.useLayoutEffect(() => {
-        if (fired.current === key) return;
-        fired.current = key;
-        mockOnSourceCommitted?.(key);
-        onLoad?.();
-      });
-      return ReactModule.createElement("FocalImage", { testID: "focal-image" });
-    },
+    ) =>
+      ReactModule.createElement("FocalImage", {
+        testID: "focal-image",
+        uri: typeof source === "object" && source !== null ? source.uri : null,
+        recyclingKey,
+      }),
   };
 });
 
@@ -86,104 +69,54 @@ import { stories } from "@/data/seed";
 
 const story = { ...stories[0], coverImageUrl: "https://example.test/cover.png" };
 
-let timing: jest.SpyInstance;
 
-beforeEach(() => {
-  timing = jest.spyOn(Animated, "timing").mockImplementation((
-    value: unknown,
-    config: { toValue: unknown },
-  ) => {
-    const node = value as { setValue: (to: number) => void };
-    return {
-      start: (callback?: (result: { finished: boolean }) => void) => {
-        node.setValue(config.toValue as number);
-        callback?.({ finished: true });
-      },
-      stop: () => {},
-      reset: () => {},
-    } as unknown as ReturnType<typeof Animated.timing>;
-  });
-});
+type CardView = Awaited<ReturnType<typeof render>>;
 
-afterEach(() => {
-  timing.mockRestore();
-  mockOnSourceCommitted = null;
-});
-
-/**
- * The cover's CURRENT opacity, as a number.
- *
- * WHY THE `typeof` CHECK IS HERE. A reviewer has read this as returning the
- * `Animated.Value` object, which would make `toBe(1)` unsatisfiable and every
- * assertion below vacuous. It does not: `Animated.View` resolves its style to
- * a plain number on the host element the query returns, and reverting the
- * reveal fix makes these tests report `Expected: 1, Received: 0` — a number,
- * and one that discriminates. The check makes that permanent rather than
- * remembered, because the failure mode if it ever DID become an object is a
- * suite that passes while protecting nothing.
- */
-const coverOpacity = (element: { props: Record<string, unknown> }) => {
-  const style = element.props.style as
-    | { opacity?: number }
-    | { opacity?: number }[];
-  const flattened = Array.isArray(style)
-    ? Object.assign({}, ...style)
-    : style;
-  const opacity = (flattened as { opacity?: number }).opacity;
-  expect(typeof opacity).toBe("number");
-  return opacity;
-};
-
-it("shows a cover whose onLoad fires before the first paint", async () => {
-  const view = await render(<StoryFeedCard story={story} />);
-  await act(async () => {});
-  expect(coverOpacity(view.getByTestId("story-feed-cover"))).toBe(1);
-});
-
-it("fades a regenerated cover in again", async () => {
-  const view = await render(<StoryFeedCard story={story} />);
-  await act(async () => {});
-
-  await view.rerender(
-    <StoryFeedCard
-      story={{ ...story, coverImageUrl: "https://example.test/cover-2.png" }}
-    />,
-  );
-  await act(async () => {});
-  // The new source loads on its own layout effect, so it ends visible too -
-  // the remembered key is per-source, not a one-way "has ever loaded" latch.
-  expect(coverOpacity(view.getByTestId("story-feed-cover"))).toBe(1);
-});
-
-it("starts a regenerated cover hidden, in the frame that swaps it", async () => {
-  /*
-    The mirror of the bug above. `revealed` going false and the effect calling
-    `setValue(0)` is not enough, because that effect is PASSIVE: the frame
-    that first paints the new source still carries the old source's opacity of
-    1, so regenerated art pops in at full strength instead of fading up from
-    the gradient.
-
-    The probe fires inside the new image's layout effect, which is during that
-    exact commit and before anything has reacted to its load, so what it reads
-    is the frame a reader would see.
-  */
-  const view = await render(<StoryFeedCard story={story} />);
-  await act(async () => {});
-  expect(coverOpacity(view.getByTestId("story-feed-cover"))).toBe(1);
-
-  const seen: number[] = [];
-  mockOnSourceCommitted = () => {
-    seen.push(coverOpacity(view.getByTestId("story-feed-cover")) as number);
+/** What the card chose to hand `FocalImage`. */
+const cover = (view: CardView) =>
+  view.getByTestId("focal-image").props as {
+    uri: string | null;
+    recyclingKey?: string;
   };
 
-  await view.rerender(
+it("asks Supabase for a card-sized cover, not the full-size PNG", async () => {
+  // The whole point of the change. A published cover is ~2MB at 832x1248 and
+  // this box is about 116x155pt; the transform endpoint returns ~70KB of WebP
+  // for the same image. See `lib/cover-url.ts` for the measurements.
+  const view = await render(
     <StoryFeedCard
-      story={{ ...story, coverImageUrl: "https://example.test/cover-2.png" }}
+      story={{
+        ...story,
+        coverImageUrl:
+          "https://p.supabase.co/storage/v1/object/public/covers/covers/abc/cover.png",
+      }}
     />,
   );
-  await act(async () => {});
 
-  expect(seen).toEqual([0]);
+  expect(cover(view).uri).toBe(
+    "https://p.supabase.co/storage/v1/render/image/public/covers/covers/abc/cover.png" +
+      "?width=350&quality=60&resize=cover",
+  );
+});
+
+it("leaves a cover it does not recognise exactly as it found it", async () => {
+  // An uploaded cover on somebody else's host. Being wrong here has to mean
+  // "no faster", never "no image".
+  const view = await render(
+    <StoryFeedCard
+      story={{ ...story, coverImageUrl: "https://elsewhere.test/mine.jpg" }}
+    />,
+  );
+
+  expect(cover(view).uri).toBe("https://elsewhere.test/mine.jpg");
+});
+
+it("keys the image to the story, so a recycled row cannot show a stale cover", async () => {
+  // `FlatList` reuses row components as it scrolls. Without this the reused
+  // row keeps painting the previous story's art until the new one decodes,
+  // which looks like a correct card until you read the title beside it.
+  const view = await render(<StoryFeedCard story={story} />);
+  expect(cover(view).recyclingKey).toBe(story.id);
 });
 
 it("never withholds the card while the cover is missing", async () => {

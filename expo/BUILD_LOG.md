@@ -2,6 +2,31 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Covers arrive at 70 KB instead of 2 MB
+
+- **`src/lib/cover-url.ts`** asks Supabase's transform endpoint for a cover at
+  roughly the size it will be drawn at: mini 232, card 350, hero 800, all
+  `quality=60&resize=cover`. Measured against production: the same cover goes
+  from **1,978,908 bytes** to **70,810**. It no-ops on any URL it does not
+  recognise and never transforms twice.
+- **The `Accept: image/webp` header is the other half and is easy to miss.**
+  Supabase picks WebP from the request header; there is no `format` parameter.
+  The identical transform URL without it returns PNG at 866 KB.
+- **`expo-image` replaces RN's `Image` inside `FocalImage`.** The reason is the
+  header — RN's `Image` cannot set one — with `cachePolicy="disk"`,
+  `transition`, `recyclingKey` and real `contentPosition` as the dividend.
+  Native honoured no focal point before this; it center-cropped.
+- **`StoryFeedCard`'s hand-rolled fade is deleted.** It was an `Animated.Value`
+  driven from `onLoad`, wrong first in one direction (a fast `onLoad` beat the
+  mount effect that zeroed it, so the first screenful of Explore stayed
+  invisible) and then the other (a regenerated cover reused the old opacity of
+  1 and popped in). `transition` has no ordering to get wrong.
+- **`recyclingKey={story.id}`** on every card, because `FlatList` reuses rows
+  and a recycled one otherwise paints the previous story's cover.
+- The 180 ms `Image.prefetch` race in `useStorySearch` is removed with its
+  test. It delayed the first paint to get a head start on a 2 MB download and
+  warmed only the session's in-memory cache: it never changed a byte fetched.
+
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 
 - **Every voice sample plays.** The six preview MP3s had never existed --

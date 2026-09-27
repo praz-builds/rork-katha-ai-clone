@@ -26,6 +26,7 @@ import { NarrationLoader } from "@/components/listen/NarrationLoader";
 import { PlayerBar, type PlaybackRate } from "@/components/listen/PlayerBar";
 import { TranscriptView } from "@/components/listen/TranscriptView";
 import { imageAssets } from "@/data/images";
+import { coverUrl } from "@/lib/cover-url";
 import { getDefaultVoices, type VoiceId } from "@/data/voices";
 import { preferredVoiceId } from "@/lib/voices";
 import { captureError } from "@/lib/analytics";
@@ -266,8 +267,10 @@ export default function ListenScreen({
   }, []);
   const voiceId: VoiceId = ((preferred ?? femaleVoice) ?? "aria") as VoiceId;
 
-  const coverSource = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // `hero`: the player's cover is full-bleed behind the controls.
+  const coverUri = coverUrl(story.coverImageUrl, "hero");
+  const coverSource = coverUri
+    ? { uri: coverUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;

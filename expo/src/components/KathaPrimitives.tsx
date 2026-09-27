@@ -3,16 +3,29 @@ import React from "react";
 import type { PropsWithChildren } from "react";
 import { useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
+import { COVER_ACCEPT_HEADERS, isTransformedCover } from "@/lib/cover-url";
 import { colors, controls, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
 /**
  * Renders an image with focal-point-aware cropping.
- * On web, uses a native <img> with object-fit/object-position (RN Web's
- * Image component ignores objectPosition). On native, falls back to
- * standard RN Image with center crop.
+ *
+ * On web, a native `<img>` with object-fit/object-position, because
+ * react-native-web's Image ignores objectPosition. On native, `expo-image`.
+ *
+ * WHY `expo-image` AND NOT RN's `Image`, and it is not mainly the cache.
+ * Supabase decides whether to serve a transformed cover as WebP (70 KB) or as
+ * the original format (866 KB) from the request's `Accept` header -- there is
+ * no query parameter for it. RN's `Image` gives no way to set one;
+ * `expo-image` takes `headers` on the source. See `lib/cover-url.ts` for the
+ * measurements. The disk cache and the fade come along with it and are worth
+ * having, but the header is the reason.
+ *
+ * `recyclingKey` is not optional on a `FlatList`: without it a recycled row
+ * shows the previous story's cover until the new one decodes.
  */
 export function FocalImage({
   source,
@@ -20,12 +33,15 @@ export function FocalImage({
   focalY = 0.5,
   style,
   onLoad,
+  recyclingKey,
 }: {
   source: number | { uri: string };
   focalX?: number;
   focalY?: number;
   style?: { width: number | string; height: number | string };
   onLoad?: () => void;
+  /** The entity this image belongs to, so a recycled row never shows a stale one. */
+  recyclingKey?: string;
 }) {
   if (Platform.OS === "web") {
     let uri: string;
@@ -68,12 +84,36 @@ export function FocalImage({
       draggable: false,
     });
   }
+  // The header goes on only for a URL `coverUrl` rewrote. A bundled asset
+  // gains nothing from it, and somebody's uploaded cover is served by whatever
+  // host holds it.
+  const uri = typeof source === "object" && source !== null && "uri" in source
+    ? source.uri
+    : null;
+  const expoSource = uri !== null && isTransformedCover(uri)
+    ? { uri, headers: COVER_ACCEPT_HEADERS }
+    : source;
+
   return (
-    <Image
-      source={source}
+    <ExpoImage
+      source={expoSource}
       style={StyleSheet.absoluteFill}
-      resizeMode="cover"
+      // `contentFit`/`contentPosition` are expo-image's names for what was
+      // `resizeMode="cover"` plus the focal point the web branch above has
+      // always honoured. Native used to center-crop regardless, so this is the
+      // first time a focal point means anything off the web.
+      contentFit="cover"
+      contentPosition={{ top: `${focalY * 100}%`, left: `${focalX * 100}%` }}
+      // A real disk cache, which `Image.prefetch` never provided: it only ever
+      // warmed the in-memory/HTTP cache for the session.
+      cachePolicy="disk"
+      // Cross-fade from whatever is underneath -- callers layer a genre
+      // gradient there -- rather than the hand-rolled Animated.Value the feed
+      // card used to drive from `onLoad`.
+      transition={180}
+      recyclingKey={recyclingKey}
       onLoad={onLoad}
+      accessible={false}
     />
   );
 }
