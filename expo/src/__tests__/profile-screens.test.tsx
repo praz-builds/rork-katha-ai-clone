@@ -761,7 +761,8 @@ describe("the reader's own profile", () => {
     const view = await render(<ProfileScreen {...profileProps()} />);
     await waitFor(() => view.getByTestId("profile-story-world"));
     // The row is named for the job it does, next to Audiobook voices and
-    // Background music, which are too. "Story world" stays the sheet's name.
+    // Background music, which are too. The picker it opens says the same
+    // words; "Story world" survives only in the code and the contract docs.
     expect(view.getByText("Where stories are set")).toBeTruthy();
     expect(view.getByText("Any setting. Each story picks its own.")).toBeTruthy();
     await fireEvent.press(view.getByTestId("profile-story-world"));

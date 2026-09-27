@@ -59,6 +59,12 @@ surface is clean again; nothing under `_shared/` was touched, so there is no
 importer closure. Do not read that one row as a false alarm and wave the audit
 through -- "16 functions behind main" is on this page because somebody did.
 
+**Whoever deploys it deletes this paragraph.** It is only true between that
+merge and that deploy, and left standing afterwards it is a false exception
+sitting directly under a zero-drift baseline, on the page whose whole job is to
+be what an operator can trust about production. The person running the deploy is
+the only one who knows it has stopped being true.
+
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
 block-author's `library` and `profile` were recorded as needing deployment and

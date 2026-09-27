@@ -81,8 +81,16 @@ or *"India. Names, places and everyday detail."* The sentence is built by a new
 screen from a label and a fragment, so one file owns the words and the sentence.
 It deliberately does not reuse `hint`: `hint` is the second line of a picker
 row, and the 249 country entries have none on purpose, because a repeated line
-under every country is noise in a list you are scanning. The sheet keeps the
-name "Story world" and got shorter, plainer copy.
+under every country is noise in a list you are scanning.
+
+**The picker heading says the same words as the row**, and got shorter, plainer
+copy. An earlier round of this branch kept it as "Story world" and review was
+right that it should not: the argument for renaming the row — it named the
+setting rather than the job — applies unchanged to the heading, which is the
+screen a reader is actually looking at when they choose, and tapping one name
+to land under another is its own small confusion. **"Story world" survives as
+the feature's name in the code, the prompt layer and `source-of-truth/`, and is
+no longer user-visible anywhere** — so grep for `story-world`, not for a label.
 
 A test asserts both branches and then walks all 250 worlds checking no summary
 contains U+2014 and none exceeds 90 characters, because the country half is
