@@ -59,8 +59,9 @@ export default function StoryWorldSheet({
             </Pressable>
           </View>
           <Text style={styles.sub}>
-            Choose a country for grounded names, places, food, customs and
-            everyday references. Your story brief always wins.
+            Pick a country and new stories use its names, places, food and
+            everyday detail. Anywhere lets each story choose for itself. What
+            you write in a brief always wins.
           </Text>
           <TextInput
             value={query}

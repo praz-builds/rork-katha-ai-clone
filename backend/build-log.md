@@ -7,6 +7,100 @@
 
 ---
 
+## 2026-09-27 UTC — Every voice sample plays, and the Story world row says what it does
+
+**Session:** second branch of the pre-launch polish round, from founder feedback
+on four screenshots. Branch `codex/voices-and-profile-copy`, in its own
+worktree, off `ca4a68e`. No migration, no function deploy, no schema change.
+
+### The voice samples were an outage, not a design problem
+
+Every row on Audiobook voices showed *"Sample unavailable right now"* in red. The
+client was behaving correctly: the six preview MP3s had never existed. All of
+`voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` returned 400 from the
+public `audio` bucket, because `seed-voice-previews` had never successfully run.
+The 2026-09-25 attempt stopped at the function's service-role check with HTTP
+401, recorded as `voice_preview_seed_unauthorized`
+(`a25f3c5df3dca9301fa52e59f5259c53`).
+
+**Root cause of that 401, which nobody had established:** Supabase rotated the
+platform secrets on 2026-09-26, and the deployed `SUPABASE_SERVICE_ROLE_KEY`
+secret is now the new-style `sb_secret_...` key. `backend/.env` still holds the
+legacy `service_role` JWT. That JWT is a perfectly valid key — it authenticates
+against PostgREST and Storage, which is why it never looked wrong — but the
+seeder compares the bearer to the deployed secret value, and the two no longer
+match. Confirmed by hashing: the legacy JWT digests to `01f8aebb…`, the deployed
+secret to `40fb8bfe…`, and the revealed `sb_secret_` key digests to exactly the
+latter. So the function was never broken; the operator's copy of the key was
+stale. Logged as `e65cdc2b2d4494cdb05f877f596f7c70`.
+
+**Then it hit a second wall.** With the right key it returned
+`546 WORKER_RESOURCE_LIMIT` after 150s, having uploaded three of six: it
+generates every voice serially through RunPod and exceeds the edge worker's
+compute budget in one invocation. It is idempotent — `ensureVoicePreviewOnce`
+checks storage first — so three calls finished the set, each skipping what had
+already landed. Logged as `e1e60e44529093ab95bac706eafe3531`, medium: it is a
+shape worth fixing if the catalogue grows, and harmless while a re-run is free.
+
+**Result, verified against production rather than assumed:** all six answer 200
+with real audio, 97–115 KB, and `file` reports 128 kbps mono MPEG layer III,
+about seven seconds each. `elvira` and `alvaro` are `edge_tts`, have no worker,
+and are filtered out before generation — unseeded on purpose, and absent from
+the client list too.
+
+**No client change was needed.** `VoicesScreen` renders the error only when the
+audio actually fails, which was the honest answer and still is. Its docblock and
+the notes in `AGENTS.md` and `expo/CLAUDE.md` that said every sample 404s are now
+wrong, so they are replaced — with what a re-run actually needs, since none of
+the three obstacles above are guessable.
+
+### Story world
+
+The row read **"Story world" / "Anywhere — Katha follows each story's own
+cues"**, which names the setting rather than the job, next to *Audiobook voices*
+and *Background music*, which both say what they do. It also carried the only
+two em dashes on the screen, in a product whose story prompt forbids them in
+generated prose.
+
+Now **"Where stories are set"**, over *"Any setting. Each story picks its own."*
+or *"India. Names, places and everyday detail."* The sentence is built by a new
+`storyWorldSummary()` in `lib/story-world.ts` rather than assembled in the
+screen from a label and a fragment, so one file owns the words and the sentence.
+It deliberately does not reuse `hint`: `hint` is the second line of a picker
+row, and the 249 country entries have none on purpose, because a repeated line
+under every country is noise in a list you are scanning. The sheet keeps the
+name "Story world" and got shorter, plainer copy.
+
+A test asserts both branches and then walks all 250 worlds checking no summary
+contains U+2014 and none exceeds 90 characters, because the country half is
+interpolated and a label could carry either problem.
+
+### Background music: nothing to change, and that is the finding
+
+The feedback was that the switch defaults to off. **It does not.** The default is
+on in all three places that hold it — `ProfileScreen`'s `useState(true)`,
+`getMusicMuted()` returning false for an absent key *and* on a read failure, and
+`ReaderScreen`'s `useRef(false)` — and `profile-music.test.tsx` already pins it
+("is on by default, the shipped default"). The screenshot shows the toggle
+orange, i.e. on.
+
+The playback path was checked too rather than stopping at the switch: the tracks
+serve. `music/{fantasy_01,romance_01,comedy_01,horror_01}.m4a` all answer 200
+with 0.5–1.7 MB of `audio/mp4`. So the preference is right and the asset is
+there. Flipping a default that is already correct would have been a no-op
+dressed as a fix, so nothing was changed. If music is not audible on a device,
+the next place to look is `configureAudioSession()` and the iOS silent switch,
+not the preference.
+
+### Verification
+
+Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
+checks are the `curl`s above, run against the live project. No deploy: nothing
+under `backend/supabase/functions/` or `migrations/` changed, and the seeding
+was an invocation of an already-deployed function.
+
+---
+
 ## 2026-09-27 UTC — Deploy audit of the whole function surface: nothing to deploy
 
 **Session:** asked to deploy what had merged to main ahead of the first Android

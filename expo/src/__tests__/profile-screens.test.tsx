@@ -760,12 +760,15 @@ describe("the reader's own profile", () => {
     mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
     const view = await render(<ProfileScreen {...profileProps()} />);
     await waitFor(() => view.getByTestId("profile-story-world"));
-    expect(view.getByText(/Anywhere — Katha follows/)).toBeTruthy();
+    // The row is named for the job it does, next to Audiobook voices and
+    // Background music, which are too. "Story world" stays the sheet's name.
+    expect(view.getByText("Where stories are set")).toBeTruthy();
+    expect(view.getByText("Any setting. Each story picks its own.")).toBeTruthy();
     await fireEvent.press(view.getByTestId("profile-story-world"));
     await fireEvent.changeText(view.getByLabelText("Search countries"), "India");
     await fireEvent.press(view.getByTestId("story-world-IN"));
     await waitFor(() =>
-      expect(view.getByText("India — where new stories are rooted")).toBeTruthy()
+      expect(view.getByText("India. Names, places and everyday detail.")).toBeTruthy()
     );
     expect(currentStoryWorld()).toBe("IN");
 

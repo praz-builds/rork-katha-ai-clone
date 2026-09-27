@@ -1131,7 +1131,17 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`source-of-truth/CREDITS_AND_PRICING.md` decision 5).
 
-**Voice samples on the Voices screen** (2026-09-25, `expo/src/lib/voice-preview.ts`): each voice with a `preview_url` from the `voices` function gets a separate 44pt play button. It plays that static file and nothing else -- no provider call, no credit -- with loading, playing (tap to stop) and error states, one sample at a time, stopped on leaving the screen. **Playing a sample never saves the voice**; only pressing the row does. **The clips do not exist in production yet**: `seed-voice-previews` has never been run, so every `voice-previews/*.mp3` in the `audio` bucket answers 404 and every sample shows its error state until an operator runs it. Running it spends RunPod time and is an operational step, not a deploy of this code.
+**Voice samples on the Voices screen** (2026-09-25, `expo/src/lib/voice-preview.ts`): each voice with a `preview_url` from the `voices` function gets a separate 44pt play button. It plays that static file and nothing else -- no provider call, no credit -- with loading, playing (tap to stop) and error states, one sample at a time, stopped on leaving the screen. **Playing a sample never saves the voice**; only pressing the row does.
+
+**All six clips exist in production as of 2026-09-27.** `seed-voice-previews` was run and `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` all answer 200 with real audio (97-115 KB, 128 kbps mono MP3, about seven seconds each). Every sample plays. The note that stood here -- that they 404 and every sample shows its error state -- is no longer true.
+
+Three things about running it again, because none of them are obvious:
+
+1. **The bearer is the deployed `SUPABASE_SERVICE_ROLE_KEY` secret, which is no longer the legacy JWT.** Supabase rotated the platform secrets on 2026-09-26 and that secret is now the new-style `sb_secret_...` key. `backend/.env` still holds the legacy `service_role` JWT, which is a perfectly valid key for PostgREST and Storage but is **not** what the seeder compares against, so calling with it returns `401` -- which is exactly the 2026-09-25 failure recorded as `voice_preview_seed_unauthorized`, and it was a key mismatch, not a broken function. Get the right one with `supabase projects api-keys --project-ref <ref> --reveal` and use the `type: "secret"` entry.
+2. **One invocation cannot finish the set.** It generates all six serially through RunPod and the edge worker runs out of compute first: the first call returned `546 WORKER_RESOURCE_LIMIT` after 150s having uploaded three. It is **idempotent** -- `ensureVoicePreviewOnce` checks storage before generating -- so just call it again until every voice reports `exists`. It took three calls.
+3. **Only the six English voices are attempted.** `elvira` and `alvaro` are `edge_tts` and no worker is configured, so they are filtered out before generation rather than failing. They are unseeded on purpose and are not in the client list either.
+
+Running it spends RunPod time and is an operational step, not a deploy of this code.
 
 ### Pipeline
 

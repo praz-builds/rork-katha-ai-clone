@@ -35,7 +35,7 @@
 
 - **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.
 - **Home (`src/screens/HomeScreen.tsx`)**: "See everything" full-width became a compact centred secondary **Explore all**.
-- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips 404 in production until `seed-voice-previews` runs.
+- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips 404'd in production until `seed-voice-previews` was run on 2026-09-27; all six exist now and every sample plays.
 - **Public profile (`src/screens/AuthorScreen.tsx`)**: no streak calendar; a **Stories** heading with an empty state naming the writer and a could-not-load state. Journey keeps the owner's calendar.
 - **You**: "How credits work" reads "Prices and free credits".
 - **Not changed**: the story page's one-line teaser. No spoiler-free summary exists in the contract; see `../backend/build-log.md` for what one needs.

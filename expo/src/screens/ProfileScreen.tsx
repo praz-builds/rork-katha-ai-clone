@@ -49,7 +49,7 @@ import { useIsSubscribed } from "@/lib/entitlements";
 import { getMusicMuted, setMusicMuted } from "@/lib/music-storage";
 import {
   setStoryWorld,
-  storyWorldLabel,
+  storyWorldSummary,
   useStoryWorld,
 } from "@/lib/story-world";
 import { streakState } from "@/lib/profile";
@@ -450,10 +450,11 @@ export default function ProfileScreen({
           </View>
           <Row
             icon={Globe2}
-            title="Story world"
-            subtitle={storyWorld === "global"
-              ? "Anywhere — Katha follows each story's own cues"
-              : `${storyWorldLabel(storyWorld)} — where new stories are rooted`}
+            // "Story world" named the setting rather than the job, so the row
+            // read as decoration next to Audiobook voices and Background
+            // music, which both say what they do. The sheet keeps the name.
+            title="Where stories are set"
+            subtitle={storyWorldSummary(storyWorld)}
             onPress={() => setStoryWorldOpen(true)}
             testID="profile-story-world"
             grouped

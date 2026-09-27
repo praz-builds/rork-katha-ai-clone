@@ -45,6 +45,29 @@ export function storyWorldLabel(world: StoryWorld): string {
   return STORY_WORLDS.find((entry) => entry.id === world)?.label ?? "Anywhere";
 }
 
+/**
+ * The one-line summary under the Profile row, for either branch.
+ *
+ * WHY IT LIVES HERE. Profile used to assemble this string itself, from the
+ * label and an em dash and a fragment, which made this file the source of the
+ * words and the screen the source of the sentence. Nothing outside owns the
+ * sentence now.
+ *
+ * WHY IT DOES NOT REUSE `hint`. `hint` is the second line of a row in the
+ * picker, and the 249 country entries deliberately have none -- the picker
+ * lists countries and a repeated "names, places and everyday detail" under
+ * every one of them is noise in a list you are scanning. On the Profile row
+ * there is exactly one of them and the line is the whole explanation.
+ *
+ * NO EM DASHES. The story prompt forbids them in generated prose and the
+ * product copy should not contradict it. Two short sentences say the same
+ * thing and survive a narrow screen better.
+ */
+export function storyWorldSummary(world: StoryWorld): string {
+  if (world === "global") return "Any setting. Each story picks its own.";
+  return `${storyWorldLabel(world)}. Names, places and everyday detail.`;
+}
+
 let current: StoryWorld = DEFAULT_STORY_WORLD;
 let hydrated: Promise<void> | null = null;
 /** Set by any explicit choice; a restore never overrides one. */
