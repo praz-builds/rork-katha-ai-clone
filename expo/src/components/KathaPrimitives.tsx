@@ -6,7 +6,7 @@ import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native
 import { Image as ExpoImage } from "expo-image";
 import { Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
-import { COVER_ACCEPT_HEADERS, isTransformedCover } from "@/lib/cover-url";
+import { COVER_ACCEPT_HEADERS, coverUrl, isTransformedCover } from "@/lib/cover-url";
 import { colors, controls, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
@@ -78,9 +78,39 @@ export function FocalImage({
         objectFit: "cover",
         objectPosition: `${focalX * 100}% ${focalY * 100}%`,
         display: "block",
+        // The web half of `transition`. `expo-image`'s prop is on the native
+        // branch, which this one returns before ever reaching, so without
+        // these three lines the cover pops in at full opacity the instant it
+        // decodes -- on the only surface this client can currently be looked
+        // at, and with two docblocks claiming it cross-fades.
+        //
+        // CSS rather than React state, for the same reason the native side
+        // uses the library's: the hand-rolled fade this replaced was wrong
+        // twice over the ordering of a callback and an effect.
+        opacity: 0,
+        transition: "opacity 180ms ease-out",
       },
       alt: "",
-      onLoad,
+      // THE CACHED CASE IS WHY THERE IS A REF AS WELL AS AN onLoad, and it is
+      // the whole "gradients forever" bug pointing at the DOM instead of at an
+      // Animated.Value. An image already in the browser cache can finish
+      // loading before React attaches `onLoad`, so the event never fires and
+      // an element left at opacity 0 stays invisible for good. `complete` is
+      // the browser's own answer to "did this already load", checked the
+      // moment the node exists. It skips the fade in that case, which is
+      // right: there is nothing to fade from.
+      //
+      // The only way to stay hidden now is `complete === false` and no load
+      // event ever, which means the image genuinely never arrived -- and the
+      // gradient underneath is the correct thing to be looking at.
+      ref: (node: { complete?: boolean; style?: { opacity: string } } | null) => {
+        if (node?.complete && node.style) node.style.opacity = "1";
+      },
+      onLoad: (event: { currentTarget?: { style?: { opacity: string } } }) => {
+        const target = event?.currentTarget;
+        if (target?.style) target.style.opacity = "1";
+        onLoad?.();
+      },
       draggable: false,
     });
   }
@@ -166,8 +196,17 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
   // StoryFeedCard and StoryDetailScreen. Reading only `coverImage` meant every
   // story from the database - every one a user wrote - showed the bare genre
   // gradient on Library shelves and author pages.
-  const image = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // `size` is already the surface name `COVER_WIDTHS` uses, so the cover is
+  // asked for at the size this box draws it. Missing this was a third of the
+  // saving: Library's shelves and every author page render `size="mini"` into
+  // a 74pt box, which is the worst bytes-to-pixels ratio in the app -- twenty
+  // saved stories fetched about 40 MB of full-size PNG to paint twenty
+  // thumbnails. It is also where the silent half bites: without the rewrite
+  // `isTransformedCover` is false, so `FocalImage` sends no `Accept` header
+  // either, and there is nothing on screen to say so.
+  const coverUri = coverUrl(story.coverImageUrl, size);
+  const image = coverUri
+    ? { uri: coverUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
@@ -184,6 +223,9 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
           focalX={focalX}
           focalY={adjustedY}
           style={{ width: "100%", height: "100%" }}
+          // Shelves are lists too, and a recycled row otherwise paints the
+          // previous story's cover until the new one decodes.
+          recyclingKey={story.id}
         />
       ) : (
         <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />

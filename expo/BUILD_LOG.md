@@ -21,8 +21,18 @@
   mount effect that zeroed it, so the first screenful of Explore stayed
   invisible) and then the other (a regenerated cover reused the old opacity of
   1 and popped in). `transition` has no ordering to get wrong.
-- **`recyclingKey={story.id}`** on every card, because `FlatList` reuses rows
-  and a recycled one otherwise paints the previous story's cover.
+- **`recyclingKey={story.id}`** on every card *and* every shelf row, because
+  `FlatList` reuses rows and a recycled one otherwise paints the previous
+  story's cover.
+- **All four `FocalImage` callers, including `Cover`.** `Cover` is what
+  Library's shelves and author pages render at `size="mini"` into a 74pt box —
+  the worst bytes-to-pixels ratio in the app, and the one caller missed on the
+  first pass. `COVER_WIDTHS.mini` having no caller was the tell.
+- **Web fades too.** `transition` is an `expo-image` prop and the web branch
+  returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with
+  a 180ms transition, set to 1 on load — plus a `ref` that checks `complete`,
+  because a cached image can finish before React attaches `onLoad` and an
+  element stuck at opacity 0 is the "gradients forever" bug rebuilt in the DOM.
 - The 180 ms `Image.prefetch` race in `useStorySearch` is removed with its
   test. It delayed the first paint to get a head start on a 2 MB download and
   warmed only the session's in-memory cache: it never changed a byte fetched.

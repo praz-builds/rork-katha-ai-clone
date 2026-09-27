@@ -279,9 +279,51 @@ What was actually needed was fewer bytes and a real disk cache.
   recycled row paints the previous story's cover until the new one decodes.
   That looks like a correct card until you read the title beside it.
 
+### What review caught, and one of them was a third of the saving
+
+- **`Cover` was the fourth caller and it was missed.** Three of `FocalImage`'s
+  four callers were converted; `Cover` in `KathaPrimitives.tsx` was not — and it
+  is the one Library's shelves and every author page render, at `size="mini"`
+  into a **74pt box**, which is the worst bytes-to-pixels ratio in the app. A
+  reader with twenty saved stories downloaded about **40 MB** of full-size PNG
+  to paint twenty thumbnails. Three things followed from that one line: no
+  transform, **no `Accept` header** (because `isTransformedCover` is false for a
+  raw object URL, so the silent half bit from the other direction), and no
+  `recyclingKey`. The evidence was sitting in the branch: `COVER_WIDTHS.mini` is
+  defined and documented for "~74pt wide" and **no source file called
+  `coverUrl` with `"mini"`**. `Cover` already took `size?: "card" | "mini"`, the
+  same two names, so the fix is `coverUrl(story.coverImageUrl, size)`.
+- **Web lost the cross-fade two docblocks said it had.** `transition` is an
+  `expo-image` prop and the web branch returns a bare `<img>` before reaching
+  it, while `StoryFeedCard`'s `Animated.View` was deleted unconditionally — so
+  on the one surface this client can currently be looked at, the cover popped
+  in. Now CSS: `opacity: 0` with a 180ms transition, set to 1 on load.
+  **And a `ref` that checks `complete`**, because a cached image can finish
+  before React attaches `onLoad`, and an element left at opacity 0 with no
+  event coming is the "gradients forever" bug rebuilt in the DOM. With the
+  `complete` check the only way to stay hidden is an image that genuinely never
+  arrived, where the gradient is the right thing to be looking at.
+- **The half the PR called unfindable had no test.** `cover-url.test.ts` proved
+  `isTransformedCover` classifies and that the header constant says `webp` —
+  both properties of that module alone. The wiring is in `FocalImage`, and
+  `story-feed-card.test.tsx` mocks `FocalImage` away, so nothing in the suite
+  ever executed the branch: deleting `headers` left every test green and every
+  cover twelve times bigger. `focal-image.test.tsx` renders it, and was
+  negative-controlled — removing the header fails exactly one test.
+
+### Sequencing with #159
+
+Both branches rewrite `useStorySearch.ts` in opposite directions: #159 builds on
+the prefetch apparatus this one deletes. **Merge #159 first, then rebase this
+one**, which resolves the conflict in the only direction that makes sense —
+there is nothing left to warm once a cover is 70 KB and `cachePolicy="disk"` is
+a real disk cache. That also answers #159's open item about appended pages
+getting no warm-up: it is answered here, by deletion, rather than by a fix
+there.
+
 ### Verification
 
-Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors, and the
+Expo **1655/1655** across 154 suites, typecheck clean, lint 0 errors, and the
 web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
 native dependency.
 
