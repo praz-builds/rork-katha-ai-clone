@@ -7,6 +7,73 @@
 
 ---
 
+## 2026-09-27 UTC — Deploy audit of the whole function surface: nothing to deploy
+
+**Session:** asked to deploy what had merged to main ahead of the first Android
+build. The answer turned out to be that there was nothing to deploy, so this
+entry records the measurement and the stale docs it corrected, not a deployment.
+Branch `codex/deploy-record-0927`, in its own worktree.
+
+### What was checked
+
+- **Migrations.** `supabase migration list --linked` shows local and remote
+  aligned `00001`-`00099`, nothing pending. The roadmap claimed `00097`
+  (`content_reports_open`) and `00098` (`app_feedback`) still needed
+  `supabase db push`; both are applied. No migration was written this round, so
+  `00100` stays free for the credits/cap work in flight.
+- **Functions.** All **34** downloaded from production and compared with main at
+  `e7222fb`: **346 of 346 `.ts`/`.json` files byte-identical, zero drift.**
+  Nothing was deployed. The country Story world closure (2026-09-26) and the
+  #144/#145 set (2026-09-25) account for it; the five commits on main since
+  `66b16cf` are documentation only, which is why main moved without production
+  needing to.
+- **`library` and `profile`** specifically matched, so the server half of
+  block-author is live. The roadmap said both still needed deploying.
+
+### The verification method had to change
+
+`AGENTS.md` said to fetch a bundle from the Management API
+(`/v1/projects/<ref>/functions/<slug>/body`) and `strings` it for a symbol the
+change introduced. **That no longer works and now produces false negatives.**
+The endpoint returns an `ESZIP2.3` archive whose module sources are compressed:
+`strings` on a 459 KB `feed` bundle yielded 2,101 lines of specifiers and remote
+URLs and not one line of the function's own source, so a symbol is absent
+whether or not it is deployed. The `@deno/eszip` npm parser also fails on this
+archive version (`RuntimeError: unreachable` in the wasm on `load()`, at 0.79 and
+0.86). `supabase functions download <slug>` extracts the real sources and is now
+the documented path; `AGENTS.md` has been corrected.
+
+### Left as a script, because this gets re-run before the AAB
+
+`scripts/audit-function-drift.sh` is the audit: it downloads all 34 functions
+into a `mktemp` directory (never a working copy, since the CLI writes into
+`supabase/functions/`), `cmp`s every file, prints the drifted slugs, reminds the
+reader that a changed `_shared` file means the whole importer closure, and exits
+non-zero on drift or on a failed download.
+
+### Verification
+
+- The script was negative-controlled before being trusted: appending
+  `// drift canary` to one downloaded copy of `feed/index.ts` reported
+  `DRIFT feed :: feed/index.ts` and `345 identical / 1 drifted`. Restoring it
+  returned 346/346. A zero from an audit that cannot fail is worthless.
+- All 34 downloads succeeded; no slug was silently skipped.
+- No production write of any kind occurred: no deploy, no `db push`, no smoke
+  fixtures, no invocation. Reads only. So no `public.error_events` row was
+  required.
+
+### Not done, and why
+
+- **No production smoke.** `smoke-app-surface.py` creates disposable fixtures and
+  generates a story, and the paid generation chain is still quota-blocked
+  (Gemini `429`, OpenRouter `402`), so a failure would report the funding gap
+  rather than the deploy state. The deploy question is settled by the byte
+  comparison without it. Run it once a paid provider is funded.
+- **`seed-voice-previews` was deliberately not invoked.** The six
+  `voice-previews/*.mp3` 400s are owned by another session's round.
+
+---
+
 ## 2026-09-26 UTC — Deploy country Story world backend contract
 
 - No migration was needed. Deployed the nine functions before any client build

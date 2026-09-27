@@ -37,7 +37,23 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-26)
+## Production state (last verified 2026-09-27)
+
+**The whole function surface is current with main at `e7222fb`, and nothing was
+deployed on 2026-09-27 because nothing needed it.** All **34** functions were
+downloaded and every `.ts`/`.json` file in them compared byte for byte with this
+checkout: **346 of 346 identical, zero drift.** The migration ledger is aligned
+`00001`-`00099` with nothing pending. Re-run it yourself with
+`scripts/audit-function-drift.sh`, which is this audit as a script and exits
+non-zero on drift; it was negative-controlled first (appending one comment line
+to a downloaded copy was reported as drift), so the zero is a measurement rather
+than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
+below are what made it true.
+
+Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
+were recorded as needing `supabase db push` and are in fact applied, and
+block-author's `library` and `profile` were recorded as needing deployment and
+are in fact live and byte-identical.
 
 **The 2026-09-25 baseline audit was current with main, file for file.** Verified after the 2026-09-25
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied
@@ -133,10 +149,19 @@ from it, so the bucket and its objects are a deploy dependency of that release,
 not an afterthought.
 
 **How to check this yourself, rather than trusting this line:** `supabase
-migration list --linked` for the ledger, and for a function, fetch its deployed
-bundle from the Management API (`/v1/projects/<ref>/functions/<slug>/body`) and
-`strings` it for a symbol the change introduced. Timestamps that match a merge
-are suggestive; the symbol being present is proof.
+migration list --linked` for the ledger, and for a function, `supabase functions
+download <slug> --project-ref <ref>` **into a throwaway directory** (it writes
+into `supabase/functions/`, so run it anywhere but a working copy), then `cmp`
+each extracted file against main. Timestamps that match a merge are suggestive;
+the files being identical is proof.
+
+**Do not `strings` the Management API bundle any more.** Corrected 2026-09-27:
+`/v1/projects/<ref>/functions/<slug>/body` returns an `ESZIP2.3` archive whose
+module sources are **compressed**, so `strings` on it finds only specifiers and
+remote URLs — a symbol from the change is absent whether or not it is deployed,
+which reads as drift that is not there. The `@deno/eszip` npm parser does not
+load this archive version either (`RuntimeError: unreachable` in the wasm on
+`load()`, tried 0.79 and 0.86). The CLI download is the working path.
 
 Two things are worth keeping, because they are the shape of the next incident:
 
