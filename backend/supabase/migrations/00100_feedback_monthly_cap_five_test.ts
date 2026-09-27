@@ -188,6 +188,49 @@ Deno.test("the listed remaining count counts down from five", async () => {
   }
 });
 
+// The mistake this test exists for, which CI caught on the first attempt:
+// 00100 replaces `comment_credit_block_reason`, and its latest definition is
+// **00090's**, not 00089's -- 00090 added a second half to the read gate, a
+// read whose server-set `read_at` is a full minute older than the comment,
+// which closes the one-request forgery where a read and a comment are posted
+// in the same round trip. Rebuilding the function from 00089 silently reverted
+// that. 00090's own test caught it, but only because it happened to exist;
+// this asserts it from the migration that did the damage, so the next person
+// replacing this function sees the requirement here.
+Deno.test("00090's 60-second read gate survives the cap change", async () => {
+  const db = await createDatabase();
+  try {
+    for (const id of [READER, AUTHOR]) await seedUser(db, id);
+    const storyId = "00000000-0000-4000-8000-00000000a201";
+    await db.query(
+      `insert into stories (id, author_id, title, genre, primary_genre, is_public, status)
+       values ($1, $2, 'S', array['romance'], 'romance', true, 'complete')`,
+      [storyId, AUTHOR],
+    );
+
+    // A forged read: the duration is enormous, so the 120-second sum passes,
+    // but `read_at` defaults to now() and the comment is written in the same
+    // instant. Only the 60-second gate can refuse this.
+    await db.query(
+      `insert into story_reads (story_id, user_id, duration_seconds)
+       values ($1, $2, 86400)`,
+      [storyId, READER],
+    );
+    const comment = await db.query<{ id: string }>(
+      `insert into comments (user_id, story_id, content) values ($1, $2, $3)
+       returning id`,
+      [READER, storyId, LONG],
+    );
+
+    assertEquals(await claim(db, comment.rows[0].id, "forged"), {
+      ok: false,
+      reason: "not_read",
+    });
+  } finally {
+    await db.close();
+  }
+});
+
 Deno.test("the sixth claim is refused without taking the credit", async () => {
   const db = await createDatabase();
   try {

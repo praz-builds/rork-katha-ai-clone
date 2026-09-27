@@ -12,7 +12,7 @@
 -- feedback claim is the only recurring earn in the product. Five moves further
 -- inside that line than six did; the document carries the arithmetic.
 --
--- WHAT THIS TOUCHES. Two functions from 00089, one number each:
+-- WHAT THIS TOUCHES. Two functions, one number each:
 --
 --   `comment_credit_block_reason`  the `monthly_cap` predicate, 6 -> 5
 --   `comment_credit_claims`        the `remaining.month` readout, 6 -> 5
@@ -22,15 +22,31 @@
 -- immediately before it pays, so the enforcement stays in exactly one place
 -- and a second copy of the number here would be a second place to get wrong.
 --
--- The bodies below are 00089's, reproduced verbatim apart from that digit, so
--- a diff against 00089 shows the change and nothing else. `create or replace`
--- does not carry grants forward reliably, so both revoke/grant pairs are
--- restated rather than assumed.
+-- WHICH BODY EACH ONE IS COPIED FROM, AND WHY IT MATTERS.
+-- `create or replace` replaces whatever is live, so a replacement built from
+-- the wrong ancestor silently reverts everything added in between. These two
+-- functions have different latest definitions:
+--
+--   `comment_credit_block_reason`  last defined in **00090**, which added the
+--                                  60-second server-set read gate on top of
+--                                  00089's 120-second duration sum. Both
+--                                  refusals report `not_read`. 00090 also
+--                                  attached a `comment on function`, which a
+--                                  bare replace would drop, so it is restated.
+--   `comment_credit_claims`        last defined in **00089**; never revised.
+--
+-- Copying 00089's block-reason body here would have re-opened the one-request
+-- forgery 00090 closed. 00090's test caught it. Each body below is therefore
+-- its own latest version reproduced verbatim apart from the digit, so a diff
+-- against that ancestor shows the change and nothing else.
+--
+-- `create or replace` does not carry grants forward reliably, so both
+-- revoke/grant pairs are restated rather than assumed.
 --
 -- NO BACKFILL, AND NOTHING TO MIGRATE. The caps are counted from
 -- `credit_ledger` at claim time, never stored. Somebody who has already been
--- paid six times this calendar month keeps all six credits -- they are spent
--- or spendable and are not clawed back -- and is simply refused the seventh,
+-- paid six times this calendar month keeps all six -- they are spent or
+-- spendable and are not clawed back -- and is simply refused the seventh,
 -- as they would have been anyway. From next month the ceiling is five.
 
 create or replace function public.comment_credit_block_reason(
@@ -84,13 +100,29 @@ begin
     -- A qualifying read is two minutes on the story, recorded before the
     -- comment. `story_reads` carries one duration per chapter read, so the
     -- story's reads are summed: two minutes across three chapters is a read.
+    -- `duration_seconds` is the client's number, so it is necessary and not
+    -- sufficient; see the long note above this function.
     if coalesce((
-        select sum(sr.duration_seconds)
+        select pg_catalog.sum(sr.duration_seconds)
         from public.story_reads sr
         where sr.user_id = p_user_id
           and sr.story_id = v_comment.story_id
           and sr.read_at < v_comment.created_at
     ), 0) < 120 then
+        return 'not_read';
+    end if;
+
+    -- ...and one of those reads has to have been written down by the server a
+    -- full minute before the comment was. `read_at` defaults to `now()` and
+    -- no caller sets it, which is what makes this the one part of the
+    -- evidence a forged request cannot choose.
+    if not exists (
+        select 1
+        from public.story_reads sr
+        where sr.user_id = p_user_id
+          and sr.story_id = v_comment.story_id
+          and sr.read_at <= v_comment.created_at - interval '60 seconds'
+    ) then
         return 'not_read';
     end if;
 
@@ -115,7 +147,7 @@ begin
     end if;
 
     if (
-        select count(*) from public.credit_ledger l
+        select pg_catalog.count(*) from public.credit_ledger l
         where l.user_id = p_user_id
           and l.reason = 'feedback'
           and l.created_at >= v_month_start
@@ -126,6 +158,9 @@ begin
     return null;
 end;
 $$;
+
+comment on function public.comment_credit_block_reason(uuid, uuid) is
+    'Why this comment cannot be claimed for a feedback credit, or null. The read gate needs both: 120 seconds of client-reported duration across the story, and at least one read whose server-set read_at is 60 seconds older than the comment. Both refusals report not_read.';
 
 revoke all on function public.comment_credit_block_reason(uuid, uuid)
     from public, anon, authenticated;

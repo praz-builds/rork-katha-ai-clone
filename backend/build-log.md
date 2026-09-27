@@ -284,8 +284,38 @@ where at 6 it hit it exactly.
 
 `expo/CLAUDE.md`'s Credits-screen contract was corrected to the new order.
 
+### The bug CI caught, and it was a real one
+
+The first version of `00100` rebuilt `comment_credit_block_reason` from
+**00089's** body. That function's latest definition is **00090's**, which added
+the second half of the read gate: as well as 120 seconds of client-reported
+duration summed across the story, at least one read whose *server-set* `read_at`
+is a full minute older than the comment. That second clause is the only part of
+the evidence a forged request cannot choose, and it closes the one-request
+forgery where a read row and a comment are posted in the same round trip.
+
+`create or replace` replaces whatever is live, so copying the older ancestor
+silently reverted it. Nothing about the cap change was wrong; the ancestry was.
+00090's own test — *"one fabricated read with a day's duration is not a
+qualifying read"* — failed in CI with `ok: true` where it expected `not_read`,
+which is exactly what that test exists for.
+
+Fixed by rebuilding from 00090 (and restating the `comment on function` it
+attaches, which a bare replace would also have dropped). `comment_credit_claims`
+really is still 00089's — it has never been revised — so the two halves of this
+migration have different ancestors, and the migration header now says which and
+why. A test in `00100`'s own file asserts the 60-second gate survives the cap
+change, so the next person replacing this function meets the requirement where
+the damage would be done rather than two migrations away.
+
+**The general lesson, worth more than this instance:** before `create or
+replace`, grep every migration for the last definition of that function. Being
+named after the migration that first created it is not evidence.
+
 ### Verification
 
+- **The full migration suite runs green: 311 passed, 0 failed.** Running only
+  the changed files would have missed 00090 entirely.
 - **00089's own test now asserts five.** Its harness applies every `.sql` in the
   migrations directory before running, so it exercises the current schema rather
   than a snapshot of 00089 — leaving it at six would have failed, correctly.
