@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -281,9 +281,20 @@ export default function ExploreScreen({
    * genre -- which is one run of two at every 24th card, against the
    * alternative of the whole list moving.
    *
-   * It is also the right ranking. The server already decided which 24 rows are
-   * page 0 (`like_count desc`), so sorting within a page refines that decision
-   * rather than overriding it.
+   * IS PER-PAGE SORTING ALSO THE RIGHT RANKING? For **Most loved**, yes: the
+   * server pages by `like_count desc`, so sorting within a page refines the
+   * decision it already made rather than overriding it. For **Newest**, near
+   * enough, because `created_at desc` is the server's second key.
+   *
+   * For **Trending** it is narrower than it looks, and this is the sentence to
+   * read when somebody asks why Trending looks wrong after the counts land.
+   * Trending sorts on `views`; the server pages on `like_count`. Different
+   * columns, so a high-view story is not guaranteed to be on an early page,
+   * and once there are real counts a story on page 3 with 10,000 views will
+   * sit below page 0's quieter rows. Invisible today -- every count in this
+   * catalogue is zero, which is the premise this whole memo rests on -- and
+   * the fix when it matters is to sort Trending on the server, not to go back
+   * to re-ordering the list under the reader.
    */
   const visible = useMemo(() => {
     const orderPage = (page: Story[]) => {
@@ -307,10 +318,19 @@ export default function ExploreScreen({
         return a.publishedOffset - b.publishedOffset;
       });
 
-      // Then break up whatever clustering survives. A shuffle decides ties but
-      // still produces runs -- runs are what random sequences look like -- and
-      // "Newest" does not shuffle at all, because `publishedOffset` is a real
-      // distinct value on every row.
+      // Then break up whatever clustering survives -- but ONLY for the default
+      // browse. A shuffle decides ties and still produces runs, which is what
+      // the interleave is for; applied to a sort the reader explicitly chose,
+      // it answers a different question than the one they asked.
+      //
+      // "Newest" is the clear case. `publishedOffset` is days-before-now
+      // ascending, so position 0 really is the newest story -- and after the
+      // interleave, positions 1..n are the newest of each OTHER genre, ordered
+      // by how recently each genre last published. With twelve genres, a
+      // reader who taps Newest sees one new story and then up to eleven that
+      // may be months old before the second-newest appears. Most loved has the
+      // same shape. Discovery wants variety; a chosen sort wants the sort.
+      if (sort !== DEFAULT_SORT) return sorted;
       return spreadByKey(sorted, (story) => story.genre ?? "unknown");
     };
 
@@ -375,14 +395,22 @@ export default function ExploreScreen({
    * the database returned, not the ones that survived the genre narrowing);
    * this is the same care for the half of the narrowing that happens here.
    *
-   * It cannot spin: each pass consumes a page, `loadMore` is a no-op while one
-   * is in flight, and `hasMore` goes false at the end of the catalogue.
+   * WHY IT CANNOT SPIN, and this needs the ref rather than being obvious. A
+   * FAILED page now reports `hasMore: true` deliberately -- see `local()` in
+   * `search.ts`, because a lost connection is not the end of the catalogue --
+   * so "no rows, more exists" is a state that can repeat forever. Advancing
+   * only when the row count has actually grown since the last attempt means a
+   * page that adds nothing, for any reason, ends the chase; the reader's next
+   * scroll still retries, because that path is `onEndReached`, not this.
    */
+  const autoAdvancedAt = useRef(-1);
   useEffect(() => {
     if (visible.length > 0) return;
     if (status === "loading" || loadingMore || !hasMore) return;
+    if (autoAdvancedAt.current === results.length) return;
+    autoAdvancedAt.current = results.length;
     loadMore();
-  }, [visible.length, status, loadingMore, hasMore, loadMore]);
+  }, [visible.length, results.length, status, loadingMore, hasMore, loadMore]);
 
   /**
    * What sits under the last card.

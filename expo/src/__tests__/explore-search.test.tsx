@@ -150,6 +150,57 @@ describe("overlapping requests", () => {
     expect(view.getByText("The Wolves of Anvil Bay")).toBeTruthy();
   });
 
+  // The ingredient the test above is missing, and it is what a reader actually
+  // does: go BACK to a query that has already landed.
+  //
+  // Explore skips re-running the query already on screen, so a backspace does
+  // not throw away the pages the reader scrolled. The first version of that
+  // skip returned without bumping the sequence or aborting the request in
+  // flight -- both of which `run` had done unconditionally -- so a superseded
+  // request kept the newest sequence and its answer was applied to a query the
+  // reader had left. The box read "wolf" and the list was the answer to
+  // "wolfs", with nothing to retry: guard (3) in this file's own header,
+  // reintroduced by the optimisation meant to sit beside it.
+  it("discards a superseded answer even when the reader returns to the old query", async () => {
+    const resolvers: Record<string, (outcome: SearchOutcome) => void> = {};
+    const search = jest.fn((input: SearchInput) =>
+      new Promise<SearchOutcome>((resolve) => {
+        resolvers[input.text] = resolve;
+      })
+    );
+
+    const view = await renderWith(search);
+
+    // "wolf" lands, so it becomes the query the skip recognises.
+    await type(view, "wolf");
+    await waitFor(() => expect(resolvers["wolf"]).toBeDefined());
+    await act(async () => {
+      resolvers["wolf"]({
+        stories: [fixture("loaded", "A Lone Wolf")],
+        hasMore: false,
+        source: "supabase",
+      });
+    });
+    await waitFor(() => expect(view.getByText("A Lone Wolf")).toBeTruthy());
+
+    // A typo, then a backspace inside the same round trip.
+    await type(view, "wolfs");
+    await waitFor(() => expect(resolvers["wolfs"]).toBeDefined());
+    await type(view, "wolf");
+
+    // "wolfs" answers now. It must reach nothing: the box says "wolf".
+    await act(async () => {
+      resolvers["wolfs"]({
+        stories: [fixture("stale", "Wolfsbane")],
+        hasMore: false,
+        source: "supabase",
+      });
+    });
+
+    expect(view.queryByText("Wolfsbane")).toBeNull();
+    expect(view.getByText("A Lone Wolf")).toBeTruthy();
+  });
+
   it("aborts the request it is replacing", async () => {
     const signals: (AbortSignal | undefined)[] = [];
     const search = jest.fn((

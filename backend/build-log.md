@@ -340,9 +340,60 @@ Three more from the same round:
   character and delete it and the third run is the first query again, so three
   pages collapsed back to 24 rows. `loadedFor` now short-circuits it.
 
+### And a regression the append fix introduced, plus three carried ones
+
+- **The identical-query skip reintroduced the stale-answer bug this file exists
+  to prevent.** Skipping `run` also skipped the two things `run` did
+  unconditionally: bumping the sequence and aborting the request in flight. So
+  a superseded request kept the newest sequence and its answer was applied to a
+  query the reader had left. Reachable with a typo and a backspace inside one
+  round trip: "wolf" is loaded, the reader types "wolfs", backspaces to "wolf"
+  — `loadedFor` is still "wolf", because it is only assigned on SUCCESS — the
+  skip fires, and "wolfs" then lands and paints. The box says one thing and the
+  list is the answer to another, with nothing to retry and no self-correction,
+  because no dep changes again. The skip now cancels before it returns, and a
+  test that goes BACK to a landed query — the ingredient the existing race test
+  lacks — was negative-controlled against the broken version.
+- **A genre page fetched 48 rows and showed 24.** `GENRE_SEARCH_FETCH_SIZE` was
+  a compatibility budget for the defensive card filter, and it was harmless
+  while the query ended in `.limit(48)` with no next page. Paging by the fetch
+  window made the discard permanent: `from = page * 48` with a clip to 24 means
+  server rows 24–47 are fetched, thrown away and never asked for again. At the
+  boundary it is worse — a genre with 40 stories returns 40 rows, `hasMore` is
+  `40 === 48` → false, and the footer claims the end over sixteen published
+  stories. One page size everywhere now; the filter stays and a filtered row
+  simply makes a short page, which `hasMore` already handles.
+- **A failed page told the reader the catalogue had ended.** Every failure path
+  in `searchStories` returns `local()` rather than rejecting, so a dropped
+  connection on page 1 landed in `loadMore`'s SUCCESS handler with
+  `hasMore: false` — the spinner replaced by "That is everything for now." over
+  a reader who had simply lost signal, and nothing retries once `hasMore` is
+  false. `local()` now reports `hasMore: true` past page 0, so the footer says
+  nothing and the next scroll tries again. Page 0 and an unconfigured client
+  still report false: there is nothing on screen to keep, and no server to ask.
+- **"Newest" was dealt out by genre.** `spreadByKey` ran unconditionally, so a
+  reader who asked for the newest got one new story and then up to eleven
+  genre-mates that might be months old. Interleaving is right for the default
+  browse and wrong for a sort somebody chose; it is now conditional on
+  `DEFAULT_SORT`.
+
+The auto-advance effect gained a guard in the same round, because making a
+failed page report `hasMore: true` turns "no rows, more exists" into a state
+that can repeat. It now advances only when the row count has grown since its
+last attempt, so a page that adds nothing ends the chase and the reader's next
+scroll still retries.
+
+**Narrowed a claim rather than defending it.** The docblock argued that
+per-page sorting is also the right ranking because the server already chose the
+page. True for Most loved (`like_count desc` on both sides) and near enough for
+Newest; **not true for Trending**, which sorts on `views` while the server pages
+on `like_count`. Invisible today because every count is zero, and the fix when
+it matters is to sort Trending on the server rather than to go back to
+re-ordering the list under the reader. The comment now says so.
+
 ### Verification
 
-Expo **1666/1666** across 155 suites, typecheck clean, lint 0 errors. Nine new
+Expo **1670/1670** across 155 suites, typecheck clean, lint 0 errors. Nine new
 tests on `spreadByKey` (totality, no run before the tail, within-key order,
 determinism, the growing-list seam) and seven on paging, each written against a
 way it fails: repeated `onEndReached`, a stale page appending to a new query, an

@@ -447,7 +447,26 @@ export function useStorySearch(
     // back to 24 rows under the thumb. `loadedFor` is what already landed, so
     // an exact match with nothing in flight has nothing to do.
     const fire = () => {
-      if (loadedFor.current === queryKey && !loadingMoreRef.current) return;
+      if (loadedFor.current === queryKey && !loadingMoreRef.current) {
+        // SKIPPING THE QUERY MUST NOT SKIP THE CANCELLATION. `run` bumped the
+        // sequence and aborted the previous request on every fire, and those
+        // two are what make guard (3) in the header comment work. Returning
+        // without them leaves a SUPERSEDED request holding the newest
+        // sequence, and its answer is applied to a query the reader has left.
+        //
+        // The path is a typo and a backspace inside one round trip: "wolf" is
+        // loaded, the reader types "wolfs" and `run` starts it, the reader
+        // backspaces to "wolf" -- `loadedFor` is still "wolf", because it is
+        // only assigned when a run SUCCEEDS -- so this branch is taken while
+        // "wolfs" is still on the wire. It then lands, matches the sequence
+        // nobody moved, and paints results for a term that is not in the box,
+        // with nothing to retry and no way to tell. It never self-corrects:
+        // no dep changes again until the reader types.
+        latestRun.current++;
+        inFlight.current?.abort();
+        inFlight.current = null;
+        return;
+      }
       run({ text, genre, bedtime });
     };
     if (debounceMs <= 0) {

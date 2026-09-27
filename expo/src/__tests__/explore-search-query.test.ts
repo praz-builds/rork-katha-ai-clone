@@ -45,7 +45,7 @@ jest.mock("@/lib/supabase", () => ({
 /* eslint-disable import/first */
 import {
   DISPLAY_GENRE_BY_RUNTIME_GENRE,
-  GENRE_SEARCH_FETCH_SIZE,
+  SEARCH_PAGE_SIZE,
   genreClause,
   loadStoryChapters,
   mapSearchRow,
@@ -236,18 +236,43 @@ describe("a genre filter answers with that genre only", () => {
     expect(romance.stories[0].genre).toBe("romance");
   });
 
-  it("over-fetches a bounded genre page before its defensive card filter", async () => {
-    // The actual SQL clause cannot tell where a legacy array contains its
-    // primary genre. These 24 non-Adventure legacy rows would otherwise eat
-    // all 24 slots before the client can drop them.
+  it("pages a genre by the page size, so no row is fetched and discarded", async () => {
+    /*
+      This used to fetch 48 and clip to 24: a compatibility budget for the
+      defensive card filter, which drops a legacy row whose array contains the
+      selected genre but whose card would show another.
+
+      Harmless while the query ended in `.limit(48)` with no next page -- the
+      remainder was never asked for. PAGING MADE THE DISCARD PERMANENT: with
+      `from = page * 48` and a clip to 24, server rows 24-47 were fetched,
+      thrown away, and never requested again on any page. Worse at the
+      boundary, a genre with 40 stories returned 40 rows, `hasMore` was
+      `40 === 48` -> false, and the footer claimed the end over 16 stories.
+    */
+    rows = Array.from({ length: 24 }, (_, index) => ({
+      id: `right-${index}`,
+      title: `Right ${index}`,
+      primary_genre: "adventure",
+    }));
+
+    const outcome = await searchStories({ text: "", genre: "adventure" });
+    expect(had("range", 0, SEARCH_PAGE_SIZE - 1)).toBe(true);
+    expect(outcome.stories).toHaveLength(24);
+    expect(outcome.hasMore).toBe(true);
+  });
+
+  it("still drops a row whose card would show another genre, as a short page", async () => {
+    // The defensive filter stays -- it guards a schema change and costs one
+    // pass over 24 rows. What changed is the consequence: a filtered row now
+    // makes the page SHORT rather than leaving a hole a later page skips.
     rows = [
-      ...Array.from({ length: 24 }, (_, index) => ({
+      ...Array.from({ length: 4 }, (_, index) => ({
         id: `wrong-${index}`,
         title: `Wrong ${index}`,
         primary_genre: null,
         genre: ["mystery", "adventure"],
       })),
-      ...Array.from({ length: 24 }, (_, index) => ({
+      ...Array.from({ length: 20 }, (_, index) => ({
         id: `right-${index}`,
         title: `Right ${index}`,
         primary_genre: "adventure",
@@ -255,12 +280,33 @@ describe("a genre filter answers with that genre only", () => {
     ];
 
     const outcome = await searchStories({ text: "", genre: "adventure" });
-    // Page 0 of the wider genre window: `.range(0, 47)` asks for the same 48
-    // rows `.limit(48)` used to.
-    expect(had("range", 0, GENRE_SEARCH_FETCH_SIZE - 1)).toBe(true);
-    expect(outcome.stories).toHaveLength(24);
+    expect(outcome.stories).toHaveLength(20);
     expect(outcome.stories.every((story) => story.genre === "adventure")).toBe(true);
-    expect(outcome.stories[0].id).toBe("right-0");
+    // 24 rows came back, so there may well be more: `hasMore` counts what the
+    // server returned, not what survived the filter.
+    expect(outcome.hasMore).toBe(true);
+  });
+
+  it("asks for the next page one page further along", async () => {
+    rows = Array.from({ length: 24 }, (_, index) => ({
+      id: `p1-${index}`,
+      title: `Page one ${index}`,
+      primary_genre: "adventure",
+    }));
+
+    await searchStories({ text: "", genre: "adventure", page: 1 });
+    expect(had("range", SEARCH_PAGE_SIZE, SEARCH_PAGE_SIZE * 2 - 1)).toBe(true);
+  });
+
+  it("keeps asking after a failed page rather than calling it the end", async () => {
+    // A dropped connection on page 1 is not a 24-story catalogue. `hasMore`
+    // stays true past page 0 so the footer says nothing and the next scroll
+    // retries, instead of "That is everything for now." over the rest.
+    queryError = { message: "network" };
+    const failed = await searchStories({ text: "", genre: null, page: 1 });
+    expect(failed.source).toBe("local");
+    expect(failed.stories).toEqual([]);
+    expect(failed.hasMore).toBe(true);
   });
 
   it("does not label a row with an unrecognised carried genre as Adventure", () => {
