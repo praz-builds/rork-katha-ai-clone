@@ -184,6 +184,25 @@ const defaultPrefetch = (uri: string): Promise<unknown> =>
 export type StorySearchState = {
   status: SearchStatus;
   stories: Story[];
+  /**
+   * The index in `stories` at which each page begins, newest page last. Always
+   * starts with 0.
+   *
+   * WHY THE CALLER NEEDS THIS. Explore re-orders what it renders -- a seeded
+   * tie-break, then the reader's sort, then a genre interleave -- and every
+   * one of those is a whole-list operation. Run over a list that GROWS, they
+   * re-order the rows already on screen: the reader reaches the bottom, asks
+   * for more, and the screen they were reading is dealt again under their
+   * thumb. Measured on the first version of this: 4 of the first 24 positions
+   * survived a page arriving.
+   *
+   * Page boundaries let the caller order each page among its own rows and
+   * concatenate, which is append-stable by construction -- a page already
+   * rendered is never an input to anything again. The cost is that the seam
+   * between two pages can repeat a genre; that is one run of two at every
+   * 24th card, against the whole list re-shuffling.
+   */
+  pageStarts: number[];
   source: SearchOutcome["source"];
   /** A further page might exist. See `hasMore` on `SearchOutcome`. */
   hasMore: boolean;
@@ -225,6 +244,7 @@ export function useStorySearch(
   const [state, setState] = useState<Omit<StorySearchState, "loadMore">>({
     status: "loading",
     stories: [],
+    pageStarts: [0],
     source: "local",
     hasMore: false,
     loadingMore: false,
@@ -245,6 +265,7 @@ export function useStorySearch(
   const loadedPage = useRef(0);
   const loadedFor = useRef("");
   const loadingMoreRef = useRef(false);
+  const pageInFlight = useRef<AbortController | null>(null);
 
   const { text, genre, bedtime = false } = input;
   const queryKey = `${text}\u0000${genre ?? ""}\u0000${bedtime}`;
@@ -256,6 +277,8 @@ export function useStorySearch(
       loadingMoreRef.current = false;
 
       inFlight.current?.abort();
+      pageInFlight.current?.abort();
+      pageInFlight.current = null;
       const controller = typeof AbortController !== "undefined"
         ? new AbortController()
         : null;
@@ -293,6 +316,7 @@ export function useStorySearch(
           setState({
             status: outcome.stories.length > 0 ? "ready" : "empty",
             stories: outcome.stories,
+            pageStarts: [0],
             source: outcome.source,
             hasMore: outcome.hasMore,
             loadingMore: false,
@@ -307,6 +331,7 @@ export function useStorySearch(
           setState({
             status: "empty",
             stories: [],
+            pageStarts: [0],
             source: "local",
             hasMore: false,
             loadingMore: false,
@@ -351,26 +376,56 @@ export function useStorySearch(
     const sequence = latestRun.current;
     const nextPage = loadedPage.current + 1;
     loadingMoreRef.current = true;
+    // Tracked in `pageInFlight` so `run` and the unmount effect can abort it.
+    // Without this a page fetched just before the reader leaves Explore, or
+    // changes the filter, runs to completion and is thrown away on arrival --
+    // harmless, and a request nobody wanted.
+    const controller = typeof AbortController !== "undefined"
+      ? new AbortController()
+      : null;
+    pageInFlight.current = controller;
     setState((current) => ({ ...current, loadingMore: true }));
 
-    void search({ text, genre, bedtime, page: nextPage }, { catalogue }).then(
+    const settle = () => {
+      // Cleared INSIDE the guard, not before it. Clearing first meant a page
+      // whose sequence had moved on released the lock while a newer page was
+      // still in flight, so the next `onEndReached` sent a third request for
+      // the page already being fetched. Benign -- `appendUnseen` drops the
+      // rows and the page number is the same -- and still a wasted trip.
+      loadingMoreRef.current = false;
+      if (pageInFlight.current === controller) pageInFlight.current = null;
+    };
+
+    void search(
+      { text, genre, bedtime, page: nextPage },
+      { catalogue, signal: controller?.signal },
+    ).then(
       (outcome) => {
-        loadingMoreRef.current = false;
         if (sequence !== latestRun.current || loadedFor.current !== queryKey) return;
+        settle();
         loadedPage.current = nextPage;
-        setState((current) => ({
-          ...current,
+        setState((current) => {
           // De-duplicated by id. The ordering is deterministic, so this should
           // never fire -- which is the reason to keep it: a repeated key in a
           // FlatList is a silent render bug, not a crash.
-          stories: appendUnseen(current.stories, outcome.stories),
-          hasMore: outcome.hasMore,
-          loadingMore: false,
-        }));
+          const stories = appendUnseen(current.stories, outcome.stories);
+          return {
+            ...current,
+            stories,
+            // Where this page begins. Recorded only when it actually added
+            // rows, so a page that de-duplicated to nothing does not leave an
+            // empty slice behind for the caller to order.
+            pageStarts: stories.length > current.stories.length
+              ? [...current.pageStarts, current.stories.length]
+              : current.pageStarts,
+            hasMore: outcome.hasMore,
+            loadingMore: false,
+          };
+        });
       },
       () => {
-        loadingMoreRef.current = false;
         if (sequence !== latestRun.current) return;
+        settle();
         setState((current) => ({ ...current, loadingMore: false, hasMore: false }));
       },
     );
@@ -386,13 +441,22 @@ export function useStorySearch(
   ]);
 
   useEffect(() => {
-    if (debounceMs <= 0) {
+    // Re-running the query the reader is already looking at throws away every
+    // page after the first. Type a character and delete it -- A, AB, A -- and
+    // the third run is query A again: three pages of scrolled list collapse
+    // back to 24 rows under the thumb. `loadedFor` is what already landed, so
+    // an exact match with nothing in flight has nothing to do.
+    const fire = () => {
+      if (loadedFor.current === queryKey && !loadingMoreRef.current) return;
       run({ text, genre, bedtime });
+    };
+    if (debounceMs <= 0) {
+      fire();
       return;
     }
-    const timer = setTimeout(() => run({ text, genre, bedtime }), debounceMs);
+    const timer = setTimeout(fire, debounceMs);
     return () => clearTimeout(timer);
-  }, [text, genre, bedtime, debounceMs, run]);
+  }, [text, genre, bedtime, debounceMs, queryKey, run]);
 
   // Abort whatever is open when the screen goes away. Without this, leaving
   // Explore mid-search leaves a request running and a `setState` aimed at an
@@ -401,6 +465,7 @@ export function useStorySearch(
   useEffect(() => () => {
     latestRun.current++;
     inFlight.current?.abort();
+    pageInFlight.current?.abort();
   }, []);
 
   return { ...state, loadMore };

@@ -236,6 +236,46 @@ it("does not render a story twice if a page overlaps", async () => {
   expect(new Set(ids).size).toBe(ids.length);
 });
 
+// THE ONE THAT WAS MISSING, and it is the property a reader actually feels.
+//
+// The tie-break shuffle and the genre interleave are both whole-list
+// operations. Run over a list that grows, they re-order the rows already on
+// screen: the reader reaches the bottom, asks for more, and the screen they
+// were reading is dealt again under their thumb. The first version of this PR
+// did exactly that -- 4 of the first 24 positions survived a page arriving --
+// and every test it had still passed, because they asserted determinism for
+// the same input and the run limit on the combined list. Neither is this.
+//
+// The fix is to order each page among its own rows, so a page that has been
+// rendered is never an input to anything again.
+it("never re-orders the rows already on screen when a page arrives", async () => {
+  // Several genres, so the interleave has something to do and would visibly
+  // re-deal if it ran over the whole list.
+  const mixed = (n: number): Story[] =>
+    Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
+      ...seedStories[0],
+      id: `m${n}-${i}`,
+      title: `Mixed ${n}-${i}`,
+      genre: (["romance", "comedy", "fantasy", "horror"] as const)[i % 4],
+      chapters: [],
+    }));
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(mixed(input.page ?? 0), (input.page ?? 0) < 1)
+  );
+
+  const view = await renderWith(search);
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
+  const before = idsOnScreen(view);
+
+  await reachEnd(view);
+  await waitFor(() =>
+    expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE * 2)
+  );
+
+  // Every position in the first page is exactly where it was.
+  expect(idsOnScreen(view).slice(0, SEARCH_PAGE_SIZE)).toEqual(before);
+});
+
 it("starts the next query at page 0, not where the last one stopped", async () => {
   const search = jest.fn(async (input: SearchInput) =>
     outcome(page(input.page ?? 0), (input.page ?? 0) < 1)

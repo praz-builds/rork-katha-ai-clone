@@ -289,9 +289,60 @@ simply ran out, with nothing to say so.
   `removeClippedSubviews` are set for the first time. Each card mounts a cover;
   rendering the whole accumulated list is what makes a long scroll stutter.
 
+### The bug review caught, and it was the feature eating itself
+
+The first version ordered the **whole accumulated list** on every render: seeded
+shuffle, then sort, then interleave. Both the shuffle and the interleave are
+whole-list operations, so running them over a list that GROWS re-orders the rows
+already on screen. The reader reaches the bottom, asks for more, and the screen
+they were reading is dealt again under their thumb. Measured: **4 of the first
+24 positions survived** a second page arriving.
+
+It was invisible before this round because the list could not grow —
+`.limit(SEARCH_PAGE_SIZE)` meant one page, ever, so neither helper had ever been
+called on a longer version of its own input. And every test passed: they
+asserted determinism *for the same input* and the run limit *on the combined
+list*. Neither is the property a reader feels.
+
+**Fixed by ordering each page among its own rows and concatenating**, which is
+append-stable by construction: a page that has been rendered is never an input
+to anything again. `useStorySearch` now reports `pageStarts` so the screen can
+slice on the boundaries — sliced *before* the blocked-author filter, because
+removing a row would shift every later boundary. The seed is read once per
+mount rather than inside the memo, so a recompute that crosses midnight or lands
+after a sign-in cannot re-order the feed either.
+
+The cost is the seam: two pages can meet on the same genre, one run of two at
+every 24th card. Against the whole list moving, that is the right trade, and it
+is the honest one — the alternative (per-row hash ranks) makes the interleave
+much weaker.
+
+`explore-paging.test.tsx` gains the test that was missing: render page 0, record
+the ids, load page 1, and assert the first 24 are unchanged. Verified against the
+old implementation before keeping it — it fails there with 20 of 24 rows moved.
+
+Three more from the same round:
+
+- **`loadingMoreRef` was cleared before the sequence check**, so a page whose
+  query had moved on released the lock while a newer page was still in flight,
+  and the next `onEndReached` sent a third request for the page already being
+  fetched. Benign — `appendUnseen` drops the rows — and a wasted round trip.
+  Cleared inside the guard now.
+- **The next-page request carried no abort signal** and was not tracked, so a
+  page in flight when the reader left Explore ran to completion. It now has a
+  controller that `run` and the unmount effect both reach.
+- **A client-side filter that emptied page 0 was a dead end.** Tags and the
+  block list are applied after the server page; when they left zero rows,
+  `FlatList` rendered the empty state, `onEndReached` never fired, and the
+  reader was told "no stories match" while `hasMore` was true. An effect now
+  advances a page in that case. It cannot spin: each pass consumes a page.
+- **Re-running the identical query threw the accumulated pages away.** Type a
+  character and delete it and the third run is the first query again, so three
+  pages collapsed back to 24 rows. `loadedFor` now short-circuits it.
+
 ### Verification
 
-Expo **1665/1665** across 155 suites, typecheck clean, lint 0 errors. Nine new
+Expo **1666/1666** across 155 suites, typecheck clean, lint 0 errors. Nine new
 tests on `spreadByKey` (totality, no run before the tail, within-key order,
 determinism, the growing-list seam) and seven on paging, each written against a
 way it fails: repeated `onEndReached`, a stale page appending to a new query, an

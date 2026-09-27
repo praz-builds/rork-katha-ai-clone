@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -170,18 +170,40 @@ export default function ExploreScreen({
   const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const { status, stories: searched, source, hasMore, loadingMore, loadMore } =
-    useStorySearch(
-      { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
-      { catalogue: stories, ...searchOptions },
-    );
+  const {
+    status,
+    stories: searched,
+    pageStarts,
+    source,
+    hasMore,
+    loadingMore,
+    loadMore,
+  } = useStorySearch(
+    { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
+    { catalogue: stories, ...searchOptions },
+  );
   // The query itself leaves blocked writers out (`search.ts`), but a page
   // fetched before a block would keep showing them until the next keystroke.
   const blocked = useBlockedAuthorIds();
-  const results = useMemo(
-    () => withoutBlockedAuthors(searched, blocked),
-    [searched, blocked],
-  );
+  /**
+   * The pages as they arrived, each with blocked writers removed.
+   *
+   * Sliced BEFORE filtering, not after: `pageStarts` indexes the list the hook
+   * returned, and removing a row from page 0 would shift every later boundary
+   * by one and slice the wrong rows out of every page after it.
+   */
+  const pages = useMemo(() => {
+    const out: Story[][] = [];
+    for (let i = 0; i < pageStarts.length; i += 1) {
+      const start = pageStarts[i];
+      const end = i + 1 < pageStarts.length ? pageStarts[i + 1] : searched.length;
+      if (end > start) {
+        out.push(withoutBlockedAuthors(searched.slice(start, end), blocked));
+      }
+    }
+    return out;
+  }, [searched, pageStarts, blocked]);
+  const results = useMemo(() => pages.flat(), [pages]);
 
   // Tags are a property of whatever came BACK, not a fixed list this screen
   // knows ahead of time - so the panel always offers choices that narrow the
@@ -233,41 +255,67 @@ export default function ExploreScreen({
   // reader is already looking at, so doing them here costs one pass over a
   // short array and, crucially, does not spend a round trip - a sort that
   // re-queries makes the cheapest control on the screen the slowest one.
+  /**
+   * The seed for today's tie-break, fixed once per mount.
+   *
+   * Read at mount rather than inside the memo: the memo recomputes on a tag
+   * change, a sort change and every arriving page, and reading the clock and
+   * the session inside it means a recompute that crosses midnight, or lands
+   * after a sign-in, silently re-orders the whole feed under the reader.
+   */
+  const feedSeed = useMemo(() => dailyFeedSeed(getViewerId(), new Date()), []);
+
+  /**
+   * What the list renders, ordered PAGE BY PAGE rather than all at once.
+   *
+   * WHY THE PAGE BOUNDARIES MATTER, and this is the whole reason `pageStarts`
+   * exists. The tie-break shuffle and the genre interleave are both whole-list
+   * operations: run them over a list that grows and they re-order the rows
+   * already on screen. Measured on the first version of this, 4 of the first
+   * 24 positions survived a second page arriving -- so the reader reaches the
+   * bottom, asks for more, and the screen they were reading is dealt again.
+   *
+   * Ordering each page among its own rows and concatenating is append-stable
+   * by construction: a page that has been rendered is never an input to
+   * anything again. The cost is the seam -- two pages can meet on the same
+   * genre -- which is one run of two at every 24th card, against the
+   * alternative of the whole list moving.
+   *
+   * It is also the right ranking. The server already decided which 24 rows are
+   * page 0 (`like_count desc`), so sorting within a page refines that decision
+   * rather than overriding it.
+   */
   const visible = useMemo(() => {
-    const narrowed = selectedTags.length === 0
-      ? results
-      // OR, not AND: a reader who checks "noir" and "atmospheric" wants
-      // either mood, not the rare story tagged with both.
-      : results.filter((story) =>
-        story.tags.some((tag) => selectedTags.includes(tag))
-      );
+    const orderPage = (page: Story[]) => {
+      const narrowed = selectedTags.length === 0
+        ? page
+        // OR, not AND: a reader who checks "noir" and "atmospheric" wants
+        // either mood, not the rare story tagged with both.
+        : page.filter((story) =>
+          story.tags.some((tag) => selectedTags.includes(tag))
+        );
 
-    // SHUFFLE FIRST, THEN SORT, as Home does. Every count in this catalogue
-    // is still zero, so sorting by views or likes ties on every row; the sort
-    // is stable, so the list fell through to the server's `created_at desc`.
-    // The Originals were published in genre blocks, so that order IS the
-    // genre blocks, reversed. Seeding the tie-break by reader and day means
-    // the page is stable while somebody scrolls it and different tomorrow,
-    // and a real count still wins because the sort runs after.
-    const tieBroken = seededShuffle(
-      narrowed,
-      dailyFeedSeed(getViewerId(), new Date()),
-      sort,
-    );
+      // SHUFFLE FIRST, THEN SORT, as Home does. Every count in this catalogue
+      // is still zero, so sorting by views or likes ties on every row; the
+      // sort is stable, so the list fell through to the server's
+      // `created_at desc`. The Originals were published in genre blocks, so
+      // that order IS the genre blocks, reversed. A real count still wins,
+      // because the sort runs after.
+      const sorted = seededShuffle(narrowed, feedSeed, sort).sort((a, b) => {
+        if (sort === "trending") return b.views - a.views;
+        if (sort === "loved") return b.likes - a.likes;
+        return a.publishedOffset - b.publishedOffset;
+      });
 
-    const sorted = [...tieBroken].sort((a, b) => {
-      if (sort === "trending") return b.views - a.views;
-      if (sort === "loved") return b.likes - a.likes;
-      return a.publishedOffset - b.publishedOffset;
-    });
+      // Then break up whatever clustering survives. A shuffle decides ties but
+      // still produces runs -- runs are what random sequences look like -- and
+      // "Newest" does not shuffle at all, because `publishedOffset` is a real
+      // distinct value on every row.
+      return spreadByKey(sorted, (story) => story.genre ?? "unknown");
+    };
 
-    // Then break up whatever clustering survives. A shuffle decides ties but
-    // still produces runs -- runs are what random sequences look like -- and
-    // "Newest" does not shuffle at all, because `publishedOffset` is a real
-    // distinct value on every row. Run over the ACCUMULATED list rather than
-    // per page, or every page boundary re-clusters.
-    return spreadByKey(sorted, (story) => story.genre ?? "unknown");
-  }, [results, selectedTags, sort]);
+    return pages.flatMap(orderPage);
+  }, [pages, selectedTags, sort, feedSeed]);
 
   // A live result is not in the bundled catalogue, and handing its id to a
   // navigator that resolves ids against that catalogue would open the wrong
@@ -314,6 +362,27 @@ export default function ExploreScreen({
       ? `${scope} · offline catalogue`
       : scope;
   }, [category, genre, searching, sort, source, status, visible.length]);
+
+  /**
+   * A page that narrowed to nothing is a dead end, so ask for the next one.
+   *
+   * The tag filter and the block list are applied on the CLIENT, after the
+   * server page. When they leave zero rows, `FlatList` renders the empty state
+   * and `onEndReached` never fires -- there is no list to reach the end of --
+   * so the reader is told "no stories match" while `hasMore` is true and the
+   * page that does match has never been asked for. `searchStories` is already
+   * careful about exactly this at the server level (`hasMore` counts the rows
+   * the database returned, not the ones that survived the genre narrowing);
+   * this is the same care for the half of the narrowing that happens here.
+   *
+   * It cannot spin: each pass consumes a page, `loadMore` is a no-op while one
+   * is in flight, and `hasMore` goes false at the end of the catalogue.
+   */
+  useEffect(() => {
+    if (visible.length > 0) return;
+    if (status === "loading" || loadingMore || !hasMore) return;
+    loadMore();
+  }, [visible.length, status, loadingMore, hasMore, loadMore]);
 
   /**
    * What sits under the last card.

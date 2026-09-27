@@ -26,6 +26,14 @@
 - **`FlatList` is virtualised for the first time.** `initialNumToRender`,
   `maxToRenderPerBatch`, `windowSize` and `removeClippedSubviews` were set
   nowhere in the app before this.
+- **Ordering is per page, not per list, and that is load-bearing.** The shuffle
+  and the interleave are whole-list operations; run over a list that grows they
+  re-order the rows already on screen, and the first version did exactly that —
+  4 of the first 24 positions survived a page arriving. `useStorySearch`
+  reports `pageStarts`, the screen orders each page among its own rows, and a
+  rendered page is never an input to anything again. The seam can repeat a
+  genre; the whole list moving is worse. The seed is read once per mount, so a
+  recompute crossing midnight cannot re-deal the feed either.
 - Covers are untouched and still the slowest thing here. Separate branch.
 
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
