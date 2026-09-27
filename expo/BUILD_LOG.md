@@ -25,10 +25,13 @@
   `FlatList` reuses rows and a recycled one otherwise paints the previous
   story's cover.
 - **All four `FocalImage` callers, including `Cover`.** `Cover` is what
-  Library's shelves and author pages render at `size="mini"` into a 74pt box —
-  the worst bytes-to-pixels ratio in the app (96pt, not the 74pt the first pass
-  assumed), and the one caller missed on the
-  first pass. `COVER_WIDTHS.mini` having no caller was the tell.
+  Library's shelves and author pages render at `size="mini"` into a **96pt**
+  box — the worst bytes-to-pixels ratio in the app, and the one caller missed
+  on the first pass. `COVER_WIDTHS.mini` having no caller at all was the tell.
+- **`COVER_WIDTHS.mini` is 288, not 232.** The docstring described a 74pt
+  surface that has no caller, so the width was 3× of the wrong box and only
+  2.4× of the real one — which would have made Library thumbnails *softer than
+  on main*, where they arrived full-size. Measure the box, then multiply.
 - **Web fades too.** `transition` is an `expo-image` prop and the web branch
   returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with
   a 180ms transition, set to 1 on load — plus a `ref` that checks `complete`,

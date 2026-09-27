@@ -284,7 +284,9 @@ What was actually needed was fewer bytes and a real disk cache.
 - **`Cover` was the fourth caller and it was missed.** Three of `FocalImage`'s
   four callers were converted; `Cover` in `KathaPrimitives.tsx` was not — and it
   is the one Library's shelves and every author page render, at `size="mini"`
-  into a **74pt box**, which is the worst bytes-to-pixels ratio in the app. A
+  into a **96pt box** (recorded here as 74pt on the first pass, which is where
+  the undersized width below came from), the worst bytes-to-pixels ratio in the
+  app. A
   reader with twenty saved stories downloaded about **40 MB** of full-size PNG
   to paint twenty thumbnails. Three things followed from that one line: no
   transform, **no `Accept` header** (because `isTransformedCover` is false for a

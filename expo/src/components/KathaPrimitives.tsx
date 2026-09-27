@@ -212,7 +212,7 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
   // `size` is already the surface name `COVER_WIDTHS` uses, so the cover is
   // asked for at the size this box draws it. Missing this was a third of the
   // saving: Library's shelves and every author page render `size="mini"` into
-  // a 74pt box, which is the worst bytes-to-pixels ratio in the app -- twenty
+  // a 96pt box, which is the worst bytes-to-pixels ratio in the app -- twenty
   // saved stories fetched about 40 MB of full-size PNG to paint twenty
   // thumbnails. It is also where the silent half bites: without the rewrite
   // `isTransformedCover` is false, so `FocalImage` sends no `Accept` header

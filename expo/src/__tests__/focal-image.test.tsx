@@ -171,16 +171,24 @@ describe("the web branch", () => {
     const view = await render(
       <FocalImage source={{ uri: coverUrl(PUBLIC, "card") as string }} />,
     );
-    expect(img(view).props.src).toBe(coverUrl(PUBLIC, "card"));
+    // The INSTANCE, not its props. `props.style.opacity` is 0 on every render
+    // by construction -- that is the premise of the bug -- and the stale `1`
+    // lives on the DOM node, written by the ref and by onLoad, neither of
+    // which a rerender invokes. So asserting the props here passes whether the
+    // element remounted or was updated in place, which makes it a test that
+    // cannot fail. `react-test-renderer` caches one instance per fiber, so
+    // identity is the signal that actually distinguishes the two.
+    const before = img(view);
 
     const regenerated =
       "https://p.supabase.co/storage/v1/object/public/covers/covers/abc/cover-2.png";
     await view.rerender(
       <FocalImage source={{ uri: coverUrl(regenerated, "card") as string }} />,
     );
-    expect(img(view).props.src).toBe(coverUrl(regenerated, "card"));
-    // A fresh element, so the previous load's inline `1` is gone.
-    expect(img(view).props.style.opacity).toBe(0);
+    const after = img(view);
+
+    expect(after.props.src).toBe(coverUrl(regenerated, "card"));
+    expect(after).not.toBe(before);
   });
 
   it("still asks for the transformed URL", async () => {
