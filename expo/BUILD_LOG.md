@@ -2,6 +2,38 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: How credits work becomes its own screen
+
+- **Profile's two credit rows now go to two places.** "Credits · Get more" and
+  "How credits work" both called the same `onCredits` prop and both opened
+  `CreditsScreen` at the top, which leads with Paid options -- so the row that
+  promised an explanation answered with a shop, three scrolls above the
+  explanation. The settings row now opens
+  `src/screens/HowCreditsWorkScreen.tsx`, subtitled "What each thing costs".
+- **The new screen has nothing to buy on it**, deliberately, and a test asserts
+  the absence of the balance pill, the plan card and the packs sheet. Its
+  content is the existing `components/credits/HowCreditsWork`, still the only
+  place a price lives in client code and still lifted verbatim from
+  `../source-of-truth/CREDITS_AND_PRICING.md` §1. Do not add a third copy.
+- **Get credits no longer inlines the prices.** Under Paid options sit two ghost
+  buttons (`components/credits/SecondaryActions.tsx`): *Get free credits*, which
+  scrolls to the Free credits section and carries a live sub-line, and *How
+  credits work*. They are siblings rather than a link inside a row, because a
+  Pressable inside a Pressable is a button inside a button on
+  react-native-web -- the failure Profile's "Get more" pill is commented
+  against.
+- **The sub-line quotes only the server**, and only when the server counted.
+  `CreditClaimsResult.remaining` is `… | null`: it used to default to zeroes
+  when the field was absent, which told a brand-new account it had claimed
+  everything this month. A missing number is not a zero.
+- **`how-credits-work` carries a required `returnTo`**, the shape `author`
+  already uses, so opening the explanation from Get credits returns to Get
+  credits rather than ejecting the reader to the Profile tab.
+- The feedback claim's monthly cap is **five**, not six (migration `00100`).
+- Known and deliberate: Android's hardware back calls no handler here, as on
+  `CreditsScreen`, `VoicesScreen` and `JourneyScreen`. It wants one change
+  across every pushed screen rather than an exception on this one.
+
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 
 - **Every voice sample plays.** The six preview MP3s had never existed --

@@ -13,6 +13,7 @@
  * disabled and the tap cannot go anywhere.
  */
 import React from "react";
+import { AccessibilityInfo } from "react-native";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockFetchOwnProfile = jest.fn();
@@ -89,7 +90,10 @@ beforeEach(() => {
   mockFetchLedger.mockReset().mockResolvedValue([]);
   mockFetchCreditClaims.mockReset().mockResolvedValue({
     claims: [],
-    remaining: { today: 1, month: 6 },
+    // 5, not 6: after 00100 `remaining.month` is `greatest(5 - v_month, 0)`
+    // and can only be 0-5. This is the `beforeEach` for the whole file, so a
+    // six here would render "6 left this month" under every test in it.
+    remaining: { today: 1, month: 5 },
   });
   mockBootstrapUser.mockReset().mockResolvedValue(null);
   mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
@@ -115,6 +119,53 @@ it("lays out paid options, the two secondary ways, the free ways and the history
   expect(view.getByTestId("credits-streak")).toBeTruthy();
   expect(view.getByTestId("credits-feedback")).toBeTruthy();
   expect(view.getByTestId("credits-invite")).toBeTruthy();
+});
+
+// The "Get free credits" button scrolls; a scroll is invisible to a screen
+// reader, so without moving the reading cursor the control is inert to
+// VoiceOver and TalkBack. Two rounds of review fixed this and nothing had
+// ever pressed the button.
+it("moves screen-reader focus to the section it scrolls to", async () => {
+  const setFocus = jest
+    .spyOn(AccessibilityInfo, "setAccessibilityFocus")
+    .mockImplementation(() => {});
+  const announce = jest
+    .spyOn(AccessibilityInfo, "announceForAccessibility")
+    .mockImplementation(() => {});
+  try {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-free-cta"));
+
+    await fireEvent.press(view.getByTestId("credits-free-cta"));
+
+    expect(setFocus).toHaveBeenCalledTimes(1);
+    // Not both: focusing the heading makes the screen reader speak it, and
+    // the heading reads "Free credits", so an announcement of the same words
+    // would either pre-empt it or say it twice.
+    expect(announce).not.toHaveBeenCalled();
+  } finally {
+    setFocus.mockRestore();
+    announce.mockRestore();
+  }
+});
+
+// The other half of the degraded-response fix. `freeCreditsSubtitle` covers
+// the button's sub-line in its own suite; this is the card's caps line, which
+// must disappear rather than read "0 left today · 0 left this month" at
+// somebody who has claimed nothing.
+it("drops the caps line when the server answered without counts", async () => {
+  mockFetchCreditClaims.mockResolvedValue({ claims: [], remaining: null });
+  const view = await render(<CreditsScreen {...props()} />);
+
+  await waitFor(() => view.getByTestId("credits-feedback"));
+  expect(view.queryByTestId("credits-feedback-remaining")).toBeNull();
+});
+
+it("shows the caps line when the server did count", async () => {
+  const view = await render(<CreditsScreen {...props()} />);
+
+  await waitFor(() => view.getByTestId("credits-feedback-remaining"));
+  expect(view.getByText("1 left today · 5 left this month")).toBeTruthy();
 });
 
 // The prices moved to their own screen when Profile's two credit rows were

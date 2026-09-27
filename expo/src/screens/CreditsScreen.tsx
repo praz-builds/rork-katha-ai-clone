@@ -95,18 +95,23 @@ export default function CreditsScreen({
     scrollRef.current?.scrollTo({ y: Math.max(freeSectionY.current - spacing.lg, 0), animated: true });
     // A scroll is invisible to a screen reader: without this the control is
     // inert to VoiceOver and TalkBack, because the screen moved and the
-    // reading cursor did not. Both halves are needed -- the announcement says
-    // what happened, and moving focus to the heading means the next swipe
-    // continues from the Free credits section rather than from the button
-    // that was just pressed.
+    // reading cursor did not.
+    //
+    // ONE MECHANISM, WITH A FALLBACK -- not two. Moving focus makes the
+    // screen reader speak the newly focused node, and that node is a heading
+    // reading "Free credits", so pairing it with an announcement of the same
+    // words either pre-empts the announcement or says it twice. Focus is the
+    // better of the two because it also moves the reading cursor, so the next
+    // swipe continues from the section rather than from the button. The
+    // announcement is kept only for the case where there is no node to focus.
     try {
-      AccessibilityInfo.announceForAccessibility("Free credits");
       const node = freeHeadingRef.current
         ? findNodeHandle(freeHeadingRef.current)
         : null;
       if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+      else AccessibilityInfo.announceForAccessibility("Free credits");
     } catch {
-      // Both are a courtesy, and neither is a reason to fail the tap.
+      // A courtesy, and never a reason to fail the tap.
     }
   }, []);
 
