@@ -723,4 +723,11 @@ export type Screen =
   /** The narration voice picker, reached from the profile. */
   | { name: "voices" }
   | { name: "credits" }
+  /**
+   * The prices, with nothing to buy. Separate from `credits` because Profile
+   * offers both and they answer different questions: "what does this cost?"
+   * and "how do I get more?". Both rows used to land here-but-on-`credits`,
+   * which answered the first question with a shop.
+   */
+  | { name: "how-credits-work" }
   | { name: "paywall" };

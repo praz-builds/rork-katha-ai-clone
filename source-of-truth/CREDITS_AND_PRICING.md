@@ -126,11 +126,11 @@ future feature should be decided by them without reopening this document.
    grant.** The cheapest paid grant is the weekly plan's 20 credits, so the
    ceiling is **10 a month**. The streak ladder pays **nothing** in steady
    state (30 credits once, across the first three weeks, then never again), and
-   the only recurring earn is the feedback claim at **at most 6 a month**
-   *(2026-09-16, §5)* — 6 against a ceiling of 10, with the ladder contributing
-   zero. Measure every future earn against the **most expensive action a
-   credit can buy**, never the blended cost: see §5, *The daily credit,
-   re-examined*.
+   the only recurring earn is the feedback claim at **at most 5 a month**
+   *(2026-09-16, lowered from 6 on 2026-09-27, §5)* — 5 against a ceiling of
+   10, with the ladder contributing zero. Measure every future earn against the
+   **most expensive action a credit can buy**, never the blended cost: see §5,
+   *The daily credit, re-examined*.
 
 ---
 
@@ -311,7 +311,7 @@ and not a free allowance by default.
 | | Credits |
 |---|---|
 | Keep a reading streak | **2** at day 2, **4** at day 5, **6** at day 10, **8** at day 15, **10** at day 21 |
-| Leave a thoughtful comment on a story you read, then claim it | **1** per comment — one a day, up to six a month |
+| Leave a thoughtful comment on a story you read, then claim it | **1** per comment — one a day, up to five a month |
 | Invite a friend who creates something | **10** to you, **5** to them |
 | Welcome bonus | **3**, once |
 
@@ -1302,20 +1302,20 @@ worst case is, by coincidence, the same figure as the yearly plan's profit at
 the worst shape, and it is paid once per free user who holds a 21-day streak,
 which is a retained user by any definition in §11.
 
-The only recurring earn is the feedback claim: **at most 6 a month**, so a
-retained free user's steady state is **72 credits a year** — **$3.10** blended
-(72 × $0.043) or **$12.82** if every one starts a story (72 × $0.178), against
-the $50.15 a yearly subscription nets. Seventy-two credits is 12% of the
+The only recurring earn is the feedback claim: **at most 5 a month**, so a
+retained free user's steady state is **60 credits a year** — **$2.58** blended
+(60 × $0.043) or **$10.68** if every one starts a story (60 × $0.178), against
+the $50.15 a yearly subscription nets. Sixty credits is 10% of the
 600-credit annual grant, and it is earned one qualifying read and one
 40-character comment at a time.
 
-**Six a month is inside the principle-7 ceiling of ten**, which is half the
+**Five a month is inside the principle-7 ceiling of ten**, which is half the
 weekly plan's 20. The milestone ladder still needs no monthly cap because it
 does not recur at all: it pays five times, across the first three weeks, and is
 then exhausted. That is its advantage over a flat daily grant, which needed an
 explicit ceiling to stop it reaching 30/month and out-earning the paid tier.
-The feedback claim carries its own ceiling — 1 a day and 6 a month, enforced
-server-side — and stays 4 under the principle's line with the ladder at zero.
+The feedback claim carries its own ceiling — 1 a day and 5 a month, enforced
+server-side — and stays 5 under the principle's line with the ladder at zero.
 
 The headroom is deliberate. If free-tier engagement turns out too thin — the
 signal being D7 retention on free users tracking below subscribers by more than
@@ -1333,17 +1333,17 @@ users — reading is free and unlimited, so it carries no consumption burden.
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
 | **Reading streak** | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime — nothing repeats | `streak` | Launch |
-| **Feedback — a claimed comment** | **1** | on claim in Credits, after a qualifying read of that story | 1 per story, 1 per UTC day, **6 per calendar month** | `feedback` | Launch |
+| **Feedback — a claimed comment** | **1** | on claim in Credits, after a qualifying read of that story | 1 per story, 1 per UTC day, **5 per calendar month** | `feedback` | Launch |
 | **Welcome bonus** | **3** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
 | **Referral — referrer** | **10** | when the invitee has generated once **and** is ≥ 24 h old | 3/month, 10 lifetime | `referral` | **Launch** (code-based) |
 | **Referral — invited** | **5** | same moment, same transaction | once — `referred_id` is unique | `referral` | **Launch** (code-based) |
 | **Streak repair** | **0** — restores the streak | day after a missed day, on 30 min of reading | 2/month | — | Launch |
 
-**Steady state for a free user: at most 6 a month, all of it from feedback.**
+**Steady state for a free user: at most 5 a month, all of it from feedback.**
 The streak ladder pays **30 credits once**, across the first three weeks, and
 then stops; with the welcome bonus a free user's one-off earn is **33 credits**.
-The feedback claim is the one recurring source and it is capped at 6 a month
+The feedback claim is the one recurring source and it is capped at 5 a month
 against a principle-7 ceiling of 10 — **against 50/month, every month**, on
 every paid plan. The earn side is an activation mechanism, not an income.
 
@@ -1406,11 +1406,11 @@ three weeks, and that person is retained. The earn side is still an
 >    streak pays nothing and every milestone on *Your journey* is unlocked, so
 >    a retained free user has no further streak reason and the screen still
 >    ends. The feedback claim (below) now gives that user *something* to earn
->    — up to 6 a month — but it is not a streak rung and it does not put a
+>    — up to 5 a month — but it is not a streak rung and it does not put a
 >    sixth row on the journey. A repeating rung — *every 10 days, 2* — would
 >    still cost ~6/month (12% of the 50 grant, $0.26/month blended), and with
->    feedback already at 6 it would put the steady state at the principle-7
->    ceiling exactly. **Not decided.**
+>    feedback at 5 it would put the steady state at 11, over the principle-7
+>    ceiling. **Not decided.**
 
 **Cost of the whole ladder: $1.29 blended, $5.34 if all 30 credits start
 stories** (30 × $0.043; 30 × $0.178) — one-time, per free user who reaches day
@@ -1619,22 +1619,30 @@ it** from the Credits screen, if it qualifies.
 | **The comment** | At least **40 characters** after trimming; not soft-deleted; not the subject of an upheld content report |
 | **The story** | Not the claimant's own |
 | **The read** | A qualifying read of that story recorded **before** the comment — 120 seconds of dwell, or the chapter completed, whichever the read table records — so the credit is for reading and then saying something, in that order |
-| **Caps** | **1 per story**, **1 per UTC day**, **6 per calendar month**, all enforced in `claim_comment_credit` |
+| **Caps** | **1 per story**, **1 per UTC day**, **5 per calendar month**, all enforced in `claim_comment_credit` |
 | **After the claim** | The comment's content is **frozen**: the owner's UPDATE policy excludes claimed rows, so a comment cannot be paid for and then edited into something else |
 | **Who cannot claim** | A tester account (§9), ever |
 
-**Cost.** Six a month is **$0.26 blended and $1.07 if every credit starts a
-story** (6 × $0.043; 6 × $0.178), per month, per free user who reads six
-stories and comments on each. Over a year that is 72 credits, $3.10 to $12.82,
-against the $50.15 a yearly plan nets — and it buys 72 qualifying reads and 72
+**Cost.** Five a month is **$0.215 blended and $0.89 if every credit starts a
+story** (5 × $0.043; 5 × $0.178), per month, per free user who reads five
+stories and comments on each. Over a year that is 60 credits, $2.58 to $10.68,
+against the $50.15 a yearly plan nets — and it buys 60 qualifying reads and 60
 comments of at least forty characters on other people's stories, which is the
 community activity the product has no other way to pay for.
 
-**Against principle 7.** 6 a month against a ceiling of 10, with the streak
+**Against principle 7.** 5 a month against a ceiling of 10, with the streak
 ladder at zero in steady state. It is the only recurring earn in the product,
 and the cap is the whole of what keeps it inside the line: raising it to 10
 would put the free tier exactly at the ceiling, and past 10 is a violation.
 The monthly cap is therefore load-bearing and is not a tuning knob.
+
+**Lowered from six to five on 2026-09-27**, by the product owner, with no other
+change to the mechanic. Migration `00100_feedback_monthly_cap_five` moves the
+digit in `comment_credit_block_reason` (which enforces it) and in
+`comment_credit_claims` (which reports the remaining count to the Credits
+screen); `claim_comment_credit` re-derives the reason under its lock and
+needed no change. Nobody is clawed back: credits already paid at the old cap
+are kept, and the new ceiling applies from the next calendar month.
 
 **Why claim-after-the-fact, rather than granting when the comment is posted.**
 The 2026-09-10 removal was right about the mechanic it removed: paying at post
@@ -1667,7 +1675,7 @@ to err on.
 
 | Mechanic | Why it's gone |
 |---|---|
-| ~~**Comment for a credit**~~ | ~~Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community.~~ **Reversed 2026-09-16 by the product owner, as a different mechanic** — see *Feedback credits — the claimed comment*, above. The faucet described here is retired by migration 00089 (`create_feedback` grants nothing); what replaces it is 1 credit on a *claim*, after a qualifying read, on a comment of at least 40 characters, capped at 1 per story, 1 a day and 6 a month, with the content frozen once paid. The objection this row made — that paying for comments buys spam — is answered by the read requirement and the caps, not dismissed. |
+| ~~**Comment for a credit**~~ | ~~Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community.~~ **Reversed 2026-09-16 by the product owner, as a different mechanic** — see *Feedback credits — the claimed comment*, above. The faucet described here is retired by migration 00089 (`create_feedback` grants nothing); what replaces it is 1 credit on a *claim*, after a qualifying read, on a comment of at least 40 characters, capped at 1 per story, 1 a day and 5 a month (6 until 2026-09-27), with the content frozen once paid. The objection this row made — that paying for comments buys spam — is answered by the read requirement and the caps, not dismissed. |
 | **Social post reward** | A manual moderation queue to pay out one credit is not worth building. |
 | **Reader earnings** | The highest-abuse surface in the app, requiring the full anti-gaming pipeline, and there is no reader volume to calibrate against pre-launch. The front-loaded curve in `strategic-decisions.md` §6 is well designed and can return in v1.2 once there is real traffic. |
 | **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0322-$0.0738 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
@@ -2176,9 +2184,10 @@ Proportionate to a pre-launch app. Nine controls, and an explicit list of what
    migration 00089, `claim_comment_credit`)*: a qualifying read of the story
    recorded *before* the comment, 40 trimmed characters minimum, not the
    claimant's own story, not soft-deleted, no upheld report, 1 per story,
-   1 per UTC day, 6 per calendar month, keyed `feedback:{comment_id}` so a
+   1 per UTC day, 5 per calendar month *(6 until 2026-09-27, lowered by
+   migration 00100)*, keyed `feedback:{comment_id}` so a
    replay is a no-op. A claimed comment is frozen by the owner UPDATE policy.
-   The 6-a-month cap is the principle-7 bound and is not to be raised past 10
+   The 5-a-month cap is the principle-7 bound and is not to be raised past 10
    (§5). **`create_feedback` no longer grants anything** — the uncapped
    one-character faucet this section used to say must be disabled before
    launch is gone as of 00089.
@@ -2590,13 +2599,14 @@ economy is tuned on evidence rather than argued about.
     at 2/month, offered only after a *single* missed day. Repair restores the
     streak; it does not pay the missed rung. It costs nothing, because reading is
     free, and it buys a 30-minute reading session.
-23. **Ceiling: steady-state earnable free credits are at most 6 a month**
-    *(revised 2026-09-16 from zero)*, all of it from the feedback claim, against
+23. **Ceiling: steady-state earnable free credits are at most 5 a month**
+    *(revised 2026-09-16 from zero to 6, lowered to 5 on 2026-09-27)*, all of it
+    from the feedback claim, against
     a principle-7 ceiling of 10 — half the weekly plan's 20. The ladder pays 30
     once, across the first three weeks, and contributes nothing in steady
     state; one-off free earn is 33 with the welcome bonus, against 50/month on
     every paid plan. **The ladder terminates rather than capping, so it needs
-    no monthly ceiling; the feedback claim carries its own, and 6 is
+    no monthly ceiling; the feedback claim carries its own, and 5 is
     load-bearing** — the streak's dead end for a retained free user stays an
     open item in §5.
 24. **The flat daily app-open credit is rejected.** Uncapped it pays 30/month —
@@ -2797,12 +2807,13 @@ economy is tuned on evidence rather than argued about.
     comment, reason `feedback`.** Server-enforced in `claim_comment_credit`:
     comment ≥ 40 trimmed characters on somebody else's story; a qualifying
     read of that story (120 s or completed) recorded *before* the comment; not
-    deleted; no upheld report; 1 per story, 1 per UTC day, 6 per calendar
-    month; keyed `feedback:{comment_id}`; testers refused. A claimed comment's
+    deleted; no upheld report; 1 per story, 1 per UTC day, 5 per calendar
+    month *(6 until 2026-09-27, lowered by migration 00100)*;
+    keyed `feedback:{comment_id}`; testers refused. A claimed comment's
     content is frozen. **`create_feedback` no longer grants anything.** This
     reverses the 2026-09-10 removal in mechanism, not in judgement: the
     post-time faucet stays dead, and the claim is what makes a read
-    requirement, a report check and a freeze possible. Six a month against a
+    requirement, a report check and a freeze possible. Five a month against a
     principle-7 ceiling of ten is the only recurring earn in the product; the
     cap is load-bearing.
 52. **Referral ships at launch, code-based.** `profiles.referral_code` (from

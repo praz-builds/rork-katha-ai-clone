@@ -8,7 +8,7 @@
  * the reader explicitly claims, under rules that all live in SQL:
  *
  *   forty characters, somebody else's story, a two-minute read of that story
- *   recorded BEFORE the comment, one per story, one per day, six per month,
+ *   recorded BEFORE the comment, one per story, one per day, five per month,
  *   not deleted, not upheld-reported, not a tester.
  *
  * NONE of those are checked here, and that is the design. `claim_comment_

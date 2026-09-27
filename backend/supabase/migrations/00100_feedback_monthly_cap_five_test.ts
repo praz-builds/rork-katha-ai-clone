@@ -1,0 +1,218 @@
+// 00100: the feedback claim's monthly cap is five, enforced where it is paid
+// and reported where it is listed.
+//
+// The same lesson every migration test since 00071 restates: a plpgsql body is
+// parsed when it RUNS, so a broken function deploys cleanly and passes a test
+// that only checks it exists. Every assertion below calls the function and
+// then reads the ledger, because what is under test is money.
+//
+// WHY BOTH FUNCTIONS. 00100 changes one digit in two places and they are
+// reached by different callers. `claim_comment_credit` refuses the sixth claim
+// (through `comment_credit_block_reason`, which it re-derives under the lock);
+// `comment_credit_claims` is what draws the "N left this month" line on the
+// Credits screen. A change to one and not the other would pay correctly while
+// promising wrongly, or the reverse, and neither shows up as an error.
+import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
+import { pg_trgm } from "npm:@electric-sql/pglite@0.3.14/contrib/pg_trgm";
+
+/** Every migration in this directory, in order. 00100 is the last of them. */
+async function createDatabase() {
+  const db = new PGlite({ extensions: { pg_trgm } });
+  await db.exec(`
+    create schema auth;
+    create role anon;
+    create role authenticated;
+    create role service_role bypassrls;
+    create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable
+      as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+    create function auth.role() returns text language sql stable
+      as $$ select current_user::text $$;
+    grant usage on schema auth to anon, authenticated, service_role;
+  `);
+
+  const migrations: string[] = [];
+  for await (const entry of Deno.readDir(new URL(".", import.meta.url))) {
+    if (entry.isFile && /^\d+.*\.sql$/.test(entry.name)) {
+      migrations.push(entry.name);
+    }
+  }
+  migrations.sort();
+  for (const migration of migrations) {
+    const sql = await Deno.readTextFile(new URL(migration, import.meta.url));
+    await db.exec(sql.replace(/create index concurrently/gi, "create index"));
+  }
+  return db;
+}
+
+const READER = "00000000-0000-4000-8000-000000000a01";
+const AUTHOR = "00000000-0000-4000-8000-000000000a02";
+
+const LONG =
+  "This chapter turned the whole premise on its head and I loved it.";
+
+async function seedUser(db: PGlite, id: string) {
+  await db.query("insert into auth.users(id) values ($1)", [id]);
+  await db.query(
+    "insert into profiles(id) values ($1) on conflict do nothing",
+    [id],
+  );
+}
+
+/**
+ * `count` stories by the author, each read for long enough and each commented
+ * on by the reader. Returns the comment ids in the order the stories were
+ * made, so a test can claim them one at a time.
+ */
+async function seedReadAndCommented(
+  db: PGlite,
+  count: number,
+): Promise<string[]> {
+  for (const id of [READER, AUTHOR]) await seedUser(db, id);
+  const comments: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const storyId = `00000000-0000-4000-8000-00000000a10${i}`;
+    await db.query(
+      `insert into stories (id, author_id, title, genre, primary_genre, is_public, status)
+       values ($1, $2, 'S', array['romance'], 'romance', true, 'complete')`,
+      [storyId, AUTHOR],
+    );
+    await db.query(
+      `insert into story_reads (story_id, user_id, duration_seconds, read_at)
+       values ($1, $2, 200, now() - interval '1 hour')`,
+      [storyId, READER],
+    );
+    const result = await db.query<{ id: string }>(
+      `insert into comments (user_id, story_id, content) values ($1, $2, $3)
+       returning id`,
+      [READER, storyId, LONG],
+    );
+    comments.push(result.rows[0].id);
+  }
+  return comments;
+}
+
+type Claim = { ok: boolean; reason?: string; credits?: number; balance?: number };
+
+async function claim(
+  db: PGlite,
+  commentId: string,
+  requestId: string,
+): Promise<Claim> {
+  const result = await db.query<{ claim: Claim }>(
+    "select claim_comment_credit($1, $2, $3) as claim",
+    [READER, commentId, requestId],
+  );
+  return result.rows[0].claim;
+}
+
+/**
+ * Move every paid feedback row to a distinct earlier hour of this month, so
+ * the one-a-day cap lifts and the monthly one is the only thing left standing.
+ * Distinct hours matter: the rows must stay inside the calendar month and out
+ * of today.
+ */
+async function backdateFeedbackRows(db: PGlite, hour: number) {
+  await db.query(
+    `update credit_ledger
+        set created_at = (date_trunc('month', now() at time zone 'UTC') at time zone 'UTC')
+                         + ($2 || ' hours')::interval
+      where user_id = $1 and reason = 'feedback'`,
+    [READER, String(hour)],
+  );
+}
+
+async function remaining(db: PGlite): Promise<{ today: number; month: number }> {
+  const result = await db.query<
+    { summary: { remaining: { today: number; month: number } } }
+  >("select comment_credit_claims($1) as summary", [READER]);
+  return result.rows[0].summary.remaining;
+}
+
+Deno.test("five claims a month are paid and the sixth is refused", async () => {
+  const db = await createDatabase();
+  try {
+    const comments = await seedReadAndCommented(db, 6);
+
+    // One a day is still the rule, so each claim after the first needs the
+    // paid rows moved off today before the next one is attempted.
+    for (let i = 0; i < 5; i++) {
+      assertEquals(
+        (await claim(db, comments[i], `c${i}`)).ok,
+        true,
+        `claim ${i + 1} of 5 should be paid`,
+      );
+      await backdateFeedbackRows(db, i + 1);
+    }
+
+    // Five paid this month. The sixth is refused for the month even though
+    // the day is clear and the comment itself qualifies in every other way.
+    assertEquals(await claim(db, comments[5], "c5"), {
+      ok: false,
+      reason: "monthly_cap",
+    });
+
+    const balance = await db.query<{ balance_after: number }>(
+      `select balance_after from credit_ledger where user_id = $1
+       order by created_at desc, ledger_sequence desc limit 1`,
+      [READER],
+    );
+    assertEquals(balance.rows[0].balance_after, 5);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("the listed remaining count counts down from five", async () => {
+  const db = await createDatabase();
+  try {
+    const comments = await seedReadAndCommented(db, 6);
+
+    assertEquals(await remaining(db), { today: 1, month: 5 });
+
+    assertEquals((await claim(db, comments[0], "r0")).ok, true);
+    assertEquals(await remaining(db), { today: 0, month: 4 });
+
+    for (let i = 1; i < 5; i++) {
+      await backdateFeedbackRows(db, i);
+      assertEquals((await claim(db, comments[i], `r${i}`)).ok, true);
+    }
+    // Spent out for the month. `today` is 1 because the last claim was
+    // back-dated off today; `month` is what stops the next one, and the
+    // screen has to say 0 rather than a negative number.
+    await backdateFeedbackRows(db, 5);
+    assertEquals(await remaining(db), { today: 1, month: 0 });
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("the sixth claim is refused without taking the credit", async () => {
+  const db = await createDatabase();
+  try {
+    const comments = await seedReadAndCommented(db, 6);
+    for (let i = 0; i < 5; i++) {
+      await claim(db, comments[i], `p${i}`);
+      await backdateFeedbackRows(db, i + 1);
+    }
+
+    await claim(db, comments[5], "p5");
+
+    // A refusal writes nothing: five ledger rows, and the comment it refused
+    // is still unclaimed and therefore still editable by its owner.
+    const rows = await db.query<{ count: string }>(
+      "select count(*) as count from credit_ledger where user_id = $1 and reason = 'feedback'",
+      [READER],
+    );
+    assertEquals(Number(rows.rows[0].count), 5);
+
+    const unclaimed = await db.query<{ credit_claimed_at: string | null }>(
+      "select credit_claimed_at from comments where id = $1",
+      [comments[5]],
+    );
+    assertEquals(unclaimed.rows[0].credit_claimed_at, null);
+  } finally {
+    await db.close();
+  }
+});

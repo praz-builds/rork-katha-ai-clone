@@ -39,6 +39,7 @@ import CreateStudioScreen, { type StudioDraft } from "@/screens/CreateStudioScre
 import { seedDraftFromStory } from "@/lib/reimagine-seed";
 import AuthorScreen from "@/screens/AuthorScreen";
 import CreditsScreen from "@/screens/CreditsScreen";
+import HowCreditsWorkScreen from "@/screens/HowCreditsWorkScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
 import ListenScreen from "@/screens/ListenScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
@@ -1290,6 +1291,7 @@ export default function App() {
               );
             }}
             onCredits={() => setScreen({ name: "credits" })}
+            onHowCredits={() => setScreen({ name: "how-credits-work" })}
             onPaywall={() => setScreen({ name: "paywall" })}
           />
         );
@@ -1580,6 +1582,8 @@ export default function App() {
         )
         : screen.name === "voices"
         ? <VoicesScreen onBack={() => goTabs("profile")} />
+        : screen.name === "how-credits-work"
+        ? <HowCreditsWorkScreen onBack={() => goTabs("profile")} />
         : screen.name === "credits"
         ? (
           <CreditsScreen
@@ -1587,6 +1591,7 @@ export default function App() {
             onBack={() => goTabs(tab)}
             onPaywall={() => setScreen({ name: "paywall" })}
             onJourney={() => setScreen({ name: "journey" })}
+            onHowCredits={() => setScreen({ name: "how-credits-work" })}
             onBalance={(balance) =>
               setCredits(
                 resolveBootstrappedCredits(__DEV__, isSupabaseConfigured, balance),

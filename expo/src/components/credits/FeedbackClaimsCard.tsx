@@ -57,7 +57,7 @@ export default function FeedbackClaimsCard({
         <View style={styles.text}>
           <Text style={styles.title}>Leave feedback</Text>
           <Text style={styles.sub}>
-            Comment on a story you have read, at least 40 characters, and claim 1 credit. One per story, one a day, six a month.
+            Comment on a story you have read, at least 40 characters, and claim 1 credit. One per story, one a day, five a month.
           </Text>
         </View>
       </View>

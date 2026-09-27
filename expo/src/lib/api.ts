@@ -2949,7 +2949,7 @@ export async function fetchCreditClaims(): Promise<CreditClaimsResult | null> {
  * Claim the one feedback credit for a comment.
  *
  * Every rule is the server's (length, a qualifying read before the comment,
- * one per story, one per day, six per month, not reported, not a tester).
+ * one per story, one per day, five per month, not reported, not a tester).
  * The client only relays the verdict; `requestId` makes a double tap one
  * claim rather than two.
  */

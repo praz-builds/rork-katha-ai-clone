@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 // `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
 // renders a plain View and the screen starts at y=0, under the status bar.
@@ -9,10 +9,10 @@ import { ChevronLeft, Sparkles } from "lucide-react-native";
 import { HeaderAction } from "@/components/HeaderAction";
 import CreditPacksSheet from "@/components/credits/CreditPacksSheet";
 import FeedbackClaimsCard from "@/components/credits/FeedbackClaimsCard";
-import HowCreditsWork from "@/components/credits/HowCreditsWork";
 import InviteCard from "@/components/credits/InviteCard";
 import LedgerHistory from "@/components/credits/LedgerHistory";
 import PaidOptions from "@/components/credits/PaidOptions";
+import SecondaryActions from "@/components/credits/SecondaryActions";
 import StreakEarnCard from "@/components/credits/StreakEarnCard";
 import MemberSheet from "@/components/profile/MemberSheet";
 import { type CreditClaimsResult, fetchCreditClaims } from "@/lib/api";
@@ -32,12 +32,17 @@ import { sharedStyles } from "@/screens/shared";
 /**
  * Get credits (D8, D9, D10).
  *
- * THE ORDER. Paid options, then how credits work, then the free ways, then
- * the history. Paid first because a plan is always the best price per credit
- * and the screen should say so before it lists the slower paths; the
- * explanation sits between the two so that whichever way somebody chooses,
- * they have read what a credit buys. History last: it is the only part that
- * is about the past.
+ * THE ORDER. Paid options, then two quiet secondary buttons, then the free
+ * ways, then the history. Paid first because a plan is always the best price
+ * per credit and the screen should say so before it lists the slower paths.
+ *
+ * WHAT MOVED, AND WHY. The prices used to be inlined here, between the paid
+ * and the free sections. They now live on their own screen, because Profile
+ * offered two rows -- "Credits, get more" and "How credits work" -- that both
+ * opened this one, so the row promising an explanation answered with a shop.
+ * The explanation is still one tap away, from the secondary button under the
+ * paid options, alongside the one that jumps to the free ways. History last:
+ * it is the only part that is about the past.
  *
  * WHAT IS REAL. The balance in the pill is the app's, the streak and the
  * invite code are the profile's, the claims list and the ledger are read from
@@ -53,6 +58,7 @@ export default function CreditsScreen({
   onBack,
   onPaywall,
   onJourney,
+  onHowCredits,
   onBalance,
 }: {
   credits: number;
@@ -60,6 +66,8 @@ export default function CreditsScreen({
   onPaywall: () => void;
   /** Opens Your journey, which reads the app-wide profile copy. */
   onJourney: () => void;
+  /** Opens the prices, on their own screen, with nothing to buy. */
+  onHowCredits: () => void;
   /** The server said the balance is now this. */
   onBalance: (balance: number) => void;
 }) {
@@ -69,6 +77,14 @@ export default function CreditsScreen({
   const [ledger, setLedger] = useState<LedgerEntry[] | null | undefined>(undefined);
   const [packs, setPacks] = useState(false);
   const [memberSheet, setMemberSheet] = useState(false);
+  // The Free credits heading's y within the scroll content, measured by its
+  // own `onLayout` rather than guessed, because the paid options above it
+  // change height between a member and a non-member.
+  const scrollRef = useRef<ScrollView>(null);
+  const freeSectionY = useRef(0);
+  const scrollToFree = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: Math.max(freeSectionY.current - spacing.lg, 0), animated: true });
+  }, []);
 
   const loadProfile = useCallback(() => {
     return fetchOwnProfile().then(setProfile).catch(() => setProfile(null));
@@ -112,7 +128,11 @@ export default function CreditsScreen({
 
   return (
     <SafeAreaView style={styles.flex} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.page}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Top bar: back, the title, the balance on the right. */}
         <View style={styles.topBar}>
           <Pressable
@@ -152,10 +172,22 @@ export default function CreditsScreen({
         <Text style={styles.section}>Paid options</Text>
         <PaidOptions subscribed={subscribed} onPlus={openPlus} onPacks={() => setPacks(true)} />
 
-        <Text style={styles.section}>How credits work</Text>
-        <HowCreditsWork />
+        <View style={styles.secondary}>
+          <SecondaryActions
+            claims={claims}
+            onFreeCredits={scrollToFree}
+            onHowCredits={onHowCredits}
+          />
+        </View>
 
-        <Text style={styles.section}>Free credits</Text>
+        <Text
+          style={styles.section}
+          onLayout={(event) => {
+            freeSectionY.current = event.nativeEvent.layout.y;
+          }}
+        >
+          Free credits
+        </Text>
         <View style={styles.stack}>
           <StreakEarnCard profile={profile} onJourney={onJourney} />
           <FeedbackClaimsCard
@@ -215,5 +247,6 @@ const styles = {
       fontSize: 22,
     },
     stack: { gap: spacing.md },
+    secondary: { marginTop: spacing.md },
   }),
 };

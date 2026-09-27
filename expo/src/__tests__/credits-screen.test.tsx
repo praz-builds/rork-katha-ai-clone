@@ -78,6 +78,7 @@ const props = () => ({
   onBack: jest.fn(),
   onPaywall: jest.fn(),
   onJourney: jest.fn(),
+  onHowCredits: jest.fn(),
   onBalance: jest.fn(),
 });
 
@@ -98,21 +99,36 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-it("lays out paid options, the explanation, the free ways and the history", async () => {
+it("lays out paid options, the two secondary ways, the free ways and the history", async () => {
   const view = await render(<CreditsScreen {...props()} />);
 
   await waitFor(() => view.getByTestId("credits-plus"));
   // The balance the app holds, in the pill.
   expect(view.getByTestId("credits-balance")).toBeTruthy();
   expect(view.getByText("7")).toBeTruthy();
-  for (const section of ["Paid options", "How credits work", "Free credits", "History"]) {
+  for (const section of ["Paid options", "Free credits", "History"]) {
     expect(view.getByText(section)).toBeTruthy();
   }
   expect(view.getByTestId("credits-packs")).toBeTruthy();
-  expect(view.getByTestId("how-credits-work")).toBeTruthy();
+  expect(view.getByTestId("credits-free-cta")).toBeTruthy();
+  expect(view.getByTestId("credits-how-cta")).toBeTruthy();
   expect(view.getByTestId("credits-streak")).toBeTruthy();
   expect(view.getByTestId("credits-feedback")).toBeTruthy();
   expect(view.getByTestId("credits-invite")).toBeTruthy();
+});
+
+// The prices moved to their own screen when Profile's two credit rows were
+// split, so this screen must not also render them inline -- that was the
+// duplication the split existed to remove.
+it("does not inline the prices, and offers them as a button instead", async () => {
+  const opened = props();
+  const view = await render(<CreditsScreen {...opened} />);
+
+  await waitFor(() => view.getByTestId("credits-plus"));
+  expect(view.queryByTestId("how-credits-work")).toBeNull();
+
+  fireEvent.press(view.getByTestId("credits-how-cta"));
+  expect(opened.onHowCredits).toHaveBeenCalledTimes(1);
 });
 
 // D7: the row never sends somebody who already pays to a screen selling it.

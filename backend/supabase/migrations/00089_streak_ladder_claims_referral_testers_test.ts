@@ -489,7 +489,12 @@ Deno.test("every refusal reason, in the order the claim checks them", async () =
   }
 });
 
-Deno.test("one claim a day and six a month, counted from the ledger", async () => {
+// The monthly ceiling this test asserts is FIVE, not the six 00089 shipped
+// with: 00100 lowered it, and `createDatabase` above applies every migration
+// in the directory, so what runs here is the current schema rather than a
+// snapshot of 00089. The daily cap, the per-story cap and the ledger
+// accounting are all still 00089's, and they are what this test is for.
+Deno.test("one claim a day and five a month, counted from the ledger", async () => {
   const db = await createDatabase();
   try {
     await seed(db);
@@ -514,7 +519,7 @@ Deno.test("one claim a day and six a month, counted from the ledger", async () =
 
     // Back-date the paid rows to earlier days this month: the daily cap
     // lifts, and the monthly one is what remains.
-    for (let i = 1; i < 6; i++) {
+    for (let i = 1; i < 5; i++) {
       await db.query(
         `update credit_ledger set created_at = date_trunc('month', now() at time zone 'UTC') at time zone 'UTC' + ($2 || ' hours')::interval
          where user_id = $1 and reason = 'feedback'`,
@@ -522,18 +527,18 @@ Deno.test("one claim a day and six a month, counted from the ledger", async () =
       );
       assertEquals((await claim(db, READER, comments[i], `c${i}`)).ok, true);
     }
-    // Six paid this month. The next is refused for the month even on a
+    // Five paid this month. The next is refused for the month even on a
     // fresh day.
     await db.query(
       `update credit_ledger set created_at = date_trunc('month', now() at time zone 'UTC') at time zone 'UTC' + interval '1 hour'
        where user_id = $1 and reason = 'feedback'`,
       [READER],
     );
-    assertEquals(await claim(db, READER, comments[6], "c6"), {
+    assertEquals(await claim(db, READER, comments[5], "c5"), {
       ok: false,
       reason: "monthly_cap",
     });
-    assertEquals(await balance(db, READER), 6);
+    assertEquals(await balance(db, READER), 5);
 
     const listed = await db.query<
       {
@@ -552,7 +557,7 @@ Deno.test("one claim a day and six a month, counted from the ledger", async () =
     assertEquals(summary.claims.length, 8);
     assertEquals(
       summary.claims.filter((c) => c.status === "claimed").length,
-      6,
+      5,
     );
     assert(
       summary.claims.filter((c) => c.status === "ineligible").every((c) =>
