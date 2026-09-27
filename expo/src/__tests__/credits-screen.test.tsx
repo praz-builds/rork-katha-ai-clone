@@ -163,7 +163,7 @@ describe("the free-credits button's screen-reader behaviour", () => {
     await waitFor(() => view.getByTestId("credits-free-cta"));
 
     expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
-      .toBe("Get free credits. 5 left to claim this month");
+      .toBe("Get free credits. Comment, keep a streak, invite a friend");
     // And it tracks the sub-line rather than restating a fixed sentence.
     expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
       .toContain(view.getByTestId("credits-free-cta-sub").props.children);

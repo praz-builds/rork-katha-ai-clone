@@ -103,10 +103,18 @@ export function freeCreditsSubtitle(claims: CreditClaimsResult | null): string {
   if (ready > 0) {
     return `${ready} ready to claim · ${left} left this month`;
   }
-  if (left > 0) {
-    return `${left} left to claim this month`;
-  }
-  return "Claimed every one this month";
+  // NOTHING READY MEANS NO NUMBER. This used to fall back to
+  // `${left} left to claim this month`, which is cap HEADROOM, not claimable
+  // comments -- so an account with nothing to claim was told "5 left to claim
+  // this month" in a CTA above the fold, with none of the per-comment reasons
+  // that sit next to the same count further down the screen.
+  //
+  // Today that is every account: no client records a read, so `story_reads` is
+  // empty, every claim answers `not_read`, and five is the one number on this
+  // screen that cannot be reached. But it is wrong in the ordinary case too --
+  // an established reader with headroom and nothing eligible got the same
+  // sentence. The ways are honest whether or not the faucet is open.
+  return "Comment, keep a streak, invite a friend";
 }
 
 const styles = StyleSheet.create({

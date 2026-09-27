@@ -1619,9 +1619,16 @@ and it is left as designed.
 > of this section reads. The cost arithmetic below, the "60 qualifying reads and
 > 60 comments" it buys, and the principle-7 argument that the cap is
 > load-bearing are all **projections of a mechanic that pays nobody yet**. Five
-> a month is a ceiling on a closed faucet, not a tightening of an open one, and
-> nothing in the earn table is actually reachable in the shipped client except
-> the streak ladder, the welcome bonus and the invite.
+> a month is a ceiling on a closed faucet, not a tightening of an open one.
+>
+> **The same root cause reaches one row further than it looks.** `touch_streak`
+> writes and pays a streak rung, and it has exactly two callers: `publish-story`
+> and the same dead `record-read`. So **a streak advances only when you publish
+> a story** — a reader who opens one every day for three weeks never reaches
+> day 2, while the earn table calls the mechanic "Keep a reading streak". What
+> *is* reachable today: the welcome bonus, the invite, the guest bootstrap (§9,
+> and reachable enough that a day of local testing exhausts its per-network
+> window), and the streak ladder **for writers only**.
 >
 > **Delete this block when `record-read` ships from the client.** The rules
 > below are exact and enforced; they simply have nothing to enforce against.

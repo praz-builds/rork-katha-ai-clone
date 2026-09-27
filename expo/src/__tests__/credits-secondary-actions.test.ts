@@ -71,26 +71,40 @@ it("never promises more than the caps will actually pay", () => {
   expect(subtitle).toBe("1 ready to claim · 5 left this month");
 });
 
-it("promises nothing today once the daily cap is spent", () => {
-  const subtitle = freeCreditsSubtitle(
+// EVERY "nothing ready" CASE IS THE SAME SENTENCE, and it is the ways rather
+// than a number. The fallback used to be `${left} left to claim this month`,
+// which is cap HEADROOM and not claimable comments -- so an account with
+// nothing eligible was told "5 left to claim this month" in a CTA above the
+// fold, with none of the per-comment reasons that sit beside the same count
+// further down the screen. Today that is every account, because no client
+// records a read and every claim answers `not_read`; it was wrong for an
+// ordinary established reader too.
+it("names the ways when the daily cap is spent", () => {
+  expect(freeCreditsSubtitle(
     result({
       claims: [claimable("a"), claimable("b")],
       remaining: { today: 0, month: 4 },
     }),
-  );
-  expect(subtitle).toBe("4 left to claim this month");
+  )).toBe("Comment, keep a streak, invite a friend");
 });
 
-// The month is the harder ceiling: a claimable comment and a day's headroom
-// still pay nothing once five have been taken this month.
-it("is bounded by the month as well as the day", () => {
-  const subtitle = freeCreditsSubtitle(
+it("names the ways at the monthly cap", () => {
+  expect(freeCreditsSubtitle(
+    result({ claims: [claimable("a")], remaining: { today: 1, month: 0 } }),
+  )).toBe("Comment, keep a streak, invite a friend");
+});
+
+it("names the ways when there is headroom but nothing eligible", () => {
+  // The shape every account is in today: the caps allow five, and not one
+  // comment can be claimed.
+  expect(freeCreditsSubtitle(result({ remaining: { today: 1, month: 5 } })))
+    .toBe("Comment, keep a streak, invite a friend");
+  expect(freeCreditsSubtitle(
     result({
-      claims: [claimable("a")],
-      remaining: { today: 1, month: 0 },
+      claims: [{ ...claimable("a"), status: "ineligible" as const, reason: "not_read" }],
+      remaining: { today: 1, month: 5 },
     }),
-  );
-  expect(subtitle).toBe("Claimed every one this month");
+  )).toBe("Comment, keep a streak, invite a friend");
 });
 
 it("counts only the claimable ones", () => {
@@ -107,17 +121,22 @@ it("counts only the claimable ones", () => {
   expect(subtitle).toBe("1 ready to claim · 4 left this month");
 });
 
-it("falls back to the month's headroom when nothing is ready", () => {
-  expect(freeCreditsSubtitle(result({ remaining: { today: 0, month: 3 } })))
-    .toBe("3 left to claim this month");
-});
-
-it("says so plainly at the monthly cap, and never shows a zero as a count", () => {
-  const subtitle = freeCreditsSubtitle(
-    result({
-      claims: [{ ...claimable("a"), status: "ineligible" as const, reason: "monthly_cap" }],
-      remaining: { today: 1, month: 0 },
-    }),
-  );
-  expect(subtitle).toBe("Claimed every one this month");
+it("never shows a number the reader cannot act on", () => {
+  // No branch may quote `remaining.month` on its own: it is how many claims
+  // the caps would still allow, which says nothing about whether a single
+  // comment qualifies.
+  for (const remaining of [
+    { today: 0, month: 3 },
+    { today: 1, month: 5 },
+    { today: 1, month: 0 },
+    { today: 0, month: 0 },
+  ]) {
+    const subtitle = freeCreditsSubtitle(
+      result({
+        claims: [{ ...claimable("a"), status: "ineligible" as const, reason: "monthly_cap" }],
+        remaining,
+      }),
+    );
+    expect(subtitle).toBe("Comment, keep a streak, invite a friend");
+  }
 });
