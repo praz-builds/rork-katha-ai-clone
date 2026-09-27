@@ -34,9 +34,48 @@ it("names the ways rather than a number while the list is unavailable", () => {
 
 it("leads with what is ready to claim", () => {
   const subtitle = freeCreditsSubtitle(
-    result({ claims: [claimable("a"), claimable("b")] }),
+    result({
+      claims: [claimable("a"), claimable("b")],
+      // Two claimable and two claims left today is the only shape where "2
+      // ready" is honest; the default fixture allows one a day.
+      remaining: { today: 2, month: 5 },
+    }),
   );
   expect(subtitle).toBe("2 ready to claim · 5 left this month");
+});
+
+// The daily cap is one, so three qualifying comments are not three credits.
+// A button promising three and paying one is worse than one promising nothing.
+it("never promises more than the caps will actually pay", () => {
+  const subtitle = freeCreditsSubtitle(
+    result({
+      claims: [claimable("a"), claimable("b"), claimable("c")],
+      remaining: { today: 1, month: 5 },
+    }),
+  );
+  expect(subtitle).toBe("1 ready to claim · 5 left this month");
+});
+
+it("promises nothing today once the daily cap is spent", () => {
+  const subtitle = freeCreditsSubtitle(
+    result({
+      claims: [claimable("a"), claimable("b")],
+      remaining: { today: 0, month: 4 },
+    }),
+  );
+  expect(subtitle).toBe("4 left to claim this month");
+});
+
+// The month is the harder ceiling: a claimable comment and a day's headroom
+// still pay nothing once five have been taken this month.
+it("is bounded by the month as well as the day", () => {
+  const subtitle = freeCreditsSubtitle(
+    result({
+      claims: [claimable("a")],
+      remaining: { today: 1, month: 0 },
+    }),
+  );
+  expect(subtitle).toBe("Claimed every one this month");
 });
 
 it("counts only the claimable ones", () => {
@@ -47,7 +86,7 @@ it("counts only the claimable ones", () => {
         { ...claimable("b"), status: "claimed" as const },
         { ...claimable("c"), status: "ineligible" as const, reason: "too_short" },
       ],
-      remaining: { today: 1, month: 4 },
+      remaining: { today: 2, month: 4 },
     }),
   );
   expect(subtitle).toBe("1 ready to claim · 4 left this month");

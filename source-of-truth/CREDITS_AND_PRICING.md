@@ -2246,7 +2246,7 @@ decision in §11 depends on changing a price in one place. The hardcoded `1` ins
 
 | Phase | Contents |
 |---|---|
-| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter (unlimited on a plan) and **3 character images per account on every tier, then 1 credit each** -- the paywall still sells unlimited portraits and this ships narrower; see the dated note in the table above; the five-rung streak ladder + repair; the feedback claim at 6/month; code-based referral; 3-credit welcome bonus; lapse warnings; paywall (no offer); 5 packs; 8 SKUs; tester accounts outside the economy |
+| **1 — Launch** | Story start bundled at 1 credit, further chapters at 1 (2 illustrated); free unlimited reading; the free tier's 1 reimagine per authored chapter (unlimited on a plan) and **3 character images per account on every tier, then 1 credit each** -- the paywall still sells unlimited portraits and this ships narrower; see the dated note in the table above; the five-rung streak ladder + repair; the feedback claim at 5/month; code-based referral; 3-credit welcome bonus; lapse warnings; paywall (no offer); 5 packs; 8 SKUs; tester accounts outside the economy |
 | **2 — Audio** | Only after edge-tts cost/reliability is measured (§12): catalog narration job first, then the 1-credit chapter unlock |
 | **3 — v1.1** | Referral deep-link attribution on top of the launch code (§5) |
 
@@ -2579,7 +2579,7 @@ economy is tuned on evidence rather than argued about.
     | Source | Credits | Cadence | Cap | Ship |
     |---|---|---|---|---|
     | Reading streak | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime, nothing repeats | Launch |
-    | Feedback — claimed comment | **1** | on claim, after a qualifying read | 1/story, 1/day, 6/month | Launch |
+    | Feedback — claimed comment | **1** | on claim, after a qualifying read | 1/story, 1/day, 5/month | Launch |
     | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
     | Welcome bonus | **3** | on declining the paywall | once per authenticated account | Launch |
     | Guest bootstrap | **3** | on first guest bootstrap (§9) | once per anonymous account | Launch |

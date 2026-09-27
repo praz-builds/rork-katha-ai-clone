@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 // `SafeAreaView` from `react-native` is an iOS-only no-op: on Android it
 // renders a plain View and the screen starts at y=0, under the status bar.
 // The safe-area-context one works on both. `SafeAreaProvider` is already
@@ -84,6 +91,15 @@ export default function CreditsScreen({
   const freeSectionY = useRef(0);
   const scrollToFree = useCallback(() => {
     scrollRef.current?.scrollTo({ y: Math.max(freeSectionY.current - spacing.lg, 0), animated: true });
+    // A scroll is invisible to a screen reader: focus stays on the button and
+    // nothing is announced, so to VoiceOver and TalkBack the control is inert.
+    // Saying where it went is the smallest honest fix; it never throws and a
+    // platform without the API simply does nothing.
+    try {
+      AccessibilityInfo.announceForAccessibility("Free credits");
+    } catch {
+      // Announcing is a courtesy, never a reason to fail the tap.
+    }
   }, []);
 
   const loadProfile = useCallback(() => {

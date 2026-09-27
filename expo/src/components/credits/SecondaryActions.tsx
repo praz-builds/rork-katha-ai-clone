@@ -79,8 +79,14 @@ export default function SecondaryActions({
  */
 export function freeCreditsSubtitle(claims: CreditClaimsResult | null): string {
   if (!claims) return "Comment, keep a streak, invite a friend";
-  const ready = claims.claims.filter((claim) => claim.status === "claimable").length;
   const left = claims.remaining.month;
+  // Claimable comments, but never more than the caps will actually pay out
+  // today. Three qualifying comments with the daily cap already spent is not
+  // "3 ready to claim" -- the second tap comes back `daily_cap`, and a button
+  // that promises three and pays one is worse than one that promises nothing.
+  // `remaining.today` and `remaining.month` are both the server's.
+  const claimable = claims.claims.filter((claim) => claim.status === "claimable").length;
+  const ready = Math.min(claimable, claims.remaining.today, left);
   if (ready > 0) {
     return `${ready} ready to claim · ${left} left this month`;
   }

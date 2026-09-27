@@ -728,6 +728,12 @@ export type Screen =
    * offers both and they answer different questions: "what does this cost?"
    * and "how do I get more?". Both rows used to land here-but-on-`credits`,
    * which answered the first question with a shop.
+   *
+   * `returnTo` because it is reachable from two places: Profile's row and Get
+   * credits' secondary button. Sending Back to the Profile tab from the second
+   * one would eject a reader out of the screen they were shopping on, which is
+   * the opposite of "the explanation stays one tap away". Same shape as
+   * `author` above.
    */
-  | { name: "how-credits-work" }
+  | { name: "how-credits-work"; returnTo: "profile" | "credits" }
   | { name: "paywall" };

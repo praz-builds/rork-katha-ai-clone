@@ -60,3 +60,10 @@ it("goes back", async () => {
   fireEvent.press(view.getByLabelText("Back"));
   expect(onBack).toHaveBeenCalledTimes(1);
 });
+
+// Where Back goes is not this screen's decision and so is not tested here.
+// The screen is reachable from Profile's row and from Get credits' secondary
+// button; `returnTo` on the `how-credits-work` Screen variant is a required
+// field, so the compiler makes both call sites state which, and App.tsx
+// branches on it. A missing case is a typecheck failure, which is a stronger
+// guarantee than an assertion here would be.

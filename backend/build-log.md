@@ -312,6 +312,35 @@ the damage would be done rather than two migrations away.
 replace`, grep every migration for the last definition of that function. Being
 named after the migration that first created it is not evidence.
 
+### What review found on top of that
+
+The reviewer reached the same conclusion about the ancestry independently, and
+added five more, all taken:
+
+- **The catalog comment.** `create or replace` does not clear a `comment on
+  function`, so after a bare replace the catalog would have documented a
+  two-part read gate the function no longer had. Restated with the body.
+- **Two more stale `6/month` sites** in `CREDITS_AND_PRICING.md` — the
+  launch-scope row and the phase-1 earn table. The document is the only place a
+  pricing question is answered and it was answering this one both ways.
+- **Back from the new screen always landed on Profile**, including when it was
+  opened from Get credits' own button, which ejected a reader out of the screen
+  they were shopping on and lost its scroll position — the opposite of the "one
+  tap away" the split was for. `how-credits-work` now carries a required
+  `returnTo`, the same shape `author` already uses, so the compiler makes both
+  call sites say which.
+- **"N ready to claim" over-promised against the daily cap.** Three qualifying
+  comments with one claim a day is one credit, not three, and the second tap
+  came back `daily_cap`. The count is now bounded by `remaining.today` and
+  `remaining.month`, both already in hand and previously unused.
+- **The free-credits button was inert to a screen reader**: it only scrolled, so
+  focus never moved and nothing was announced. It now announces the destination.
+
+`AGENTS.md`'s production-state paragraph was also clarified: it names
+`00100_reader_preferences` as a migration that must never be applied, and the
+number has since been reused, so the repo described two different `00100`s. It
+now says which one is in the tree.
+
 ### Verification
 
 - **The full migration suite runs green: 311 passed, 0 failed.** Running only
@@ -325,7 +354,7 @@ named after the migration that first created it is not evidence.
   Five paid and the sixth refused; the remaining count counting down from five
   and never going negative; and a refusal writing no ledger row and leaving the
   comment unclaimed and therefore still editable. 3/3 pass.
-- `credit-claims` function tests 7/7. Expo **1659/1659** across 155 suites,
+- `credit-claims` function tests 7/7. Expo **1662/1662** across 155 suites,
   typecheck clean, lint 0 errors.
 
 ### Not done here, and deliberately
