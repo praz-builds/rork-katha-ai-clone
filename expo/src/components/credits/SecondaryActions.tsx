@@ -78,7 +78,11 @@ export default function SecondaryActions({
  * server numbers into a sentence.
  */
 export function freeCreditsSubtitle(claims: CreditClaimsResult | null): string {
-  if (!claims) return "Comment, keep a streak, invite a friend";
+  // Null claims is "could not be read"; null `remaining` is "the server
+  // answered but did not count". Both are the same thing to a reader -- there
+  // is no number worth quoting -- and both must reach the neutral line rather
+  // than a confident zero.
+  if (!claims || !claims.remaining) return "Comment, keep a streak, invite a friend";
   const left = claims.remaining.month;
   // Claimable comments, but never more than the caps will actually pay out
   // today. Three qualifying comments with the daily cap already spent is not

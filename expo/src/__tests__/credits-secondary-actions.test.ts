@@ -32,16 +32,31 @@ it("names the ways rather than a number while the list is unavailable", () => {
   expect(freeCreditsSubtitle(null)).toBe("Comment, keep a streak, invite a friend");
 });
 
+// The failure this guards: `remaining` used to default to {today: 0, month: 0}
+// when the server did not send it, which is indistinguishable from a real
+// zero. A degraded response -- an older deploy, or the shape moving -- then
+// told a brand-new account that had never claimed anything that it had
+// "Claimed every one this month". A missing number is not a zero.
+it("says nothing exact when the server answered but did not count", () => {
+  expect(freeCreditsSubtitle(result({ remaining: null })))
+    .toBe("Comment, keep a streak, invite a friend");
+  expect(freeCreditsSubtitle(result({ claims: [claimable("a")], remaining: null })))
+    .toBe("Comment, keep a streak, invite a friend");
+});
+
+// `comment_credit_claims` computes `greatest(1 - v_today, 0)`, so
+// `remaining.today` is only ever 1 or 0 and the ready count can never read
+// higher than 1 in production. The fixtures say 1 rather than an invented 2:
+// a test that pins a shape the server cannot return proves nothing about the
+// screen and quietly becomes the documentation for a contract that is wrong.
 it("leads with what is ready to claim", () => {
   const subtitle = freeCreditsSubtitle(
     result({
       claims: [claimable("a"), claimable("b")],
-      // Two claimable and two claims left today is the only shape where "2
-      // ready" is honest; the default fixture allows one a day.
-      remaining: { today: 2, month: 5 },
+      remaining: { today: 1, month: 5 },
     }),
   );
-  expect(subtitle).toBe("2 ready to claim · 5 left this month");
+  expect(subtitle).toBe("1 ready to claim · 5 left this month");
 });
 
 // The daily cap is one, so three qualifying comments are not three credits.
@@ -86,7 +101,7 @@ it("counts only the claimable ones", () => {
         { ...claimable("b"), status: "claimed" as const },
         { ...claimable("c"), status: "ineligible" as const, reason: "too_short" },
       ],
-      remaining: { today: 2, month: 4 },
+      remaining: { today: 1, month: 4 },
     }),
   );
   expect(subtitle).toBe("1 ready to claim · 4 left this month");

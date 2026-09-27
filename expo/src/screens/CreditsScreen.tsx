@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  findNodeHandle,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -89,16 +90,23 @@ export default function CreditsScreen({
   // change height between a member and a non-member.
   const scrollRef = useRef<ScrollView>(null);
   const freeSectionY = useRef(0);
+  const freeHeadingRef = useRef<Text>(null);
   const scrollToFree = useCallback(() => {
     scrollRef.current?.scrollTo({ y: Math.max(freeSectionY.current - spacing.lg, 0), animated: true });
-    // A scroll is invisible to a screen reader: focus stays on the button and
-    // nothing is announced, so to VoiceOver and TalkBack the control is inert.
-    // Saying where it went is the smallest honest fix; it never throws and a
-    // platform without the API simply does nothing.
+    // A scroll is invisible to a screen reader: without this the control is
+    // inert to VoiceOver and TalkBack, because the screen moved and the
+    // reading cursor did not. Both halves are needed -- the announcement says
+    // what happened, and moving focus to the heading means the next swipe
+    // continues from the Free credits section rather than from the button
+    // that was just pressed.
     try {
       AccessibilityInfo.announceForAccessibility("Free credits");
+      const node = freeHeadingRef.current
+        ? findNodeHandle(freeHeadingRef.current)
+        : null;
+      if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
     } catch {
-      // Announcing is a courtesy, never a reason to fail the tap.
+      // Both are a courtesy, and neither is a reason to fail the tap.
     }
   }, []);
 
@@ -197,6 +205,8 @@ export default function CreditsScreen({
         </View>
 
         <Text
+          ref={freeHeadingRef}
+          accessibilityRole="header"
           style={styles.section}
           onLayout={(event) => {
             freeSectionY.current = event.nativeEvent.layout.y;

@@ -336,6 +336,43 @@ added five more, all taken:
 - **The free-credits button was inert to a screen reader**: it only scrolled, so
   focus never moved and nothing was announced. It now announces the destination.
 
+A third round found three more:
+
+- **The last `6` in the pricing document**, in the metrics table's alert row for
+  *Feedback claims per user per month*. Its threshold is "> 20% of claimants at
+  the cap", and whoever builds that dashboard reads the cap out of that cell, so
+  at five it would have fired at the wrong number in both directions. The cell
+  now also spells out what "at the cap" means, so the next reader does not have
+  to resolve it against §5.
+- **A degraded `credit-claims` response told a new account it was spent out.**
+  `fetchCreditClaims` defaulted `remaining.today` and `remaining.month` to `0`
+  when the field was absent, which is indistinguishable from a real zero. A 200
+  with a valid `claims` array and no `remaining` — an older deploy, or the shape
+  moving — therefore rendered "Claimed every one this month" to somebody who had
+  never claimed anything. `remaining` is now `… | null`, and both the secondary
+  button and `FeedbackClaimsCard`'s caps line fall back to saying nothing exact.
+  **A missing number is not a zero.**
+- **Two fixtures pinned a shape the server cannot return.** `remaining.today` is
+  `greatest(1 - v_today, 0)`, so it is only ever 1 or 0 and the ready count can
+  never read above 1 in production; the tests said `today: 2`. The bound was
+  right, the fixture was fiction, and a test that pins an impossible shape
+  quietly becomes documentation for a contract that is wrong.
+
+Also finished the accessibility fix properly: the announcement alone left the
+reading cursor on the button, so the next swipe continued from "Get free
+credits" rather than from the section it had just scrolled to.
+`setAccessibilityFocus` on the heading, which now carries
+`accessibilityRole="header"`, moves it.
+
+**Left open, deliberately, and both are pre-existing:** Android's hardware back
+button calls no handler on this screen, so it backs out of the app — but
+`CreditsScreen`, `VoicesScreen` and `JourneyScreen` are all the same, and fixing
+one screen would make the app inconsistent rather than correct. It wants one
+change across every pushed screen. And returning from the explanation remounts
+Get credits, so a reader who had scrolled to Free credits comes back at the top;
+holding the position would mean holding the screen rather than remounting it,
+and the remount is what guarantees the balance on a money screen is not stale.
+
 `AGENTS.md`'s production-state paragraph was also clarified: it names
 `00100_reader_preferences` as a migration that must never be applied, and the
 number has since been reused, so the repo described two different `00100`s. It
@@ -354,7 +391,7 @@ now says which one is in the tree.
   Five paid and the sixth refused; the remaining count counting down from five
   and never going negative; and a refusal writing no ledger row and leaving the
   comment unclaimed and therefore still editable. 3/3 pass.
-- `credit-claims` function tests 7/7. Expo **1662/1662** across 155 suites,
+- `credit-claims` function tests 7/7. Expo **1663/1663** across 155 suites,
   typecheck clean, lint 0 errors.
 
 ### Not done here, and deliberately
