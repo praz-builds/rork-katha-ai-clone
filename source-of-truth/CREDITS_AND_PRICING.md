@@ -1618,7 +1618,7 @@ it** from the Credits screen, if it qualifies.
 | **Amount** | **1** credit, reason `feedback`, keyed `feedback:{comment_id}` — a second claim on the same comment is a structural no-op |
 | **The comment** | At least **40 characters** after trimming; not soft-deleted; not the subject of an upheld content report |
 | **The story** | Not the claimant's own |
-| **The read** | A qualifying read of that story recorded **before** the comment — 120 seconds of dwell, or the chapter completed, whichever the read table records — so the credit is for reading and then saying something, in that order |
+| **The read** | **Both halves, and both are `not_read` when they fail.** (a) At least **120 seconds** summed across that story's `story_reads` rows that predate the comment. (b) At least one of those rows written by the server **60 seconds or more before** the comment. (a) is the reader's own client reporting dwell and is necessary but forgeable; (b) is `read_at`, which no caller sets, and is what a single round trip cannot fabricate — read, then say something, in that order. *(Corrected 2026-09-27: this row used to offer "or the chapter completed, whichever the read table records", and there has never been such a column — `story_reads` carries `duration_seconds`, `read_at`, `is_own_story` and `counts_for_earnings`. It also omitted (b) entirely, which migration `00090` added.)* |
 | **Caps** | **1 per story**, **1 per UTC day**, **5 per calendar month**, all enforced in `claim_comment_credit` |
 | **After the claim** | The comment's content is **frozen**: the owner's UPDATE policy excludes claimed rows, so a comment cannot be paid for and then edited into something else |
 | **Who cannot claim** | A tester account (§9), ever |
@@ -2806,7 +2806,9 @@ economy is tuned on evidence rather than argued about.
 51. **Feedback credits return as a claim, not a grant: 1 credit per claimed
     comment, reason `feedback`.** Server-enforced in `claim_comment_credit`:
     comment ≥ 40 trimmed characters on somebody else's story; a qualifying
-    read of that story (120 s or completed) recorded *before* the comment; not
+    read of that story recorded *before* the comment, meaning **both** 120 s of
+    summed dwell **and** one server-written `read_at` at least 60 s older than
+    the comment (`00090`); not
     deleted; no upheld report; 1 per story, 1 per UTC day, 5 per calendar
     month *(6 until 2026-09-27, lowered by migration 00100)*;
     keyed `feedback:{comment_id}`; testers refused. A claimed comment's
