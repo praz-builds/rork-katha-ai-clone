@@ -30,6 +30,25 @@
   already uses, so opening the explanation from Get credits returns to Get
   credits rather than ejecting the reader to the Profile tab.
 - The feedback claim's monthly cap is **five**, not six (migration `00100`).
+- **The free-credits button's screen-reader behaviour took three passes, and
+  the reasoning is worth keeping.** A scroll is invisible to a screen reader:
+  the screen moves and the reading cursor does not, so a button that only
+  scrolls is inert. Three things, in the order they were got wrong:
+  1. **Native moves focus to the Free credits heading.** That both speaks the
+     heading and puts the next swipe in the section, which an announcement
+     alone does not.
+  2. **Web announces instead, and the split is on `Platform.OS`, not on
+     whether there is a node.** `setAccessibilityFocus` needs a native tag that
+     react-native-web has not got — but `findNodeHandle` there returns the DOM
+     node, so a "did we get a node" guard passes and a fallback keyed on it
+     never runs. `components/create/Dropdown.tsx` guards the same call the same
+     way. Web is also the only surface this client can currently be looked at
+     on, so getting this backwards reached nobody.
+  3. **The `accessibilityLabel` carries the counts.** A `Pressable` is one
+     accessibility element and an explicit label *replaces* its children rather
+     than prefixing them, so labelling it "Get free credits" made the whole
+     sub-line silent. The label is built from `freeCreditsSubtitle` so the two
+     cannot drift.
 - Known and deliberate: Android's hardware back calls no handler here, as on
   `CreditsScreen`, `VoicesScreen` and `JourneyScreen`. It wants one change
   across every pushed screen rather than an exception on this one.

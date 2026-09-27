@@ -373,6 +373,17 @@ Get credits, so a reader who had scrolled to Free credits comes back at the top;
 holding the position would mean holding the screen rather than remounting it,
 and the remount is what guarantees the balance on a money screen is not stale.
 
+Three later rounds went entirely into the free-credits button's screen-reader
+behaviour, which is recorded in `expo/BUILD_LOG.md` rather than here because it
+is client-only. The short version, because each one was wrong before it was
+right: native moves focus to the Free credits heading (a scroll moves the screen
+and not the reading cursor); **web announces instead, split on `Platform.OS` and
+not on whether there is a node**, because `setAccessibilityFocus` needs a native
+tag react-native-web has not got while `findNodeHandle` there returns the DOM
+node, so a node-based guard passes and a fallback keyed on it never runs; and
+the `accessibilityLabel` carries the counts, because an explicit label on a
+`Pressable` replaces its children rather than prefixing them.
+
 `AGENTS.md`'s production-state paragraph was also clarified: it names
 `00100_reader_preferences` as a migration that must never be applied, and the
 number has since been reused, so the repo described two different `00100`s. It
