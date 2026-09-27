@@ -50,6 +50,15 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
+**One known exception, from the moment this branch merges.** The voice-preview
+round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
+is part of the module source, so the deployed bundle and main diverge until it
+ships. **`scripts/audit-function-drift.sh` will report drift on that one
+function, and it is a true positive.** Deploy `seed-voice-previews` and the
+surface is clean again; nothing under `_shared/` was touched, so there is no
+importer closure. Do not read that one row as a false alarm and wave the audit
+through -- "16 functions behind main" is on this page because somebody did.
+
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
 block-author's `library` and `profile` were recorded as needing deployment and

@@ -452,7 +452,10 @@ export default function ProfileScreen({
             icon={Globe2}
             // "Story world" named the setting rather than the job, so the row
             // read as decoration next to Audiobook voices and Background
-            // music, which both say what they do. The sheet keeps the name.
+            // music, which both say what they do. The picker it opens says the
+            // same words; "Story world" survives only in the code, the prompt
+            // layer and `source-of-truth/`, so grep for `story-world` rather
+            // than for a label.
             title="Where stories are set"
             subtitle={storyWorldSummary(storyWorld)}
             onPress={() => setStoryWorldOpen(true)}

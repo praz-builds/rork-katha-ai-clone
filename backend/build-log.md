@@ -11,7 +11,9 @@
 
 **Session:** second branch of the pre-launch polish round, from founder feedback
 on four screenshots. Branch `codex/voices-and-profile-copy`, in its own
-worktree, off `ca4a68e`. No migration, no function deploy, no schema change.
+worktree, off `ca4a68e`. No migration and no schema change. **One function to
+deploy: `seed-voice-previews`, comment-only** — see the note under the voice
+samples below for why a docblock still has to ship.
 
 ### The voice samples were an outage, not a design problem
 
