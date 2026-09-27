@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   findNodeHandle,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -97,19 +98,29 @@ export default function CreditsScreen({
     // inert to VoiceOver and TalkBack, because the screen moved and the
     // reading cursor did not.
     //
-    // ONE MECHANISM, WITH A FALLBACK -- not two. Moving focus makes the
+    // ONE MECHANISM PER PLATFORM, not two everywhere. Moving focus makes the
     // screen reader speak the newly focused node, and that node is a heading
     // reading "Free credits", so pairing it with an announcement of the same
     // words either pre-empts the announcement or says it twice. Focus is the
-    // better of the two because it also moves the reading cursor, so the next
-    // swipe continues from the section rather than from the button. The
-    // announcement is kept only for the case where there is no node to focus.
+    // better of the two on native, because it also moves the reading cursor
+    // and the next swipe continues from the section rather than the button.
+    //
+    // WEB GETS THE ANNOUNCEMENT, and the split is on the PLATFORM rather than
+    // on whether there is a node. `setAccessibilityFocus` needs a native tag
+    // and does nothing on react-native-web -- but `findNodeHandle` there
+    // returns the DOM node, so a `node !== null` guard passes and the
+    // announcement never runs. `create/Dropdown.tsx:532` learned this and
+    // guards the same call with the same check; web is also the only surface
+    // this client can currently be looked at on.
     try {
+      if (Platform.OS === "web") {
+        AccessibilityInfo.announceForAccessibility?.("Free credits");
+        return;
+      }
       const node = freeHeadingRef.current
         ? findNodeHandle(freeHeadingRef.current)
         : null;
       if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
-      else AccessibilityInfo.announceForAccessibility("Free credits");
     } catch {
       // A courtesy, and never a reason to fail the tap.
     }

@@ -13,7 +13,7 @@
  * disabled and the tap cannot go anywhere.
  */
 import React from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, Platform } from "react-native";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockFetchOwnProfile = jest.fn();
@@ -123,30 +123,56 @@ it("lays out paid options, the two secondary ways, the free ways and the history
 
 // The "Get free credits" button scrolls; a scroll is invisible to a screen
 // reader, so without moving the reading cursor the control is inert to
-// VoiceOver and TalkBack. Two rounds of review fixed this and nothing had
-// ever pressed the button.
-it("moves screen-reader focus to the section it scrolls to", async () => {
-  const setFocus = jest
-    .spyOn(AccessibilityInfo, "setAccessibilityFocus")
-    .mockImplementation(() => {});
-  const announce = jest
-    .spyOn(AccessibilityInfo, "announceForAccessibility")
-    .mockImplementation(() => {});
-  try {
-    const view = await render(<CreditsScreen {...props()} />);
-    await waitFor(() => view.getByTestId("credits-free-cta"));
+// VoiceOver and TalkBack. Three rounds of review fixed this, and until the
+// third nothing had ever pressed the button.
+//
+// BOTH PLATFORMS, because the two paths do different things and the wrong one
+// is silent. `setAccessibilityFocus` needs a native tag and no-ops on
+// react-native-web -- while `findNodeHandle` there returns the DOM node, so a
+// "did we get a node" guard passes and a fallback keyed on it never runs. Web
+// is also the only surface this client can currently be looked at on.
+describe("the free-credits button's screen-reader behaviour", () => {
+  let setFocus: jest.SpyInstance;
+  let announce: jest.SpyInstance;
 
-    await fireEvent.press(view.getByTestId("credits-free-cta"));
-
-    expect(setFocus).toHaveBeenCalledTimes(1);
-    // Not both: focusing the heading makes the screen reader speak it, and
-    // the heading reads "Free credits", so an announcement of the same words
-    // would either pre-empt it or say it twice.
-    expect(announce).not.toHaveBeenCalled();
-  } finally {
+  beforeEach(() => {
+    setFocus = jest
+      .spyOn(AccessibilityInfo, "setAccessibilityFocus")
+      .mockImplementation(() => {});
+    announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+  });
+  afterEach(() => {
     setFocus.mockRestore();
     announce.mockRestore();
-  }
+    jest.restoreAllMocks();
+  });
+
+  const press = async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-free-cta"));
+    await fireEvent.press(view.getByTestId("credits-free-cta"));
+  };
+
+  it("moves focus to the section on native", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await press();
+
+    expect(setFocus).toHaveBeenCalledTimes(1);
+    // Not both: focusing the heading makes the screen reader speak it, and the
+    // heading reads "Free credits", so announcing the same words would either
+    // pre-empt it or say it twice.
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it("announces on web, where moving focus reaches nothing", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    await press();
+
+    expect(announce).toHaveBeenCalledWith("Free credits");
+    expect(setFocus).not.toHaveBeenCalled();
+  });
 });
 
 // The other half of the degraded-response fix. `freeCreditsSubtitle` covers
