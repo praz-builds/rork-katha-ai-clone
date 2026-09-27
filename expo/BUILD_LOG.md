@@ -2,6 +2,36 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Voice samples play; the Story world row is named for its job
+
+- **Every voice sample plays.** The six preview MP3s had never existed --
+  `voice-previews/*.mp3` answered **400** (a missing object in the public
+  `audio` bucket, not 404) because `seed-voice-previews` had never
+  successfully run. No client change was needed: `VoicesScreen` renders its
+  error only when the audio actually fails, which was the honest answer. Its
+  docblock and the notes in `CLAUDE.md` and `../AGENTS.md` that said every
+  sample 404s are replaced with what a re-run needs; the operational detail is
+  in `../backend/build-log.md`.
+- **The Story world row is now *Where stories are set*,** over *"Any setting.
+  Each story picks its own."* or *"India. Names, places and everyday detail."*
+  The old title named the setting rather than the job, next to *Audiobook
+  voices* and *Background music*, which both say what they do; the old
+  subtitle also carried the only two em dashes on the screen, in a product
+  whose story prompt forbids them in generated prose.
+- **The picker heading matches the row.** A reader who taps one name should
+  not land under another. *Story world* survives as the feature's name in the
+  code, the prompt layer and `../source-of-truth/`, and is no longer
+  user-visible -- grep for `story-world`, not for the label.
+- **The sentence is built by `storyWorldSummary()`** in `src/lib/story-world.ts`
+  rather than assembled in the screen from a label and a fragment, so one file
+  owns the words and the sentence. It deliberately does not reuse `hint`, which
+  is a picker row's second line and is empty for all 249 countries on purpose.
+  A test walks all 250 worlds asserting no em dash and a length under 90.
+- **Background music: nothing changed, and that is the finding.** The default
+  is already on in all three places that hold it, a test already pins it, and
+  the tracks serve. Flipping a default that is already correct would have been
+  a no-op dressed as a fix.
+
 ## 2026-09-26: Country-based Story world; removed unshipped reader context
 
 - Replaced the ten regional Story-world choices with a searchable, closed
@@ -35,7 +65,7 @@
 
 - **Explore (`src/screens/ExploreScreen.tsx`, `src/lib/search.ts`)**: no header row (the top-right "You" is gone). A genre chip matches `primary_genre`, and the legacy array only when `primary_genre` is null (`genreClause`), then drops any row whose card genre differs; Adventure had been showing seven genres. The eyebrow names the real sort (`Trending` default) and, with a genre, only the genre unless the sort was changed.
 - **Home (`src/screens/HomeScreen.tsx`)**: "See everything" full-width became a compact centred secondary **Explore all**.
-- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips 404 in production until `seed-voice-previews` runs.
+- **Voices (`src/screens/VoicesScreen.tsx`, `src/lib/voice-preview.ts`)**: a 44pt sample button per voice with a `preview_url`; loading, stop and error states, one at a time, stopped on leaving. Previewing never changes the chosen voice. The clips did not exist in production at the time of this entry; see the 2026-09-27 entry above for when they were seeded.
 - **Public profile (`src/screens/AuthorScreen.tsx`)**: no streak calendar; a **Stories** heading with an empty state naming the writer and a could-not-load state. Journey keeps the owner's calendar.
 - **You**: "How credits work" reads "Prices and free credits".
 - **Not changed**: the story page's one-line teaser. No spoiler-free summary exists in the contract; see `../backend/build-log.md` for what one needs.

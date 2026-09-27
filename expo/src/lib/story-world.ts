@@ -24,7 +24,12 @@ import {
  * written before the preference existed.
  */
 export const STORY_WORLDS: readonly { id: StoryWorld; label: string; hint: string }[] = [
-  { id: "global", label: "Anywhere", hint: "Katha follows each story's own cues" },
+  // The hint is the picker row's second line. It says the same thing as
+  // `storyWorldSummary("global")`: the row and the Profile line are two places
+  // a reader meets one idea, and they used to phrase it three different ways
+  // between them. Not word for word -- a row's second line and a settings
+  // subtitle read differently -- but one idea in one voice.
+  { id: "global", label: "Anywhere", hint: "Each story picks its own setting" },
   ...COUNTRY_CODES.map((id) => ({ id, label: COUNTRY_WORLDS[id].label, hint: "" })),
 ] as const;
 
@@ -43,6 +48,29 @@ export function isStoryWorld(value: unknown): value is StoryWorld {
 
 export function storyWorldLabel(world: StoryWorld): string {
   return STORY_WORLDS.find((entry) => entry.id === world)?.label ?? "Anywhere";
+}
+
+/**
+ * The one-line summary under the Profile row, for either branch.
+ *
+ * WHY IT LIVES HERE. Profile used to assemble this string itself, from the
+ * label and an em dash and a fragment, which made this file the source of the
+ * words and the screen the source of the sentence. Nothing outside owns the
+ * sentence now.
+ *
+ * WHY IT DOES NOT REUSE `hint`. `hint` is the second line of a row in the
+ * picker, and the 249 country entries deliberately have none -- the picker
+ * lists countries and a repeated "names, places and everyday detail" under
+ * every one of them is noise in a list you are scanning. On the Profile row
+ * there is exactly one of them and the line is the whole explanation.
+ *
+ * NO EM DASHES. The story prompt forbids them in generated prose and the
+ * product copy should not contradict it. Two short sentences say the same
+ * thing and survive a narrow screen better.
+ */
+export function storyWorldSummary(world: StoryWorld): string {
+  if (world === "global") return "Any setting. Each story picks its own.";
+  return `${storyWorldLabel(world)}. Names, places and everyday detail.`;
 }
 
 let current: StoryWorld = DEFAULT_STORY_WORLD;

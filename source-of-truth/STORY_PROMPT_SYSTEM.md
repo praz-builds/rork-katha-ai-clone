@@ -450,7 +450,10 @@ Two of those layers carry rules of their own.
 
 A reader can set a standing **Story world** on You -- one of the 249 assigned
 ISO 3166-1 alpha-2 country and territory codes, or
-*Anywhere* (the default). It reaches the prompt as one fixed sentence placed
+*Anywhere* (the default). **"Story world" is the name in this document and in
+the code, not on the screen:** since 2026-09-27 the row on You and the picker
+it opens both read *Where stories are set*, because the old name described the
+setting rather than the job the row does. It reaches the prompt as one fixed sentence placed
 directly after the setting layer (`buildStoryWorldBlock` in
 `_shared/story-prompts.ts`):
 

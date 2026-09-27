@@ -48,7 +48,15 @@ export default function StoryWorldSheet({
         />
         <View style={styles.sheet} testID="story-world-sheet">
           <View style={styles.header}>
-            <Text style={styles.title} accessibilityRole="header">Story world</Text>
+            {/* The same words as the row that opens it. "Story world" is the
+                feature's name in the code, the prompt layer and the contract
+                documents, and it stays there -- but a reader who taps "Where
+                stories are set" should not land under a different heading,
+                and the argument for renaming the row (it named the setting
+                rather than the job) applies to this heading unchanged. */}
+            <Text style={styles.title} accessibilityRole="header">
+              Where stories are set
+            </Text>
             <Pressable
               onPress={close}
               accessibilityRole="button"
@@ -59,8 +67,8 @@ export default function StoryWorldSheet({
             </Pressable>
           </View>
           <Text style={styles.sub}>
-            Choose a country for grounded names, places, food, customs and
-            everyday references. Your story brief always wins.
+            Pick a country and new stories use its names, places, food and
+            everyday detail. What you write in a brief always wins.
           </Text>
           <TextInput
             value={query}

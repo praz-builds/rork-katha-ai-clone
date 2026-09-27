@@ -38,9 +38,11 @@ import { sharedStyles } from "@/screens/shared";
  * file, no provider call, nothing charged. The play control is its own
  * button, not part of the row, because hearing a voice is not choosing it --
  * only a press on the row itself saves the preference. A sample that cannot be
- * fetched says so on its row and can be tried again; as of 2026-09-25 that is
- * every sample in production, because `seed-voice-previews` has not been run
- * there, and the error is the honest answer until it is.
+ * fetched says so on its row and can be tried again. That error state was
+ * every row in production until 2026-09-27, when `seed-voice-previews` was
+ * finally run; all six clips exist now and the state should be rare. It is
+ * kept, and kept honest, because a storage outage or a half-finished reseed
+ * is a real thing to be told about rather than a silent dead button.
  */
 export default function VoicesScreen({ onBack }: { onBack: () => void }) {
   const [voices, setVoices] = useState<NarrationVoice[] | null | undefined>(

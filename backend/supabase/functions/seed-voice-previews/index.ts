@@ -12,6 +12,37 @@
  * one place in the audio path that starts a provider job without going
  * through `canGenerateNarration` -- previews are operational content, not a
  * user's paid narration, so the entitlement gate does not apply to them.
+ *
+ * ---------------------------------------------------------------------------
+ * BEFORE YOU RUN IT. Two things cost a previous operator an afternoon each,
+ * and neither is guessable from the code below.
+ *
+ * 1. **The bearer is the DEPLOYED `SUPABASE_SERVICE_ROLE_KEY`, which is no
+ *    longer the legacy JWT.** Supabase rotated the platform secrets on
+ *    2026-09-26 and that secret is now the new-style `sb_secret_...` key,
+ *    while `backend/.env` still holds the legacy `service_role` JWT. The JWT
+ *    is a perfectly valid key -- it authenticates against PostgREST, Storage
+ *    and the Auth admin API, which is exactly why the mismatch is invisible
+ *    until something *compares* the bearer, as the check below does. Calling
+ *    with it returns 401, and that is the whole of the 2026-09-25
+ *    `voice_preview_seed_unauthorized` incident: a stale key, not a broken
+ *    function. Get the right one with
+ *    `supabase projects api-keys --project-ref <ref> --reveal` and take the
+ *    `type: "secret"` entry.
+ *
+ * 2. **One invocation cannot finish the set.** Generation is serial through
+ *    RunPod and the loop below outruns the edge worker's compute budget: the
+ *    first call on 2026-09-27 returned `546 WORKER_RESOURCE_LIMIT` after 150s
+ *    having uploaded three of six. That is what the idempotency is for --
+ *    call it again until every voice reports `exists`. It took three calls.
+ *    If the catalogue grows, this wants a per-voice request rather than a
+ *    bigger budget.
+ *
+ * Only the English voices are attempted. `elvira` and `alvaro` are `edge_tts`
+ * and no worker is configured, so `listVoices` filters them out before
+ * generation rather than failing on them; they are unseeded on purpose and
+ * are absent from the client list too.
+ * ---------------------------------------------------------------------------
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";

@@ -49,7 +49,7 @@ import { useIsSubscribed } from "@/lib/entitlements";
 import { getMusicMuted, setMusicMuted } from "@/lib/music-storage";
 import {
   setStoryWorld,
-  storyWorldLabel,
+  storyWorldSummary,
   useStoryWorld,
 } from "@/lib/story-world";
 import { streakState } from "@/lib/profile";
@@ -450,10 +450,14 @@ export default function ProfileScreen({
           </View>
           <Row
             icon={Globe2}
-            title="Story world"
-            subtitle={storyWorld === "global"
-              ? "Anywhere — Katha follows each story's own cues"
-              : `${storyWorldLabel(storyWorld)} — where new stories are rooted`}
+            // "Story world" named the setting rather than the job, so the row
+            // read as decoration next to Audiobook voices and Background
+            // music, which both say what they do. The picker it opens says the
+            // same words; "Story world" survives only in the code, the prompt
+            // layer and `source-of-truth/`, so grep for `story-world` rather
+            // than for a label.
+            title="Where stories are set"
+            subtitle={storyWorldSummary(storyWorld)}
             onPress={() => setStoryWorldOpen(true)}
             testID="profile-story-world"
             grouped

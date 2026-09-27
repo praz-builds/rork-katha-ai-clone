@@ -628,8 +628,11 @@ filled will fix the two that are wrong — and the resulting character is far
 richer than the one they would have written from empty.
 
 **Story world is a standing preference, not a Create field (2026-09-26).** The
-reader sets it once on You (*Story world*: Anywhere or one of the 249 assigned
-ISO 3166-1 alpha-2 country and territory codes) and
+reader sets it once on You -- the row reads **Where stories are set**, and so
+does the picker it opens; *Story world* is the feature's name in the code, the
+prompt layer and these documents, and stopped being user-visible on 2026-09-27
+-- choosing Anywhere or one of the 249 assigned
+ISO 3166-1 alpha-2 country and territory codes, and
 every new story's request -- and the shaping call that pre-fills *Where and
 when* and the cast -- carries it as `cultural_setting`, omitted for
 Anywhere. Create does not ask it and shows no chip for it: it is the default
