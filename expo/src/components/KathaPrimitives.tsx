@@ -68,6 +68,10 @@ export function FocalImage({
     // paints positioned boxes above in-flow ones whatever the source order -
     // so a static <img> here loaded fine and was hidden behind the gradient.
     return React.createElement("img", {
+      // Named so a test can find it. The web branch's failure mode is an
+      // invisible cover rather than a slow one, and it is the one surface this
+      // client can currently be looked at on.
+      testID: "focal-image-web",
       src: uri,
       style: {
         position: "absolute",
@@ -103,6 +107,15 @@ export function FocalImage({
       // The only way to stay hidden now is `complete === false` and no load
       // event ever, which means the image genuinely never arrived -- and the
       // gradient underneath is the correct thing to be looking at.
+      // `key` on the src, so a REGENERATED cover gets a new element rather
+      // than the old one's inline opacity. The opacity here is written
+      // imperatively, outside React, and React only rewrites style keys that
+      // changed between renders -- `opacity: 0` is in both, so it is never
+      // rewritten, and the `1` left over from the previous load would survive.
+      // That is the second of the two bugs the native side deleted as a class:
+      // the new art would replace the old at full strength the instant it
+      // decoded, with no fade. Remounting is the cheapest way to be sure.
+      key: uri,
       ref: (node: { complete?: boolean; style?: { opacity: string } } | null) => {
         if (node?.complete && node.style) node.style.opacity = "1";
       },
@@ -217,6 +230,18 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
 
   return (
     <View style={[styles.cover, size === "mini" ? styles.miniCover : styles.cardCover]}>
+      {/*
+        THE GRADIENT IS ALWAYS UNDER THE ART, never instead of it. These two
+        used to be the arms of one ternary, so a story WITH a cover rendered no
+        gradient at all -- which was invisible while the image painted at full
+        opacity from the first frame, and is not now that it fades in. A shelf
+        thumbnail would fade up from flat `sepiaPlaceholder`, and a cover that
+        never arrives (a 404, or the `cover://` sentinel written while
+        generation is in flight) would leave a flat square with no fallback.
+        `StoryFeedCard` and the story hero have always layered them; this is
+        the same shape.
+      */}
+      <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
       {image ? (
         <FocalImage
           source={image}
@@ -227,9 +252,7 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
           // previous story's cover until the new one decodes.
           recyclingKey={story.id}
         />
-      ) : (
-        <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
-      )}
+      ) : null}
     </View>
   );
 }

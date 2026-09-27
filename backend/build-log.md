@@ -311,6 +311,36 @@ What was actually needed was fewer bytes and a real disk cache.
   cover twelve times bigger. `focal-image.test.tsx` renders it, and was
   negative-controlled — removing the header fails exactly one test.
 
+### And four from the round after, three of them in the web fade itself
+
+The commit that added the web cross-fade was the one place in the branch with
+no test, and its failure mode is the picture rather than the bytes — which is
+the argument that commit itself makes, turned on its own newest code.
+
+- **Nothing in the suite rendered the web branch.** `story-feed-card` stubs
+  `FocalImage` out, `genres.test.tsx` renders the real one without setting a
+  platform (so it takes the native path), and no other file sets `"web"` *and*
+  renders a cover. Deleting the load handler left every test green and every
+  cover on that surface **blank**. `focal-image.test.tsx` now has a `web`
+  describe, negative-controlled: removing the reveal fails exactly one test.
+- **A regenerated cover popped in on web.** Opacity is written imperatively to
+  the DOM node, and React rewrites only the style keys that changed — `opacity:
+  0` is in both renders, so the `1` from the previous load survived and the new
+  art appeared at full strength. That is the *second* of the two bugs this
+  branch claims to have deleted as a class. `key` on the uri remounts it.
+- **Two of the four callers had nothing behind the fade.** `Cover` and
+  `ListenScreen` made the image and the gradient the two arms of one ternary,
+  so a story WITH a cover rendered no gradient at all. Invisible while the art
+  painted at full opacity from the first frame; not once it fades in — a shelf
+  thumbnail faded up from flat sepia, and a cover that never arrives (a 404, or
+  the `cover://` sentinel written while generation is in flight) left a flat
+  square with no fallback. Both now layer, as the card and the hero always did.
+- **`COVER_WIDTHS.mini` was undersized, by this file's own rule.** The docstring
+  said 74pt and four other places repeated it; `miniCover` is **96pt**. 232 is
+  3x of 74 and 2.4x of 96, so Library and author thumbnails would have been
+  *softer than on main*, where they arrived full-size — a regression dressed as
+  an optimisation. 288, and the docstring now names the component it measures.
+
 ### Sequencing with #159
 
 Both branches rewrite `useStorySearch.ts` in opposite directions: #159 builds on
@@ -323,7 +353,7 @@ there.
 
 ### Verification
 
-Expo **1655/1655** across 154 suites, typecheck clean, lint 0 errors, and the
+Expo **1659/1659** across 154 suites, typecheck clean, lint 0 errors, and the
 web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
 native dependency.
 

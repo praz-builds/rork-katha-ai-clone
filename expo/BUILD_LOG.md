@@ -26,7 +26,8 @@
   story's cover.
 - **All four `FocalImage` callers, including `Cover`.** `Cover` is what
   Library's shelves and author pages render at `size="mini"` into a 74pt box —
-  the worst bytes-to-pixels ratio in the app, and the one caller missed on the
+  the worst bytes-to-pixels ratio in the app (96pt, not the 74pt the first pass
+  assumed), and the one caller missed on the
   first pass. `COVER_WIDTHS.mini` having no caller was the tell.
 - **Web fades too.** `transition` is an `expo-image` prop and the web branch
   returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with

@@ -43,8 +43,15 @@ export const COVER_WIDTHS = {
   card: 350,
   /** The story page hero. */
   hero: 800,
-  /** The reader's chrome and the continue-reading strip: ~74pt wide. */
-  mini: 232,
+  /**
+   * `Cover size="mini"`: Library shelves and author pages. **96pt**, which is
+   * `miniCover`'s literal width in `KathaPrimitives`, not the 74pt this said
+   * when it was written against the reader's chrome. 232 was 3x of 74 and only
+   * 2.4x of 96, which would have made those thumbnails softer on a 3x screen
+   * than they were before any of this -- a regression dressed as an
+   * optimisation. Measure the box, then multiply.
+   */
+  mini: 288,
 } as const;
 
 export type CoverSize = keyof typeof COVER_WIDTHS;
