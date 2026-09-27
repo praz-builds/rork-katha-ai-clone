@@ -358,6 +358,33 @@ added five more, all taken:
 - **The free-credits button was inert to a screen reader**: it only scrolled, so
   focus never moved and nothing was announced. It now announces the destination.
 
+**Two later rounds found the document wrong about the gate itself, which is a
+different class from being wrong about a number.**
+
+First, the read requirement. Two rows offered *"120 seconds of dwell, or the
+chapter completed, whichever the read table records"* — and `story_reads` has
+`duration_seconds`, `read_at`, `is_own_story` and `counts_for_earnings`. There
+has never been a completion column, so that alternative named a field nothing
+can read, and `comment_credit_block_reason` does not branch. Both rows also
+omitted the *second* half entirely: `00090`'s requirement that one of those
+reads carry a server-set `read_at` sixty seconds or more older than the comment
+— the only part of the evidence a single round trip cannot forge, and the exact
+clause this branch had to be careful not to revert. The canonical document was
+describing a weaker gate than the database enforces, in the section this branch
+was rewriting.
+
+Then, once it was exact, the harder one: **no reader can pass it.**
+`story_reads` rows come only from `record_story_read`, whose only caller is the
+`record-read` edge function, and **no client calls that endpoint** — `grep` over
+`expo/` finds one comment and no call site, and the production table returned
+**0 rows** when checked. So every feedback claim answers `not_read`, for
+everyone. That is phased work (`ROADMAP.md`, Phase E) rather than a defect, but
+it means the §5 cost arithmetic, the "60 qualifying reads" it buys and the
+principle-7 argument are all projections of a mechanic that pays nobody, and
+five a month is a ceiling on a closed faucet rather than a tightening of an open
+one. The section now says so at its head, with instructions to delete the block
+when `record-read` ships.
+
 A third round found three more:
 
 - **The last `6` in the pricing document**, in the metrics table's alert row for

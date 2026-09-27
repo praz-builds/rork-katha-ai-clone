@@ -1604,6 +1604,29 @@ and it is left as designed.
 
 ### Feedback credits — the claimed comment
 
+> **THE FAUCET IS CLOSED TODAY, AND THIS SECTION DESCRIBES THE SCHEMA RATHER
+> THAN THE PRODUCT UNTIL IT OPENS.** *(Recorded 2026-09-27.)* Every claim
+> returns `not_read`, for every reader, because `story_reads` is empty and
+> nothing fills it: rows come only from `record_story_read`, whose only caller
+> is the `record-read` edge function, and **no client calls that endpoint** —
+> `grep` over `expo/` finds one comment and no call site, and the production
+> table had **0 rows** when this was checked. A reader can read a story for ten
+> minutes, leave a 300-character comment, tap Claim, and be told "Read the
+> story first."
+>
+> This is phased work, not an oversight: `record-read`'s client half is
+> unchecked under Phase E in `backend/ROADMAP.md`. But it changes how the rest
+> of this section reads. The cost arithmetic below, the "60 qualifying reads and
+> 60 comments" it buys, and the principle-7 argument that the cap is
+> load-bearing are all **projections of a mechanic that pays nobody yet**. Five
+> a month is a ceiling on a closed faucet, not a tightening of an open one, and
+> nothing in the earn table is actually reachable in the shipped client except
+> the streak ladder, the welcome bonus and the invite.
+>
+> **Delete this block when `record-read` ships from the client.** The rules
+> below are exact and enforced; they simply have nothing to enforce against.
+
+
 **Decided 2026-09-16, by the product owner, and it reverses a removal recorded
 below.** *Deliberately removed* struck the comment reward on 2026-09-10 because
 what shipped paid a credit for a one-character comment on any public story,
