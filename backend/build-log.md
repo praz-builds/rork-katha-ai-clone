@@ -211,6 +211,103 @@ Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
 checks are the `curl`s above, run against the live project. No migration. One
 function to deploy, `seed-voice-previews`, and only for the docblock — the
 seeding itself was an invocation of an already-deployed function.
+## 2026-09-27 UTC — How credits work becomes its own screen, and the feedback cap drops to five
+
+**Session:** the last look-and-feel round before launch, from founder feedback on
+four screenshots. This entry covers the credits half; Explore, covers and the
+voice previews are separate branches in the same round. Branch
+`codex/credits-split-and-cap`, in its own worktree, off `ca4a68e`.
+
+### The problem
+
+Profile had two rows pointing at one destination. The credits card ("Get more")
+and the settings row ("How credits work", subtitled "Prices and free credits")
+both called the same `onCredits` prop, and both opened `CreditsScreen` at the
+top — which leads with Paid options, correctly, because a plan is the best price
+per credit. So the row that promised an explanation answered the question with a
+shop, and the explanation itself was three scrolls down.
+
+### What changed
+
+- **`expo/src/screens/HowCreditsWorkScreen.tsx`** is new: a header and the
+  existing `components/credits/HowCreditsWork`, which was already the whole
+  content and remains the only place a price lives in client code. It has no
+  balance pill, no plan card and no packs sheet, and a test asserts their
+  absence — a regression that put a purchase control back on it would rebuild
+  the original problem without failing anything else.
+- **`Screen`** gains `{ name: "how-credits-work" }`; `ProfileScreen` gains an
+  `onHowCredits` prop and the settings row now calls it. Its subtitle is "What
+  each thing costs": "and free credits" went with the split.
+- **`CreditsScreen`** no longer inlines the prices. Under Paid options sit two
+  quiet ghost buttons (`components/credits/SecondaryActions.tsx`): *Get free
+  credits*, which scrolls to the Free credits section using the heading's own
+  measured `onLayout` y rather than a guessed offset (the paid block changes
+  height between a member and a non-member), and *How credits work*, which opens
+  the new screen. They are siblings rather than a link inside a row: a Pressable
+  inside a Pressable is a button inside a button on react-native-web, which is
+  the failure Profile's "Get more" pill is commented against.
+- The earn button's sub-line quotes **only `remaining.month` and the claimable
+  count from `comment_credit_claims`**, never the ledger — `fetchLedger` returns
+  the last fifty rows, so summing it for "earned so far" would quietly
+  undercount an established account. With no answer yet it names the ways
+  instead of inventing a figure.
+
+### The cap: six a month becomes five
+
+Product-owner decision, 2026-09-27. Nothing else about the mechanic moves — still
+1 credit per comment, 40 characters, a qualifying read *before* the comment, one
+per story, one per UTC day, frozen once paid.
+
+- **`00100_feedback_monthly_cap_five.sql`** `create or replace`s two functions
+  from 00089 with one digit changed each: `comment_credit_block_reason` (the
+  `monthly_cap` predicate, which enforces it) and `comment_credit_claims` (the
+  `remaining.month` readout the screen draws). Both bodies are 00089's
+  reproduced verbatim otherwise, so a diff shows the change and nothing else,
+  and both `revoke`/`grant` pairs are restated because `create or replace` does
+  not carry grants forward reliably.
+- **`claim_comment_credit` is deliberately not redefined.** It re-derives its
+  verdict through `comment_credit_block_reason` under the advisory lock
+  immediately before it pays, so the number lives in one place. A second copy
+  here would be a second place to get it wrong.
+- **No backfill, and nothing is clawed back.** The caps are counted from
+  `credit_ledger` at claim time and never stored. Anyone already paid six times
+  this calendar month keeps all six — spent or spendable — and is refused the
+  seventh exactly as they would have been. The new ceiling bites from next month.
+
+`source-of-truth/CREDITS_AND_PRICING.md` moved in the same commit, as the
+contract requires, with the arithmetic recomputed rather than edited: 60 credits
+a year, **$2.58 blended and $10.68** if every credit starts a story, five against
+the principle-7 ceiling of ten. Ten call sites across the document, including
+decisions 23 and 51 and the §5 earn table. The open item about a repeating streak
+rung was re-costed too: at feedback 5 it would reach 11 and breach the ceiling,
+where at 6 it hit it exactly.
+
+`expo/CLAUDE.md`'s Credits-screen contract was corrected to the new order.
+
+### Verification
+
+- **00089's own test now asserts five.** Its harness applies every `.sql` in the
+  migrations directory before running, so it exercises the current schema rather
+  than a snapshot of 00089 — leaving it at six would have failed, correctly.
+  21/21 pass.
+- `00100_feedback_monthly_cap_five_test.ts`: three tests, each calling the
+  function and then reading the ledger rather than checking the function exists.
+  Five paid and the sixth refused; the remaining count counting down from five
+  and never going negative; and a refusal writing no ledger row and leaving the
+  comment unclaimed and therefore still editable. 3/3 pass.
+- `credit-claims` function tests 7/7. Expo **1659/1659** across 155 suites,
+  typecheck clean, lint 0 errors.
+
+### Not done here, and deliberately
+
+No deploy yet. `00100` has to be applied before `credit-claims` is redeployed,
+and that happens after review and merge, not from this branch. Production was
+verified byte-identical to main earlier today (346/346), so
+`scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
+after this deploy is this change's.
+
+Nothing under `_shared/` was touched, so the deploy set really is
+`credit-claims` alone rather than an importer closure.
 
 ---
 
