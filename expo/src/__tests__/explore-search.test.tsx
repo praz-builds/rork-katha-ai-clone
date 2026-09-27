@@ -77,7 +77,7 @@ describe("the debounce", () => {
 
   it("sends one query for a word typed at speed, not one per keystroke", async () => {
     const search = jest.fn(async (_input: SearchInput) =>
-      ({ stories: [], source: "local" }) as SearchOutcome
+      ({ stories: [], hasMore: false, source: "local" }) as SearchOutcome
     );
     const view = await renderWith(search, 220);
 
@@ -129,6 +129,7 @@ describe("overlapping requests", () => {
     await act(async () => {
       resolvers["wolves"]({
         stories: [fixture("newer", "The Wolves of Anvil Bay")],
+        hasMore: false,
         source: "supabase",
       });
     });
@@ -140,6 +141,7 @@ describe("overlapping requests", () => {
     await act(async () => {
       resolvers["wolf"]({
         stories: [fixture("older", "A Lone Wolf")],
+        hasMore: false,
         source: "supabase",
       });
     });

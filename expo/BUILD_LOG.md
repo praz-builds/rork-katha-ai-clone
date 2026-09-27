@@ -2,6 +2,32 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Explore gets one chip row, a mixed feed, and infinite scroll
+
+- **One chip row.** Bedtime was a single `FilterChip` in a plain `View` above
+  `GenreStrip`'s scroll, using the same chip, so two rows of identical chips
+  read as a layout accident. It is now the first chip inside that scroll, with
+  a hairline divider before the genres. `ExploreCategoryStrip` is deleted. The
+  two selections stay independent: a reader can want bedtime comedy.
+- **The feed no longer arrives in genre blocks.** Every engagement count is
+  zero, so every sort ties, `Array.prototype.sort` is stable, and the list fell
+  through to the server's `created_at desc` -- which, because the Originals were
+  published in genre blocks, *is* the genre blocks. `seededShuffle` with
+  `dailyFeedSeed` now decides the ties before the sort (so a real count still
+  wins), and a new `spreadByKey` in `src/lib/feed-shuffle.ts` deals the result
+  out by genre round-robin.
+- **Infinite scroll.** `searchStories` takes a `page` and ends in `.range(...)`
+  with `order("id")` as a total tie-break; `SearchOutcome` carries `hasMore`
+  from the server's row count, before the genre narrowing clips it.
+  `useStorySearch` gains `loadMore`/`loadingMore`/`hasMore` with its own guards
+  -- it continues a query rather than starting one, so the existing sequence
+  guard is not enough on its own. The footer is a spinner, an end-of-list line,
+  or nothing.
+- **`FlatList` is virtualised for the first time.** `initialNumToRender`,
+  `maxToRenderPerBatch`, `windowSize` and `removeClippedSubviews` were set
+  nowhere in the app before this.
+- Covers are untouched and still the slowest thing here. Separate branch.
+
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 
 - **Every voice sample plays.** The six preview MP3s had never existed --

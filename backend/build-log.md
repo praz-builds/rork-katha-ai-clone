@@ -211,6 +211,99 @@ Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
 checks are the `curl`s above, run against the live project. No migration. One
 function to deploy, `seed-voice-previews`, and only for the docblock — the
 seeding itself was an invocation of an already-deployed function.
+## 2026-09-27 UTC — Explore gets one chip row, a mixed feed, and a bottom it can pass
+
+**Session:** third branch of the pre-launch polish round, from founder feedback
+on four screenshots. Branch `codex/explore-layout-and-paging`, in its own
+worktree, off `ca4a68e`. Client only: no migration, no function, no deploy.
+
+### Three faults, and they are unrelated to each other
+
+**1. Bedtime sat on a shelf above the genres.** `ExploreCategoryStrip` rendered
+one `FilterChip` in a plain `View` directly above `GenreStrip`'s horizontal
+`ScrollView`, using the same chip component. Two rows of identical chips read as
+a layout accident. Merged: Bedtime is now the first chip inside the same scroll,
+followed by a hairline divider, then the genres. **The two selections stay
+independent** -- a reader can want bedtime comedy -- so `category` and `genre`
+remain separate props rather than collapsing into one selected id. The divider
+is `importantForAccessibility="no"`; a screen reader gets the grouping from the
+chips' own labels.
+
+**2. The feed was genre-blocked, and it was an emergent tie-break, not a sort.**
+`searchStories` orders `like_count desc, created_at desc`; the screen then
+re-sorts by views or likes. Every count in this catalogue is **zero**, so every
+comparison ties, `Array.prototype.sort` is stable, and the list fell through to
+the server's `created_at desc`. The Originals were authored and published in
+genre blocks (`backend/originals/slots.json`: S01-S08 romance, S09-S14 comedy,
+S15-S21 fantasy, ...), so that order *is* the genre blocks, reversed.
+
+Fixed the way Home already does it, plus one new piece:
+
+- `seededShuffle` with `dailyFeedSeed(getViewerId(), new Date())` decides the
+  ties, before the sort, so a real engagement count still wins when there is
+  one. Seeded by reader and day, so the page is stable while somebody scrolls
+  it and different tomorrow.
+- A new `spreadByKey` in `lib/feed-shuffle.ts` then deals the list out by genre,
+  round-robin. A shuffle alone is not enough -- runs are what random sequences
+  look like -- and "Newest" does not shuffle at all, because `publishedOffset`
+  is a real distinct value on every row.
+
+**The first version of `spreadByKey` was wrong and its own test caught it.** It
+walked the list in order and moved an item only when it would have made a third
+consecutive neighbour, which preserves the ranking better. It also drains the
+leading key two at a time while spending the others one at a time, so the
+majority key is exhausted early and the list **ends in a long solid run** of
+whatever is left: a run of five where two was promised. Dealing from per-key
+queues cannot do that, because a queue is only ever one ahead of the others. The
+cost is that ranking *across* genres is disturbed; ranking *within* a genre is
+exact, which is where a real signal will show up, and every cross-genre
+comparison today is a tie between zeroes.
+
+**3. Explore stopped at 24 stories, forever.** The query ended in a bare
+`.limit(SEARCH_PAGE_SIZE)`. There was no `onEndReached`, no cursor, no page
+size beyond that one -- `grep` for `onEndReached|initialNumToRender|windowSize|
+maxToRenderPerBatch|removeClippedSubviews` across `expo/src` returned **nothing
+at all** before this change. A reader who reached the bottom of the catalogue
+simply ran out, with nothing to say so.
+
+- `SearchInput` gains `page`, and the query ends in `.range(from, from + size -
+  1)`. A third `order("id")` was added as a **total tie-break**: without it two
+  rows sharing a `like_count` and a `created_at` have no defined relative order
+  and the database may return them differently per page, which is how a row
+  appears twice across a boundary or never at all.
+- `SearchOutcome` gains `hasMore`, derived from the **server's** row count
+  before the genre narrowing clips it. `stories.length === PAGE_SIZE` would end
+  the list early on exactly the filter people use most.
+- `useStorySearch` gains `loadMore`, `loadingMore` and `hasMore`. It does *not*
+  route through `run`, which aborts and replaces -- right for a new query, and
+  exactly wrong for a continuation. Its own guards: a ref against `onEndReached`
+  firing repeatedly in one tick, the existing sequence number, **and** a
+  `loadedFor` query key, because `loadMore` continues a query rather than
+  starting one and the sequence guard alone does not catch a page that outlived
+  a filter change. Pages are appended de-duplicated by id.
+- The footer has three states and one of them is nothing: a spinner while a page
+  is on the way, a quiet line at the true end, and **nothing at all** while more
+  exists but has not been asked for, because a permanent footer under a growing
+  list reads as the end of it.
+- `initialNumToRender`, `maxToRenderPerBatch`, `windowSize` and
+  `removeClippedSubviews` are set for the first time. Each card mounts a cover;
+  rendering the whole accumulated list is what makes a long scroll stutter.
+
+### Verification
+
+Expo **1665/1665** across 155 suites, typecheck clean, lint 0 errors. Nine new
+tests on `spreadByKey` (totality, no run before the tail, within-key order,
+determinism, the growing-list seam) and seven on paging, each written against a
+way it fails: repeated `onEndReached`, a stale page appending to a new query, an
+overlapping page, and a lying footer. `explore-search-query.test.ts`'s builder
+mock now resolves at `.range()` rather than `.limit()`.
+
+### Not done here
+
+Cover loading is untouched and still the slowest thing on this screen: ~2 MB
+PNGs decoded into a 116x155pt box. That is its own branch. The 180 ms prefetch
+race in `useStorySearch` is deliberately left in place until then, because it is
+the thing being replaced rather than something to remove twice.
 
 ---
 

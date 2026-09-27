@@ -10,12 +10,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronDown, SlidersHorizontal } from "lucide-react-native";
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
+import { dailyFeedSeed, seededShuffle, spreadByKey } from "@/lib/feed-shuffle";
+import { getViewerId } from "@/lib/ownership";
 import { Chip } from "@/components/KathaPrimitives";
 import { StoryFeedCard } from "@/components/feed/StoryFeedCard";
 import {
   BEDTIME_CATEGORY,
   BEDTIME_CATEGORY_SHORT_LABEL,
-  ExploreCategoryStrip,
   GenreStrip,
   genreChipLabel,
   type ExploreCategory,
@@ -169,10 +170,11 @@ export default function ExploreScreen({
   const [sort, setSort] = useState<SortOption>(DEFAULT_SORT);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const { status, stories: searched, source } = useStorySearch(
-    { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
-    { catalogue: stories, ...searchOptions },
-  );
+  const { status, stories: searched, source, hasMore, loadingMore, loadMore } =
+    useStorySearch(
+      { text: query, genre, bedtime: category === BEDTIME_CATEGORY },
+      { catalogue: stories, ...searchOptions },
+    );
   // The query itself leaves blocked writers out (`search.ts`), but a page
   // fetched before a block would keep showing them until the next keystroke.
   const blocked = useBlockedAuthorIds();
@@ -240,11 +242,31 @@ export default function ExploreScreen({
         story.tags.some((tag) => selectedTags.includes(tag))
       );
 
-    return [...narrowed].sort((a, b) => {
+    // SHUFFLE FIRST, THEN SORT, as Home does. Every count in this catalogue
+    // is still zero, so sorting by views or likes ties on every row; the sort
+    // is stable, so the list fell through to the server's `created_at desc`.
+    // The Originals were published in genre blocks, so that order IS the
+    // genre blocks, reversed. Seeding the tie-break by reader and day means
+    // the page is stable while somebody scrolls it and different tomorrow,
+    // and a real count still wins because the sort runs after.
+    const tieBroken = seededShuffle(
+      narrowed,
+      dailyFeedSeed(getViewerId(), new Date()),
+      sort,
+    );
+
+    const sorted = [...tieBroken].sort((a, b) => {
       if (sort === "trending") return b.views - a.views;
       if (sort === "loved") return b.likes - a.likes;
       return a.publishedOffset - b.publishedOffset;
     });
+
+    // Then break up whatever clustering survives. A shuffle decides ties but
+    // still produces runs -- runs are what random sequences look like -- and
+    // "Newest" does not shuffle at all, because `publishedOffset` is a real
+    // distinct value on every row. Run over the ACCUMULATED list rather than
+    // per page, or every page boundary re-clusters.
+    return spreadByKey(sorted, (story) => story.genre ?? "unknown");
   }, [results, selectedTags, sort]);
 
   // A live result is not in the bundled catalogue, and handing its id to a
@@ -292,6 +314,37 @@ export default function ExploreScreen({
       ? `${scope} · offline catalogue`
       : scope;
   }, [category, genre, searching, sort, source, status, visible.length]);
+
+  /**
+   * What sits under the last card.
+   *
+   * Three states and one of them is nothing. A spinner while a page is on the
+   * way; a quiet line when the catalogue really has ended, so the bottom of
+   * the list is a fact rather than an ambiguity; and nothing at all while more
+   * exists but has not been asked for, because a permanent footer under a list
+   * that is still growing reads as the end of it.
+   *
+   * It renders only when there is already a list. Under the empty state the
+   * spinner above is doing this job and two would be a bug.
+   */
+  const listFooter = useMemo(() => {
+    if (visible.length === 0) return null;
+    if (loadingMore) {
+      return (
+        <View style={styles.footerWrap} testID="explore-loading-more">
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      );
+    }
+    if (!hasMore) {
+      return (
+        <View style={styles.footerWrap} testID="explore-list-end">
+          <Text style={styles.footerText}>That is everything for now.</Text>
+        </View>
+      );
+    }
+    return null;
+  }, [hasMore, loadingMore, visible.length]);
 
   const listEmpty = useMemo(() => {
     // Still fetching, with nothing to show underneath. A spinner rather than
@@ -428,6 +481,7 @@ export default function ExploreScreen({
           />
         }
         ListEmptyComponent={listEmpty}
+        ListFooterComponent={listFooter}
         ItemSeparatorComponent={ItemSeparator}
         contentContainerStyle={[
           styles.listContent,
@@ -439,6 +493,20 @@ export default function ExploreScreen({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        onEndReached={loadMore}
+        // Half a screen out. Nearer and the spinner is what the reader sees
+        // rather than the next card; further and a fast scroll runs off the
+        // end of a list that has not been asked to grow. `loadMore` is a
+        // no-op while a page is in flight, at the end, or before the first
+        // page lands, so the repeated firing this causes is harmless.
+        onEndReachedThreshold={0.5}
+        // Explore never set any of these. Each card mounts a cover, and
+        // rendering the whole accumulated list at once is what makes a long
+        // scroll stutter after the second or third page.
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={11}
+        removeClippedSubviews
       />
     </SafeAreaView>
   );
@@ -508,11 +576,17 @@ function ExploreListHeader({
         busy={busy}
       />
 
-      {/* 2. Bedtime is a kids-safe category, not a genre; it composes with the row. */}
-      <ExploreCategoryStrip selected={category} onSelect={onCategoryChange} />
-
-      {/* 3. Every genre, scrollable, one at a time. */}
-      <GenreStrip selected={genre} onSelect={onGenreChange} />
+      {/* 2. Bedtime and every genre, in one scrolling row. Bedtime is an
+          editorial category rather than a genre and stays independently
+          selectable -- a reader can want bedtime comedy -- but it used to sit
+          in a row of its own above this one, drawn by the same chip, which
+          read as a genre chip left on a shelf rather than as a distinction. */}
+      <GenreStrip
+        selected={genre}
+        onSelect={onGenreChange}
+        category={category}
+        onCategorySelect={onCategoryChange}
+      />
 
       {/* 4. Filters pill (inline panel, no modal) + what you're looking at. */}
       <View style={styles.controlRow}>
@@ -743,6 +817,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.huge,
     alignItems: "center",
     gap: spacing.related,
+  },
+  footerWrap: {
+    paddingVertical: spacing.xl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  footerText: {
+    fontFamily: fonts.ui,
+    color: colors.tertiary,
+    fontSize: 13,
   },
   emptyTitle: {
     ...type.headline,

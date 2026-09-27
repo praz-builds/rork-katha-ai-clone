@@ -157,10 +157,30 @@ export type SearchInput = {
    * all-ages audience mode, which does not promise a sleep-ready story.
    */
   bedtime?: boolean;
+  /**
+   * Which page to fetch, zero-based. Absent is the first.
+   *
+   * Explore had no paging at all until 2026-09-27: the query ended in a bare
+   * `.limit(SEARCH_PAGE_SIZE)`, so the screen could never show a 25th story
+   * and scrolling to the bottom of the catalogue simply stopped.
+   */
+  page?: number;
 };
 
 export type SearchOutcome = {
   stories: Story[];
+  /**
+   * Whether a further page might exist.
+   *
+   * Derived from the SERVER's row count, before the genre narrowing clips it:
+   * a full page that narrows to three visible rows still means there is more
+   * to ask for, and reporting `stories.length === SEARCH_PAGE_SIZE` would end
+   * the list early on exactly the filter people use most. It can be true once
+   * with nothing behind it -- when the catalogue divides evenly by the page
+   * size -- which costs one empty request and is the cheap direction to be
+   * wrong in.
+   */
+  hasMore: boolean;
   /**
    * Where the rows came from. `local` means the live catalogue could not be
    * reached (or is not configured) and these are the bundled stories — the
@@ -251,8 +271,15 @@ export async function searchStories(
   options: { signal?: AbortSignal; catalogue?: readonly Story[] } = {},
 ): Promise<SearchOutcome> {
   const catalogue = options.catalogue ?? seedStories;
+  // The bundled catalogue is one page and never more: it is the offline
+  // fallback, not a library to walk. Page 1 of a fallback is empty rather
+  // than a second copy of page 0.
+  const page = Number.isInteger(input.page) && (input.page as number) > 0
+    ? (input.page as number)
+    : 0;
   const local = (): SearchOutcome => ({
-    stories: searchLocalCatalogue(input, catalogue),
+    stories: page === 0 ? searchLocalCatalogue(input, catalogue) : [],
+    hasMore: false,
     source: "local",
   });
 
@@ -314,10 +341,19 @@ export async function searchStories(
     // all-ages safety mode and must not be broadened into this shelf.
     if (bedtime) query = query.contains("genre", ["bedtime"]);
 
+    // `id` last, as a total tie-break. Without it two rows sharing a
+    // `like_count` and a `created_at` have no defined relative order, and the
+    // database is free to return them differently per page -- which is how a
+    // row appears twice across a page boundary, or never at all. Keyset paging
+    // would sidestep the question entirely; range paging over a deterministic
+    // order is enough for a catalogue this size.
+    const size = genre ? GENRE_SEARCH_FETCH_SIZE : SEARCH_PAGE_SIZE;
+    const from = page * size;
     query = query
       .order("like_count", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(genre ? GENRE_SEARCH_FETCH_SIZE : SEARCH_PAGE_SIZE);
+      .order("id", { ascending: false })
+      .range(from, from + size - 1);
 
     if (options.signal) query = query.abortSignal(options.signal);
 
@@ -335,6 +371,8 @@ export async function searchStories(
       // one the filter answers to. A legacy row whose array leads with some
       // other genre matched the clause above and would render as that genre.
       stories: visible,
+      // `data.length`, not `visible.length`: see `hasMore` on SearchOutcome.
+      hasMore: data.length === size,
       source: "supabase",
     };
   } catch {

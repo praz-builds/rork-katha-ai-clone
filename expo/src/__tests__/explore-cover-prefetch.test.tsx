@@ -29,6 +29,7 @@ const remote = (index: number): Story => ({
 
 const outcome = (stories: Story[]): SearchOutcome => ({
   stories,
+  hasMore: false,
   source: "supabase",
 });
 

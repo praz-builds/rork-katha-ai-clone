@@ -185,6 +185,16 @@ export type StorySearchState = {
   status: SearchStatus;
   stories: Story[];
   source: SearchOutcome["source"];
+  /** A further page might exist. See `hasMore` on `SearchOutcome`. */
+  hasMore: boolean;
+  /** A next page is in flight. The first page reports `status: "loading"`. */
+  loadingMore: boolean;
+  /**
+   * Ask for the next page. A no-op while one is in flight, at the end of the
+   * list, or before the first page has landed -- so the caller can wire it
+   * straight to `onEndReached`, which fires more than once and fires early.
+   */
+  loadMore: () => void;
 };
 
 export type UseStorySearchOptions = {
@@ -212,10 +222,12 @@ export function useStorySearch(
     prefetchTimeoutMs = PREFETCH_TIMEOUT_MS,
   } = options;
 
-  const [state, setState] = useState<StorySearchState>({
+  const [state, setState] = useState<Omit<StorySearchState, "loadMore">>({
     status: "loading",
     stories: [],
     source: "local",
+    hasMore: false,
+    loadingMore: false,
   });
 
   // The sequence number of the newest run started, and the newest run
@@ -225,12 +237,23 @@ export function useStorySearch(
   // would re-run on its own bookkeeping.
   const latestRun = useRef(0);
   const inFlight = useRef<AbortController | null>(null);
+  // The highest page successfully applied, and the query it belongs to. The
+  // query is compared by value on every `loadMore`: a page-2 request that
+  // outlived a filter change must not append to page 1 of the new one, and
+  // the sequence guard alone does not catch that, because `loadMore` does not
+  // start a new query -- it continues the current one.
+  const loadedPage = useRef(0);
+  const loadedFor = useRef("");
+  const loadingMoreRef = useRef(false);
 
   const { text, genre, bedtime = false } = input;
+  const queryKey = `${text}\u0000${genre ?? ""}\u0000${bedtime}`;
 
   const run = useCallback(
     (searchInput: SearchInput) => {
       const sequence = ++latestRun.current;
+      loadedPage.current = 0;
+      loadingMoreRef.current = false;
 
       inFlight.current?.abort();
       const controller = typeof AbortController !== "undefined"
@@ -266,10 +289,13 @@ export function useStorySearch(
             if (sequence !== latestRun.current) return;
           }
 
+          loadedFor.current = `${searchInput.text}\u0000${searchInput.genre ?? ""}\u0000${searchInput.bedtime === true}`;
           setState({
             status: outcome.stories.length > 0 ? "ready" : "empty",
             stories: outcome.stories,
             source: outcome.source,
+            hasMore: outcome.hasMore,
+            loadingMore: false,
           });
         },
         () => {
@@ -278,12 +304,86 @@ export function useStorySearch(
           // reaching here means something outside it failed. An empty result
           // is the honest render: the screen's no-results state offers
           // genres, which is a way forward either way.
-          setState({ status: "empty", stories: [], source: "local" });
+          setState({
+            status: "empty",
+            stories: [],
+            source: "local",
+            hasMore: false,
+            loadingMore: false,
+          });
         },
       );
     },
     [catalogue, search, prefetch, prefetchTimeoutMs],
   );
+
+  /**
+   * The next page, appended.
+   *
+   * It deliberately does NOT go through `run`. `run` aborts what is in flight
+   * and replaces the list, which is right for a new query and exactly wrong
+   * for a continuation: it would throw away the pages already on screen. So
+   * this has its own guards rather than borrowing that one's.
+   *
+   * Three things can go wrong and each has a guard:
+   *
+   * - **`onEndReached` fires repeatedly**, including more than once before a
+   *   response lands. `loadingMoreRef` is a ref, not state, because the
+   *   second call arrives in the same tick as the first and a state update
+   *   has not been applied yet.
+   * - **The filter changes while page 2 is in flight.** `run` bumps the
+   *   sequence, so the stale page is dropped on the sequence check -- and
+   *   `loadedFor` is compared as well, because a reader could return to the
+   *   same query and a sequence number alone would then let an answer from
+   *   the previous visit through.
+   * - **A page arrives out of order.** Only one is ever in flight, and
+   *   `loadedPage` only advances on a page that was applied.
+   *
+   * A failed page is not an error state: the list already on screen is still
+   * good. It simply stops offering more, because a footer spinner that never
+   * resolves is worse than an end-of-list line.
+   */
+  const loadMore = useCallback(() => {
+    if (loadingMoreRef.current) return;
+    if (!state.hasMore || state.status === "loading") return;
+    if (loadedFor.current !== queryKey) return;
+
+    const sequence = latestRun.current;
+    const nextPage = loadedPage.current + 1;
+    loadingMoreRef.current = true;
+    setState((current) => ({ ...current, loadingMore: true }));
+
+    void search({ text, genre, bedtime, page: nextPage }, { catalogue }).then(
+      (outcome) => {
+        loadingMoreRef.current = false;
+        if (sequence !== latestRun.current || loadedFor.current !== queryKey) return;
+        loadedPage.current = nextPage;
+        setState((current) => ({
+          ...current,
+          // De-duplicated by id. The ordering is deterministic, so this should
+          // never fire -- which is the reason to keep it: a repeated key in a
+          // FlatList is a silent render bug, not a crash.
+          stories: appendUnseen(current.stories, outcome.stories),
+          hasMore: outcome.hasMore,
+          loadingMore: false,
+        }));
+      },
+      () => {
+        loadingMoreRef.current = false;
+        if (sequence !== latestRun.current) return;
+        setState((current) => ({ ...current, loadingMore: false, hasMore: false }));
+      },
+    );
+  }, [
+    bedtime,
+    catalogue,
+    genre,
+    queryKey,
+    search,
+    state.hasMore,
+    state.status,
+    text,
+  ]);
 
   useEffect(() => {
     if (debounceMs <= 0) {
@@ -303,5 +403,20 @@ export function useStorySearch(
     inFlight.current?.abort();
   }, []);
 
-  return state;
+  return { ...state, loadMore };
+}
+
+/**
+ * `next` appended to `current`, skipping any id already present.
+ *
+ * The page order is deterministic (`like_count`, `created_at`, `id`), so an
+ * overlap should be impossible. It is guarded anyway because the failure is
+ * silent: a duplicate key in a `FlatList` renders a second card and warns to
+ * a console nobody is reading, rather than throwing.
+ */
+function appendUnseen(current: Story[], next: Story[]): Story[] {
+  if (next.length === 0) return current;
+  const seen = new Set(current.map((story) => story.id));
+  const fresh = next.filter((story) => !seen.has(story.id));
+  return fresh.length === 0 ? current : [...current, ...fresh];
 }

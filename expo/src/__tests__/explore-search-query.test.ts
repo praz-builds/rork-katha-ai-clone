@@ -60,8 +60,9 @@ import {
  *
  * Every filter method returns the same object and appends to `calls`, so a
  * test can ask "was `neq('content_rating', 'explicit')` on this query?"
- * without a Postgres to run it against. The chain resolves at `.limit()`,
- * which is where `searchStories` ends it.
+ * without a Postgres to run it against. The chain resolves at `.range()`,
+ * which is where `searchStories` ends it -- it was `.limit()` until Explore
+ * got paging on 2026-09-27.
  */
 function stubTables() {
   calls.length = 0;
@@ -100,8 +101,8 @@ function stubTables() {
     chain.not = record("not");
     chain.order = record("order");
     chain.abortSignal = record("abortSignal");
-    chain.limit = (...args: unknown[]) => {
-      calls.push({ method: "limit", args });
+    chain.range = (...args: unknown[]) => {
+      calls.push({ method: "range", args });
       return Promise.resolve({ data: queryError ? null : rows, error: queryError });
     };
     return chain;
@@ -254,7 +255,9 @@ describe("a genre filter answers with that genre only", () => {
     ];
 
     const outcome = await searchStories({ text: "", genre: "adventure" });
-    expect(had("limit", GENRE_SEARCH_FETCH_SIZE)).toBe(true);
+    // Page 0 of the wider genre window: `.range(0, 47)` asks for the same 48
+    // rows `.limit(48)` used to.
+    expect(had("range", 0, GENRE_SEARCH_FETCH_SIZE - 1)).toBe(true);
     expect(outcome.stories).toHaveLength(24);
     expect(outcome.stories.every((story) => story.genre === "adventure")).toBe(true);
     expect(outcome.stories[0].id).toBe("right-0");
