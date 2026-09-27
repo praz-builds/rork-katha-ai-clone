@@ -155,6 +155,20 @@ describe("the free-credits button's screen-reader behaviour", () => {
     await fireEvent.press(view.getByTestId("credits-free-cta"));
   };
 
+  // The counts are the reason the button has a sub-line. A `Pressable` is one
+  // accessibility element and an explicit label REPLACES its children, so a
+  // label of just "Get free credits" made every one of them silent.
+  it("speaks the counts, not just the button's name", async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-free-cta"));
+
+    expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
+      .toBe("Get free credits. 5 left to claim this month");
+    // And it tracks the sub-line rather than restating a fixed sentence.
+    expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
+      .toContain(view.getByTestId("credits-free-cta-sub").props.children);
+  });
+
   it("moves focus to the section on native", async () => {
     jest.replaceProperty(Platform, "OS", "ios");
     await press();

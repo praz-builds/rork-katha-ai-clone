@@ -35,7 +35,12 @@ export default function SecondaryActions({
       <Pressable
         onPress={onFreeCredits}
         accessibilityRole="button"
-        accessibilityLabel="Get free credits"
+        // The sub-line is IN the label, not only under it. A `Pressable` is
+        // one accessibility element and an explicit label replaces its
+        // children rather than prefixing them, so labelling this "Get free
+        // credits" alone meant a screen reader spoke none of the counts --
+        // the whole of what `freeCreditsSubtitle` exists to say.
+        accessibilityLabel={`Get free credits. ${freeCreditsSubtitle(claims)}`}
         testID="credits-free-cta"
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
