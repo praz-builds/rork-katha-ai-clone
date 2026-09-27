@@ -403,16 +403,34 @@ export default function ExploreScreen({
    * page that adds nothing, for any reason, ends the chase; the reader's next
    * scroll still retries, because that path is `onEndReached`, not this.
    *
-   * IT COUNTS PAGES, NOT ROWS, and the difference is a real bug. A raw
-   * `results.length` outlives the query it was recorded for, and every value
-   * it can hold is a multiple of the page size, so a collision is ordinary:
-   * query A's page 0 narrows to nothing and stops the chase at 24, the reader
-   * picks a different genre, query B's page 0 also narrows to nothing and is
-   * also 24 -- and B never advances at all, so the reader is told the genre is
-   * empty over a catalogue with matching rows on page 1. `pageStarts` resets
-   * to `[0]` on every new query, so counting it cannot carry across one.
+   * THE REF IS WHAT CARRIES ACROSS QUERIES, so the ref is what has to be
+   * cleared. Two versions of this got it wrong by changing the number instead
+   * of the lifetime, and both collided with certainty rather than by luck:
+   *
+   * - Counting **rows** collided because page 0 is exactly `SEARCH_PAGE_SIZE`
+   *   whenever `hasMore` is true, so the stored value was always 24.
+   * - Counting **pages** was worse: the first advance of any query happens
+   *   when only page 0 has landed, so the stored value is always 1 -- and
+   *   every fresh query starts at `pageStarts: [0]`, which is also 1.
+   *
+   * Either way: select a tag, tap a genre whose page 0 narrows to nothing, let
+   * the chase find rows on page 1, then tap a second genre that also narrows
+   * to nothing. The second never advances, and the reader is told the genre is
+   * empty over a catalogue with matching rows one page along -- with no
+   * recovery, because `onEndReached` cannot fire when there is no list to
+   * reach the end of.
+   *
+   * Resetting on the query itself is the fix, and the tags belong in it: they
+   * are client-side narrowing, so changing them changes what "empty" means
+   * without changing a single row that was fetched.
    */
   const autoAdvancedAt = useRef(-1);
+  const narrowing = `${query}\u0000${genre ?? ""}\u0000${category ?? ""}\u0000${
+    [...selectedTags].sort().join(",")
+  }`;
+  useEffect(() => {
+    autoAdvancedAt.current = -1;
+  }, [narrowing]);
   useEffect(() => {
     if (visible.length > 0) return;
     if (status === "loading" || loadingMore || !hasMore) return;

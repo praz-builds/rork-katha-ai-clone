@@ -420,11 +420,18 @@ happens has to account for every transition that used to ride along with it.
   visible anywhere. `outcome.source` is the discriminator and was already
   there — `"local"` holds the cursor, `"supabase"` advances, so a legitimately
   short page still moves on.
-- **`autoAdvancedAt` counted rows and outlived its query.** Every value it can
-  hold is a page-size multiple, so a collision is ordinary: one query's page 0
-  narrows to nothing and stops the chase at 24, the reader picks another genre
-  whose page 0 also narrows to nothing and is also 24, and the second query
-  never advances at all. It counts `pageStarts` now, which resets to `[0]`.
+- **`autoAdvancedAt` outlived its query, and changing the number it holds did
+  not fix that.** Two versions collided with certainty rather than by luck: the
+  row count is always `SEARCH_PAGE_SIZE` on a full page 0, and the page count
+  is always 1 at the first advance of any query, while every fresh query starts
+  at `pageStarts: [0]`. **The ref is what carries across a query, so the ref is
+  what had to be cleared** -- on the query text, genre, category and the
+  selected tags, because tags are client-side narrowing and change what "empty"
+  means without changing a row. Originally recorded here as "it counts rows": the symptom was that one query's page 0
+  narrows to nothing and stops the chase, the reader picks another genre whose
+  page 0 also narrows to nothing, and the second query never advances -- told
+  the genre is empty over a catalogue with matching rows one page along, with
+  no recovery, because `onEndReached` cannot fire when there is no list.
 
 Both new paging tests were negative-controlled: without the cursor fix the
 retry asks for page 2, and without the status restore the list stays at 24 rows
@@ -432,7 +439,7 @@ after a backspace.
 
 ### Verification
 
-Expo **1672/1672** across 155 suites, typecheck clean, lint 0 errors. Nine new
+Expo **1673/1673** across 155 suites, typecheck clean, lint 0 errors. Nine new
 tests on `spreadByKey` (totality, no run before the tail, within-key order,
 determinism, the growing-list seam) and seven on paging, each written against a
 way it fails: repeated `onEndReached`, a stale page appending to a new query, an

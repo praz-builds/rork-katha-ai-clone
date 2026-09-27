@@ -351,6 +351,53 @@ it("keeps growing after the reader backspaces to a query already loaded", async 
   );
 });
 
+// The auto-advance chase: when a client-side filter empties a page, the list
+// has no bottom to reach, so `onEndReached` can never fire and the screen must
+// ask for the next page itself. Its stop-guard is a ref, and a ref outlives
+// the query it was recorded for -- which two versions of this got wrong by
+// changing the number in it instead of clearing it. Both collided with
+// certainty: the row count is always 24 on a full page 0, and the page count
+// is always 1 at the first advance of any query.
+it("chases again on a new query, not just the first one", async () => {
+  // A searched page 0 that renders nothing while more exists is the shape the
+  // chase is for: with no list, `onEndReached` can never fire.
+  const search = jest.fn(async (input: SearchInput) => {
+    if (input.text === "") return outcome(page(0), false);
+    if ((input.page ?? 0) === 0) return outcome([], true);
+    return outcome(
+      Array.from({ length: 3 }, (_, i) => ({
+        ...seedStories[0],
+        id: `${input.text}-${i}`,
+        title: `Found ${input.text} ${i}`,
+        chapters: [],
+      })),
+      false,
+    );
+  });
+
+  const view = await renderWith(search);
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
+
+  // First query: page 0 is empty, the chase runs, page 1 lands. This is what
+  // leaves the stop-guard set.
+  await act(async () => {
+    await fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "one");
+  });
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(3));
+
+  search.mockClear();
+
+  // Second query, same shape. It must chase too -- and with the guard keyed on
+  // a page count, both queries store the same 1 and this one never moves.
+  await act(async () => {
+    await fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "two");
+  });
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(3));
+  expect(
+    search.mock.calls.filter((c) => c[0].text === "two" && (c[0].page ?? 0) === 1),
+  ).toHaveLength(1);
+});
+
 it("starts the next query at page 0, not where the last one stopped", async () => {
   const search = jest.fn(async (input: SearchInput) =>
     outcome(page(input.page ?? 0), (input.page ?? 0) < 1)
