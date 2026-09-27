@@ -169,6 +169,18 @@ describe("the free-credits button's screen-reader behaviour", () => {
       .toContain(view.getByTestId("credits-free-cta-sub").props.children);
   });
 
+  // Both buttons, because they are told apart by their sub-lines: one earns
+  // credits, one explains what a credit buys. Fixing the first and leaving the
+  // second is how the rule ended up written down in three places with a
+  // violation of it sixteen lines below the fix.
+  it("speaks what the explanation button is for", async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-how-cta"));
+
+    expect(view.getByTestId("credits-how-cta").props.accessibilityLabel)
+      .toBe("How credits work. What each thing costs");
+  });
+
   it("moves focus to the section on native", async () => {
     jest.replaceProperty(Platform, "OS", "ios");
     await press();

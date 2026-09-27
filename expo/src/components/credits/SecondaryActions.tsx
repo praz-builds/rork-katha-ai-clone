@@ -56,7 +56,11 @@ export default function SecondaryActions({
       <Pressable
         onPress={onHowCredits}
         accessibilityRole="button"
-        accessibilityLabel="How credits work"
+        // Same rule as the button above: an explicit label replaces the
+        // children, and these two buttons are told apart by their sub-lines.
+        // Without this one a screen reader hears "How credits work" and "Get
+        // free credits" with no idea that one of them explains prices.
+        accessibilityLabel="How credits work. What each thing costs"
         testID="credits-how-cta"
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
