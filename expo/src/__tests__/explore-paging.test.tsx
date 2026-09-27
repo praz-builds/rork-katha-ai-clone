@@ -64,12 +64,18 @@ const outcome = (stories: Story[], hasMore: boolean): SearchOutcome => ({
 
 const renderWith = (
   search: (input: SearchInput, options?: unknown) => Promise<SearchOutcome>,
+  // A real debounce matters for the auto-advance test and only for that one.
+  // With 0 the query fires synchronously with the keystroke, so there is never
+  // a render where the filter has changed and the previous query's rows are
+  // still on screen -- which is exactly the window the chase guard gets wrong.
+  // A test at 0 cannot see it, and passes against every broken version.
+  debounceMs = 0,
 ) =>
   render(
     <ExploreScreen
       stories={seedStories}
       onStory={jest.fn()}
-      searchOptions={{ search, debounceMs: 0, prefetchTimeoutMs: 0 }}
+      searchOptions={{ search, debounceMs, prefetchTimeoutMs: 0 }}
     />,
   );
 
@@ -359,42 +365,48 @@ it("keeps growing after the reader backspaces to a query already loaded", async 
 // certainty: the row count is always 24 on a full page 0, and the page count
 // is always 1 at the first advance of any query.
 it("chases again on a new query, not just the first one", async () => {
-  // A searched page 0 that renders nothing while more exists is the shape the
-  // chase is for: with no list, `onEndReached` can never fire.
+  // BOTH queries end empty, which is what makes this catch anything. A first
+  // query that ends with rows leaves `visible.length > 0`, so the chase returns
+  // at its first guard on the way out and never arms the ref -- and then the
+  // test passes with every version of the guard, including the broken ones.
   const search = jest.fn(async (input: SearchInput) => {
     if (input.text === "") return outcome(page(0), false);
-    if ((input.page ?? 0) === 0) return outcome([], true);
-    return outcome(
-      Array.from({ length: 3 }, (_, i) => ({
-        ...seedStories[0],
-        id: `${input.text}-${i}`,
-        title: `Found ${input.text} ${i}`,
-        chapters: [],
-      })),
-      false,
-    );
+    // Page 0 narrows to nothing but the server had a full page, so there is
+    // more to ask for: exactly what `hasMore` counting server rows is for.
+    // Every page: a full server page that the defensive genre filter narrows
+    // to nothing. `hasMore` counts what the SERVER returned, so it stays true
+    // -- the chase stops because the page added no rows, not because the
+    // catalogue ended. That distinction is what makes the stale window exist
+    // at all: `hasMore` is still true when the reader taps the next filter.
+    return outcome([], true);
   });
 
-  const view = await renderWith(search);
+  const view = await renderWith(search, 20);
   await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
 
-  // First query: page 0 is empty, the chase runs, page 1 lands. This is what
-  // leaves the stop-guard set.
+  // First query: page 0 empty, the chase runs, page 1 is empty too and the
+  // chase stops. This is what leaves the stop-guard armed.
   await act(async () => {
     await fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "one");
   });
-  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(3));
+  await waitFor(() =>
+    expect(search.mock.calls.filter((c) => c[0].text === "one" && c[0].page === 1))
+      .toHaveLength(1)
+  );
 
-  search.mockClear();
-
-  // Second query, same shape. It must chase too -- and with the guard keyed on
-  // a page count, both queries store the same 1 and this one never moves.
+  // Second query, same shape. It must chase too. Every broken version of the
+  // guard stores the same value for both queries and this one never moves.
   await act(async () => {
     await fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "two");
   });
-  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(3));
+  await waitFor(() =>
+    expect(search.mock.calls.filter((c) => c[0].text === "two" && c[0].page === 1))
+      .toHaveLength(1)
+  );
+
+  // And it still stops: one chase per query, not a loop.
   expect(
-    search.mock.calls.filter((c) => c[0].text === "two" && (c[0].page ?? 0) === 1),
+    search.mock.calls.filter((c) => c[0].text === "two" && c[0].page === 1),
   ).toHaveLength(1);
 });
 

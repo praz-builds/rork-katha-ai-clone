@@ -435,9 +435,26 @@ export default function ExploreScreen({
     if (visible.length > 0) return;
     if (status === "loading" || loadingMore || !hasMore) return;
     if (autoAdvancedAt.current === pageStarts.length) return;
-    autoAdvancedAt.current = pageStarts.length;
-    loadMore();
-  }, [visible.length, pageStarts.length, status, loadingMore, hasMore, loadMore]);
+    // RECORD THE CHASE ONLY IF IT HAPPENED. `loadMore` has guards of its own,
+    // and the one that matters here refuses a call whose query key has already
+    // moved on. That is precisely the state this effect is in on the render
+    // where the reader changes filter: the reset above has fired, but `pages`,
+    // `status` and `hasMore` still describe the PREVIOUS query until the
+    // debounced fetch lands. Arming the guard on that refused call sets it to
+    // the same value the new query's first page will produce, so when that page
+    // does arrive the chase declines to run -- and the reader is told the genre
+    // is empty over a catalogue with matching rows one page along. That was the
+    // third variant of this bug; the reset alone did not close it.
+    if (loadMore()) autoAdvancedAt.current = pageStarts.length;
+    // `pages`, not `pageStarts.length`. Every other dep here is a primitive
+    // that is VALUE-IDENTICAL either side of a page landing when that page
+    // narrows to nothing -- 0 visible, 1 page, "empty", false, true -- and
+    // `loadMore`'s identity is memoised on the same primitives, so it does not
+    // change either. The effect therefore never re-ran after the new query's
+    // first page arrived, and the chase simply did not happen. `pages` is a
+    // fresh array on every state update, which is exactly the signal wanted:
+    // something landed, look again.
+  }, [visible.length, pages, pageStarts.length, status, loadingMore, hasMore, loadMore]);
 
   /**
    * What sits under the last card.

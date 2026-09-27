@@ -212,8 +212,14 @@ export type StorySearchState = {
    * Ask for the next page. A no-op while one is in flight, at the end of the
    * list, or before the first page has landed -- so the caller can wire it
    * straight to `onEndReached`, which fires more than once and fires early.
+   *
+   * **Returns whether it actually started a request.** `onEndReached` does not
+   * care, but Explore's auto-advance does: it records that it has chased a
+   * page so it cannot chase the same one twice, and recording that against a
+   * call the guards refused is how the chase ends up disarmed for a query it
+   * never ran for.
    */
-  loadMore: () => void;
+  loadMore: () => boolean;
 };
 
 export type UseStorySearchOptions = {
@@ -374,10 +380,10 @@ export function useStorySearch(
    * good. It simply stops offering more, because a footer spinner that never
    * resolves is worse than an end-of-list line.
    */
-  const loadMore = useCallback(() => {
-    if (loadingMoreRef.current) return;
-    if (!state.hasMore || state.status === "loading") return;
-    if (loadedFor.current !== queryKey) return;
+  const loadMore = useCallback((): boolean => {
+    if (loadingMoreRef.current) return false;
+    if (!state.hasMore || state.status === "loading") return false;
+    if (loadedFor.current !== queryKey) return false;
 
     const sequence = latestRun.current;
     const nextPage = loadedPage.current + 1;
@@ -448,6 +454,7 @@ export function useStorySearch(
         setState((current) => ({ ...current, loadingMore: false, hasMore: false }));
       },
     );
+    return true;
   }, [
     bedtime,
     catalogue,
