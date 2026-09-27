@@ -98,11 +98,14 @@ it("summarises either branch in one line, with no em dashes", () => {
   expect(storyWorldSummary("IN")).toBe("India. Names, places and everyday detail.");
 
   // The story prompt forbids em dashes in generated prose and the product copy
-  // should not contradict it. Checked across every country rather than a
-  // sample, because the country half is interpolated and a label could carry
-  // one; the length bound keeps the row to two lines on a narrow screen.
+  // should not contradict it. En dashes too: no label carries one today, and
+  // the rule is about dashes rather than about one codepoint. Checked across
+  // every country rather than a sample, because the country half is
+  // interpolated and a label could introduce either; the length bound keeps
+  // the row to two lines on a narrow screen.
   for (const world of STORY_WORLDS) {
     expect(storyWorldSummary(world.id)).not.toContain("—");
+    expect(storyWorldSummary(world.id)).not.toContain("–");
     expect(storyWorldSummary(world.id).length).toBeLessThan(90);
   }
 });

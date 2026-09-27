@@ -24,7 +24,11 @@ import {
  * written before the preference existed.
  */
 export const STORY_WORLDS: readonly { id: StoryWorld; label: string; hint: string }[] = [
-  { id: "global", label: "Anywhere", hint: "Katha follows each story's own cues" },
+  // The hint is the picker row's second line. It says the same thing as
+  // `storyWorldSummary("global")` in the same words on purpose: the row and
+  // the Profile line are two places a reader meets one idea, and they used to
+  // phrase it three different ways between them.
+  { id: "global", label: "Anywhere", hint: "Each story picks its own setting" },
   ...COUNTRY_CODES.map((id) => ({ id, label: COUNTRY_WORLDS[id].label, hint: "" })),
 ] as const;
 

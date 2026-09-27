@@ -52,7 +52,18 @@ the client list too.
 audio actually fails, which was the honest answer and still is. Its docblock and
 the notes in `AGENTS.md` and `expo/CLAUDE.md` that said every sample 404s are now
 wrong, so they are replaced — with what a re-run actually needs, since none of
-the three obstacles above are guessable.
+the three obstacles above are guessable. (Those notes also had the status
+wrong: a missing object in the public `audio` bucket answers **400**, not 404,
+which is what all six actually returned.)
+
+Review pointed out that the place an operator reads before running this is the
+function, not a log, so both obstacles are now in
+`seed-voice-previews/index.ts`'s own docblock as well. That makes it a
+**comment-only change under `backend/supabase/functions/`**, so unlike the rest
+of this branch it does need deploying — not for behaviour, but so the live
+bundle stays byte-identical to main and `scripts/audit-function-drift.sh` keeps
+its clean baseline. Deploy set: `seed-voice-previews` alone; nothing under
+`_shared/` is touched, so there is no importer closure.
 
 ### Story world
 
@@ -95,9 +106,9 @@ not the preference.
 ### Verification
 
 Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
-checks are the `curl`s above, run against the live project. No deploy: nothing
-under `backend/supabase/functions/` or `migrations/` changed, and the seeding
-was an invocation of an already-deployed function.
+checks are the `curl`s above, run against the live project. No migration. One
+function to deploy, `seed-voice-previews`, and only for the docblock — the
+seeding itself was an invocation of an already-deployed function.
 
 ---
 
