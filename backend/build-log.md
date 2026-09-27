@@ -33,19 +33,33 @@ inspected before it writes.
 - A 3-day `streaks` row for the house account, which had none, for the streak
   pill in frame 1.
 
-No function deploy, no migration, no `db push`. Production is still
-byte-identical to main, so the 346/346 baseline from the previous entry holds.
+No function deploy, no migration, no `db push`, so the **function surface** is
+still byte-identical to main and the 346/346 baseline from the previous entry
+holds unchanged.
+
+**Production data is not unchanged, and not only by this round.** A concurrent
+session seeded `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` into the
+`audio` bucket -- verified here, six objects answering `200` at roughly 100 KB
+each, where all six answered `400` earlier the same day -- and logged two
+failures to `error_events` doing it. So after 2026-09-27 the accurate statement is
+"no function or migration changed", never "production is unchanged": there are six
+new storage objects, two new telemetry rows, and this round's fixtures.
 
 ### Two findings that outlived the seeding
 
-- **A comment renders `profiles.username`, never `display_name`.**
+- **Every comment renders the handle, not the name its author chose.**
   `supabase/functions/comments/index.ts:350` returns
-  `author_display_name: profile?.username ?? null`. The house account's own reply
-  would therefore read `vivid_lantern_51`, and it cannot be renamed out of the
-  problem: `katha`, `kathaai` and `katha_ai` are all in the
-  `profiles_username_not_reserved` list from 00060. So frame 7 ships with the two
-  reader comments and no author reply until the function prefers `display_name`.
-  Not fixed here; it is a behaviour change with its own client surface.
+  `author_display_name: profile?.username ?? null`, so a comment shows
+  `profiles.username` while a profile shows `display_name` everywhere else. This is
+  a product bug for **every** author, not a house-account quirk: a reader who set
+  their name to "Ana" is credited under their handle the moment they comment. The
+  house account is only where it became visible -- its reply would read
+  `vivid_lantern_51`, and it cannot be renamed out of the problem because `katha`,
+  `kathaai` and `katha_ai` are all in the `profiles_username_not_reserved` list
+  from 00060, which is the smaller half of the issue. Frame 7 ships with the two
+  reader comments and no author reply. Not fixed here: whether a comment carries
+  the name or the handle is a product decision with a client surface, and it wants
+  its own PR.
 - **Frames 3 and 4 cannot be seeded at all.** Frame 3 is a live generation being
   photographed mid-stream and frame 4 is a generated character portrait, so both
   wait on the paid provider (Gemini `429`, OpenRouter `402`). The house account

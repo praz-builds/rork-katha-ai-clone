@@ -68,16 +68,18 @@ them because both frames are of the thing being generated:
   belong to test accounts, so using one would mean attributing another account's
   art to the house account.
 
-**Frame 7 has no house-author reply, and cannot have one yet.** A comment renders
-`profiles.username`, not `display_name` --
+**Frame 7 has no house-author reply, and cannot have one yet.** Every comment
+renders the handle rather than the name its author chose:
 `supabase/functions/comments/index.ts:350` returns
-`author_display_name: profile?.username ?? null` -- so the house account would
-appear as `vivid_lantern_51`, not "Katha AI". Renaming does not fix it either:
-`katha`, `kathaai` and `katha_ai` are all in the `profiles_username_not_reserved`
-list added by migration 00060. The two reader comments render correctly as
-handles; the author's reply needs the function to prefer `display_name` first,
-which is its own change. Capture frame 7 with the two reader comments, or wait
-for that fix if the author's reply matters to the frame.
+`author_display_name: profile?.username ?? null`, so a comment shows
+`profiles.username` while a profile shows `display_name` everywhere else. That is
+a bug for every author, not just this account -- a reader whose name is "Ana" is
+credited as their handle the moment they comment. Here it means the house account
+would appear as `vivid_lantern_51`, and renaming cannot fix it: `katha`, `kathaai`
+and `katha_ai` are all in the `profiles_username_not_reserved` list added by
+migration 00060. The two reader comments read correctly as handles, so capture
+frame 7 with those two; add the author's reply only after the name/handle decision
+is made and shipped.
 
 ## Checklist for the capture session
 
