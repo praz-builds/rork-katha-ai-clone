@@ -99,6 +99,28 @@ passed inside the 1,649, and was confirmed against a locally built release AAB o
   uses (`profiles!comments_user_id_fkey`), which is how the `username` finding
   above was established rather than guessed.
 - No `public.error_events` row was required: nothing failed.
+## 2026-09-27 UTC — Deployed: `seed-voice-previews`, and the surface is clean again
+
+`#157` merged as `ed4d4a1` and its only backend change was a docblock in
+`seed-voice-previews/index.ts`. A comment is part of the module source, so the
+live bundle and main diverged the moment it landed. Deployed it, then verified
+rather than assumed: `scripts/audit-function-drift.sh` against `ed4d4a1`
+downloads all **34** functions and compares every file — **346 of 346
+identical, zero drift.**
+
+**The first attempt deployed the wrong source.** It ran from a feature
+worktree that had branched before `#157`, so it shipped the pre-merge copy —
+byte-identical to what was already live, so no harm, and no progress either.
+The CLI reported "Deployed Functions." both times. **Deploy from a checkout of
+the commit you mean to ship**, which is now a detached worktree at `origin/main`
+kept for exactly this, and let the drift audit be what says it worked.
+
+`AGENTS.md`'s exception paragraph, which existed only for the window between
+that merge and this deploy, is deleted — as it instructed whoever deployed it
+to do.
+
+---
+
 ## 2026-09-27 UTC — Every voice sample plays, and the Story world row says what it does
 
 **Session:** second branch of the pre-launch polish round, from founder feedback
