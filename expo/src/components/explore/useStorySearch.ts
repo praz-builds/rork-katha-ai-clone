@@ -273,7 +273,6 @@ export function useStorySearch(
   const run = useCallback(
     (searchInput: SearchInput) => {
       const sequence = ++latestRun.current;
-      loadedPage.current = 0;
       loadingMoreRef.current = false;
 
       inFlight.current?.abort();
@@ -312,6 +311,13 @@ export function useStorySearch(
             if (sequence !== latestRun.current) return;
           }
 
+          // Reset ON SUCCESS, not on start. A run that is aborted or skipped
+          // must leave this alone: the list it would have replaced is still on
+          // screen, pages and all, and a `loadedPage` of 0 under three pages of
+          // rows means the next `onEndReached` re-requests page 1, has every
+          // row dropped as a duplicate, and makes the reader reach the bottom
+          // once per page already loaded before a new one arrives.
+          loadedPage.current = 0;
           loadedFor.current = `${searchInput.text}\u0000${searchInput.genre ?? ""}\u0000${searchInput.bedtime === true}`;
           setState({
             status: outcome.stories.length > 0 ? "ready" : "empty",
@@ -403,7 +409,20 @@ export function useStorySearch(
       (outcome) => {
         if (sequence !== latestRun.current || loadedFor.current !== queryKey) return;
         settle();
-        loadedPage.current = nextPage;
+        // A FAILED PAGE MUST NOT BURN ITS PAGE NUMBER. Every failure inside
+        // `searchStories` resolves rather than rejects -- a query error, a
+        // failed block-list lookup, anything the outer catch sees -- so they
+        // all arrive HERE, in the success handler, as an empty `local`
+        // outcome. Advancing unconditionally meant a dropped connection on
+        // page 1 moved the cursor to 1, appended nothing, and left the next
+        // scroll asking for page 2: rows 24-47 never requested again, no gap
+        // visible anywhere, and nothing on screen aware a page was lost.
+        //
+        // `source` is the discriminator, and it is already on the outcome. A
+        // legitimately short server page still advances, because it is
+        // "supabase"; only "local" -- which is this client saying it could not
+        // tell -- holds the cursor so the next scroll retries the same page.
+        if (outcome.source !== "local") loadedPage.current = nextPage;
         setState((current) => {
           // De-duplicated by id. The ordering is deterministic, so this should
           // never fire -- which is the reason to keep it: a repeated key in a
@@ -462,9 +481,27 @@ export function useStorySearch(
         // nobody moved, and paints results for a term that is not in the box,
         // with nothing to retry and no way to tell. It never self-corrects:
         // no dep changes again until the reader types.
+        // AND PUT THE STATE MACHINE BACK, which is the other half and is
+        // easier to miss than the abort. `run` set `status: "loading"` when it
+        // started the request just invalidated, and both of that request's
+        // handlers early-return on the sequence check -- so nothing ever
+        // writes state again. `loadMore` is guarded on `status !== "loading"`,
+        // so paging switches off for the rest of the query: the reader reaches
+        // the bottom of their 24 cards and nothing loads, with no spinner and
+        // no end-of-list line, because `hasMore` is still true. That is the
+        // very fault this branch exists to fix, reached through its own fix.
+        //
+        // `loadedPage` needs no restoring here, because `run` no longer resets
+        // it on the way out -- see the comment where it now does, in the
+        // success handler. Resetting on start meant an abandoned run left it
+        // at 0 while `stories` still held every page the reader had scrolled.
         latestRun.current++;
         inFlight.current?.abort();
         inFlight.current = null;
+        setState((current) => ({
+          ...current,
+          status: current.stories.length > 0 ? "ready" : "empty",
+        }));
         return;
       }
       run({ text, genre, bedtime });

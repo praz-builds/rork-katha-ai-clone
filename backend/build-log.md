@@ -391,9 +391,48 @@ on `like_count`. Invisible today because every count is zero, and the fix when
 it matters is to sort Trending on the server rather than to go back to
 re-ordering the list under the reader. The comment now says so.
 
+### Both of that round's fixes had a silent version of the problem they replaced
+
+Review found each correction reintroducing its own bug. Worth recording as a
+pattern, not three incidents: a fix that changes when a state transition
+happens has to account for every transition that used to ride along with it.
+
+- **Aborting the superseded request left `status` at `"loading"` forever.**
+  `run` set it when it started the request the skip then invalidated, and both
+  of that request's handlers early-return on the sequence check, so nothing
+  ever wrote state again. `loadMore` is guarded on `status !== "loading"`, so
+  **paging switched off for the rest of the query** — the reader scrolls to the
+  bottom of 24 cards and nothing loads, with no spinner and no end-of-list line
+  because `hasMore` is still true. Explore stopped at 24 stories forever, which
+  is the third fault this branch exists to fix, reached through its own fix.
+  The skip now restores the status.
+- **And `run` reset `loadedPage` on the way in.** An abandoned run therefore
+  left it at 0 under however many pages the reader had scrolled, so the next
+  `onEndReached` re-requested page 1 and had every row dropped as a duplicate.
+  It now resets **on success**, which is the only moment the list really is one
+  page long.
+- **A failed page burned its page number.** Making `local()` report
+  `hasMore: true` was right, and it made the retry ask for the page *after* the
+  one that failed — every failure in `searchStories` resolves rather than
+  rejects, so they all land in `loadMore`'s success handler and advanced the
+  cursor. A dropped connection at the bottom of page 0 meant rows 24–47 were
+  never requested again: Explore goes from story 24 to story 49 with no gap
+  visible anywhere. `outcome.source` is the discriminator and was already
+  there — `"local"` holds the cursor, `"supabase"` advances, so a legitimately
+  short page still moves on.
+- **`autoAdvancedAt` counted rows and outlived its query.** Every value it can
+  hold is a page-size multiple, so a collision is ordinary: one query's page 0
+  narrows to nothing and stops the chase at 24, the reader picks another genre
+  whose page 0 also narrows to nothing and is also 24, and the second query
+  never advances at all. It counts `pageStarts` now, which resets to `[0]`.
+
+Both new paging tests were negative-controlled: without the cursor fix the
+retry asks for page 2, and without the status restore the list stays at 24 rows
+after a backspace.
+
 ### Verification
 
-Expo **1670/1670** across 155 suites, typecheck clean, lint 0 errors. Nine new
+Expo **1672/1672** across 155 suites, typecheck clean, lint 0 errors. Nine new
 tests on `spreadByKey` (totality, no run before the tail, within-key order,
 determinism, the growing-list seam) and seven on paging, each written against a
 way it fails: repeated `onEndReached`, a stale page appending to a new query, an

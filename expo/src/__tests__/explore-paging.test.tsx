@@ -276,6 +276,81 @@ it("never re-orders the rows already on screen when a page arrives", async () =>
   expect(idsOnScreen(view).slice(0, SEARCH_PAGE_SIZE)).toEqual(before);
 });
 
+// Every failure inside `searchStories` RESOLVES rather than rejects, so a
+// dropped connection arrives in the success handler as an empty `local`
+// outcome. Advancing the cursor on it skips a page for good: the reader's
+// Explore goes from story 24 to story 49 with no gap visible anywhere, and
+// nothing on screen knows a page was lost.
+it("retries the page that failed rather than the one after it", async () => {
+  let failNext = true;
+  const search = jest.fn(async (input: SearchInput) => {
+    const p = input.page ?? 0;
+    if (p === 0) return outcome(page(0), true);
+    if (failNext) {
+      failNext = false;
+      // What `searchStories` returns when it cannot reach the server.
+      return { stories: [], hasMore: true, source: "local" as const };
+    }
+    return outcome(page(p), false);
+  });
+
+  const view = await renderWith(search);
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
+
+  await reachEnd(view);
+  await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+  // The failure appended nothing.
+  expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE);
+
+  await reachEnd(view);
+  await waitFor(() =>
+    expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE * 2)
+  );
+
+  // Page 1 both times. Asking for page 2 here would lose rows 24-47 for the
+  // rest of the session.
+  expect(search.mock.calls[1][0].page).toBe(1);
+  expect(search.mock.calls[2][0].page).toBe(1);
+  expect(new Set(idsOnScreen(view)).size).toBe(SEARCH_PAGE_SIZE * 2);
+});
+
+// The other half of the stale-answer fix. Aborting the superseded request is
+// right; leaving `status` at "loading" switches paging off for the rest of the
+// query, because `loadMore` is guarded on it -- and the footer shows nothing
+// at all, because `hasMore` is still true. Explore stops at 24 stories
+// forever, which is the fault this whole branch exists to fix.
+it("keeps growing after the reader backspaces to a query already loaded", async () => {
+  const search = jest.fn((input: SearchInput) => {
+    if (input.text === "" && (input.page ?? 0) === 0) {
+      return Promise.resolve(outcome(page(0), true));
+    }
+    if (input.text === "" && (input.page ?? 0) === 1) {
+      return Promise.resolve(outcome(page(1), false));
+    }
+    // The typo's request, left hanging: the reader backspaces before it lands.
+    return new Promise<SearchOutcome>(() => {});
+  });
+
+  const view = await renderWith(search);
+  await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
+
+  const field = view.getByPlaceholderText(SEARCH_PLACEHOLDER);
+  await act(async () => {
+    await fireEvent.changeText(field, "w");
+  });
+  await act(async () => {
+    await fireEvent.changeText(field, "");
+  });
+
+  // Back where they started, with the 24 rows still on screen...
+  expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE);
+  // ...and the bottom of the list still works.
+  await reachEnd(view);
+  await waitFor(() =>
+    expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE * 2)
+  );
+});
+
 it("starts the next query at page 0, not where the last one stopped", async () => {
   const search = jest.fn(async (input: SearchInput) =>
     outcome(page(input.page ?? 0), (input.page ?? 0) < 1)

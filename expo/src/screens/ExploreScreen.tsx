@@ -399,18 +399,27 @@ export default function ExploreScreen({
    * FAILED page now reports `hasMore: true` deliberately -- see `local()` in
    * `search.ts`, because a lost connection is not the end of the catalogue --
    * so "no rows, more exists" is a state that can repeat forever. Advancing
-   * only when the row count has actually grown since the last attempt means a
+   * only when something has actually changed since the last attempt means a
    * page that adds nothing, for any reason, ends the chase; the reader's next
    * scroll still retries, because that path is `onEndReached`, not this.
+   *
+   * IT COUNTS PAGES, NOT ROWS, and the difference is a real bug. A raw
+   * `results.length` outlives the query it was recorded for, and every value
+   * it can hold is a multiple of the page size, so a collision is ordinary:
+   * query A's page 0 narrows to nothing and stops the chase at 24, the reader
+   * picks a different genre, query B's page 0 also narrows to nothing and is
+   * also 24 -- and B never advances at all, so the reader is told the genre is
+   * empty over a catalogue with matching rows on page 1. `pageStarts` resets
+   * to `[0]` on every new query, so counting it cannot carry across one.
    */
   const autoAdvancedAt = useRef(-1);
   useEffect(() => {
     if (visible.length > 0) return;
     if (status === "loading" || loadingMore || !hasMore) return;
-    if (autoAdvancedAt.current === results.length) return;
-    autoAdvancedAt.current = results.length;
+    if (autoAdvancedAt.current === pageStarts.length) return;
+    autoAdvancedAt.current = pageStarts.length;
     loadMore();
-  }, [visible.length, results.length, status, loadingMore, hasMore, loadMore]);
+  }, [visible.length, pageStarts.length, status, loadingMore, hasMore, loadMore]);
 
   /**
    * What sits under the last card.
