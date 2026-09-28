@@ -7,6 +7,70 @@
 
 ---
 
+## 2026-09-28 UTC — Bring the operator docs level with three sessions' production writes
+
+**Session:** docs only, after #155, #157 and #158 all landed within a few hours of
+each other. Nothing was deployed, no migration, no production write.
+Branch `codex/docs-current-0928`.
+
+Three rounds wrote to production on 2026-09-27 and the pages an operator trusts
+had not caught up with any of them together.
+
+### AGENTS.md, Production state
+
+- **Says plainly that "no function or migration changed" is not "production is
+  unchanged".** The zero-drift line reads as though production were frozen, and it
+  is not: a table now names what was written, by which round, and whether it can be
+  taken back — the six `voice-previews/*.mp3` objects and two `error_events` rows
+  from the voice round, and this week's screenshot fixtures with their
+  `--teardown`. The phrasing that needed fixing was mine, from the entry below.
+- **Records that a comment shows the handle, not the author's chosen name**, as an
+  unclaimed bug rather than a house-account curiosity, with why renaming cannot fix
+  it and the note that it ships by OTA and so does not gate the first AAB.
+
+### A drift exception that was false before the ink dried
+
+#157 added a paragraph to Production state warning that
+`scripts/audit-function-drift.sh` **would** report drift on
+`seed-voice-previews`, because that round changed its docblock and a comment is
+part of the module source. It said the reading would be a true positive, and that
+whoever deployed the function should delete the paragraph.
+
+Re-running the audit said otherwise: **346 of 346 identical, zero drift.** So the
+deployed bundle was fetched on its own and checked directly -- it carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main, meaning that function had
+been deployed as well as merged. The exception was untrue by the time it was
+written, and it sat immediately under a zero-drift baseline, where the next
+operator would have had a documented reason to wave a real drift row through.
+Deleted per its own instruction, with the measured result in its place.
+
+The lesson is kept on the page instead of the exception: an exception written in
+advance outlives the condition it describes, so run the audit rather than trust a
+paragraph about it.
+
+### ROADMAP
+
+- A P1 row for the comment name-versus-handle decision, marked unclaimed, with its
+  store consequence spelled out: frame 7 has two reader comments and no author
+  reply until it lands.
+- The EAS build row carries the preflight result, so the founder can see that
+  nothing app-side blocks the build and that the project id is the only missing
+  value in the config. It also states what was *not* re-checked —
+  `blockedPermissions` against a freshly built merged manifest.
+
+### Verification
+
+- `scripts/audit-function-drift.sh` against `84f94fa`: **34 functions, 346 files,
+  346 identical, zero drift**, exit 0. The migration ledger is unchanged at
+  `00001`-`00099`.
+- The `seed-voice-previews` bundle was downloaded on its own and `cmp`d against
+  main, because one slug's status was the claim in question and an aggregate zero
+  could have hidden a skipped download.
+- Docs only. No deploy, no migration, no production write from this session.
+
+
+---
+
 ## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight
 
 **Session:** the round after the deploy audit, ahead of the first Android build.

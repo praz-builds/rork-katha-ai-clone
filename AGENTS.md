@@ -50,20 +50,45 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**One known exception, from the moment this branch merges.** The voice-preview
-round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
-is part of the module source, so the deployed bundle and main diverge until it
-ships. **`scripts/audit-function-drift.sh` will report drift on that one
-function, and it is a true positive.** Deploy `seed-voice-previews` and the
-surface is clean again; nothing under `_shared/` was touched, so there is no
-importer closure. Do not read that one row as a false alarm and wave the audit
-through -- "16 functions behind main" is on this page because somebody did.
+**Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: still
+346 of 346 identical, zero drift, nothing to deploy.** The exception that stood
+here -- that `seed-voice-previews` would drift because #157 changed its docblock
+-- was already closed when it was written: the deployed bundle carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main, so that function was
+deployed too. Deleted per its own instruction, which was to remove it the moment
+it stopped being true. Worth keeping the lesson though: **a written-in-advance
+exception outlives the condition it describes.** It was a false exception sitting
+directly under a zero-drift baseline within hours of being added, which is the
+failure it was warning about. Prefer running
+`scripts/audit-function-drift.sh` over trusting a paragraph on this page.
 
-**Whoever deploys it deletes this paragraph.** It is only true between that
-merge and that deploy, and left standing afterwards it is a false exception
-sitting directly under a zero-drift baseline, on the page whose whole job is to
-be what an operator can trust about production. The person running the deploy is
-the only one who knows it has stopped being true.
+**"No function or migration changed" is not "production is unchanged".** Three
+sessions wrote to production data on 2026-09-27 without touching a function or a
+migration, so the zero-drift statement above is narrower than it reads and must
+not be quoted as though production were frozen:
+
+| Written | By | Reversible |
+|---|---|---|
+| `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` in the `audio` bucket, plus two `error_events` rows | the voice-preview round | no, and not wanted |
+| Two house reader accounts (`ana_reads`, `tomas_ferreira`, both at `@example.com`), one comment each on *A Bridge by Cockcrow*, `stories.comment_count` set to match, and a 3-day `streaks` row for the house account | the screenshot-fixture round | yes -- `backend/scripts/seed-screenshot-fixtures.ts --teardown` |
+
+The fixtures exist because `store/android/screenshot-plan.md` frame 7 needs
+comments on an Original and frame 1 needs a streak pill, and the `comments` table
+was **empty across the whole project**. They are house content on house accounts;
+no real user's row was created, read into or modified. `@example.com` is reserved
+by RFC 2606, so neither address can collide with or deliver to a real one.
+
+**A comment shows the handle, not the name its author chose, and nobody owns the
+fix.** `supabase/functions/comments/index.ts:350` returns
+`author_display_name: profile?.username ?? null`, while every other surface shows
+`display_name`. So a reader who sets their name to "Ana" is credited as
+`ana_reads` the moment they comment. It is a bug for every author, not a
+house-account quirk -- that is only where it was noticed, because the house
+account's reply would read `vivid_lantern_51` and it cannot be renamed out of it
+(`katha`, `kathaai` and `katha_ai` are all in `profiles_username_not_reserved`,
+migration 00060). Deciding whether a comment carries the name or the handle is a
+product call with a client surface; it is **not** claimed by any round in flight,
+and it reaches phones by OTA, so it does not gate the first AAB.
 
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
