@@ -501,8 +501,12 @@ it("does not call a genre new when the reader's own filter emptied it", async ()
   expect(view.getByText(/Everything found here is by a writer you blocked/))
     .toBeTruthy();
   // And a way to carry on, since the scroll that would normally fetch the next
-  // page has no list to happen on.
+  // page has no list to happen on. It is the SCREEN'S ONLY action in this
+  // state, so it is the filled pill: the secondary variant is for when Clear
+  // filters is beside it, and without this the same single action changed
+  // weight depending on whether another page happened to exist.
   const keepLooking = view.getByText("Keep looking");
+  expect(JSON.stringify(keepLooking.props.style)).not.toContain("borderStrong");
   const before = search.mock.calls.length;
   await act(async () => {
     fireEvent.press(keepLooking);

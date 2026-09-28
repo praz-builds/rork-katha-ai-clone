@@ -607,7 +607,9 @@ export default function ExploreScreen({
                 and the other shapes already read the way a reader would say
                 it. */}
             {blockedEmptied
-              ? `No ${subject} to show`
+              ? searching
+                ? `No stories match ${subject}`
+                : `No ${subject} to show`
               : searching
                 ? `No stories match ${subject} with your filters`
                 : `No ${subject} match your filters`}
