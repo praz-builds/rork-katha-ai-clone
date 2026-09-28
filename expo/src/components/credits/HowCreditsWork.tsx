@@ -72,7 +72,12 @@ export default function HowCreditsWork() {
     <View style={styles.card} testID="how-credits-work">
       <Text style={styles.lead}>One credit = one AI action. Reading is always free.</Text>
 
-      <Text style={styles.groupTitle}>Always free, on every plan, with no cap</Text>
+      {/* Each group title is a heading. The screen this renders on is
+          nothing but a title and these three sections, so without them the
+          rotor offered one entry and no way to reach the price table -- the
+          same one-arbitrary-entry state that made marking a single heading
+          on Get credits worse than marking none. */}
+      <Text accessibilityRole="header" style={styles.groupTitle}>Always free, on every plan, with no cap</Text>
       {ALWAYS_FREE.map((line) => (
         <View key={line} style={styles.bullet}>
           <Text style={styles.bulletDot}>{"•"}</Text>
@@ -80,7 +85,7 @@ export default function HowCreditsWork() {
         </View>
       ))}
 
-      <Text style={styles.groupTitle}>What each thing costs</Text>
+      <Text accessibilityRole="header" style={styles.groupTitle}>What each thing costs</Text>
       <View style={styles.table}>
         {PRICE_ROWS.map((row, index) => (
           <View
@@ -96,7 +101,7 @@ export default function HowCreditsWork() {
         ))}
       </View>
 
-      <Text style={styles.groupTitle}>Worth saying plainly</Text>
+      <Text accessibilityRole="header" style={styles.groupTitle}>Worth saying plainly</Text>
       {PLAIN_NOTES.map((note) => (
         <Text key={note.lead} style={styles.note}>
           <Text style={styles.noteLead}>{note.lead} </Text>

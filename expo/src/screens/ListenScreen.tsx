@@ -26,6 +26,7 @@ import { NarrationLoader } from "@/components/listen/NarrationLoader";
 import { PlayerBar, type PlaybackRate } from "@/components/listen/PlayerBar";
 import { TranscriptView } from "@/components/listen/TranscriptView";
 import { imageAssets } from "@/data/images";
+import { coverUrl } from "@/lib/cover-url";
 import { getDefaultVoices, type VoiceId } from "@/data/voices";
 import { preferredVoiceId } from "@/lib/voices";
 import { captureError } from "@/lib/analytics";
@@ -266,8 +267,10 @@ export default function ListenScreen({
   }, []);
   const voiceId: VoiceId = ((preferred ?? femaleVoice) ?? "aria") as VoiceId;
 
-  const coverSource = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // `hero`: the player's cover is full-bleed behind the controls.
+  const coverUri = coverUrl(story.coverImageUrl, "hero");
+  const coverSource = coverUri
+    ? { uri: coverUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
@@ -880,6 +883,17 @@ export default function ListenScreen({
   return (
     <View style={styles.root} testID="listen-screen">
       <View style={styles.cover}>
+        {/*
+          The gradient is under the art, not an alternative to it. They were
+          the two arms of one ternary, which was invisible while the cover
+          painted at full opacity from the first frame and is not now that it
+          fades in: a player with a cover would fade up from the bare ground,
+          and a cover that never arrives would leave it bare for good.
+        */}
+        <LinearGradient
+          colors={genreGradients[story.genre]}
+          style={StyleSheet.absoluteFill}
+        />
         {coverSource
           ? (
             <FocalImage
@@ -887,14 +901,10 @@ export default function ListenScreen({
               focalX={story.focalX ?? 0.5}
               focalY={story.focalY ?? 0.5}
               style={styles.coverFill}
+              recyclingKey={story.id}
             />
           )
-          : (
-            <LinearGradient
-              colors={genreGradients[story.genre]}
-              style={StyleSheet.absoluteFill}
-            />
-          )}
+          : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close player"

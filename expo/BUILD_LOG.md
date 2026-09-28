@@ -2,6 +2,111 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Covers arrive at 70 KB instead of 2 MB
+
+- **`src/lib/cover-url.ts`** asks Supabase's transform endpoint for a cover at
+  roughly the size it will be drawn at: mini 288, card 350, hero 800, all
+  `quality=60&resize=cover`. Measured against production: the same cover goes
+  from **1,978,908 bytes** to **70,810**. It no-ops on any URL it does not
+  recognise and never transforms twice.
+- **The `Accept: image/webp` header is the other half and is easy to miss.**
+  Supabase picks WebP from the request header; there is no `format` parameter.
+  The identical transform URL without it returns PNG at 866 KB.
+- **`expo-image` replaces RN's `Image` inside `FocalImage`.** The reason is the
+  header — RN's `Image` cannot set one — with `cachePolicy="disk"`,
+  `transition`, `recyclingKey` and real `contentPosition` as the dividend.
+  Native honoured no focal point before this; it center-cropped.
+- **`StoryFeedCard`'s hand-rolled fade is deleted.** It was an `Animated.Value`
+  driven from `onLoad`, wrong first in one direction (a fast `onLoad` beat the
+  mount effect that zeroed it, so the first screenful of Explore stayed
+  invisible) and then the other (a regenerated cover reused the old opacity of
+  1 and popped in). `transition` has no ordering to get wrong.
+- **`recyclingKey={story.id}`** on every card *and* every shelf row, because
+  `FlatList` reuses rows and a recycled one otherwise paints the previous
+  story's cover.
+- **All four `FocalImage` callers, including `Cover`.** `Cover` is what
+  Library's shelves and author pages render at `size="mini"` into a **96pt**
+  box — the worst bytes-to-pixels ratio in the app, and the one caller missed
+  on the first pass. `COVER_WIDTHS.mini` having no caller at all was the tell.
+- **`COVER_WIDTHS.mini` is 288, not 232.** The docstring described a 74pt
+  surface that has no caller, so the width was 3× of the wrong box and only
+  2.4× of the real one — which would have made Library thumbnails *softer than
+  on main*, where they arrived full-size. Measure the box, then multiply.
+- **Web fades too.** `transition` is an `expo-image` prop and the web branch
+  returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with
+  a `motion.fast` (150 ms) transition, set to 1 on load — plus a `ref` that checks `complete`,
+  because a cached image can finish before React attaches `onLoad` and an
+  element stuck at opacity 0 is the "gradients forever" bug rebuilt in the DOM.
+- The 180 ms `Image.prefetch` race in `useStorySearch` is removed with its
+  test. It delayed the first paint to get a head start on a 2 MB download and
+  warmed only the session's in-memory cache: it never changed a byte fetched.
+
+## 2026-09-27: Explore gets one chip row, a mixed feed, and infinite scroll
+
+- **One chip row.** Bedtime was a single `FilterChip` in a plain `View` above
+  `GenreStrip`'s scroll, using the same chip, so two rows of identical chips
+  read as a layout accident. It is now the first chip inside that scroll, with
+  a hairline divider before the genres. `ExploreCategoryStrip` is deleted. The
+  two selections stay independent: a reader can want bedtime comedy.
+- **The feed no longer arrives in genre blocks.** Every engagement count is
+  zero, so every sort ties, `Array.prototype.sort` is stable, and the list fell
+  through to the server's `created_at desc` -- which, because the Originals were
+  published in genre blocks, *is* the genre blocks. `seededShuffle` with
+  `dailyFeedSeed` now decides the ties before the sort (so a real count still
+  wins), and a new `spreadByKey` in `src/lib/feed-shuffle.ts` deals the result
+  out by genre round-robin.
+- **Infinite scroll.** `searchStories` takes a `page` and ends in `.range(...)`
+  with `order("id")` as a total tie-break; `SearchOutcome` carries `hasMore`
+  from the server's row count, before the genre narrowing clips it.
+  `useStorySearch` gains `loadMore`/`loadingMore`/`hasMore` with its own guards
+  -- it continues a query rather than starting one, so the existing sequence
+  guard is not enough on its own. The footer is a spinner, an end-of-list line,
+  or nothing.
+- **`FlatList` is virtualised for the first time.** `initialNumToRender`,
+  `maxToRenderPerBatch`, `windowSize` and `removeClippedSubviews` were set
+  nowhere in the app before this.
+- **Ordering is per page, not per list, and that is load-bearing.** The shuffle
+  and the interleave are whole-list operations; run over a list that grows they
+  re-order the rows already on screen, and the first version did exactly that —
+  4 of the first 24 positions survived a page arriving. `useStorySearch`
+  reports `pageStarts`, the screen orders each page among its own rows, and a
+  rendered page is never an input to anything again. The seam can repeat a
+  genre; the whole list moving is worse. The seed is read once per mount, so a
+  recompute crossing midnight cannot re-deal the feed either.
+- **The auto-advance chase is bounded at two pages**, and that took four
+  attempts. When a client-side filter (tags, blocked authors) empties a page
+  there is no list, so `onEndReached` cannot fire and the screen fetches the
+  next page itself. Three versions guarded that by remembering *where* the last
+  chase happened, and none of them bounded the case it exists for: a page full
+  from the server and empty after narrowing still grows `pageStarts`, so the
+  marker moved and the walk ran page after page. It counts chases now.
+- **And `loadingMore` reaches `listEmpty`.** `status` is `"ready"` while that
+  walk runs, so the reader was shown "This genre is new here" over two dozen
+  fetched stories, with no spinner, because the footer draws nothing when the
+  list is empty.
+- **And the empty state stopped blaming the catalogue for the reader's own
+  filters.** Bounding the chase stops the requests; it does not decide what the
+  screen then says, and what it said was "This genre is new here. More will
+  appear as writers publish in it" — over rows that had been fetched and then
+  removed by a tag or the block list, with more pages unasked for, and no way
+  out, because `onEndReached` cannot fire against an empty list. There are three
+  cases now and the right one is chosen by *which* filter emptied it:
+  `searched` is what the server returned, `results` is after the block list and
+  before the tags, so an empty `results` means the block list took everything
+  whatever is checked. A tag gets "your filters are narrower than the
+  catalogue" and a **Clear filters** button; the block list gets its own
+  sentence and no button that would change nothing; `hasMore` adds **Keep
+  looking**, which is the manual form of the scroll that cannot happen without
+  a list — filled when it is the only action on the screen, secondary only
+  when Clear filters is beside it. The title splits the same way the body does:
+  naming the filters over a sentence that says the block list did it points the
+  reader at the panel's Clear, which no-ops in that state, and the TAGS section
+  is hidden there anyway because the panel's chips come from the rows that came
+  back. It runs above the genre and the search gates, because the same false
+  statement was in both — a tag left checked while you type gives 24 rows that
+  match the term perfectly and a screen offering a spelling fix.
+- Covers are untouched and still the slowest thing here. Separate branch.
+
 ## 2026-09-27: How credits work becomes its own screen
 
 - **Profile's two credit rows now go to two places.** "Credits · Get more" and
@@ -49,9 +154,25 @@
      than prefixing them, so labelling it "Get free credits" made the whole
      sub-line silent. The label is built from `freeCreditsSubtitle` so the two
      cannot drift.
+- **Every heading on both screens carries the role, not just the one that
+  takes focus** (added 2026-09-28). Marking a single one made heading
+  navigation *worse* than marking none: the rotor found "Free credits" and
+  offered no way to reach Paid options or History, and the new prices screen
+  had no entry at all. Get credits' three sections and both screen titles have
+  it now — and so do the three section titles inside `HowCreditsWork` itself
+  ("Always free…", "What each thing costs", "Worth saying plainly"), which is
+  the whole body of the prices screen, so without them that screen's rotor
+  stopped at the title and the price table was unreachable except by swiping
+  line by line. `HowCreditsWork` has exactly one caller, so nothing else moves.
+  Both screens' tests assert it.
 - Known and deliberate: Android's hardware back calls no handler here, as on
   `CreditsScreen`, `VoicesScreen` and `JourneyScreen`. It wants one change
   across every pushed screen rather than an exception on this one.
+- Also deliberate: `accessibilityRole="header"` is right for VoiceOver and
+  TalkBack, which is what this is for. On react-native-web it maps to an HTML
+  `<header>` rather than a heading, so browser heading navigation still finds
+  nothing — that is the established pattern at ~20 sites in this client and
+  changing it belongs in its own pass, not here.
 
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 

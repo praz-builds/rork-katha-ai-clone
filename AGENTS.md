@@ -37,33 +37,99 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-27)
+## Production state (last verified 2026-09-28, main at `d92ceee`)
 
-**The whole function surface is current with main at `e7222fb`, and nothing was
-deployed on 2026-09-27 because nothing needed it.** All **34** functions were
+**The whole function surface was current with main at `e7222fb` on 2026-09-27,
+and nothing was deployed that day because nothing needed it.** All **34** functions were
 downloaded and every `.ts`/`.json` file in them compared byte for byte with this
-checkout: **346 of 346 identical, zero drift.** The migration ledger is aligned
-`00001`-`00099` with nothing pending. Re-run it yourself with
+checkout: **346 of 346 identical, zero drift.** The migration ledger was aligned
+`00001`-`00099` with nothing pending on that date; see the 09-28 deploy below
+for where it stands now. Re-run it yourself with
 `scripts/audit-function-drift.sh`, which is this audit as a script and exits
 non-zero on drift; it was negative-controlled first (appending one comment line
 to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**One known exception, from the moment this branch merges.** The voice-preview
-round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
-is part of the module source, so the deployed bundle and main diverge until it
-ships. **`scripts/audit-function-drift.sh` will report drift on that one
-function, and it is a true positive.** Deploy `seed-voice-previews` and the
-surface is clean again; nothing under `_shared/` was touched, so there is no
-importer closure. Do not read that one row as a false alarm and wave the audit
-through -- "16 functions behind main" is on this page because somebody did.
+**Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: 346 of
+346 identical, zero drift, nothing to deploy.** That number is true of that
+commit and stops being true the next time anything under
+`backend/supabase/functions/` merges, so read the commit, not the word "zero".
 
-**Whoever deploys it deletes this paragraph.** It is only true between that
-merge and that deploy, and left standing afterwards it is a false exception
-sitting directly under a zero-drift baseline, on the page whose whole job is to
-be what an operator can trust about production. The person running the deploy is
-the only one who knows it has stopped being true.
+**Then #156 shipped, so 2026-09-28 was a deploy day after all.** In order:
+`supabase db push` applied **`00100_feedback_monthly_cap_five`**, and
+`credit-claims` was redeployed because it is the only edge caller of the two
+functions that migration replaces. Re-audited afterwards against main at
+`d92ceee`: **346 of 346 identical, zero drift.** So the ledger is now aligned
+`00001`-`00100`, not `00001`-`00099`, and **the feedback claim caps at five a
+month in production**, not six.
+
+An exception used to stand here saying `seed-voice-previews` would drift, because
+#157 changed its docblock and a comment is module source. It was accurate when
+written and stayed accurate for about two minutes: `ed4d4a1` merged at 20:29 UTC
+and the author deployed the function at 20:31. What left it on this page was that
+the deletion landed on an unmerged branch, which is the one place deleting it
+does nothing. Verified before removing it -- the deployed bundle carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main.
+
+**So do not write drift exceptions in advance.** The paragraph outlives the
+condition it describes, and one telling an operator that a drift row on a named
+function is expected is a documented reason to wave through a real one -- the
+"16 functions behind main" failure this page already records. Run
+`scripts/audit-function-drift.sh` instead; a deploy obligation belongs in the
+build log, dated and specific.
+
+**"No function or migration changed" is not "production is unchanged".** Three
+sessions wrote to production data on 2026-09-27 without touching a function or a
+migration, so the zero-drift statement above is narrower than it reads and must
+not be quoted as though production were frozen:
+
+| Written | By | Reversible |
+|---|---|---|
+| `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` in the `audio` bucket, plus two `error_events` rows | the voice-preview round | no, and not wanted |
+| Two house reader accounts (`ana_reads`, `tomas_ferreira`, both at `@example.com`), one comment each on *A Bridge by Cockcrow*, `stories.comment_count` set to match, and a 3-day `streaks` row for the house account | the screenshot-fixture round | yes -- `backend/scripts/seed-screenshot-fixtures.ts --teardown`, **while the project has under 200 auth users**: `findAuthUser` reads one page, and past that the teardown prints `absent`, skips both deletes and exits 0 with the fixtures still in production |
+
+The fixtures exist because `store/android/screenshot-plan.md` frame 7 needs
+comments on an Original and frame 1 needs a streak pill, and the `comments` table
+was **empty across the whole project**. They are house content on house accounts;
+**no real user's row was created or modified.** It does read: every invocation,
+including the report-only default, lists up to 200 auth users to find the
+fixture accounts, and reports every comment on the target story whoever wrote
+it. `@example.com` is reserved
+by RFC 2606, so neither address can collide with or deliver to a real one.
+
+**A comment shows the handle, and so does everything else. Whether it should is
+an open product call, not a drifted call site.** A reader who sets their name to
+"Ana" is credited as `ana_reads` the moment they comment --
+`backend/supabase/functions/comments/index.ts:350` returns
+`author_display_name: profile?.username ?? null`. That is the design as the
+schema records it, not an inconsistency: `feed/index.ts:617` takes the byline on
+every story card from `profiles.username`, `expo/src/screens/AuthorScreen.tsx:173`
+renders `@username`, and migration 00069's own column comment on
+`profiles.display_name` reads *"not routable, never shown on a public byline
+(that is username)"*. `display_name` reaches a reader only through the greeting
+and the settings field, both owner-facing.
+
+So **do not "fix" line 350 on its own.** That ships a thread reading "Ana" beside
+a feed card and an author page still reading `ana_reads` for the same person,
+with 00069's column comment now contradicting shipped behaviour -- worse than
+today, reached by following this row exactly. If the product call is that a
+comment carries the name, it is at least five edits: `comments/index.ts:350`
+(the list) **and `:459`** (the body returned when a comment is created), both
+selects that feed them (`:304` and `:415`, which ask for `username` alone and
+would return `null` otherwise), plus `feed/index.ts` and the author page, plus
+00069's comment. Fixing one of the two mappings ships a byline that changes
+between posting and refetching, within one screen, and looks done.
+
+One thing that is simply stale whichever way the call goes:
+`backend/supabase/functions/feed/index.ts:615` says *"`display_name` has never
+existed on profiles."* `00069:41` adds it.
+
+The house account makes the question visible rather than creating it: its reply
+would read `vivid_lantern_51`, and it cannot be renamed out of it (`katha`,
+`kathaai` and `katha_ai` are all in `profiles_username_not_reserved`, migration
+00060). Not claimed by any round in flight, client-side, and it reaches phones by
+OTA, so it does not gate the first AAB.
 
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
@@ -89,7 +155,11 @@ be applied. `reader_preferences` is not in the tree at all, so nothing here
 asks you to skip a file you can see. Before pushing, check that `00100` is
 absent from `supabase_migrations.schema_migrations` — `db push` keys on the
 numeric prefix, not the name, so a database that ever had the withdrawn one
-applied would skip the new one, exit 0 and report nothing.
+applied would skip the new one, exit 0 and report nothing. If the row is
+there, `supabase migration repair --status reverted 00100` clears it and the
+push then applies the file. **Production is not in that state**: the ledger
+was `00001`-`00099` when `00100_feedback_monthly_cap_five` was applied on
+2026-09-28, so this is for shadow and local databases.
 
 **Country Story world has no migration.** Its checked-in contract changed six
 non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,
@@ -558,7 +628,7 @@ Rules and known failure modes:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00099` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (Both numbers moved on 2026-09-25: `00094`→`00099`, and the function count went 37→33 when the four phrase functions were deleted in #135, then →34 when `app-feedback` was added in #140.)
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00100` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (The numbers moved on 2026-09-25, `00094`→`00099`, and again on 2026-09-28 when `00100_feedback_monthly_cap_five` was applied; the function count went 37→33 when the four phrase functions were deleted in #135, then →34 when `app-feedback` was added in #140.)
 
 **Take the next number from `origin/main`, never from your own directory listing.** `schema_migrations` keys on the version string, so once production has recorded `00093`, a *different* `00093` is considered already applied: `supabase db push` skips it, reports success, and the change never reaches production. Nothing errors, every test passes, and it works on the machine where it was written. This has happened twice -- `00056` is the renumbered `story_shape_no_anonymous_ceiling`, which shared `00046` with `engagement_persistence`, and on 2026-09-20 `00093` was taken by both `story_bible_rev` (#115) and a music branch cut before it merged.
 
@@ -1311,7 +1381,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - `TabKey` (`expo/src/types/domain.ts`): `"home" | "explore" | "create" | "library" | "profile"`. Profile is a real tab, not an avatar overlay.
 - Every tab screen pads its scroll content by `TAB_BAR_CLEARANCE` (exported from `BottomTabs.tsx`), never a literal.
 - **Home** (`expo/src/screens/HomeScreen.tsx`, one pure row-builder): Your stories -> Continue reading -> **Tonight** (`expo/src/lib/home-tonight.ts`, only when a reader answered the mood question in onboarding this session) -> Katha Originals -> one rail per onboarding genre, ordered by reads. Tonight is session-only by design ("Tonight only"); it is never persisted, and choosing Writing on the way back clears it. The order is the product owner's; do not reorder it in code.
-- **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86). **No header row** -- the "You" link that sat top-right was removed 2026-09-25; Profile is its own tab. A genre chip filters on `primary_genre`, and on the legacy `genre` array **only for a row with no `primary_genre`** (`genreClause` in `expo/src/lib/search.ts`): the array lists secondary genres too, and matching it unconditionally put mysteries and sci-fi under Adventure. The eyebrow names the sort order (`Trending` by default) with no genre, and only the genre when one is chosen, unless the reader picked a non-default sort.
+- **Explore** (`expo/src/screens/ExploreScreen.tsx`): discovery across genres and authors (PR #86). **No header row** -- the "You" link that sat top-right was removed 2026-09-25; Profile is its own tab. A genre chip filters on `primary_genre`, and on the legacy `genre` array **only for a row with no `primary_genre`** (`genreClause` in `expo/src/lib/search.ts`): the array lists secondary genres too, and matching it unconditionally put mysteries and sci-fi under Adventure. The eyebrow names the sort order (`Trending` by default) with no genre, and only the genre when one is chosen, unless the reader picked a non-default sort. **Bedtime shares that one scrolling row** as its first chip, before a divider, and stays an independent selection -- a reader can want bedtime comedy. **The list pages**: 24 at a time, ordered per page rather than across the whole list, because the tie-break shuffle and the genre interleave are whole-list operations and running them over a growing list re-deals the rows already on screen. When a client-side filter empties a page the screen fetches the next one itself, at most twice, because there is no list for `onEndReached` to fire from.
 - **Home's exit into Explore** is a compact secondary **Explore all** button, centred and hugging its label -- not a full-width button, which read as the screen's main action.
 - **Somebody's public profile** (`expo/src/screens/AuthorScreen.tsx`) has **no streak calendar**: follow counts, then a named **Stories** list of their public stories, with an honest empty state ("@handle has not published a story yet") and a distinct could-not-load state. The owner's calendar lives on Journey only. The server side is unchanged: the `profile` function's `calendar` action still returns another author's days when they have published (`_shared/profile.ts`, `activity_calendar`), so the calendar is hidden, not private; nothing in the app asks for another person's any more.
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.

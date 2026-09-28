@@ -287,6 +287,159 @@ is for what an OTA or a console toggle can deliver, and the ladder starts paying
 with the first build that carries this branch. The canonical rule is annotated too: a reader
 checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
 `AGENTS.md`, not a chronological log, and both now say what is enforced.
+## 2026-09-28 UTC — The five-a-month cap is live, and the rotor reaches the prices
+
+**Session:** the deploy of #156, the two items its last review raised after it
+had merged, and the operator-docs round from #161, whose session closed with
+findings open. Branch `codex/credits-a11y-and-repair`; it supersedes #161.
+
+### Deployed
+
+1. **`supabase db push`** — `00100_feedback_monthly_cap_five`, the only pending
+   migration. The ledger read `00001`-`00099` beforehand, which is the check the
+   file's own warning asks for: the number was used once by the withdrawn
+   `00100_reader_preferences`, and `db push` keys on the numeric prefix rather
+   than the name, so a database carrying that row would have skipped this file
+   and exited 0 with the cap still at six. Production was not in that state.
+2. **`supabase functions deploy credit-claims`** — the only edge caller of the two
+   functions that migration replaces (`claim_comment_credit` is deliberately
+   not redefined, and re-derives its verdict from one of them under the lock).
+3. **`scripts/audit-function-drift.sh` against `d92ceee`: 346/346 identical, 0
+   drifted.** Merged is not deployed, and the CLI saying "Deployed Functions."
+   is not evidence; the diff of the downloaded bundles is.
+
+**The feedback claim now caps at five a month in production.**
+
+### Two items from the review that landed after the merge
+
+**Heading navigation stopped one level short.** #156's argument was that a rotor
+with one arbitrary entry is worse than an empty one, and it fixed that on
+`CreditsScreen` and on the new screen's title -- but `HowCreditsWork`, which is
+that screen's entire body, has three section titles of its own and none of them
+carried the role. So the rotor offered "How credits work" and no way to reach
+the price table. It has exactly one caller, so the three lines affect nothing
+else, and the test that already asserts the title now asserts all four.
+
+**The `db push` warning named the check and not the repair.** An operator who
+finds the row had no next step. It is
+`supabase migration repair --status reverted 00100`, then push again.
+
+### The docs, brought level in the same push
+
+`AGENTS.md`'s *Production state* opened by saying the ledger was aligned
+`00001`-`00099` with nothing pending, fifty lines above this entry's own record
+of `00100` being applied — so an operator reading the section lead would have
+concluded the cap had not shipped and either reported it as still six or run
+`db push` again looking for it. The lead now carries the deploy, the new ledger
+range and the post-deploy audit against `d92ceee`.
+
+`backend/ROADMAP.md`'s credits section said migration 00089 and a cap the
+pricing doc no longer states; it names 00100 and the five.
+
+### Verification
+
+Expo **1671/1671** across 155 suites, typecheck clean, lint 0 errors. The only
+code in this change is three `accessibilityRole` attributes; everything else is
+documentation, and no migration or function is touched, so nothing to deploy
+from it.
+## 2026-09-28 UTC — Bring the operator docs level with three sessions' production writes
+
+**Session:** docs only, after #155, #157 and #158 all landed within a few hours of
+each other. Nothing was deployed, no migration, no production write.
+Branch `codex/docs-current-0928`.
+
+Three rounds wrote to production on 2026-09-27 and the pages an operator trusts
+had not caught up with any of them together.
+
+### AGENTS.md, Production state
+
+- **Says plainly that "no function or migration changed" is not "production is
+  unchanged".** The zero-drift line reads as though production were frozen, and it
+  is not: a table now names what was written, by which round, and whether it can be
+  taken back — the six `voice-previews/*.mp3` objects and two `error_events` rows
+  from the voice round, and this week's screenshot fixtures with their
+  `--teardown`. The phrasing that needed fixing was mine, from the entry below.
+- **Records that a comment shows the handle, not the author's chosen name**, as an
+  unclaimed bug rather than a house-account curiosity, with why renaming cannot fix
+  it and the note that it ships by OTA and so does not gate the first AAB.
+
+### A drift exception that was false before the ink dried
+
+#157 added a paragraph to Production state warning that
+`scripts/audit-function-drift.sh` **would** report drift on
+`seed-voice-previews`, because that round changed its docblock and a comment is
+part of the module source. It said the reading would be a true positive, and that
+whoever deployed the function should delete the paragraph.
+
+Re-running the audit said otherwise: **346 of 346 identical, zero drift.** So the
+deployed bundle was fetched on its own and checked directly -- it carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main, meaning that function had
+been deployed as well as merged.
+
+**Corrected after the author supplied timestamps:** this entry first said the
+exception was untrue by the time it was written. It was not. `ed4d4a1` merged at
+20:29 UTC and the author deployed `seed-voice-previews` at 20:31, so it was
+accurate for about two minutes. What left it standing on main is that the author's
+deletion of it landed on an unmerged branch -- the one place deleting it does
+nothing -- and main kept the paragraph. The removal was still right, for the
+reason below rather than the one first given: it sat immediately under a zero-drift
+baseline, where the next operator would have had a documented reason to wave a real
+drift row through. Deleted per its own instruction, with the measured result in its
+place.
+
+The lesson is kept on the page instead of the exception: an exception written in
+advance outlives the condition it describes, so run the audit rather than trust a
+paragraph about it.
+
+### ROADMAP
+
+- A P1 row for the comment name-versus-handle decision, marked unclaimed, with its
+  store consequence spelled out: frame 7 has two reader comments and no author
+  reply until it lands.
+- The EAS build row carries the preflight result, so the founder can see that
+  nothing app-side blocks the build and that the project id is the only missing
+  value in the config. It also states what was *not* re-checked —
+  `blockedPermissions` against a freshly built merged manifest.
+
+### Verification
+
+- `scripts/audit-function-drift.sh` against `84f94fa`: **34 functions, 346 files,
+  346 identical, zero drift**, exit 0. The migration ledger was unchanged at
+  `00001`-`00099` on that date; `00100` was applied on the 28th, recorded in the
+  entry above.
+- The `seed-voice-previews` bundle was downloaded on its own and `cmp`d against
+  main, because one slug's status was the claim in question and an aggregate zero
+  could have hidden a skipped download.
+- Docs only. No deploy, no migration, no production write from this session.
+
+**Merged into the entry above rather than shipped on its own.** That session
+closed with two review findings open, and both were about sending the next
+agent at the wrong work:
+
+- **The handle-on-a-comment row had its premise backwards.** It read as an
+  unclaimed one-line defect — `comments/index.ts:350` returns `username`
+  "while every other surface shows `display_name`". No surface does:
+  `feed/index.ts:617` takes every story card's byline from `username`,
+  `AuthorScreen.tsx:173` renders `@username`, and 00069's own column comment on
+  `display_name` says it is "never shown on a public byline (that is
+  username)". Following the row as written would have shipped a thread reading
+  "Ana" beside a feed card still reading `ana_reads`. It is now a product call
+  with its real edit set, and it names the one thing that is simply stale
+  either way: `feed/index.ts:615` claims `display_name` has never existed, and
+  `00069:41` adds it.
+- **Both citations named one of two identical call sites.** The mapping is at
+  `:350` and at `:459`, and both selects ask for `username` alone (`:304`,
+  `:415`), so changing one ships a byline that differs between posting and
+  refetching — within one screen, looking done.
+
+Three smaller ones came with them: the fixture script *does* read (it lists up
+to 200 auth users on every invocation, including the report-only default), so
+the claim is "no real user's row was created or modified"; `--teardown` stops
+being reversible at 201 auth users, because `findAuthUser` reads one page and
+then prints `absent`, skips both deletes and exits 0; and the preflight's
+"nothing app-side blocks the build" is scoped to `ca4a68e`, which is behind
+main.
+
 
 ---
 
@@ -372,6 +525,45 @@ The i18n sweep also checked for untranslated values: 6 strings in `es` and 7 in
 merged manifest this round; it is pinned by `release-config.test.ts`, which
 passed inside the 1,649, and was confirmed against a locally built release AAB on
 2026-09-25 (#138). A fresh gradle build would be the stronger check.
+
+### The chase took four passes to get right, and the last one found the bound was not a bound
+
+Three of these were recorded above as fixed and were not. Keeping the sequence,
+because the shape repeats: **each attempt moved the number the guard holds
+instead of changing what the guard is about.**
+
+1. **Count rows.** Collides with certainty: page 0 is exactly
+   `SEARCH_PAGE_SIZE` whenever `hasMore` is true, so the stored value is always
+   24 and a second query that also narrows to nothing never advances.
+2. **Count pages.** Worse: the first advance of any query happens when only
+   page 0 has landed, so the value is always 1 -- and every fresh query starts
+   at `pageStarts: [0]`, which is also 1.
+3. **Reset the ref on the query.** Right axis at last, and still not enough:
+   the guard was armed on a `loadMore()` the guards had *refused*, and the
+   effect never re-ran after the page it was waiting for landed, because every
+   dep was value-identical across it. `loadMore` now reports whether it acted,
+   and the effect depends on `pages`, which is a fresh array per update.
+4. **Count the chases.** The bound above was still no bound for the case this
+   whole mechanism exists for. A marker like `pageStarts.length` only stops the
+   walk when the page added nothing to the *hook's* rows -- the server-narrowed
+   case. A page that is **full from the server and empty after the client
+   narrows it** -- a tag filter, or an author the reader blocked -- grows
+   `pageStarts`, so the marker moves and the walk runs page after page. A
+   reader who leaves a tag on and taps a genre marched through it 24 rows at a
+   time without scrolling. `MAX_AUTO_CHASES` is 2.
+
+**And the reader was shown a false verdict for the whole walk.** `listEmpty`
+branched on `status` alone, and `status` is `"ready"` throughout -- the hook
+sets it from the rows the *server* returned, which were plentiful. So the screen
+read "No Fantasy stories yet. This genre is new here." over two dozen fetched
+fantasy stories, with no spinner anywhere, because `listFooter` draws nothing
+while the list is empty. `loadingMore` now reaches `listEmpty`.
+
+The test that could not see any of this returned an *empty* page, which stops
+after one pass for an unrelated reason. The new one blocks the author of every
+row, so each page is full from the server and empty after narrowing;
+negative-controlled against the marker guard, where it runs until the harness
+gives up.
 
 ### Verification
 
@@ -516,6 +708,516 @@ Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
 checks are the `curl`s above, run against the live project. No migration. One
 function to deploy, `seed-voice-previews`, and only for the docblock — the
 seeding itself was an invocation of an already-deployed function.
+## 2026-09-27 UTC — Covers arrive at 70 KB instead of 2 MB
+
+**Session:** fourth and last branch of the pre-launch polish round. Branch
+`codex/cover-image-speed`, in its own worktree, off `ca4a68e`. Client only: no
+migration, no function, no deploy.
+
+### The measurement, before the change
+
+A published cover is a full-size PNG in the `covers` bucket. One sampled from
+production:
+
+| What | Bytes |
+|---|---|
+| `…/object/public/covers/covers/<id>/cover.png` | **1,978,908** |
+| `…/render/image/public/…?width=350&quality=60` | 865,744 *(still PNG)* |
+| the same, with `Accept: image/webp` | **70,810** |
+
+Explore draws that into a box about 116x155pt, six at a time. **28x**, and the
+transform endpoint is already enabled on this project — nothing had to be
+turned on.
+
+**The `Accept` header is the whole trick and it is easy to miss.** Supabase
+decides WebP from the request header; there is no `format=webp` parameter. The
+identical transform URL fetched without it comes back as PNG at 866 KB —
+better, and twelve times worse than it needs to be, with nothing failing.
+
+### Why the previous attempt could not have worked
+
+PR #119 added a cover "prefetch warm-up" to `useStorySearch`: `Image.prefetch`
+on the first six covers, raced against a **180 ms** timeout before the rows
+were handed to the list. It is deleted here, along with its test, and it is
+worth writing down why rather than quietly removing it:
+
+- It delayed the first paint by up to 180 ms to get a head start on a ~2 MB
+  download. The race was designed to lose.
+- `Image.prefetch` on React Native warms the in-memory/HTTP cache for the
+  session only. There was no persistent cache to warm.
+- It never changed a single byte fetched.
+
+What was actually needed was fewer bytes and a real disk cache.
+
+### What landed
+
+- **`expo/src/lib/cover-url.ts`** rewrites `/object/public/` to
+  `/render/image/public/` and appends a width per surface (mini 288, card 350,
+  hero 800, all at `quality=60&resize=cover`). It is a **no-op on anything it
+  does not recognise** — an uploaded cover on another host, a data URI, a
+  bundled asset, null — and idempotent, so two callers resizing the same URL
+  cannot produce `?width=350?width=288`. Being wrong here has to mean "no
+  faster", never "no image".
+- **`expo-image@3.0.11`** (the SDK 54 version) replaces RN's `Image` inside
+  `FocalImage`, which is the single chokepoint every cover goes through. The
+  reason is the header, not the cache: RN's `Image` gives no way to set one,
+  and `expo-image` takes `headers` on the source. `cachePolicy="disk"`,
+  `transition`, `recyclingKey` and real `contentPosition` come along with it.
+  Native honoured no focal point at all before this; it center-cropped.
+- **The hand-rolled fade is gone from `StoryFeedCard`.** It was an
+  `Animated.Value` driven from `onLoad` and it was wrong in both directions
+  before it was right: first revealing too late (a fast `onLoad` beat the mount
+  effect that zeroed it, which is the "first screenful of Explore is gradients
+  forever" report), then too early (a regenerated cover reused the old value of
+  1). Both are one bug — a fade whose correctness depends on the ordering of a
+  callback and an effect — and `transition` removes the ordering question
+  along with the state.
+- `recyclingKey={story.id}`, because `FlatList` reuses rows and without it a
+  recycled row paints the previous story's cover until the new one decodes.
+  That looks like a correct card until you read the title beside it.
+
+### What review caught, and one of them was a third of the saving
+
+- **`Cover` was the fourth caller and it was missed.** Three of `FocalImage`'s
+  four callers were converted; `Cover` in `KathaPrimitives.tsx` was not — and it
+  is the one Library's shelves and every author page render, at `size="mini"`
+  into a **96pt box** (recorded here as 74pt on the first pass, which is where
+  the undersized width below came from), the worst bytes-to-pixels ratio in the
+  app. A
+  reader with twenty saved stories downloaded about **40 MB** of full-size PNG
+  to paint twenty thumbnails. Three things followed from that one line: no
+  transform, **no `Accept` header** (because `isTransformedCover` is false for a
+  raw object URL, so the silent half bit from the other direction), and no
+  `recyclingKey`. The evidence was sitting in the branch: `COVER_WIDTHS.mini` is
+  defined and documented for "~74pt wide" and **no source file called
+  `coverUrl` with `"mini"`**. `Cover` already took `size?: "card" | "mini"`, the
+  same two names, so the fix is `coverUrl(story.coverImageUrl, size)`.
+- **Web lost the cross-fade two docblocks said it had.** `transition` is an
+  `expo-image` prop and the web branch returns a bare `<img>` before reaching
+  it, while `StoryFeedCard`'s `Animated.View` was deleted unconditionally — so
+  on the one surface this client can currently be looked at, the cover popped
+  in. Now CSS: `opacity: 0` with a `motion.fast` transition, set to 1 on load.
+  **And a `ref` that checks `complete`**, because a cached image can finish
+  before React attaches `onLoad`, and an element left at opacity 0 with no
+  event coming is the "gradients forever" bug rebuilt in the DOM. With the
+  `complete` check the only way to stay hidden is an image that genuinely never
+  arrived, where the gradient is the right thing to be looking at.
+- **The half the PR called unfindable had no test.** `cover-url.test.ts` proved
+  `isTransformedCover` classifies and that the header constant says `webp` —
+  both properties of that module alone. The wiring is in `FocalImage`, and
+  `story-feed-card.test.tsx` mocks `FocalImage` away, so nothing in the suite
+  ever executed the branch: deleting `headers` left every test green and every
+  cover twelve times bigger. `focal-image.test.tsx` renders it, and was
+  negative-controlled — removing the header fails exactly one test.
+
+### And four from the round after, three of them in the web fade itself
+
+The commit that added the web cross-fade was the one place in the branch with
+no test, and its failure mode is the picture rather than the bytes — which is
+the argument that commit itself makes, turned on its own newest code.
+
+- **Nothing in the suite rendered the web branch.** `story-feed-card` stubs
+  `FocalImage` out, `genres.test.tsx` renders the real one without setting a
+  platform (so it takes the native path), and no other file sets `"web"` *and*
+  renders a cover. Deleting the load handler left every test green and every
+  cover on that surface **blank**. `focal-image.test.tsx` now has a `web`
+  describe, negative-controlled: removing the reveal fails exactly one test.
+- **A regenerated cover popped in on web.** Opacity is written imperatively to
+  the DOM node, and React rewrites only the style keys that changed — `opacity:
+  0` is in both renders, so the `1` from the previous load survived and the new
+  art appeared at full strength. That is the *second* of the two bugs this
+  branch claims to have deleted as a class. `key` on the uri remounts it.
+- **Two of the four callers had nothing behind the fade.** `Cover` and
+  `ListenScreen` made the image and the gradient the two arms of one ternary,
+  so a story WITH a cover rendered no gradient at all. Invisible while the art
+  painted at full opacity from the first frame; not once it fades in — a shelf
+  thumbnail faded up from flat sepia, and a cover that never arrives (a 404, or
+  the `cover://` sentinel written while generation is in flight) left a flat
+  square with no fallback. Both now layer, as the card and the hero always did.
+- **`COVER_WIDTHS.mini` was undersized, by this file's own rule.** The docstring
+  said 74pt and four other places repeated it; `miniCover` is **96pt**. 232 is
+  3x of 74 and 2.4x of 96, so Library and author thumbnails would have been
+  *softer than on main*, where they arrived full-size — a regression dressed as
+  an optimisation. 288, and the docstring now names the component it measures.
+
+### And the fix worth a third of the saving had no test
+
+`Cover` is the caller that Library's shelves and every author page render, and
+it was the one missed on the first pass. It was also the only change in the
+branch nothing guarded: revert `coverUrl(story.coverImageUrl, size)` there and
+`cover-url.test.ts` still passes (it tests the function), `focal-image.test.tsx`
+still passes (it tests the component with a URL it builds itself), and
+`story-feed-card.test.tsx` still passes (it pins the card's call, not `Cover`'s).
+The suite stayed green while every shelf went back to ~2 MB per 96pt thumbnail.
+
+`cover-surfaces.test.tsx` renders `Cover` and reads the width back off the
+source, at both sizes, plus the recycling key, the untouched foreign host and
+the gradient under the art. Negative-controlled: with the call reverted it fails
+and the other three files do not.
+
+One thing learned building it: `Cover` and `FocalImage` live in the same module,
+and a module-internal reference does not go through a `jest.mock` of that
+module — mocking `FocalImage` renders the real one. Mocking `expo-image`, the
+leaf it actually renders, is both simpler and closer to what ships.
+
+**`mini 232` survived in both logs**, four lines above the bullet correcting it
+to 288, in the "what landed" line a reader skims. Both now say 288, and the
+idempotence illustration no longer shows a string the module cannot produce.
+
+**The fade is `motion.fast` — 150 ms, down from a hand-written 180**, in place
+of two literals in two syntaxes, one in the CSS transition and one in the
+`expo-image` prop. Not purely a refactor: every cover fade is 17% faster. The
+web test now asserts the token rather than just the presence of a transition,
+so the two halves cannot drift back apart.
+
+### Sequencing with #159
+
+Both branches rewrite `useStorySearch.ts` in opposite directions: #159 builds on
+the prefetch apparatus this one deletes. **Merge #159 first, then rebase this
+one**, which resolves the conflict in the only direction that makes sense —
+there is nothing left to warm once a cover is 70 KB and `cachePolicy="disk"` is
+a real disk cache. That also answers #159's open item about appended pages
+getting no warm-up: it is answered here, by deletion, rather than by a fix
+there.
+
+### Verification
+
+Expo **1667/1667** across 155 suites, typecheck clean, lint 0 errors, and the
+web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
+native dependency. The baseline is the entry above: **1651 across 153**, so
+this is +16 tests and +2 suites.
+
+The +16 is 24 added against 8 deleted:
+
+- **`cover-url.test.ts`, 7.** Six of them about *not* breaking an image, and one
+  pinning the rewrite to the `Accept` header so the two halves cannot drift
+  apart.
+- **`focal-image.test.tsx`, 8**, all eight: the header it sends, the header it
+  does not send for a cover it never rewrote, a bundled asset passed through
+  untouched, the crop settings, the URL the web branch asks for, the fade
+  starting hidden and revealing itself on load, the remount on a new source,
+  and a cached image the web `load` event will never fire for. **Both halves of
+  the fade now assert `motion.fast`** — pinning only the web one left native
+  free to go back to a literal, which is the drift the pinning was for.
+- **`cover-surfaces.test.tsx`, 6.** That the *screens* call `coverUrl` — the
+  half that has already been wrong once, and the one the other two files cannot
+  see. Five render `Cover` for the `card` and `mini` surfaces; the sixth reads
+  `StoryDetailScreen` and `ListenScreen` as text, because they call `coverUrl`
+  themselves and `hero` was otherwise the one width nothing pinned — on the
+  pair (the helper is imported, and `"hero"` is what it is asked for) rather
+  than on one spelling of the call, so a reformat cannot turn it red.
+- **`story-feed-card.test.tsx`, +3 and −3.** It lost its three opacity tests,
+  which tested a mechanism that is now the library's, and gained three on what
+  the card still decides for itself: the URL it asks for, the URL it leaves
+  alone, and the recycling key.
+- **`explore-cover-prefetch.test.tsx`, −5**, deleted with the race it covered.
+
+Every one of those failures is silent: a full-size cover looks identical, just
+slower.
+## 2026-09-27 UTC — Explore gets one chip row, a mixed feed, and a bottom it can pass
+
+**Session:** third branch of the pre-launch polish round, from founder feedback
+on four screenshots. Branch `codex/explore-layout-and-paging`, in its own
+worktree, off `ca4a68e`. Client only: no migration, no function, no deploy.
+
+### Three faults, and they are unrelated to each other
+
+**1. Bedtime sat on a shelf above the genres.** `ExploreCategoryStrip` rendered
+one `FilterChip` in a plain `View` directly above `GenreStrip`'s horizontal
+`ScrollView`, using the same chip component. Two rows of identical chips read as
+a layout accident. Merged: Bedtime is now the first chip inside the same scroll,
+followed by a hairline divider, then the genres. **The two selections stay
+independent** -- a reader can want bedtime comedy -- so `category` and `genre`
+remain separate props rather than collapsing into one selected id. The divider
+is `importantForAccessibility="no"`; a screen reader gets the grouping from the
+chips' own labels.
+
+**2. The feed was genre-blocked, and it was an emergent tie-break, not a sort.**
+`searchStories` orders `like_count desc, created_at desc`; the screen then
+re-sorts by views or likes. Every count in this catalogue is **zero**, so every
+comparison ties, `Array.prototype.sort` is stable, and the list fell through to
+the server's `created_at desc`. The Originals were authored and published in
+genre blocks (`backend/originals/slots.json`: S01-S08 romance, S09-S14 comedy,
+S15-S21 fantasy, ...), so that order *is* the genre blocks, reversed.
+
+Fixed the way Home already does it, plus one new piece:
+
+- `seededShuffle` with `dailyFeedSeed(getViewerId(), new Date())` decides the
+  ties, before the sort, so a real engagement count still wins when there is
+  one. Seeded by reader and day, so the page is stable while somebody scrolls
+  it and different tomorrow.
+- A new `spreadByKey` in `lib/feed-shuffle.ts` then deals the list out by genre,
+  round-robin. A shuffle alone is not enough -- runs are what random sequences
+  look like -- and "Newest" does not shuffle at all, because `publishedOffset`
+  is a real distinct value on every row.
+
+**The first version of `spreadByKey` was wrong and its own test caught it.** It
+walked the list in order and moved an item only when it would have made a third
+consecutive neighbour, which preserves the ranking better. It also drains the
+leading key two at a time while spending the others one at a time, so the
+majority key is exhausted early and the list **ends in a long solid run** of
+whatever is left: a run of five where two was promised. Dealing from per-key
+queues cannot do that, because a queue is only ever one ahead of the others. The
+cost is that ranking *across* genres is disturbed; ranking *within* a genre is
+exact, which is where a real signal will show up, and every cross-genre
+comparison today is a tie between zeroes.
+
+**3. Explore stopped at 24 stories, forever.** The query ended in a bare
+`.limit(SEARCH_PAGE_SIZE)`. There was no `onEndReached`, no cursor, no page
+size beyond that one -- `grep` for `onEndReached|initialNumToRender|windowSize|
+maxToRenderPerBatch|removeClippedSubviews` across `expo/src` returned **nothing
+at all** before this change. A reader who reached the bottom of the catalogue
+simply ran out, with nothing to say so.
+
+- `SearchInput` gains `page`, and the query ends in `.range(from, from + size -
+  1)`. A third `order("id")` was added as a **total tie-break**: without it two
+  rows sharing a `like_count` and a `created_at` have no defined relative order
+  and the database may return them differently per page, which is how a row
+  appears twice across a boundary or never at all.
+- `SearchOutcome` gains `hasMore`, derived from the **server's** row count
+  before the genre narrowing clips it. `stories.length === PAGE_SIZE` would end
+  the list early on exactly the filter people use most.
+- `useStorySearch` gains `loadMore`, `loadingMore` and `hasMore`. It does *not*
+  route through `run`, which aborts and replaces -- right for a new query, and
+  exactly wrong for a continuation. Its own guards: a ref against `onEndReached`
+  firing repeatedly in one tick, the existing sequence number, **and** a
+  `loadedFor` query key, because `loadMore` continues a query rather than
+  starting one and the sequence guard alone does not catch a page that outlived
+  a filter change. Pages are appended de-duplicated by id.
+- The footer has three states and one of them is nothing: a spinner while a page
+  is on the way, a quiet line at the true end, and **nothing at all** while more
+  exists but has not been asked for, because a permanent footer under a growing
+  list reads as the end of it.
+- `initialNumToRender`, `maxToRenderPerBatch`, `windowSize` and
+  `removeClippedSubviews` are set for the first time. Each card mounts a cover;
+  rendering the whole accumulated list is what makes a long scroll stutter.
+
+### The bug review caught, and it was the feature eating itself
+
+The first version ordered the **whole accumulated list** on every render: seeded
+shuffle, then sort, then interleave. Both the shuffle and the interleave are
+whole-list operations, so running them over a list that GROWS re-orders the rows
+already on screen. The reader reaches the bottom, asks for more, and the screen
+they were reading is dealt again under their thumb. Measured: **4 of the first
+24 positions survived** a second page arriving.
+
+It was invisible before this round because the list could not grow —
+`.limit(SEARCH_PAGE_SIZE)` meant one page, ever, so neither helper had ever been
+called on a longer version of its own input. And every test passed: they
+asserted determinism *for the same input* and the run limit *on the combined
+list*. Neither is the property a reader feels.
+
+**Fixed by ordering each page among its own rows and concatenating**, which is
+append-stable by construction: a page that has been rendered is never an input
+to anything again. `useStorySearch` now reports `pageStarts` so the screen can
+slice on the boundaries — sliced *before* the blocked-author filter, because
+removing a row would shift every later boundary. The seed is read once per
+mount rather than inside the memo, so a recompute that crosses midnight or lands
+after a sign-in cannot re-order the feed either.
+
+The cost is the seam: two pages can meet on the same genre, one run of two at
+every 24th card. Against the whole list moving, that is the right trade, and it
+is the honest one — the alternative (per-row hash ranks) makes the interleave
+much weaker.
+
+`explore-paging.test.tsx` gains the test that was missing: render page 0, record
+the ids, load page 1, and assert the first 24 are unchanged. Verified against the
+old implementation before keeping it — it fails there with 20 of 24 rows moved.
+
+Three more from the same round:
+
+- **`loadingMoreRef` was cleared before the sequence check**, so a page whose
+  query had moved on released the lock while a newer page was still in flight,
+  and the next `onEndReached` sent a third request for the page already being
+  fetched. Benign — `appendUnseen` drops the rows — and a wasted round trip.
+  Cleared inside the guard now.
+- **The next-page request carried no abort signal** and was not tracked, so a
+  page in flight when the reader left Explore ran to completion. It now has a
+  controller that `run` and the unmount effect both reach.
+- **A client-side filter that emptied page 0 was a dead end.** Tags and the
+  block list are applied after the server page; when they left zero rows,
+  `FlatList` rendered the empty state, `onEndReached` never fired, and the
+  reader was told "no stories match" while `hasMore` was true. An effect now
+  advances a page in that case, **bounded at two** -- see the correction at the
+  end of this entry, where "it cannot spin" turned out to be false for exactly
+  the narrowing the chase exists for.
+- **Re-running the identical query threw the accumulated pages away.** Type a
+  character and delete it and the third run is the first query again, so three
+  pages collapsed back to 24 rows. `loadedFor` now short-circuits it.
+
+### And a regression the append fix introduced, plus three carried ones
+
+- **The identical-query skip reintroduced the stale-answer bug this file exists
+  to prevent.** Skipping `run` also skipped the two things `run` did
+  unconditionally: bumping the sequence and aborting the request in flight. So
+  a superseded request kept the newest sequence and its answer was applied to a
+  query the reader had left. Reachable with a typo and a backspace inside one
+  round trip: "wolf" is loaded, the reader types "wolfs", backspaces to "wolf"
+  — `loadedFor` is still "wolf", because it is only assigned on SUCCESS — the
+  skip fires, and "wolfs" then lands and paints. The box says one thing and the
+  list is the answer to another, with nothing to retry and no self-correction,
+  because no dep changes again. The skip now cancels before it returns, and a
+  test that goes BACK to a landed query — the ingredient the existing race test
+  lacks — was negative-controlled against the broken version.
+- **A genre page fetched 48 rows and showed 24.** `GENRE_SEARCH_FETCH_SIZE` was
+  a compatibility budget for the defensive card filter, and it was harmless
+  while the query ended in `.limit(48)` with no next page. Paging by the fetch
+  window made the discard permanent: `from = page * 48` with a clip to 24 means
+  server rows 24–47 are fetched, thrown away and never asked for again. At the
+  boundary it is worse — a genre with 40 stories returns 40 rows, `hasMore` is
+  `40 === 48` → false, and the footer claims the end over sixteen published
+  stories. One page size everywhere now; the filter stays and a filtered row
+  simply makes a short page, which `hasMore` already handles.
+- **A failed page told the reader the catalogue had ended.** Every failure path
+  in `searchStories` returns `local()` rather than rejecting, so a dropped
+  connection on page 1 landed in `loadMore`'s SUCCESS handler with
+  `hasMore: false` — the spinner replaced by "That is everything for now." over
+  a reader who had simply lost signal, and nothing retries once `hasMore` is
+  false. `local()` now reports `hasMore: true` past page 0, so the footer says
+  nothing and the next scroll tries again. Page 0 and an unconfigured client
+  still report false: there is nothing on screen to keep, and no server to ask.
+- **"Newest" was dealt out by genre.** `spreadByKey` ran unconditionally, so a
+  reader who asked for the newest got one new story and then up to eleven
+  genre-mates that might be months old. Interleaving is right for the default
+  browse and wrong for a sort somebody chose; it is now conditional on
+  `DEFAULT_SORT`.
+
+The auto-advance effect gained a guard in the same round, because making a
+failed page report `hasMore: true` turns "no rows, more exists" into a state
+that can repeat. It now advances only when the row count has grown since its
+last attempt, so a page that adds nothing ends the chase and the reader's next
+scroll still retries.
+
+**Narrowed a claim rather than defending it.** The docblock argued that
+per-page sorting is also the right ranking because the server already chose the
+page. True for Most loved (`like_count desc` on both sides) and near enough for
+Newest; **not true for Trending**, which sorts on `views` while the server pages
+on `like_count`. Invisible today because every count is zero, and the fix when
+it matters is to sort Trending on the server rather than to go back to
+re-ordering the list under the reader. The comment now says so.
+
+### Both of that round's fixes had a silent version of the problem they replaced
+
+Review found each correction reintroducing its own bug. Worth recording as a
+pattern, not three incidents: a fix that changes when a state transition
+happens has to account for every transition that used to ride along with it.
+
+- **Aborting the superseded request left `status` at `"loading"` forever.**
+  `run` set it when it started the request the skip then invalidated, and both
+  of that request's handlers early-return on the sequence check, so nothing
+  ever wrote state again. `loadMore` is guarded on `status !== "loading"`, so
+  **paging switched off for the rest of the query** — the reader scrolls to the
+  bottom of 24 cards and nothing loads, with no spinner and no end-of-list line
+  because `hasMore` is still true. Explore stopped at 24 stories forever, which
+  is the third fault this branch exists to fix, reached through its own fix.
+  The skip now restores the status.
+- **And `run` reset `loadedPage` on the way in.** An abandoned run therefore
+  left it at 0 under however many pages the reader had scrolled, so the next
+  `onEndReached` re-requested page 1 and had every row dropped as a duplicate.
+  It now resets **on success**, which is the only moment the list really is one
+  page long.
+- **A failed page burned its page number.** Making `local()` report
+  `hasMore: true` was right, and it made the retry ask for the page *after* the
+  one that failed — every failure in `searchStories` resolves rather than
+  rejects, so they all land in `loadMore`'s success handler and advanced the
+  cursor. A dropped connection at the bottom of page 0 meant rows 24–47 were
+  never requested again: Explore goes from story 24 to story 49 with no gap
+  visible anywhere. `outcome.source` is the discriminator and was already
+  there — `"local"` holds the cursor, `"supabase"` advances, so a legitimately
+  short page still moves on.
+- **`autoAdvancedAt` outlived its query, and changing the number it holds did
+  not fix that.** Two versions collided with certainty rather than by luck: the
+  row count is always `SEARCH_PAGE_SIZE` on a full page 0, and the page count
+  is always 1 at the first advance of any query, while every fresh query starts
+  at `pageStarts: [0]`. **The ref is what carries across a query, so the ref is
+  what had to be cleared** -- on the query text, genre, category and the
+  selected tags, because tags are client-side narrowing and change what "empty"
+  means without changing a row. Originally recorded here as "it counts rows": the symptom was that one query's page 0
+  narrows to nothing and stops the chase, the reader picks another genre whose
+  page 0 also narrows to nothing, and the second query never advances -- told
+  the genre is empty over a catalogue with matching rows one page along, with
+  no recovery, because `onEndReached` cannot fire when there is no list.
+
+Both new paging tests were negative-controlled: without the cursor fix the
+retry asks for page 2, and without the status restore the list stays at 24 rows
+after a backspace.
+
+### Verification
+
+Expo **1701/1701** across 155 suites (the baseline is 1651/153 two entries
+below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
+(totality, no run before the tail, within-key order, determinism, the
+growing-list seam) and twelve on paging, each written against a way it fails:
+repeated `onEndReached`, a stale page appending to a new query, an overlapping
+page, a lying footer, and the state the auto-chase leaves behind.
+`explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
+than `.limit()`.
+
+**The chase's bound and the copy at the end of it are two different bugs, and
+only the first was fixed at the previous head.** Two chases stop the requests;
+they do not decide what the reader is then told. The genre branch of the empty
+state said *"This genre is new here. More will appear as writers publish in
+it."* — over a genre whose rows had been fetched and then removed by the
+reader's own tag filter or block list, with `hasMore` still true, and with no
+recovery, because `onEndReached` cannot fire against an empty list. It now
+distinguishes the three cases: rows came back and the reader's narrowing
+removed them, pages exist that nobody has asked for, and the genre is actually
+empty. The first two get honest copy and a **Keep looking** button, which is
+the manual version of the scroll that cannot happen without a list.
+
+**And the same false statement was in the search branch**, which the first
+version of the fix did not reach: it was gated on `!searching`, and a reader
+who checks a tag and then types gets 24 rows that match the term, all of them
+removed by the tag, and was told the search matched nothing and offered a
+spelling fix. Harder to escape than the genre case, too — `availableTags` is
+derived from the results, so with none the panel's TAGS section is not drawn
+and the chip that caused it is off screen. The check is
+`searched.length > 0`, which is query-independent, so it is now one branch
+above both and neither can drift from the other.
+
+Three smaller corrections in the same place. The body said to clear the
+filters while the only button fetched another page, because `hasMore` was
+tested first; both buttons render when both apply. The condition read
+`activeFilterCount`, which counts the sort — a sort cannot empty a page, so a
+reader on "Most loved" whose page the block list emptied was told to clear
+filters and given a button that reset the sort and changed nothing; it reads
+`results.length` now — which is the exact discriminator, not a proxy:
+`results` is after the block list and before the tags, so an empty one means
+the block list took everything whatever is checked. Keyed on the tag, a reader
+who had blocked an author and left a tag on was told to clear the tag, cleared
+it, saw nothing change, and watched the sentence flip to name the block list
+instead. And the "more exists but nothing came back" branch
+was unreachable in every producer — Supabase compares the row count to the
+page size and `local()` only reports `hasMore` from page 1 — so it is gone,
+and `hasMore` chooses the button rather than the copy.
+
+**The headline splits the same way the body does, and the buttons take their
+weight from what is beside them.** Naming the filters over a sentence that says
+the block list emptied the page sent the reader to the panel's Clear, which
+no-ops in that state -- and the TAGS section is hidden there anyway, because the
+panel's chips come from the rows that came back. The title is "No Comedy stories
+to show" there, and "No stories match “dragon”" when a term is typed, because a
+search term is not a place with contents in it. **Keep looking** is the
+secondary variant only when **Clear filters** is beside it; when the block list
+emptied the page it is the screen's only action and it is filled, rather than
+changing weight depending on whether another page happens to exist.
+
+The block list is now in the chase's reset key too. It is client-side
+narrowing by the same definition as the tags, so blocking an author while
+Explore is mounted changes what "empty" means without changing a fetched row.
+
+Two record fixes in the same push: the docblock above the guard still argued
+for the marker the commit deleted — four separate claims, including one that
+condemned what the code now does — and the chase test's
+`toBeLessThanOrEqual(3)` was satisfied by the chase not happening at all,
+which is a variant this effect has actually shipped. It is `toBe(3)`.
+
+### Not done here
+
+Cover loading is untouched and still the slowest thing on this screen: ~2 MB
+PNGs decoded into a 116x155pt box. That is its own branch. The 180 ms prefetch
+race in `useStorySearch` is deliberately left in place until then, because it is
+the thing being replaced rather than something to remove twice.
 ## 2026-09-27 UTC — How credits work becomes its own screen, and the feedback cap drops to five
 
 **Session:** the last look-and-feel round before launch, from founder feedback on
@@ -791,7 +1493,8 @@ number was used once before by the withdrawn `00100_reader_preferences`. The
 production ledger is aligned `00001`-`00099` with nothing pending, so
 production is safe — but any database that ever had the withdrawn one pushed
 to it will skip this file, exit 0, and leave the cap at six behind a green
-deploy. Production was
+deploy. The repair is `supabase migration repair --status reverted 00100`,
+then push again. Production was
 verified byte-identical to main earlier today (346/346), so
 `scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
 after this deploy is this change's.
