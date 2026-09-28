@@ -7,6 +7,93 @@
 
 ---
 
+## 2026-09-27 UTC — The reader records reads, so two dead mechanics come alive
+
+**Session:** founder decision, taken after review of the credits round found that
+the feedback claim pays nobody. Branch `codex/record-read-client`, in its own
+worktree. **Client only** — the endpoint and the RPC have been deployed and
+correct since 00046 and nothing about them changes.
+
+### What was actually broken
+
+`record-read` and `record_story_read` were written, tested, deployed — and
+**never called**. `grep` over `expo/` found one comment and no call site, and
+`story_reads` returned **0 rows** in production. Two shipped mechanics read that
+table, and both were therefore dead in a way nothing on screen admitted:
+
+- **The feedback credit.** `comment_credit_block_reason` sums the story's reads
+  and answers `not_read` under 120 seconds. With no rows, every claim by every
+  reader returned `not_read`. A reader could spend ten minutes on a story, leave
+  a 300-character comment, tap Claim, and be told *"Read the story first."*
+- **The streak ladder.** `touch_streak` has exactly two callers: `publish-story`
+  and `handleRecordRead`. With the second dead, **a streak advanced only when
+  you published a story** — so a reader who opened one every day for three weeks
+  never reached day 2 of a ladder the earn table calls *"Keep a reading
+  streak"*. The Play listing's streak pill showed something no amount of reading
+  could produce.
+
+Neither was a defect in this round's work; both were unshipped Phase E. What
+made them worth fixing now is that the credits round had just spent nine review
+rounds making the claim's rules exact, and exactness about a mechanism nobody
+can reach is the wrong kind of precise.
+
+### What shipped
+
+- **`expo/src/lib/api.ts` → `recordRead()`.** Clamps the duration into the
+  0–86,400 the endpoint accepts (a clock jump or a screen left open overnight
+  produces numbers outside it), and resolves `null` on any failure. Nothing a
+  reader sees depends on the answer.
+- **`expo/src/lib/use-read-tracking.ts`** measures the dwell and decides when to
+  send it. Wired into `ReaderScreen` with the story and chapter ids.
+
+### The two decisions that shape the number
+
+**Post once, on the way out — never at a threshold.** The server deduplicates
+per user and chapter over a 24-hour window: a second call inside it is answered
+`recorded: false` and **the first row keeps its original `duration_seconds`.**
+So a mid-read post of "10 seconds" is not an early estimate, it is the number
+that chapter is stuck with for the day. The dwell accumulates in a ref and is
+flushed when the reader leaves the chapter, leaves the screen, or backgrounds
+the app.
+
+**Foreground time only.** An `AppState` subscription banks the elapsed time on
+the way to background and restarts the clock on the way back, so a phone in a
+pocket with the reader open contributes nothing. The credit this feeds is meant
+to mean somebody read something.
+
+There is also a **five-second floor**: paging through a story to find your place
+should not write a row per chapter it passes, and under the dedup a one-second
+row makes the 120-second gate *harder* to pass than recording nothing at all.
+
+### Verification
+
+Expo **1659/1659** across 154 suites, typecheck clean, lint 0 errors. Eight new
+tests, each on a rule that makes the number mean something rather than on the
+happy path: the whole chapter reported once at the end, each chapter counted
+separately across a page turn, background time excluded, a repeated `active`
+event not discarding the bank, nothing sent under the floor, the flush naming
+the chapter it measured rather than the current one, one subscription per
+chapter, and a failing endpoint never reaching the reader.
+
+**No deploy.** Nothing under `backend/` changes.
+
+### What this unblocks, and one thing to watch
+
+The block at the head of *Feedback credits — the claimed comment* in
+`source-of-truth/CREDITS_AND_PRICING.md` says to delete it when `record-read`
+ships from the client. That is this change — **but delete it only once this has
+been in a build readers actually have**, not on merge: no OTA channel is
+configured, so merging changes nothing for anyone until the next build.
+`SecondaryActions`' fallback copy is in the same position and names only the
+invite for the same reason.
+
+Watch the house `streaks` row seeded for the Play screenshots (`#158`): once
+`touch_streak` starts firing on reads it will operate on a hand-written row with
+`next_credit_at` already at 3, so that account may claim a rung it never earned.
+`backend/scripts/seed-screenshot-fixtures.ts --teardown` clears it.
+
+---
+
 ## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight
 
 **Session:** the round after the deploy audit, ahead of the first Android build.

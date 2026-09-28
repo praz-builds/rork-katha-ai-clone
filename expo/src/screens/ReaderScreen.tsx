@@ -54,6 +54,7 @@ import {
   getMusicMuted,
   setMusicMuted,
 } from "@/lib/music-storage";
+import { useReadTracking } from "@/lib/use-read-tracking";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
 import {
@@ -835,6 +836,19 @@ export default function ReaderScreen({
   useEffect(() => {
     onChapterChange?.(chapter, chapterIndex);
   }, [chapter, chapterIndex, onChapterChange]);
+
+  /**
+   * How long this chapter was actually in front of the reader, reported once
+   * when they leave it. This screen is the only place that knows.
+   *
+   * It is what fills `story_reads`, which was empty in production because
+   * nothing had ever called `record-read` -- so the feedback credit answered
+   * `not_read` to every claim and the streak ladder could only be advanced by
+   * publishing. See `lib/use-read-tracking.ts` for why it posts on the way out
+   * rather than at a threshold (the server deduplicates over 24 hours, so the
+   * first number a chapter gets is the one it keeps).
+   */
+  useReadTracking(story.id, chapter.id);
 
   /**
    * The reader follows the chapter being written to it.

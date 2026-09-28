@@ -2849,6 +2849,66 @@ export async function registerPushToken(
   if (error) throw error;
 }
 
+/**
+ * Tell the server somebody read a chapter, and for how long.
+ *
+ * WHY THIS EXISTS AT ALL. `record-read` and `record_story_read` have been
+ * deployed and correct since 00046, and **nothing has ever called them**, so
+ * `story_reads` was empty in production. Two things depend on that table and
+ * both were therefore dead: the feedback credit answers `not_read` to every
+ * claim, and a reading streak never advances, because `touch_streak`'s only
+ * other caller is `publish-story`. A reader who opened a story every day for
+ * three weeks never reached day 2 of a ladder called "Keep a reading streak".
+ *
+ * THE SERVER DEDUPLICATES ON A 24-HOUR WINDOW, per user and per chapter, and
+ * that shapes when this is allowed to be called. A second read of the same
+ * chapter inside a day is answered `recorded: false` and the original row
+ * keeps its original `duration_seconds` -- so posting early with a partial
+ * number permanently under-records that chapter. Call it **once, on the way
+ * out**, with the whole dwell. `useReadTracking` is the only caller and does
+ * exactly that.
+ *
+ * SILENT BY DESIGN. Nothing a reader does depends on the answer, and the
+ * failure this must never produce is an error message about telemetry over a
+ * story they are reading. It resolves `null` on any failure; the server's own
+ * `logError` records what went wrong.
+ */
+export type RecordedRead = {
+  /** False when the 24-hour window already had a row for this chapter. */
+  recorded: boolean;
+  /** False for the reader's own story: it never counts toward earnings. */
+  counted: boolean;
+};
+
+export async function recordRead(input: {
+  storyId: string;
+  chapterId?: string | null;
+  durationSeconds: number;
+}): Promise<RecordedRead | null> {
+  if (!isSupabaseConfigured) return null;
+  // Whole seconds, and inside the range the endpoint accepts (0..86400) --
+  // it answers 400 otherwise, and a clock jump or a screen left open
+  // overnight can produce either a negative or an enormous number.
+  const duration = Math.max(0, Math.min(86_400, Math.round(input.durationSeconds)));
+  try {
+    await bootstrapUser();
+    const { data, error } = await supabase.functions.invoke("record-read", {
+      body: {
+        storyId: input.storyId,
+        chapterId: input.chapterId ?? null,
+        durationSeconds: duration,
+      },
+    });
+    if (error || !data) return null;
+    return {
+      recorded: data.recorded === true,
+      counted: data.counted === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Free credits: feedback claims (D9) and invite codes (D10)
 // ---------------------------------------------------------------------------
