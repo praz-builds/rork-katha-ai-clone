@@ -40,6 +40,15 @@ import {
   wordBandFor,
 } from "./types.ts";
 import { storyWorldPromptName } from "./story-world-countries.ts";
+import {
+  getTradition,
+  isSupportedTradition,
+  mayVoiceFigure,
+  narrateOnlyFigures,
+  type SupportedTraditionId,
+  traditionPromptName,
+  UNIVERSAL_SCRIPTURE_RULES,
+} from "./traditions.ts";
 
 // ---------------------------------------------------------------------------
 // Banned vocabulary
@@ -184,7 +193,7 @@ ${BANNED_PHRASES.map((p) => `- "${p}"`).join("\n")}
 ### Banned Default Names
 Never use these AI-default names: ${
     BANNED_NAMES.join(", ")
-  }. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting.
+  }. Use the character names the user provides. If no names are provided, choose culturally specific, uncommon names that fit the story's setting and any cultural setting or faith tradition the brief states outright.
 
 ### Show, Don't Tell
 - NEVER name an emotion and then describe it. Wrong: "She felt sad. Tears streamed down her face." Right: "She pressed her thumb into the edge of the table until it left a mark."
@@ -235,7 +244,9 @@ Never use these AI-default names: ${
 
 ## Cultural Context
 
-Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.`;
+Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.
+
+Inference is the fallback, not the authority. Where the brief states a cultural setting or a faith tradition outright, that statement outranks anything the names would suggest: follow the stated one, and let the names follow it too, never the reverse. A name and a stated tradition that disagree are ordinary — families are mixed, converted, diasporic and interfaith — so treat the disagreement as a fact about this family rather than as an error to correct.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1484,11 +1495,102 @@ export function buildStoryWorldBlock(setting?: CulturalSetting): string {
   return `Story world preference:\nThe reader prefers stories rooted in ${world}. Where the idea, the setting and the characters' names leave the culture open, ground the names, places, food, customs, idiom and everyday objects there, specifically rather than generically. If the brief points anywhere else, follow the brief; this preference never overrides it.`;
 }
 
+/**
+ * The faith layer, as one fixed block, built entirely from the checked-in
+ * tradition contract.
+ *
+ * SHAPE DELIBERATELY MIRRORS `buildStoryWorldBlock` ABOVE, because it is the
+ * same kind of thing and the two must not drift: a pure function of one
+ * closed-list id, empty for absent or unrecognised, rendered from server-owned
+ * phrases only, called once from `buildUserPrompt`, and ending on the same
+ * precedence line. Nothing a client sends is interpolated here; the only input
+ * is an id that `normalizeTradition` has already reduced to a supported one or
+ * to `undefined`.
+ *
+ * WHY IT IS IN THE USER PROMPT. A tradition varies per story. Putting anything
+ * derived from it into the system prompt would break the cached prefix that
+ * `systemMessage` in `llm.ts` relies on -- the failure the comment at the
+ * series-state removal above records in full. The system prompt carries only
+ * the STATIC precedence rule (see `## Cultural Context` in `buildBaseRules`);
+ * this block carries the VALUE.
+ *
+ * WHY NARRATE-ONLY IS RESTATED HERE when `narrationRules` already says it for
+ * Muslim: `traditions.ts` requires both layers to enforce it independently, and
+ * the prompt layer's half is this. The figure list comes from
+ * `narrateOnlyFigures`, so the Muslim defaults -- prophets, and, through the
+ * default-on extensions, the Prophet's family and companions -- are covered
+ * without this function knowing what they are. `mayVoiceFigure` is the gate the
+ * list is filtered through rather than an assumption about it, so an extension
+ * that is ever turned off stops being named here by construction.
+ *
+ * ABSENT IS ABSENT. `undefined`, an unknown string and a declared-but-
+ * unsupported id all render "", and `buildUserPrompt` then pushes nothing -- so
+ * a story with no tradition produces a byte-identical user prompt to the one it
+ * produced before this function existed.
+ */
+export function buildTraditionBlock(tradition?: unknown): string {
+  if (!isSupportedTradition(tradition)) return "";
+  const id: SupportedTraditionId = tradition;
+  const entry = getTradition(id);
+  const lines: string[] = [
+    "Faith and tradition:",
+    `This story is written for ${
+      traditionPromptName(id)
+    }. Where the idea, the setting and the characters' names leave it open, let the tradition shape the family's practice, their ordinary week, their celebrations and what they say to each other, specifically rather than generically.`,
+  ];
+
+  for (const rule of entry.narrationRules) lines.push(`- ${rule}`);
+
+  const narrateOnly = narrateOnlyFigures(id).filter((figure) =>
+    !mayVoiceFigure(id, figure)
+  );
+  if (narrateOnly.length) {
+    lines.push(
+      `- Narrated only, never voiced: ${
+        narrateOnly.join("; ")
+      }. Such a figure is never given a line of dialogue, never quoted word for word, never voiced, imitated or channelled by another character, and never a point-of-view character. They may be spoken ABOUT in narration -- what they did, what happened, what it meant -- and that is the only way they appear.`,
+    );
+  }
+
+  for (const rule of UNIVERSAL_SCRIPTURE_RULES) lines.push(`- ${rule}`);
+  lines.push(
+    `- Direct scriptural quotation is not available in this product. Never produce a Qur'an verse, a hadith, a Bible or Torah passage, or any other sacred text${
+      entry.scripturePolicy.namedTexts.length
+        ? `, including ${entry.scripturePolicy.namedTexts.join(", ")},`
+        : ""
+    } from memory, in any language. Scripture may only be paraphrased, and a paraphrase must read as a retelling in the storyteller's own plain words rather than as a quotation.`,
+  );
+
+  if (entry.divineAddress) {
+    lines.push(
+      `- When the Divine is named aloud in this family's storytelling, use "${entry.divineAddress}".`,
+    );
+  }
+
+  if (entry.avoidStereotypes.length) {
+    lines.push(
+      `- Do not reduce the tradition to a building, a garment and a symbol. Build the story out of family, relationships, values, ordinary life, celebration and community. Specifically avoid: ${
+        entry.avoidStereotypes.join("; ")
+      }.`,
+    );
+  }
+
+  lines.push(
+    "If the brief points anywhere else, follow the brief; this preference never overrides it.",
+  );
+  return lines.join("\n");
+}
+
 export function buildUserPrompt(params: {
   primaryGenre: string;
   genres?: string[];
   whereAndWhen?: string;
   culturalSetting?: CulturalSetting;
+  /**
+   * The faith axis, held separately from `culturalSetting` and never derived
+   * from it. See `buildTraditionBlock`.
+   */
+  tradition?: SupportedTraditionId;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1568,6 +1670,8 @@ export function buildUserPrompt(params: {
   whereAndWhen?: string;
   /** The reader's story-world preference; see `buildStoryWorldBlock`. */
   culturalSetting?: CulturalSetting;
+  /** The faith axis; see `buildTraditionBlock`. Unknown values render nothing. */
+  tradition?: unknown;
   moments?: string[];
   beats?: string[];
   chapterNumber?: number;
@@ -1651,6 +1755,12 @@ export function buildUserPrompt(params: {
 
   const storyWorld = buildStoryWorldBlock(params.culturalSetting);
   if (storyWorld) parts.push(storyWorld);
+
+  // The faith axis, directly after the culture axis and independent of it.
+  // Empty for every story that has no tradition, which is every story written
+  // before this layer existed -- so their prompts are unchanged.
+  const traditionBlock = buildTraditionBlock(params.tradition);
+  if (traditionBlock) parts.push(traditionBlock);
 
   if (params.audienceMode === "kids" && params.storyValues?.length) {
     parts.push(
@@ -2026,6 +2136,14 @@ export interface ContinuationPromptInput {
   plannedChapterCount: PlannedChapterCount;
   seed: string;
   whereAndWhen?: string;
+  /**
+   * The tradition persisted on the story row (migration 00101), replayed into
+   * every continuation. A faith constraint that expired after chapter one
+   * would be worse than none: chapter two would quietly contradict chapter one
+   * on the one axis a reader chose it for. Absent on every story written before
+   * the column existed, and absent renders nothing.
+   */
+  tradition?: SupportedTraditionId;
   moments: string[];
   beats: string[];
   storyValues: string[];
@@ -2091,6 +2209,7 @@ export function buildContinuationUserPrompt(
     storyBible: input.storyBible,
     seed: input.seed,
     whereAndWhen: input.whereAndWhen,
+    tradition: input.tradition,
     moments: input.moments,
     beats: input.beats,
     chapterNumber: input.chapterNumber,

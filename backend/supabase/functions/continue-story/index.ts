@@ -66,6 +66,7 @@ import {
   buildContinuationSystemPrompt,
   buildContinuationUserPrompt,
 } from "../_shared/story-prompts.ts";
+import { normalizeTradition } from "../_shared/traditions.ts";
 import {
   isEmptySeriesState,
   mergeSeriesState,
@@ -151,7 +152,7 @@ serve(async (req) => {
           serviceClient
             .from("stories")
             .select(
-              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, story_bible, story_bible_rev, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style",
+              "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, story_bible, story_bible_rev, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, illustrate_chapters, story_flow, image_style, tradition",
             )
             .eq("id", story_id)
             .single(),
@@ -608,6 +609,14 @@ serve(async (req) => {
         plannedChapterCount: effectivePlannedCount,
         seed: story.topic ?? "",
         whereAndWhen: story.where_and_when ?? undefined,
+        // Read off the row, not re-classified. The tradition was decided when
+        // chapter one was bought and it has to hold for chapters 2..N: a faith
+        // constraint that expired after the first chapter would be worse than
+        // none, because chapter two would contradict chapter one on the one
+        // axis the reader chose it for. `normalizeTradition` because a row can
+        // hold anything a future writer puts there, and an unrecognised value
+        // must mean "no preference" rather than reach a prompt.
+        tradition: normalizeTradition(story.tradition),
         moments,
         beats,
         storyValues,

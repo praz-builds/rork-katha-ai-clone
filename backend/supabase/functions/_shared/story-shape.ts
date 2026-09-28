@@ -23,6 +23,13 @@ import {
   UI_GENRE_ORDER,
 } from "./types.ts";
 import { storyWorldPromptName } from "./story-world-countries.ts";
+import {
+  getTradition,
+  isSupportedTradition,
+  normalizeTradition,
+  type SupportedTraditionId,
+  traditionPromptName,
+} from "./traditions.ts";
 
 export type StoryShape = {
   genres: PrimaryGenre[];
@@ -66,6 +73,16 @@ export type StoryShapePromptBrief = {
    * then overrides it. See `buildStoryWorldBlock` in story-prompts.ts.
    */
   culturalSetting?: CulturalSetting;
+  /**
+   * The faith axis, for the same reason the country axis is here and arguably
+   * more urgently: SHAPING RUNS FIRST AND IT NAMES THE CAST. Generation treats
+   * the shaper's `whereAndWhen` and character names as the brief, and the brief
+   * wins over a preference by design -- so a shaper that did not know the
+   * tradition would invent a cast and a setting that generation then has to
+   * honour over the tradition. The constraint has to arrive before the names
+   * are chosen, not after.
+   */
+  tradition?: SupportedTraditionId;
 };
 
 /** Compact schema for the free Idea -> Shape scaffolding request. */
@@ -232,6 +249,23 @@ export function buildStoryShapePrompt(
       }. Where the idea does not name a place, a culture or its people, set whereAndWhen there and give any characters you infer names from there. If the idea points anywhere else, follow the idea; creator-supplied names are never changed.`,
     );
   }
+  // Server-owned phrasing only, selected by a closed-list id, exactly as the
+  // Story world sentence above is. The shaper gets the constraint and the two
+  // rules it cannot get wrong at this stage; the full narration and scripture
+  // rules belong to generation, which is where prose is written.
+  if (isSupportedTradition(brief.tradition)) {
+    const entry = getTradition(brief.tradition);
+    const figures = entry.depiction.narrateOnly.join("; ");
+    parts.push(
+      `This story is for ${
+        traditionPromptName(brief.tradition)
+      }. Where the idea does not name a place, a culture or its people, shape whereAndWhen, the cast and the beats to a family who live inside that tradition, and give any characters you infer names that belong to such a family. A stated tradition outranks anything the idea's names would otherwise suggest, and creator-supplied names are never changed.${
+        figures
+          ? ` Do not put ${figures} in the cast: sacred figures are narrated only, never characters.`
+          : ""
+      } Do not plan a beat that quotes scripture. If the idea points anywhere else, follow the idea.`,
+    );
+  }
   if (brief.characters?.length) {
     parts.push("Creator-supplied characters. Preserve these names exactly:");
     for (const character of brief.characters.slice(0, MAX_CAST_SIZE)) {
@@ -282,11 +316,16 @@ export function normalizeStoryShapeBrief(input: {
   chapterLength?: unknown;
   plannedChapterCount?: unknown;
   culturalSetting?: unknown;
+  tradition?: unknown;
 }): StoryShapePromptBrief {
+  const tradition = normalizeTradition(input.tradition);
   return {
     ...(isCulturalSetting(input.culturalSetting)
       ? { culturalSetting: input.culturalSetting }
       : {}),
+    // Normalised, never rejected: an unknown id is no preference, and no
+    // preference shapes exactly as the shaper always has.
+    ...(tradition ? { tradition } : {}),
     characters: normalizeCharacters(input.characters),
     moments: normalizeTextList(input.moments, MAX_MOMENTS),
     writingStyle: normalizeText(input.writingStyle),
