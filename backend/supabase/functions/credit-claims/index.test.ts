@@ -53,7 +53,12 @@ Deno.test("an empty or malformed claims payload is an empty list, not a crash", 
   for (const payload of [null, undefined, "", "not json", 7, [], {}]) {
     const shaped = shapeClaims(payload);
     assertEquals(shaped.claims, [], String(payload));
-    assertEquals(shaped.remaining, { today: 0, month: 0 });
+    // OMITTED, not zeroed. "The caps allow no more claims this month" and
+    // "nobody counted" are opposite facts, and manufacturing the first from
+    // the second renders "0 left today · 0 left this month" to an account
+    // that has claimed nothing. The client has a branch for an absent
+    // `remaining`; this is what makes it reachable.
+    assertEquals(shaped.remaining, undefined, String(payload));
   }
 });
 
@@ -76,7 +81,10 @@ Deno.test("jsonb delivered as a string is still read", () => {
     }),
   );
   assertEquals(shaped.claims[0].status, "claimed");
-  assertEquals(shaped.remaining.month, 4);
+  // Narrowed rather than asserted through: `remaining` is omitted when the
+  // server did not send two finite numbers, so the client can tell "none left"
+  // from "the server did not say".
+  assertEquals(shaped.remaining?.month, 4);
 });
 
 Deno.test("an unknown status reads as ineligible", () => {
@@ -133,4 +141,21 @@ Deno.test("every contract refusal is relayed, and nothing else is", () => {
   ) {
     assertEquals(shapeClaimResult(bad), null, JSON.stringify(bad));
   }
+});
+
+Deno.test("a half-counted remaining is no count at all", () => {
+  // Neither half alone is a usable answer, and guessing the other is the
+  // invented zero by a different route.
+  for (const remaining of [{ today: 1 }, { month: 5 }, { today: 1, month: "5" }]) {
+    const shaped = shapeClaims({ claims: [], remaining });
+    assertEquals(shaped.remaining, undefined, JSON.stringify(remaining));
+  }
+});
+
+Deno.test("a fully counted remaining is passed through", () => {
+  const shaped = shapeClaims({ claims: [], remaining: { today: 1, month: 5 } });
+  assertEquals(shaped.remaining, { today: 1, month: 5 });
+  // Zero is a real answer when the server actually said zero.
+  const spent = shapeClaims({ claims: [], remaining: { today: 0, month: 0 } });
+  assertEquals(spent.remaining, { today: 0, month: 0 });
 });

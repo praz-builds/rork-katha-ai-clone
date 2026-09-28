@@ -41,6 +41,73 @@
   test. It delayed the first paint to get a head start on a 2 MB download and
   warmed only the session's in-memory cache: it never changed a byte fetched.
 
+## 2026-09-27: How credits work becomes its own screen
+
+- **Profile's two credit rows now go to two places.** "Credits · Get more" and
+  "How credits work" both called the same `onCredits` prop and both opened
+  `CreditsScreen` at the top, which leads with Paid options -- so the row that
+  promised an explanation answered with a shop, three scrolls above the
+  explanation. The settings row now opens
+  `src/screens/HowCreditsWorkScreen.tsx`, subtitled "What each thing costs".
+- **The new screen has nothing to buy on it**, deliberately, and a test asserts
+  the absence of the balance pill, the plan card and the packs sheet. Its
+  content is the existing `components/credits/HowCreditsWork`, still the only
+  place a price lives in client code and still lifted verbatim from
+  `../source-of-truth/CREDITS_AND_PRICING.md` §1. Do not add a third copy.
+- **Get credits no longer inlines the prices.** Under Paid options sit two ghost
+  buttons (`components/credits/SecondaryActions.tsx`): *Get free credits*, which
+  scrolls to the Free credits section and carries a live sub-line, and *How
+  credits work*. They are siblings rather than a link inside a row, because a
+  Pressable inside a Pressable is a button inside a button on
+  react-native-web -- the failure Profile's "Get more" pill is commented
+  against.
+- **The sub-line quotes only the server**, and only when the server counted.
+  `CreditClaimsResult.remaining` is `… | null`: it used to default to zeroes
+  when the field was absent, which told a brand-new account it had claimed
+  everything this month. A missing number is not a zero.
+- **`how-credits-work` carries a required `returnTo`**, the shape `author`
+  already uses, so opening the explanation from Get credits returns to Get
+  credits rather than ejecting the reader to the Profile tab.
+- The feedback claim's monthly cap is **five**, not six (migration `00100`).
+- **The free-credits button's screen-reader behaviour took three passes, and
+  the reasoning is worth keeping.** A scroll is invisible to a screen reader:
+  the screen moves and the reading cursor does not, so a button that only
+  scrolls is inert. Three things, in the order they were got wrong:
+  1. **Native moves focus to the Free credits heading.** That both speaks the
+     heading and puts the next swipe in the section, which an announcement
+     alone does not.
+  2. **Web announces instead, and the split is on `Platform.OS`, not on
+     whether there is a node.** `setAccessibilityFocus` needs a native tag that
+     react-native-web has not got — but `findNodeHandle` there returns the DOM
+     node, so a "did we get a node" guard passes and a fallback keyed on it
+     never runs. `components/create/Dropdown.tsx` guards the same call the same
+     way. Web is also the only surface this client can currently be looked at
+     on, so getting this backwards reached nobody.
+  3. **The `accessibilityLabel` carries the counts.** A `Pressable` is one
+     accessibility element and an explicit label *replaces* its children rather
+     than prefixing them, so labelling it "Get free credits" made the whole
+     sub-line silent. The label is built from `freeCreditsSubtitle` so the two
+     cannot drift.
+- **Every heading on both screens carries the role, not just the one that
+  takes focus** (added 2026-09-28). Marking a single one made heading
+  navigation *worse* than marking none: the rotor found "Free credits" and
+  offered no way to reach Paid options or History, and the new prices screen
+  had no entry at all. Get credits' three sections and both screen titles have
+  it now — and so do the three section titles inside `HowCreditsWork` itself
+  ("Always free…", "What each thing costs", "Worth saying plainly"), which is
+  the whole body of the prices screen, so without them that screen's rotor
+  stopped at the title and the price table was unreachable except by swiping
+  line by line. `HowCreditsWork` has exactly one caller, so nothing else moves.
+  Both screens' tests assert it.
+- Known and deliberate: Android's hardware back calls no handler here, as on
+  `CreditsScreen`, `VoicesScreen` and `JourneyScreen`. It wants one change
+  across every pushed screen rather than an exception on this one.
+- Also deliberate: `accessibilityRole="header"` is right for VoiceOver and
+  TalkBack, which is what this is for. On react-native-web it maps to an HTML
+  `<header>` rather than a heading, so browser heading navigation still finds
+  nothing — that is the established pattern at ~20 sites in this client and
+  changing it belongs in its own pass, not here.
+
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 
 - **Every voice sample plays.** The six preview MP3s had never existed --
