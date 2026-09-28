@@ -137,13 +137,21 @@ Deno.test("every Phase 1 tradition renders a block with its own policy", () => {
     // Every narration rule, verbatim from the contract.
     for (const rule of entry.narrationRules) assertStringIncludes(block, rule);
     // The stereotype guard and its framing.
+    // The stereotype guard, led by what to BUILD rather than by what to avoid:
+    // the positive instruction comes first and at length, the list is the
+    // boundary on it. See the comment on the clause in story-prompts.ts.
     assertStringIncludes(
       block,
-      "Do not reduce the tradition to a building, a garment and a symbol.",
+      "Build the story out of family, relationships, values, ordinary life, celebration and community.",
     );
     assertStringIncludes(
       block,
-      "family, relationships, values, ordinary life, celebration and community",
+      "A tradition is not a building, a garment and a symbol",
+    );
+    assert(
+      block.indexOf("Build the story out of family") <
+        block.indexOf("Steer clear of:"),
+      "the positive instruction must precede the avoid list",
     );
     for (const item of entry.avoidStereotypes) {
       assertStringIncludes(block, item);

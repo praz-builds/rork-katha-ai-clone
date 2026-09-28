@@ -922,3 +922,68 @@ Deno.test("a regeneration keeps the writer's image style", async () => {
     undefined,
   );
 });
+
+/**
+ * The tradition survives a regeneration, for the same reason the style does and
+ * with a worse failure if it does not.
+ *
+ * The depiction rules in `_shared/traditions.ts` say what a cover may not show
+ * at all -- the Divine, a prophet's face -- and they are applied from
+ * `stories.tradition`. A regeneration rebuilds its input entirely from what
+ * `claim_cover_regeneration` returns and never re-reads the row, so a tradition
+ * missing from the claim is a tradition the second cover does not have. That is
+ * the worst available shape for this rule: the FIRST cover respects the policy,
+ * the REGENERATED one silently does not, nothing errors, and the writer has
+ * paid a credit for the picture that broke it. Migration 00101 puts the field
+ * on the claim; this is the assertion that it is still being read.
+ */
+Deno.test("a regeneration keeps the story's tradition", async () => {
+  const { client } = stubClient({
+    claim: {
+      claimed: true,
+      previous_cover_status: "ready",
+      regen_count: 0,
+      requires_credit: false,
+      title: "The Lantern",
+      primary_genre: "contemporary",
+      themes: ["lanterns"],
+      where_and_when: "A night train, 1994",
+      avoid: null,
+      cover_prompt: null,
+      image_style: "auto",
+      tradition: "muslim",
+    },
+  });
+
+  let seen: Record<string, unknown> | null = null;
+  await regenerateCover({
+    client,
+    ...BASE,
+    generate: (input) => {
+      seen = input as unknown as Record<string, unknown>;
+      return Promise.resolve(imageResult());
+    },
+  });
+  assertEquals(
+    (seen as unknown as { tradition?: string }).tradition,
+    "muslim",
+  );
+
+  // And absent is absent: a story with no tradition -- which is every story
+  // written before 00101 -- reaches the generator with nothing set, and its
+  // cover is byte-for-byte the one it has always had.
+  const legacy = stubClient();
+  let legacySeen: Record<string, unknown> | null = null;
+  await regenerateCover({
+    client: legacy.client,
+    ...BASE,
+    generate: (input) => {
+      legacySeen = input as unknown as Record<string, unknown>;
+      return Promise.resolve(imageResult());
+    },
+  });
+  assertEquals(
+    (legacySeen as unknown as { tradition?: string }).tradition,
+    undefined,
+  );
+});

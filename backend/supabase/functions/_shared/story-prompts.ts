@@ -1567,9 +1567,29 @@ export function buildTraditionBlock(tradition?: unknown): string {
     );
   }
 
+  // POSITIVE FIRST, AND AT LENGTH, THEN THE LIST.
+  //
+  // The image lane left `avoidStereotypes` out of its prompts entirely, on the
+  // reasoning that naming a stereotype inside a negative clause can prime a
+  // model toward it. That risk is real and the prose case is genuinely
+  // different, so this keeps the list and changes its shape:
+  //
+  //   * an image prompt is a few dozen words and has no room to say what to do
+  //     INSTEAD, so a negative clause there is all the model gets. A story
+  //     prompt has room, and the instruction now spends most of its length on
+  //     what to build -- family, relationships, ordinary life, celebration --
+  //     with the list arriving last, as a boundary on an instruction that has
+  //     already been given a direction.
+  //   * several entries are not visual shortcuts at all but subject-matter
+  //     failures a long-form generator reliably walks into unprompted: the
+  //     Holocaust as the default subject of any Jewish bedtime story, money and
+  //     accent jokes, adjacency to extremism or rescue-from-one's-own-family
+  //     narratives, caste as a descriptor. Omitting those does not avoid them;
+  //     it leaves the model's training distribution to decide, and that
+  //     distribution is the reason they are on the list.
   if (entry.avoidStereotypes.length) {
     lines.push(
-      `- Do not reduce the tradition to a building, a garment and a symbol. Build the story out of family, relationships, values, ordinary life, celebration and community. Specifically avoid: ${
+      `- Build the story out of family, relationships, values, ordinary life, celebration and community. That is where a tradition actually lives, and it is what makes the family specific rather than representative. A tradition is not a building, a garment and a symbol, and a story that reaches for those three has drawn a stock photo of a faith instead of a family inside one. Steer clear of: ${
         entry.avoidStereotypes.join("; ")
       }.`,
     );

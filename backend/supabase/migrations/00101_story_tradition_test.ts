@@ -24,7 +24,14 @@
 //   - the declared-but-unsupported ids from `traditions.ts` (buddhist, secular,
 //     ...) take that same path, because no reviewed representation policy
 //     exists for them and a row carrying one would make the prompt and the
-//     cover layers disagree about whether a policy applies.
+//     cover layers disagree about whether a policy applies;
+//   - `claim_cover_regeneration` hands the tradition back. That RPC's result is
+//     the ENTIRE input a cover regeneration is built from -- it deliberately
+//     does not follow the claim with a second SELECT of the row, which is why
+//     00075 had to add `image_style` to it for the same reason. A tradition
+//     missing here fails in the worst available shape: the first cover honours
+//     the depiction policy, the regenerated one silently does not, nothing
+//     errors, and the writer has paid a credit for the picture that broke it.
 import {
   assert,
   assertEquals,
@@ -268,6 +275,54 @@ Deno.test("the check constraint refuses an unsupported id written directly", asy
       raised = true;
     }
     assert(raised, "stories_tradition_check should refuse an unsupported id");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("claim_cover_regeneration hands the tradition back", async () => {
+  const db = await createDatabase();
+  try {
+    await seedUser(db);
+
+    const begun = await begin(db, "req-cover", "muslim");
+    // The claim only fires on a story the cover pipeline has finished with.
+    await db.query(
+      `update stories set status = 'complete', cover_status = 'ready',
+              cover_image_url = 'https://example.test/c.png'
+         where id = $1`,
+      [begun.story_id],
+    );
+
+    const claimed = await db.query<{ claim: Record<string, unknown> }>(
+      "select claim_cover_regeneration($1, $2, $3) as claim",
+      [begun.story_id, USER, "regen-1"],
+    );
+    const claim = claimed.rows[0].claim;
+    assertEquals(claim.claimed, true);
+    assertEquals(claim.tradition, "muslim");
+    // The fields the regeneration already built its prompt from are still
+    // there: this is an addition, not a reshaping, so no existing caller of
+    // this RPC changes behaviour.
+    assertEquals(claim.image_style, "auto");
+    assertEquals(claim.title, "Untitled");
+
+    // And a story with no tradition claims exactly as it always has: the key
+    // is present and null, which `optionalString` in cover-regeneration.ts
+    // reads as absent.
+    const plain = await begin(db, "req-cover-none", null);
+    await db.query(
+      `update stories set status = 'complete', cover_status = 'ready',
+              cover_image_url = 'https://example.test/d.png'
+         where id = $1`,
+      [plain.story_id],
+    );
+    const plainClaim = await db.query<{ claim: Record<string, unknown> }>(
+      "select claim_cover_regeneration($1, $2, $3) as claim",
+      [plain.story_id, USER, "regen-2"],
+    );
+    assertEquals(plainClaim.rows[0].claim.claimed, true);
+    assertEquals(plainClaim.rows[0].claim.tradition, null);
   } finally {
     await db.close();
   }

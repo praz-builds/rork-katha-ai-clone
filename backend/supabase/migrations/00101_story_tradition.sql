@@ -285,3 +285,141 @@ comment on function public.begin_story_generation(
     text, text, integer, text[], text[], text, text, boolean, text[], text,
     text, text
 ) is 'Service-only. Idempotency check, story row and credit reservation in one transaction. Starting a story costs ONE credit, which bundles the cast, chapter one''s words and chapter one''s art (the cover) -- CREDITS_AND_PRICING.md section 1, settled 2026-09-14. p_image_style, p_story_flow and p_tradition are clamped to their allowed set rather than trusted, so a stale client cannot abort a paid generation on a check constraint; an unrecognised tradition becomes null, which means no preference.';
+
+
+-- ---------------------------------------------------------------------------
+-- claim_cover_regeneration
+-- ---------------------------------------------------------------------------
+-- Unchanged from 00075 apart from one more field in the returned object, and
+-- restated in full because that is what `create or replace` requires of a
+-- plpgsql body.
+--
+-- THE SIGNATURE IS IDENTICAL, so this replaces the deployed function rather
+-- than standing beside it, the 00044 grants and revokes still apply, and every
+-- existing caller keeps working untouched: the change is one additional key in
+-- a jsonb result, which a caller that does not read it cannot notice. That is
+-- the same shape 00075 used when it added `image_style`, and it is why this
+-- function -- unlike `begin_story_generation` above -- is not dropped first.
+
+create or replace function public.claim_cover_regeneration(
+    p_story_id uuid,
+    p_user_id uuid,
+    p_request_id text default null,
+    p_stale_after interval default interval '10 minutes'
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+    v_story public.stories;
+    v_attempt_limit constant integer := 12;
+begin
+    perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(p_story_id::text, 1)
+    );
+
+    select * into v_story
+    from public.stories
+    where id = p_story_id
+    for update;
+
+    if not found then
+        return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'not_found');
+    end if;
+
+    -- Ownership is checked here rather than trusted from the caller. This
+    -- function is SECURITY DEFINER and reachable only by service_role, so it is
+    -- the last gate before a user pays to change somebody else's story.
+    if v_story.author_id is distinct from p_user_id then
+        return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'not_owner');
+    end if;
+
+    -- The same request id, against the cover that request id actually
+    -- delivered, is a retry of a call that succeeded -- a dropped response, a
+    -- backgrounded app, a tapped-twice button. Handing back the cover it
+    -- already bought is what idempotency means here. Only
+    -- finish_cover_regeneration writes cover_last_request_id, which is what
+    -- makes this guard mean "this id delivered a cover" rather than "this id
+    -- was merely the last to claim the row".
+    if p_request_id is not null
+       and v_story.cover_last_request_id = p_request_id
+       and v_story.cover_status = 'ready'
+       and v_story.cover_image_url is not null then
+        return pg_catalog.jsonb_build_object(
+            'claimed', false,
+            'reason', 'replayed',
+            'cover_image_url', v_story.cover_image_url,
+            'cover_regen_count', v_story.cover_regen_count
+        );
+    end if;
+
+    -- The spend bound. Before the reservation and before the provider, because
+    -- the attempt this refuses is one that would have cost us money and the
+    -- caller nothing.
+    if v_story.cover_attempt_count >= v_attempt_limit then
+        return pg_catalog.jsonb_build_object(
+            'claimed', false,
+            'reason', 'attempt_limit'
+        );
+    end if;
+
+    -- A fresh 'generating' claim means another regeneration -- or the original
+    -- background media task -- is in flight. Two providers writing the same
+    -- storage key would leave the row pointing at whichever finished last, and
+    -- the user would have paid for the one that lost.
+    if v_story.cover_status = 'generating'
+       and v_story.cover_started_at is not null
+       and v_story.cover_started_at > pg_catalog.now() - p_stale_after then
+        return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'in_flight');
+    end if;
+
+    -- The attempt is counted here, in the same statement as the claim and under
+    -- the same lock that decided the price. Counting it on the way out would
+    -- leave every path that never reaches the exit -- a timeout, an evicted
+    -- isolate, a caller that hangs up -- uncounted. release_cover_claim gives
+    -- the count back on the paths that provably never reached a provider.
+    --
+    -- cover_last_request_id is deliberately *not* written here. It records
+    -- which request produced the cover on the row, and only a finished
+    -- regeneration knows that.
+    update public.stories
+    set cover_status = 'generating',
+        cover_started_at = pg_catalog.now(),
+        cover_attempt_count = cover_attempt_count + 1
+    where id = p_story_id;
+
+    return pg_catalog.jsonb_build_object(
+        'claimed', true,
+        -- The status to put back if this attempt fails. Restoring it matters:
+        -- a story that already had a good cover must not be left reading
+        -- 'failed' because a *re*generation missed.
+        'previous_cover_status', v_story.cover_status,
+        'regen_count', v_story.cover_regen_count,
+        'attempt_count', v_story.cover_attempt_count + 1,
+        'attempts_remaining', v_attempt_limit - (v_story.cover_attempt_count + 1),
+        -- 1 free retry, then 1 credit. Computed here so the price and the count
+        -- it is derived from are read under the same lock.
+        'requires_credit', v_story.cover_regen_count >= 1,
+        'title', v_story.title,
+        'primary_genre', v_story.primary_genre,
+        'themes', pg_catalog.to_jsonb(coalesce(v_story.themes, '{}'::text[])),
+        'where_and_when', v_story.where_and_when,
+        'avoid', v_story.avoid,
+        'cover_prompt', v_story.cover_prompt,
+        'image_style', v_story.image_style,
+        -- THE DEPICTION RULES, AND THE REASON THIS FUNCTION IS IN THIS
+        -- MIGRATION AT ALL.
+        --
+        -- `regenerate-cover` builds its whole input from this object and
+        -- deliberately does not re-read the row -- the comment above `title`
+        -- says why, and 00075 added `image_style` here for exactly that
+        -- reason. A tradition missing from here is a tradition the
+        -- regeneration cannot know about, so a story's FIRST cover would
+        -- respect its depiction policy and a REGENERATED one would silently
+        -- not: it fails quietly, only on the second attempt, and the writer
+        -- has paid a credit for the cover that broke the rule.
+        'tradition', v_story.tradition
+    );
+end;
+$$;
