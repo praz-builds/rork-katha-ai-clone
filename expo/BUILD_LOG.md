@@ -58,7 +58,12 @@
   catalogue" and a **Clear filters** button; the block list gets its own
   sentence and no button that would change nothing; `hasMore` adds **Keep
   looking**, which is the manual form of the scroll that cannot happen without
-  a list. It runs above the genre and the search gates, because the same false
+  a list — filled when it is the only action on the screen, secondary only
+  when Clear filters is beside it. The title splits the same way the body does:
+  naming the filters over a sentence that says the block list did it points the
+  reader at the panel's Clear, which no-ops in that state, and the TAGS section
+  is hidden there anyway because the panel's chips come from the rows that came
+  back. It runs above the genre and the search gates, because the same false
   statement was in both — a tag left checked while you type gives 24 rows that
   match the term perfectly and a screen offering a spelling fix.
 - Covers are untouched and still the slowest thing here. Separate branch.

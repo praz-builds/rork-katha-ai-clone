@@ -595,60 +595,89 @@ export default function ExploreScreen({
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
-            {/* "No stories match "dragon" with your filters", not "Nothing in
+            {/* The title splits the same way the body does. Naming the
+                filters over a sentence that says the block list did it points
+                the reader at the panel's Clear, which no-ops here -- and the
+                TAGS section is hidden anyway, because `availableTags` comes
+                from `results`. That is the circular gesture this branch exists
+                to remove, one tap further away.
+
+                "No stories match "dragon" with your filters", not "Nothing in
                 "dragon"" -- a search term is not a place with contents in it,
-                and the other two shapes already read the way a reader would
-                say it. */}
-            {searching
-              ? `No stories match ${subject} with your filters`
-              : `No ${subject} match your filters`}
+                and the other shapes already read the way a reader would say
+                it. */}
+            {blockedEmptied
+              ? `No ${subject} to show`
+              : searching
+                ? `No stories match ${subject} with your filters`
+                : `No ${subject} match your filters`}
           </Text>
           <Text style={styles.emptyBody}>
             {blockedEmptied
               ? "Everything found here is by a writer you blocked."
               : "Your filters are narrower than the catalogue. Clear them to see everything."}
           </Text>
-          {/* BOTH, when both apply. The body says to clear the filters, so the
-              button that clears them has to be here -- it used to appear only
-              once `hasMore` was false, which is the one state where clearing
-              is not the interesting move. */}
-          {!blockedEmptied ? (
-            <Pressable
-              onPress={clearFilters}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.emptyButtonText}>Clear filters</Text>
-            </Pressable>
-          ) : null}
-          {/* The optional one, so it takes the secondary variant
-              (`expo/DESIGN.md:230`): the body names Clear filters, and whether
-              this exists at all depends on `hasMore`. Two identical filled
-              pills read as two equal choices. */}
-          {hasMore ? (
-            <Pressable
-              onPress={() => loadMore()}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.emptyButton,
-                styles.emptyButtonSecondary,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.emptyButtonText, styles.emptyButtonTextSecondary]}>
-                Keep looking
-              </Text>
-            </Pressable>
-          ) : null}
-          {blockedEmptied && !hasMore ? (
-            <Pressable
-              onPress={clearAll}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.emptyButtonText}>See every story</Text>
-            </Pressable>
-          ) : null}
+          {/* One row, so the pair sits where a single button would. BOTH when
+              both apply: the body names Clear filters, so the button that
+              clears them has to be on screen -- it used to appear only once
+              `hasMore` was false, which is the one state where clearing is not
+              the interesting move. */}
+          <View style={styles.emptyActions}>
+            {!blockedEmptied ? (
+              <Pressable
+                onPress={clearFilters}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.emptyButton,
+                  styles.emptyButtonInRow,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.emptyButtonText}>Clear filters</Text>
+              </Pressable>
+            ) : null}
+            {/* Secondary (`expo/DESIGN.md:230`) only when Clear filters is
+                beside it: two identical filled pills read as two equal
+                choices, and the body names that one. When the block list
+                emptied the page there is no Clear filters, so this is the
+                screen's only action and it takes the filled variant --
+                otherwise the same single action changes weight depending on
+                whether another page happens to exist. */}
+            {hasMore ? (
+              <Pressable
+                onPress={() => loadMore()}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.emptyButton,
+                  styles.emptyButtonInRow,
+                  !blockedEmptied && styles.emptyButtonSecondary,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.emptyButtonText,
+                    !blockedEmptied && styles.emptyButtonTextSecondary,
+                  ]}
+                >
+                  Keep looking
+                </Text>
+              </Pressable>
+            ) : null}
+            {blockedEmptied && !hasMore ? (
+              <Pressable
+                onPress={clearAll}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.emptyButton,
+                  styles.emptyButtonInRow,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.emptyButtonText}>See every story</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       );
     }
@@ -1155,9 +1184,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyButton: {
-    // No `marginTop`: `emptyWrap` already sets `gap`, and this branch is the
-    // first to render two buttons -- with both, the pills sat at twice the gap
-    // of everything above them.
+    // `marginTop` stays, because four single-button states predate this branch
+    // and `gap` alone puts the CTA at the same distance as title-to-body, which
+    // reads as the last line of the paragraph rather than the thing to press.
+    // The two-button case gets `emptyActions` below instead.
+    marginTop: spacing.related,
     minHeight: 44,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
@@ -1170,6 +1201,18 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontWeight: "800",
     fontSize: 14,
+  },
+  emptyActions: {
+    // The only state that renders two buttons. One `marginTop` for the row, so
+    // the pair sits where a single button would rather than at twice the gap.
+    marginTop: spacing.related,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  emptyButtonInRow: {
+    marginTop: 0,
   },
   emptyButtonSecondary: {
     backgroundColor: colors.surface,

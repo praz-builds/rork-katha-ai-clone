@@ -495,6 +495,9 @@ it("does not call a genre new when the reader's own filter emptied it", async ()
   });
 
   expect(view.queryByText(/This genre is new here/)).toBeNull();
+  // The title too: naming the filters over a body that says the block list did
+  // it points the reader at a Clear that no-ops here.
+  expect(view.getByText("No Fantasy stories to show")).toBeTruthy();
   expect(view.getByText(/Everything found here is by a writer you blocked/))
     .toBeTruthy();
   // And a way to carry on, since the scroll that would normally fetch the next
@@ -645,6 +648,7 @@ it("blames the block list even when a tag happens to be checked", async () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
 
+  expect(view.getByText("No Comedy stories to show")).toBeTruthy();
   expect(view.getByText(/Everything found here is by a writer you blocked/))
     .toBeTruthy();
   expect(view.queryByText(/Your filters are narrower than the catalogue/)).toBeNull();
