@@ -127,7 +127,7 @@ future feature should be decided by them without reopening this document.
    ceiling is **10 a month**. The streak ladder pays **nothing** in steady
    state (30 credits once, across the first three weeks, then never again), and
    the only recurring earn is the feedback claim at **at most 5 a month**
-   *(2026-09-16, lowered from 6 on 2026-09-27, §5)* — 5 against a ceiling of
+   *(2026-09-16, lowered from 6 to 5 on 2026-09-28, decided on the 27th, §5)* — 5 against a ceiling of
    10, with the ladder contributing zero. Measure every future earn against the
    **most expensive action a credit can buy**, never the blended cost: see §5,
    *The daily credit, re-examined*.
@@ -2634,7 +2634,7 @@ economy is tuned on evidence rather than argued about.
     streak; it does not pay the missed rung. It costs nothing, because reading is
     free, and it buys a 30-minute reading session.
 23. **Ceiling: steady-state earnable free credits are at most 5 a month**
-    *(revised 2026-09-16 from zero to 6, lowered to 5 on 2026-09-27)*, all of it
+    *(revised 2026-09-16 from zero to 6, lowered to 5 on 2026-09-28, decided on the 27th)*, all of it
     from the feedback claim, against
     a principle-7 ceiling of 10 — half the weekly plan's 20. The ladder pays 30
     once, across the first three weeks, and contributes nothing in steady
