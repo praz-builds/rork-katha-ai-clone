@@ -446,12 +446,25 @@ now says which one is in the tree.
   migrations directory before running, so it exercises the current schema rather
   than a snapshot of 00089 — leaving it at six would have failed, correctly.
   21/21 pass.
-- `00100_feedback_monthly_cap_five_test.ts`: three tests, each calling the
+- `00100_feedback_monthly_cap_five_test.ts`: **four** tests, each calling the
   function and then reading the ledger rather than checking the function exists.
   Five paid and the sixth refused; the remaining count counting down from five
-  and never going negative; and a refusal writing no ledger row and leaving the
-  comment unclaimed and therefore still editable. 3/3 pass.
-- `credit-claims` function tests 7/7. Expo **1663/1663** across 155 suites,
+  and never going negative; a refusal writing no ledger row and leaving the
+  comment unclaimed and therefore still editable; and **00090's 60-second read
+  gate surviving the cap change**, which is the most valuable of the four and
+  was omitted from this list on the first pass. 4/4 pass.
+- **Three of those four would have failed on the 1st of every month.** The
+  helper back-dated the paid rows to `month_start + N hours` to clear the daily
+  cap, and on the 1st `month_start` and `day_start` are the same instant, so
+  the window `[month_start, day_start)` is empty and the daily cap fires first.
+  Twelve times a year, on a suite gated to run whenever a `.sql` file changes.
+  It is a property of the calendar rather than a bug in the function — a reader
+  who has claimed five times on the 1st really is stopped by the daily rule —
+  so the tests now detect the boundary, assert the daily refusal on that day,
+  and keep the monthly assertions for the other thirty. Verified both branches
+  by forcing the flag. `00089`'s test inherited the same pattern and is fixed
+  with it.
+- `credit-claims` function tests 7/7. Expo **1671/1671** across 155 suites,
   typecheck clean, lint 0 errors.
 
 ### Not done here, and deliberately

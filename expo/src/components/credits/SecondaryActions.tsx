@@ -75,6 +75,25 @@ export default function SecondaryActions({
 }
 
 /**
+ * What the button says when there is no number worth quoting.
+ *
+ * NAME ONLY WHAT WORKS. This said "Comment, keep a streak, invite a friend"
+ * and two of those three pay nobody today, for the one reason recorded in
+ * `source-of-truth/CREDITS_AND_PRICING.md`: no client records a read, so
+ * `story_reads` is empty. Every feedback claim answers `not_read`, and
+ * `touch_streak` has two callers -- `publish-story` and the same dead
+ * `record-read` -- so a streak advances when you PUBLISH, never when you read.
+ * A reader following either suggestion gets nothing and no explanation.
+ *
+ * It also keeps the line to one row at 390pt, where the button's text column
+ * is about 119pt and thirty-nine characters wrapped to three.
+ *
+ * **Restore the other two the moment `record-read` ships from the client** --
+ * that is the single change that makes both live, and the doc block says so.
+ */
+const NO_NUMBER = "Invite a friend to earn credits";
+
+/**
  * What the earn button says underneath itself.
  *
  * Only the server's numbers are quoted. `remaining.month` is the authoritative
@@ -91,7 +110,7 @@ export function freeCreditsSubtitle(claims: CreditClaimsResult | null): string {
   // answered but did not count". Both are the same thing to a reader -- there
   // is no number worth quoting -- and both must reach the neutral line rather
   // than a confident zero.
-  if (!claims || !claims.remaining) return "Comment, keep a streak, invite a friend";
+  if (!claims || !claims.remaining) return NO_NUMBER;
   const left = claims.remaining.month;
   // Claimable comments, but never more than the caps will actually pay out
   // today. Three qualifying comments with the daily cap already spent is not
@@ -114,7 +133,7 @@ export function freeCreditsSubtitle(claims: CreditClaimsResult | null): string {
   // screen that cannot be reached. But it is wrong in the ordinary case too --
   // an established reader with headroom and nothing eligible got the same
   // sentence. The ways are honest whether or not the faucet is open.
-  return "Comment, keep a streak, invite a friend";
+  return NO_NUMBER;
 }
 
 const styles = StyleSheet.create({

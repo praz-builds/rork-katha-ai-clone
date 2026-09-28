@@ -50,11 +50,20 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**Re-verified 2026-09-27 20:31 UTC, after `#157` merged and its
-`seed-voice-previews` docblock shipped.** `scripts/audit-function-drift.sh`
-against `ed4d4a1`: **346 of 346 files identical, zero drift.** The exception
-paragraph that stood here between that merge and that deploy is gone, which is
-what it asked whoever deployed it to do.
+**Re-verified 2026-09-27 20:31 UTC against `ed4d4a1`**, after `#157` merged and
+its `seed-voice-previews` docblock shipped: `scripts/audit-function-drift.sh`
+reports **346 of 346 files identical, zero drift.** The claim is dated to that
+commit deliberately — it is a measurement, not a standing property.
+
+**One exception from the moment the credits round merges, and it expires the
+same way.** That branch adds migration `00100_feedback_monthly_cap_five` and
+changes one docblock line in `credit-claims/index.ts` (six → five). A comment
+is part of the module source, so **the audit will report drift on
+`credit-claims`, and it is a true positive.** Apply `00100` first, then deploy
+`credit-claims`; nothing under `_shared/` is touched, so there is no importer
+closure. **Whoever deploys it deletes this paragraph** — left standing after the
+deploy it is a false exception under a zero-drift baseline, which is the same
+failure inverted.
 
 **The 2026-09-25 baseline audit was current with main, file for file.** Verified after the 2026-09-25
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied

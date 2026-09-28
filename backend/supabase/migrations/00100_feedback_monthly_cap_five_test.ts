@@ -108,12 +108,26 @@ async function claim(
 }
 
 /**
- * Move every paid feedback row to a distinct earlier hour of this month, so
+ * Move every paid feedback row off today but inside this calendar month, so
  * the one-a-day cap lifts and the monthly one is the only thing left standing.
- * Distinct hours matter: the rows must stay inside the calendar month and out
- * of today.
+ *
+ * THE FIRST OF THE MONTH HAS NO SUCH TIME, and that is a property of the
+ * calendar rather than of this helper. The window is `[month_start, day_start)`
+ * and on the 1st those are the same instant, so it is empty: every back-dated
+ * row is still "today", the daily cap fires first, and the monthly branch
+ * cannot be reached at all. The original version of this placed rows at
+ * `month_start + N hours` and would have failed three of four tests **twelve
+ * times a year**, on a suite gated to run whenever a `.sql` file changes.
+ *
+ * So the helper reports whether it could do what it says. Callers that need the
+ * monthly cap in isolation skip on the 1st, with `monthlyCapReachable()` saying
+ * why, and the daily cap covers the same claim being refused on that one day --
+ * which is the correct behaviour, not a gap: a reader who has claimed five
+ * times on the 1st is stopped by the daily rule before the monthly one.
+ *
+ * `00089_..._test.ts` inherits the same pattern and is corrected with it.
  */
-async function backdateFeedbackRows(db: PGlite, hour: number) {
+async function backdateFeedbackRows(db: PGlite, hour: number): Promise<void> {
   await db.query(
     `update credit_ledger
         set created_at = (date_trunc('month', now() at time zone 'UTC') at time zone 'UTC')
@@ -121,6 +135,15 @@ async function backdateFeedbackRows(db: PGlite, hour: number) {
       where user_id = $1 and reason = 'feedback'`,
     [READER, String(hour)],
   );
+}
+
+/** False on the 1st of the month, when `[month_start, day_start)` is empty. */
+async function monthlyCapReachable(db: PGlite): Promise<boolean> {
+  const result = await db.query<{ reachable: boolean }>(
+    `select date_trunc('month', now() at time zone 'UTC')
+          < date_trunc('day', now() at time zone 'UTC') as reachable`,
+  );
+  return result.rows[0].reachable;
 }
 
 async function remaining(db: PGlite): Promise<{ today: number; month: number }> {
@@ -133,6 +156,19 @@ async function remaining(db: PGlite): Promise<{ today: number; month: number }> 
 Deno.test("five claims a month are paid and the sixth is refused", async () => {
   const db = await createDatabase();
   try {
+    if (!await monthlyCapReachable(db)) {
+      // The 1st: `[month_start, day_start)` is empty, so five prior claims
+      // cannot be placed off today and the daily cap refuses before the
+      // monthly one is consulted. Asserted below instead of skipped silently.
+      const comments = await seedReadAndCommented(db, 2);
+      assertEquals((await claim(db, comments[0], "d0")).ok, true);
+      assertEquals(await claim(db, comments[1], "d1"), {
+        ok: false,
+        reason: "daily_cap",
+      });
+      return;
+    }
+
     const comments = await seedReadAndCommented(db, 6);
 
     // One a day is still the rule, so each claim after the first needs the
@@ -167,6 +203,19 @@ Deno.test("five claims a month are paid and the sixth is refused", async () => {
 Deno.test("the listed remaining count counts down from five", async () => {
   const db = await createDatabase();
   try {
+    if (!await monthlyCapReachable(db)) {
+      // The 1st: `[month_start, day_start)` is empty, so five prior claims
+      // cannot be placed off today and the daily cap refuses before the
+      // monthly one is consulted. Asserted below instead of skipped silently.
+      const comments = await seedReadAndCommented(db, 2);
+      assertEquals((await claim(db, comments[0], "d0")).ok, true);
+      assertEquals(await claim(db, comments[1], "d1"), {
+        ok: false,
+        reason: "daily_cap",
+      });
+      return;
+    }
+
     const comments = await seedReadAndCommented(db, 6);
 
     assertEquals(await remaining(db), { today: 1, month: 5 });
@@ -234,6 +283,19 @@ Deno.test("00090's 60-second read gate survives the cap change", async () => {
 Deno.test("the sixth claim is refused without taking the credit", async () => {
   const db = await createDatabase();
   try {
+    if (!await monthlyCapReachable(db)) {
+      // The 1st: `[month_start, day_start)` is empty, so five prior claims
+      // cannot be placed off today and the daily cap refuses before the
+      // monthly one is consulted. Asserted below instead of skipped silently.
+      const comments = await seedReadAndCommented(db, 2);
+      assertEquals((await claim(db, comments[0], "d0")).ok, true);
+      assertEquals(await claim(db, comments[1], "d1"), {
+        ok: false,
+        reason: "daily_cap",
+      });
+      return;
+    }
+
     const comments = await seedReadAndCommented(db, 6);
     for (let i = 0; i < 5; i++) {
       await claim(db, comments[i], `p${i}`);

@@ -29,7 +29,7 @@ const claimable = (id: string) => ({
 it("names the ways rather than a number while the list is unavailable", () => {
   // Null is both "still loading" and "could not be read". Neither is a moment
   // to quote a figure at somebody.
-  expect(freeCreditsSubtitle(null)).toBe("Comment, keep a streak, invite a friend");
+  expect(freeCreditsSubtitle(null)).toBe("Invite a friend to earn credits");
 });
 
 // The failure this guards: `remaining` used to default to {today: 0, month: 0}
@@ -39,9 +39,9 @@ it("names the ways rather than a number while the list is unavailable", () => {
 // "Claimed every one this month". A missing number is not a zero.
 it("says nothing exact when the server answered but did not count", () => {
   expect(freeCreditsSubtitle(result({ remaining: null })))
-    .toBe("Comment, keep a streak, invite a friend");
+    .toBe("Invite a friend to earn credits");
   expect(freeCreditsSubtitle(result({ claims: [claimable("a")], remaining: null })))
-    .toBe("Comment, keep a streak, invite a friend");
+    .toBe("Invite a friend to earn credits");
 });
 
 // `comment_credit_claims` computes `greatest(1 - v_today, 0)`, so
@@ -85,26 +85,26 @@ it("names the ways when the daily cap is spent", () => {
       claims: [claimable("a"), claimable("b")],
       remaining: { today: 0, month: 4 },
     }),
-  )).toBe("Comment, keep a streak, invite a friend");
+  )).toBe("Invite a friend to earn credits");
 });
 
 it("names the ways at the monthly cap", () => {
   expect(freeCreditsSubtitle(
     result({ claims: [claimable("a")], remaining: { today: 1, month: 0 } }),
-  )).toBe("Comment, keep a streak, invite a friend");
+  )).toBe("Invite a friend to earn credits");
 });
 
 it("names the ways when there is headroom but nothing eligible", () => {
   // The shape every account is in today: the caps allow five, and not one
   // comment can be claimed.
   expect(freeCreditsSubtitle(result({ remaining: { today: 1, month: 5 } })))
-    .toBe("Comment, keep a streak, invite a friend");
+    .toBe("Invite a friend to earn credits");
   expect(freeCreditsSubtitle(
     result({
       claims: [{ ...claimable("a"), status: "ineligible" as const, reason: "not_read" }],
       remaining: { today: 1, month: 5 },
     }),
-  )).toBe("Comment, keep a streak, invite a friend");
+  )).toBe("Invite a friend to earn credits");
 });
 
 it("counts only the claimable ones", () => {
@@ -137,6 +137,6 @@ it("never shows a number the reader cannot act on", () => {
         remaining,
       }),
     );
-    expect(subtitle).toBe("Comment, keep a streak, invite a friend");
+    expect(subtitle).toBe("Invite a friend to earn credits");
   }
 });

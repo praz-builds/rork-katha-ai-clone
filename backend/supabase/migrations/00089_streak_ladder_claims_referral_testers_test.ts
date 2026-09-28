@@ -497,6 +497,18 @@ Deno.test("every refusal reason, in the order the claim checks them", async () =
 Deno.test("one claim a day and five a month, counted from the ledger", async () => {
   const db = await createDatabase();
   try {
+    // ON THE 1st THIS SCENARIO DOES NOT EXIST. Back-dating the paid rows off
+    // today but inside the month needs `[month_start, day_start)`, and on the
+    // 1st that window is empty -- so the daily cap refuses before the monthly
+    // one is consulted and the five prior claims cannot be set up at all. The
+    // daily half is still asserted; see the same note in
+    // `00100_feedback_monthly_cap_five_test.ts`, which shares this pattern.
+    const boundary = await db.query<{ reachable: boolean }>(
+      `select date_trunc('month', now() at time zone 'UTC')
+            < date_trunc('day', now() at time zone 'UTC') as reachable`,
+    );
+    const monthlyCapReachable = boundary.rows[0].reachable;
+
     await seed(db);
     // Seven stories by the author, each read and commented on.
     const comments: string[] = [];
@@ -516,6 +528,10 @@ Deno.test("one claim a day and five a month, counted from the ledger", async () 
       ok: false,
       reason: "daily_cap",
     });
+
+    // The daily half holds on every calendar day, and on the 1st it is the
+    // whole of what can be observed.
+    if (!monthlyCapReachable) return;
 
     // Back-date the paid rows to earlier days this month: the daily cap
     // lifts, and the monthly one is what remains.
