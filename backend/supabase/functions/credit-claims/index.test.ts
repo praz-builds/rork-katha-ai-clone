@@ -81,7 +81,10 @@ Deno.test("jsonb delivered as a string is still read", () => {
     }),
   );
   assertEquals(shaped.claims[0].status, "claimed");
-  assertEquals(shaped.remaining.month, 4);
+  // Narrowed rather than asserted through: `remaining` is omitted when the
+  // server did not send two finite numbers, so the client can tell "none left"
+  // from "the server did not say".
+  assertEquals(shaped.remaining?.month, 4);
 });
 
 Deno.test("an unknown status reads as ineligible", () => {
