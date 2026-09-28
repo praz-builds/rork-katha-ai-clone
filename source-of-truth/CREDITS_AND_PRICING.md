@@ -1666,8 +1666,10 @@ and the cap is the whole of what keeps it inside the line: raising it to 10
 would put the free tier exactly at the ceiling, and past 10 is a violation.
 The monthly cap is therefore load-bearing and is not a tuning knob.
 
-**Lowered from six to five on 2026-09-27**, by the product owner, with no other
-change to the mechanic. Migration `00100_feedback_monthly_cap_five` moves the
+**Decided on 2026-09-27, by the product owner, with no other change to the
+mechanic; six is what the server enforced until the 28th.** Two dates because
+they are two events, and an audit of a free account's September claims needs
+the second: a sixth claim paid on the 27th is legitimate. Migration `00100_feedback_monthly_cap_five` moves the
 digit in `comment_credit_block_reason` (which enforces it) and in
 `comment_credit_claims` (which reports the remaining count to the Credits
 screen); `claim_comment_credit` re-derives the reason under its lock and
@@ -1707,7 +1709,7 @@ to err on.
 
 | Mechanic | Why it's gone |
 |---|---|
-| ~~**Comment for a credit**~~ | ~~Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community.~~ **Reversed 2026-09-16 by the product owner, as a different mechanic** — see *Feedback credits — the claimed comment*, above. The faucet described here is retired by migration 00089 (`create_feedback` grants nothing); what replaces it is 1 credit on a *claim*, after a qualifying read, on a comment of at least 40 characters, capped at 1 per story, 1 a day and 5 a month (6 until 2026-09-27), with the content frozen once paid. The objection this row made — that paying for comments buys spam — is answered by the read requirement and the caps, not dismissed. |
+| ~~**Comment for a credit**~~ | ~~Shipped code grants a credit for a **one-character** comment on any public story, daily, forever, with no requirement the user read it. Rather than harden it, remove it — paying for comments buys comment spam, not community.~~ **Reversed 2026-09-16 by the product owner, as a different mechanic** — see *Feedback credits — the claimed comment*, above. The faucet described here is retired by migration 00089 (`create_feedback` grants nothing); what replaces it is 1 credit on a *claim*, after a qualifying read, on a comment of at least 40 characters, capped at 1 per story, 1 a day and 5 a month (6 until 2026-09-28; decided on the 27th, live on the 28th), with the content frozen once paid. The objection this row made — that paying for comments buys spam — is answered by the read requirement and the caps, not dismissed. |
 | **Social post reward** | A manual moderation queue to pay out one credit is not worth building. |
 | **Reader earnings** | The highest-abuse surface in the app, requiring the full anti-gaming pipeline, and there is no reader volume to calibrate against pre-launch. The front-loaded curve in `strategic-decisions.md` §6 is well designed and can return in v1.2 once there is real traffic. |
 | **Rewarded ads** | Rewarded video clears $15–40 eCPM in tier-1 gaming ([RevenueFlex](https://revenueflex.com/blog/app-ad-revenue-benchmarks-2026/), [Business of Apps](https://www.businessofapps.com/ads/rewarded-video/)); *inference:* a global reading app should plan on $6–12 eCPM = **$0.006–$0.012 per impression** against $0.0322-$0.0738 for the credit it buys. Rewarded ads lose money as a credit source at any plausible eCPM. Whether to run **non-rewarded** ads as free-tier revenue is a separate question, deferred. |
@@ -2216,9 +2218,9 @@ Proportionate to a pre-launch app. Nine controls, and an explicit list of what
    migration 00089, `claim_comment_credit`)*: a qualifying read of the story
    recorded *before* the comment, 40 trimmed characters minimum, not the
    claimant's own story, not soft-deleted, no upheld report, 1 per story,
-   1 per UTC day, 5 per calendar month *(6 until 2026-09-27, lowered by
-   migration 00100)*, keyed `feedback:{comment_id}` so a
-   replay is a no-op. A claimed comment is frozen by the owner UPDATE policy.
+   1 per UTC day, 5 per calendar month *(6 until 2026-09-28, when migration
+   00100 was applied; the decision is dated the 27th)*, keyed
+   `feedback:{comment_id}` so a replay is a no-op. A claimed comment is frozen by the owner UPDATE policy.
    The 5-a-month cap is the principle-7 bound and is not to be raised past 10
    (§5). **`create_feedback` no longer grants anything** — the uncapped
    one-character faucet this section used to say must be disabled before
@@ -2842,7 +2844,8 @@ economy is tuned on evidence rather than argued about.
     summed dwell **and** one server-written `read_at` at least 60 s older than
     the comment (`00090`); not
     deleted; no upheld report; 1 per story, 1 per UTC day, 5 per calendar
-    month *(6 until 2026-09-27, lowered by migration 00100)*;
+    month *(6 until 2026-09-28, when migration 00100 was applied; the
+    decision is dated the 27th)*;
     keyed `feedback:{comment_id}`; testers refused. A claimed comment's
     content is frozen. **`create_feedback` no longer grants anything.** This
     reverses the 2026-09-10 removal in mechanism, not in judgement: the

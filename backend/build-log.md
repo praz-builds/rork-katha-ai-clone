@@ -59,7 +59,7 @@ pricing doc no longer states; it names 00100 and the five.
 ### Verification
 
 Expo **1671/1671** across 155 suites, typecheck clean, lint 0 errors. The only
-code in this change is four `accessibilityRole` attributes; everything else is
+code in this change is three `accessibilityRole` attributes; everything else is
 documentation, and no migration or function is touched, so nothing to deploy
 from it.
 ## 2026-09-28 UTC — Bring the operator docs level with three sessions' production writes
@@ -124,8 +124,9 @@ paragraph about it.
 ### Verification
 
 - `scripts/audit-function-drift.sh` against `84f94fa`: **34 functions, 346 files,
-  346 identical, zero drift**, exit 0. The migration ledger is unchanged at
-  `00001`-`00099`.
+  346 identical, zero drift**, exit 0. The migration ledger was unchanged at
+  `00001`-`00099` on that date; `00100` was applied on the 28th, recorded in the
+  entry above.
 - The `seed-voice-previews` bundle was downloaded on its own and `cmp`d against
   main, because one slug's status was the claim in question and an aggregate zero
   could have hidden a skipped download.

@@ -628,7 +628,7 @@ Rules and known failure modes:
 
 ## Database
 
-Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00099` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (Both numbers moved on 2026-09-25: `00094`→`00099`, and the function count went 37→33 when the four phrase functions were deleted in #135, then →34 when `app-feedback` was added in #140.)
+Schema is in `backend/supabase/migrations/`. Remote production has every migration through `00100` applied, except the deliberately absent `00016`, `00024`, `00081` and `00083`. All **34** edge functions are deployed, so schema and code are in step. (The numbers moved on 2026-09-25, `00094`→`00099`, and again on 2026-09-28 when `00100_feedback_monthly_cap_five` was applied; the function count went 37→33 when the four phrase functions were deleted in #135, then →34 when `app-feedback` was added in #140.)
 
 **Take the next number from `origin/main`, never from your own directory listing.** `schema_migrations` keys on the version string, so once production has recorded `00093`, a *different* `00093` is considered already applied: `supabase db push` skips it, reports success, and the change never reaches production. Nothing errors, every test passes, and it works on the machine where it was written. This has happened twice -- `00056` is the renumbered `story_shape_no_anonymous_ceiling`, which shared `00046` with `engagement_persistence`, and on 2026-09-20 `00093` was taken by both `story_bible_rev` (#115) and a music branch cut before it merged.
 
