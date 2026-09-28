@@ -480,12 +480,36 @@ after a backspace.
 
 ### Verification
 
-Expo **1676/1676** across 155 suites, typecheck clean, lint 0 errors. Nine new
-tests on `spreadByKey` (totality, no run before the tail, within-key order,
-determinism, the growing-list seam) and seven on paging, each written against a
-way it fails: repeated `onEndReached`, a stale page appending to a new query, an
-overlapping page, and a lying footer. `explore-search-query.test.ts`'s builder
-mock now resolves at `.range()` rather than `.limit()`.
+Expo **1677/1677** across 155 suites (the baseline is 1651/153 two entries
+below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
+(totality, no run before the tail, within-key order, determinism, the
+growing-list seam) and eight on paging, each written against a way it fails:
+repeated `onEndReached`, a stale page appending to a new query, an overlapping
+page, a lying footer, and the state the auto-chase leaves behind.
+`explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
+than `.limit()`.
+
+**The chase's bound and the copy at the end of it are two different bugs, and
+only the first was fixed at the previous head.** Two chases stop the requests;
+they do not decide what the reader is then told. The genre branch of the empty
+state said *"This genre is new here. More will appear as writers publish in
+it."* — over a genre whose rows had been fetched and then removed by the
+reader's own tag filter or block list, with `hasMore` still true, and with no
+recovery, because `onEndReached` cannot fire against an empty list. It now
+distinguishes the three cases: rows came back and the reader's narrowing
+removed them, pages exist that nobody has asked for, and the genre is actually
+empty. The first two get honest copy and a **Keep looking** button, which is
+the manual version of the scroll that cannot happen without a list.
+
+The block list is now in the chase's reset key too. It is client-side
+narrowing by the same definition as the tags, so blocking an author while
+Explore is mounted changes what "empty" means without changing a fetched row.
+
+Two record fixes in the same push: the docblock above the guard still argued
+for the marker the commit deleted — four separate claims, including one that
+condemned what the code now does — and the chase test's
+`toBeLessThanOrEqual(3)` was satisfied by the chase not happening at all,
+which is a variant this effect has actually shipped. It is `toBe(3)`.
 
 ### Not done here
 

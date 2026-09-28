@@ -409,39 +409,43 @@ export default function ExploreScreen({
    * the database returned, not the ones that survived the genre narrowing);
    * this is the same care for the half of the narrowing that happens here.
    *
-   * WHY IT CANNOT SPIN, and this needs the ref rather than being obvious. A
-   * FAILED page now reports `hasMore: true` deliberately -- see `local()` in
-   * `search.ts`, because a lost connection is not the end of the catalogue --
-   * so "no rows, more exists" is a state that can repeat forever. Advancing
-   * only when something has actually changed since the last attempt means a
-   * page that adds nothing, for any reason, ends the chase; the reader's next
-   * scroll still retries, because that path is `onEndReached`, not this.
+   * WHY IT CANNOT SPIN: **it counts chases and stops at two.** A failed page
+   * reports `hasMore: true` deliberately -- see `local()` in `search.ts`,
+   * because a lost connection is not the end of the catalogue -- so "no rows,
+   * more exists" is a state that can repeat forever, and a bound is the only
+   * thing that ends it. The reader's next scroll still retries, because that
+   * path is `onEndReached`, not this one.
    *
-   * THE REF IS WHAT CARRIES ACROSS QUERIES, so the ref is what has to be
-   * cleared. Two versions of this got it wrong by changing the number instead
-   * of the lifetime, and both collided with certainty rather than by luck:
+   * IT IS A COUNT AND NOT A MARKER, and three earlier versions were markers.
+   * The appeal of a marker is that it needs no budget: advance only when
+   * something changed since the last attempt, and a page that adds nothing
+   * ends the walk by itself. **That reasoning is wrong for the case this
+   * effect exists for.** A marker only sees the server-narrowed case. When the
+   * tag filter or the block list is what empties the page, a FULL page of rows
+   * still arrives, `pageStarts` still grows, the marker still moves -- so the
+   * guard never matches and the walk runs page after page. A reader who leaves
+   * a tag checked and taps a genre gets marched through it 24 rows at a time
+   * without scrolling.
    *
-   * - Counting **rows** collided because page 0 is exactly `SEARCH_PAGE_SIZE`
-   *   whenever `hasMore` is true, so the stored value was always 24.
-   * - Counting **pages** was worse: the first advance of any query happens
-   *   when only page 0 has landed, so the stored value is always 1 -- and
-   *   every fresh query starts at `pageStarts: [0]`, which is also 1.
+   * The two marker values both collided outright as well, which is how this
+   * was found the first three times:
    *
-   * Either way: select a tag, tap a genre whose page 0 narrows to nothing, let
-   * the chase find rows on page 1, then tap a second genre that also narrows
-   * to nothing. The second never advances, and the reader is told the genre is
-   * empty over a catalogue with matching rows one page along -- with no
-   * recovery, because `onEndReached` cannot fire when there is no list to
-   * reach the end of.
+   * - **Rows**: page 0 is exactly `SEARCH_PAGE_SIZE` whenever `hasMore` is
+   *   true, so the stored value was always 24.
+   * - **Pages**: the first advance of any query happens when only page 0 has
+   *   landed, so the stored value is always 1 -- and every fresh query starts
+   *   at `pageStarts: [0]`, which is also 1.
    *
-   * Resetting on the query itself is the fix, and the tags belong in it: they
-   * are client-side narrowing, so changing them changes what "empty" means
-   * without changing a single row that was fetched.
+   * THE LIFETIME IS STILL THE QUERY. The budget is per narrowing, not per
+   * mount, or the second genre a reader taps inherits the first one's spent
+   * chases and never advances at all. The key below is every term that can
+   * change what "empty" means without changing a row that was fetched: the
+   * query, the genre, the category, the tags, and the block list.
    */
   const chasesForNarrowing = useRef(0);
   const narrowing = `${query}\u0000${genre ?? ""}\u0000${category ?? ""}\u0000${
     [...selectedTags].sort().join(",")
-  }`;
+  }\u0000${[...blocked].sort().join(",")}`;
   useEffect(() => {
     chasesForNarrowing.current = 0;
   }, [narrowing]);
@@ -542,6 +546,70 @@ export default function ExploreScreen({
           : BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()
         : `${genreLabels[genre!]} stories`;
       const isOfflineBedtime = category === BEDTIME_CATEGORY && source === "local";
+
+      /**
+       * BUT FIRST: IS THE GENRE ACTUALLY EMPTY?
+       *
+       * This is the state the auto-chase ends in once its budget of two is
+       * spent, so it is the one a reader is now guaranteed to land in -- and
+       * the copy below blames the catalogue. Two ways that is a false
+       * statement, and both are the reader's own narrowing:
+       *
+       * - Rows CAME BACK and the tag filter or the block list removed them
+       *   all. `searched` is what the hook returned, before either. Saying
+       *   "this genre is new here" over 72 fetched fantasy stories is wrong
+       *   in a way the reader cannot correct, because `onEndReached` cannot
+       *   fire when there is no list to reach the end of.
+       * - `hasMore` is still true: there are pages nobody has asked for.
+       *   "More will appear as writers publish" is not what is going on; the
+       *   rows may already be there, one page along.
+       *
+       * So those get their own copy and, when there is more to fetch, a way
+       * to carry on looking -- the manual version of the scroll the reader
+       * cannot perform against an empty list.
+       */
+      const narrowedAway = searched.length > 0;
+      if (narrowedAway || hasMore) {
+        return (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>
+              {narrowedAway ? `No ${label} match your filters` : `No ${label} on this page`}
+            </Text>
+            <Text style={styles.emptyBody}>
+              {narrowedAway
+                ? activeFilterCount > 0
+                  ? "Your filters are narrower than this genre. Clear them to see everything."
+                  : "Everything found here is by a writer you blocked."
+                : "There is more of the catalogue to look through than has loaded."}
+            </Text>
+            {hasMore ? (
+              <Pressable
+                onPress={() => loadMore()}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.emptyButtonText}>Keep looking</Text>
+              </Pressable>
+            ) : activeFilterCount > 0 ? (
+              <Pressable
+                onPress={clearFilters}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.emptyButtonText}>Clear filters</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={clearAll}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.emptyButtonText}>See every story</Text>
+              </Pressable>
+            )}
+          </View>
+        );
+      }
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
@@ -624,9 +692,13 @@ export default function ExploreScreen({
     activeFilterCount,
     category,
     clearAll,
+    clearFilters,
     genre,
+    hasMore,
+    loadMore,
     loadingMore,
     query,
+    searched.length,
     searching,
     source,
     status,

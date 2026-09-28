@@ -456,9 +456,55 @@ it("gives up after a couple of pages when the client filter keeps emptying them"
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
 
-  // Page 0 plus at most two chases. Without a count-based bound this walks the
-  // whole catalogue.
-  expect(search.mock.calls.length).toBeLessThanOrEqual(3);
+  // Page 0 plus exactly two chases. `toBe`, not `toBeLessThanOrEqual`: the
+  // one-sided bound was also satisfied by the chase not happening at all,
+  // which is variant 3 of this same effect -- one call for page 0, and green.
+  expect(search.mock.calls.length).toBe(3);
+});
+
+// WHERE THAT WALK ENDS, which is the state a reader is now guaranteed to see.
+//
+// The budget stops the requests; it does not decide what the screen says. The
+// genre branch of the empty state blamed the catalogue -- "This genre is new
+// here. More will appear as writers publish in it." -- over a genre whose rows
+// had been fetched and then removed by the reader's own filter, with `hasMore`
+// still true and no way out, because `onEndReached` cannot fire against an
+// empty list.
+it("does not call a genre new when the reader's own filter emptied it", async () => {
+  mockBlockedAuthorIds = new Set(["blocked-author"]);
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(
+      Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
+        ...seedStories[0],
+        id: `p${input.page ?? 0}-${i}`,
+        title: `Story ${input.page ?? 0}-${i}`,
+        genre: "fantasy" as Story["genre"],
+        authorId: "blocked-author",
+        chapters: [],
+      })),
+      true,
+    )
+  );
+
+  const view = await renderWith(search, 20);
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Fantasy"));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  expect(view.queryByText(/This genre is new here/)).toBeNull();
+  expect(view.getByText(/Everything found here is by a writer you blocked/))
+    .toBeTruthy();
+  // And a way to carry on, since the scroll that would normally fetch the next
+  // page has no list to happen on.
+  const keepLooking = view.getByText("Keep looking");
+  const before = search.mock.calls.length;
+  await act(async () => {
+    fireEvent.press(keepLooking);
+  });
+  expect(search.mock.calls.length).toBe(before + 1);
 });
 
 it("starts the next query at page 0, not where the last one stopped", async () => {
