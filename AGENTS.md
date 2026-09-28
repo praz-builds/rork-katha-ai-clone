@@ -131,6 +131,21 @@ would read `vivid_lantern_51`, and it cannot be renamed out of it (`katha`,
 00060). Not claimed by any round in flight, client-side, and it reaches phones by
 OTA, so it does not gate the first AAB.
 
+**A comment shows the handle, not the name its author chose, and nobody owns the
+fix.** `supabase/functions/comments/index.ts:350` returns
+`author_display_name: profile?.username ?? null`, while every other surface shows
+`display_name`. So a reader who sets their name to "Ana" is credited as
+`ana_reads` the moment they comment. It is a bug for every author, not a
+house-account quirk -- that is only where it was noticed, because the house
+account's reply would read `vivid_lantern_51` and it cannot be renamed out of it
+(`katha`, `kathaai` and `katha_ai` are all in `profiles_username_not_reserved`,
+migration 00060). Deciding whether a comment carries the name or the handle is a
+product call with a client surface; it is **not** claimed by any round in flight,
+and it reaches phones by OTA, so it does not gate the first AAB. (Re-added
+2026-09-29: this entry and its ROADMAP row were the only things dropped when #161
+was closed and folded into #163, which is what happens to the one item in a round
+that has no owner carrying it.)
+
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
 block-author's `library` and `profile` were recorded as needing deployment and
