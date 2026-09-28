@@ -35,7 +35,10 @@ afterEach(cleanup);
 it("shows the prices under its own heading", async () => {
   const view = await render(<HowCreditsWorkScreen onBack={jest.fn()} />);
 
-  expect(view.getByText("How credits work")).toBeTruthy();
+  // A heading, so the screen's one landmark is reachable from the rotor. It
+  // was plain text, which on a screen that is nothing but a title and a price
+  // list left heading navigation with nowhere to go at all.
+  expect(view.getByText("How credits work").props.accessibilityRole).toBe("header");
   expect(view.getByTestId("how-credits-work-screen")).toBeTruthy();
   expect(view.getByTestId("how-credits-work")).toBeTruthy();
   // Every priced action the document lists reaches the screen. Asserting the

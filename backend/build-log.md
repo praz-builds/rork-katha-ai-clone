@@ -441,10 +441,14 @@ record with the timestamps (`ed4d4a1` merged 20:29 UTC, deployed and audited
 that had branched before `#157`), and the paragraph is theirs, so one PR owns
 the text and neither of us resolves it as a merge conflict.
 
-`AGENTS.md`'s production-state paragraph was also clarified: it names
+`AGENTS.md`'s production-state paragraph is clarified here. It named
 `00100_reader_preferences` as a migration that must never be applied, and the
-number has since been reused, so the repo described two different `00100`s. It
-now says which one is in the tree.
+number has since been reused, so the repo described two different `00100`s —
+one page saying apply it first, the other saying never apply it. It now says
+which one is in the tree, and that the withdrawn one is not in the tree at all.
+
+That is a different paragraph from the deployment-drift one above, which is
+#161's and is left untouched here.
 
 ### Verification
 
@@ -454,14 +458,15 @@ now says which one is in the tree.
   migrations directory before running, so it exercises the current schema rather
   than a snapshot of 00089 — leaving it at six would have failed, correctly.
   21/21 pass.
-- `00100_feedback_monthly_cap_five_test.ts`: **four** tests, each calling the
+- `00100_feedback_monthly_cap_five_test.ts`: **five** tests, each calling the
   function and then reading the ledger rather than checking the function exists.
   Five paid and the sixth refused; the remaining count counting down from five
   and never going negative; a refusal writing no ledger row and leaving the
-  comment unclaimed and therefore still editable; and **00090's 60-second read
-  gate surviving the cap change**, which is the most valuable of the four and
-  was omitted from this list on the first pass. 4/4 pass.
-- **Three of those four would have failed on the 1st of every month.** The
+  comment unclaimed and therefore still editable; **00090's 60-second read
+  gate surviving the cap change**, which is the most valuable of them; and a
+  fresh account being offered five claims this month, which is the one that
+  holds on every day of the month including the 1st. 5/5 pass.
+- **Three of those five would have failed on the 1st of every month.** The
   helper back-dated the paid rows to `month_start + N hours` to clear the daily
   cap, and on the 1st `month_start` and `day_start` are the same instant, so
   the window `[month_start, day_start)` is empty and the daily cap fires first.
@@ -496,7 +501,14 @@ now says which one is in the tree.
 ### Not done here, and deliberately
 
 No deploy yet. `00100` has to be applied before `credit-claims` is redeployed,
-and that happens after review and merge, not from this branch. Production was
+and that happens after review and merge, not from this branch. **Check first
+that `00100` is absent from `supabase_migrations.schema_migrations`**: `db
+push` keys on the filename's numeric prefix rather than its name, and the
+number was used once before by the withdrawn `00100_reader_preferences`. The
+production ledger is aligned `00001`-`00099` with nothing pending, so
+production is safe — but any database that ever had the withdrawn one pushed
+to it will skip this file, exit 0, and leave the cap at six behind a green
+deploy. Production was
 verified byte-identical to main earlier today (346/346), so
 `scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
 after this deploy is this change's.

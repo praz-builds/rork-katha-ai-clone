@@ -184,7 +184,7 @@ export default function CreditsScreen({
           >
             <ChevronLeft size={22} color={colors.ink} />
           </Pressable>
-          <Text style={styles.title}>Get credits</Text>
+          <Text accessibilityRole="header" style={styles.title}>Get credits</Text>
           {/* The same object as Home's credits action, drawn by the same
               component. It was a peach `accentSoft` capsule with an accent
               number in it, which is a third face for one idea -- and a number
@@ -209,7 +209,11 @@ export default function CreditsScreen({
           </View>
         </View>
 
-        <Text style={styles.section}>Paid options</Text>
+        {/* Every section heading on this screen carries the role, not just
+            the one `scrollToFree` focuses. Marking one made heading navigation
+            worse than marking none: the rotor found a single "Free credits"
+            and no way to reach the other two. */}
+        <Text accessibilityRole="header" style={styles.section}>Paid options</Text>
         <PaidOptions subscribed={subscribed} onPlus={openPlus} onPacks={() => setPacks(true)} />
 
         <View style={styles.secondary}>
@@ -248,7 +252,7 @@ export default function CreditsScreen({
           />
         </View>
 
-        <Text style={styles.section}>History</Text>
+        <Text accessibilityRole="header" style={styles.section}>History</Text>
         <LedgerHistory entries={ledger === undefined ? null : ledger} />
       </ScrollView>
 

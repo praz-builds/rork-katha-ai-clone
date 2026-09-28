@@ -46,7 +46,7 @@ export default function HowCreditsWorkScreen({ onBack }: { onBack: () => void })
           >
             <ChevronLeft size={22} color={colors.ink} />
           </Pressable>
-          <Text style={styles.title}>How credits work</Text>
+          <Text accessibilityRole="header" style={styles.title}>How credits work</Text>
         </View>
 
         <View testID="how-credits-work-screen">

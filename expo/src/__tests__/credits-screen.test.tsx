@@ -110,9 +110,13 @@ it("lays out paid options, the two secondary ways, the free ways and the history
   // The balance the app holds, in the pill.
   expect(view.getByTestId("credits-balance")).toBeTruthy();
   expect(view.getByText("7")).toBeTruthy();
+  // Each one a heading, not only the one the free-credits button focuses.
+  // Marking a single section was worse than marking none: heading navigation
+  // found "Free credits" and offered no way to reach the other two.
   for (const section of ["Paid options", "Free credits", "History"]) {
-    expect(view.getByText(section)).toBeTruthy();
+    expect(view.getByText(section).props.accessibilityRole).toBe("header");
   }
+  expect(view.getByText("Get credits").props.accessibilityRole).toBe("header");
   expect(view.getByTestId("credits-packs")).toBeTruthy();
   expect(view.getByTestId("credits-free-cta")).toBeTruthy();
   expect(view.getByTestId("credits-how-cta")).toBeTruthy();
