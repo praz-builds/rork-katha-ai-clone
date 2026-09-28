@@ -299,7 +299,7 @@ What was actually needed was fewer bytes and a real disk cache.
   `expo-image` prop and the web branch returns a bare `<img>` before reaching
   it, while `StoryFeedCard`'s `Animated.View` was deleted unconditionally — so
   on the one surface this client can currently be looked at, the cover popped
-  in. Now CSS: `opacity: 0` with a 180ms transition, set to 1 on load.
+  in. Now CSS: `opacity: 0` with a `motion.fast` transition, set to 1 on load.
   **And a `ref` that checks `complete`**, because a cached image can finish
   before React attaches `onLoad`, and an element left at opacity 0 with no
   event coming is the "gradients forever" bug rebuilt in the DOM. With the
@@ -367,8 +367,11 @@ leaf it actually renders, is both simpler and closer to what ships.
 to 288, in the "what landed" line a reader skims. Both now say 288, and the
 idempotence illustration no longer shows a string the module cannot produce.
 
-**The 180 ms fade is `motion.fast`** rather than two hand-written literals, one
-in the CSS transition and one in the `expo-image` prop — two places to drift.
+**The fade is `motion.fast` — 150 ms, down from a hand-written 180**, in place
+of two literals in two syntaxes, one in the CSS transition and one in the
+`expo-image` prop. Not purely a refactor: every cover fade is 17% faster. The
+web test now asserts the token rather than just the presence of a transition,
+so the two halves cannot drift back apart.
 
 ### Sequencing with #159
 
@@ -382,17 +385,33 @@ there.
 
 ### Verification
 
-Expo **1666/1666** across 155 suites, typecheck clean, lint 0 errors, and the
+Expo **1667/1667** across 155 suites, typecheck clean, lint 0 errors, and the
 web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
-native dependency.
+native dependency. The baseline is the entry above: **1651 across 153**, so
+this is +16 tests and +2 suites.
 
-Seven new tests on `coverUrl`, six of them about *not* breaking an image, and
-one pinning the rewrite to the `Accept` header so the two halves cannot drift
-apart. `story-feed-card.test.tsx` lost its three opacity tests — they tested a
-mechanism that is now the library's — and gained three on what the card still
-decides for itself: the URL it asks for, the URL it leaves alone, and the
-recycling key. Both of those fail silently, which is why they are asserted: a
-full-size cover looks identical, just slower.
+The +16 is 24 added against 8 deleted:
+
+- **`cover-url.test.ts`, 7.** Six of them about *not* breaking an image, and one
+  pinning the rewrite to the `Accept` header so the two halves cannot drift
+  apart.
+- **`focal-image.test.tsx`, 8.** The component's own contract: the header it
+  sends, the header it does not send for a cover it never rewrote, a bundled
+  asset passed through untouched, the crop settings, the remount on a new
+  source, and a cached image the web `load` event will never fire for.
+- **`cover-surfaces.test.tsx`, 6.** That the *screens* call `coverUrl` — the
+  half that has already been wrong once, and the one the other two files cannot
+  see. Five render `Cover` for the `card` and `mini` surfaces; the sixth reads
+  `StoryDetailScreen` and `ListenScreen` as text, because they call `coverUrl`
+  themselves and `hero` was otherwise the one width nothing pinned.
+- **`story-feed-card.test.tsx`, +3 and −3.** It lost its three opacity tests,
+  which tested a mechanism that is now the library's, and gained three on what
+  the card still decides for itself: the URL it asks for, the URL it leaves
+  alone, and the recycling key.
+- **`explore-cover-prefetch.test.tsx`, −5**, deleted with the race it covered.
+
+Every one of those failures is silent: a full-size cover looks identical, just
+slower.
 
 ---
 

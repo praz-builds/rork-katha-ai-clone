@@ -104,3 +104,22 @@ it("draws the genre gradient under the art, not instead of it", async () => {
   // The gradient is still rendered alongside it, not replaced by it.
   expect(JSON.stringify(view.toJSON())).toContain("LinearGradient");
 });
+
+/**
+ * The hero, pinned at the source rather than by rendering.
+ *
+ * `Cover` carries `card` and `mini`, but the two full-bleed surfaces call
+ * `coverUrl` themselves, and rendering either would mean standing up a player
+ * and a detail screen to assert one string. So this reads the files. It is the
+ * crude half of the pair on purpose: what it catches is the thing that
+ * actually happened to `Cover` -- a surface quietly going back to
+ * `story.coverImageUrl` and fetching 2 MB behind an identical-looking screen.
+ */
+it("asks for the hero surfaces at the hero width", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require("fs") as typeof import("fs");
+  for (const file of ["StoryDetailScreen", "ListenScreen"]) {
+    const source = fs.readFileSync(`${__dirname}/../screens/${file}.tsx`, "utf8");
+    expect(source).toContain('coverUrl(story.coverImageUrl, "hero")');
+  }
+});

@@ -30,6 +30,7 @@ jest.mock("expo-image", () => {
 /* eslint-disable import/first */
 import { FocalImage } from "@/components/KathaPrimitives";
 import { COVER_WIDTHS, coverUrl } from "@/lib/cover-url";
+import { motion } from "@/theme";
 /* eslint-enable import/first */
 
 const PUBLIC =
@@ -139,7 +140,12 @@ describe("the web branch", () => {
     // Hidden to begin with, so it can cross-fade up from the genre gradient
     // its callers layer underneath.
     expect(node.props.style.opacity).toBe(0);
-    expect(node.props.style.transition).toContain("opacity");
+    // The duration, not just the presence of a transition. Web and native each
+    // spell the fade in their own syntax, and asserting only `"opacity"` here
+    // let the web half go back to a hand-written literal while native ran on
+    // the token -- the two-halves-diverging failure this change exists to
+    // close. `motion.fast` is the one number both read.
+    expect(node.props.style.transition).toBe(`opacity ${motion.fast}ms ease-out`);
 
     const target = { style: { opacity: "0" } };
     await act(async () => {

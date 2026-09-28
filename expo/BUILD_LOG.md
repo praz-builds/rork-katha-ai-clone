@@ -34,7 +34,7 @@
   on main*, where they arrived full-size. Measure the box, then multiply.
 - **Web fades too.** `transition` is an `expo-image` prop and the web branch
   returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with
-  a 180ms transition, set to 1 on load — plus a `ref` that checks `complete`,
+  a `motion.fast` (150 ms) transition, set to 1 on load — plus a `ref` that checks `complete`,
   because a cached image can finish before React attaches `onLoad` and an
   element stuck at opacity 0 is the "gradients forever" bug rebuilt in the DOM.
 - The 180 ms `Image.prefetch` race in `useStorySearch` is removed with its
