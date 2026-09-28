@@ -34,6 +34,17 @@
   rendered page is never an input to anything again. The seam can repeat a
   genre; the whole list moving is worse. The seed is read once per mount, so a
   recompute crossing midnight cannot re-deal the feed either.
+- **The auto-advance chase is bounded at two pages**, and that took four
+  attempts. When a client-side filter (tags, blocked authors) empties a page
+  there is no list, so `onEndReached` cannot fire and the screen fetches the
+  next page itself. Three versions guarded that by remembering *where* the last
+  chase happened, and none of them bounded the case it exists for: a page full
+  from the server and empty after narrowing still grows `pageStarts`, so the
+  marker moved and the walk ran page after page. It counts chases now.
+- **And `loadingMore` reaches `listEmpty`.** `status` is `"ready"` while that
+  walk runs, so the reader was shown "This genre is new here" over two dozen
+  fetched stories, with no spinner, because the footer draws nothing when the
+  list is empty.
 - Covers are untouched and still the slowest thing here. Separate branch.
 
 ## 2026-09-27: Voice samples play; the Story world row is named for its job

@@ -84,6 +84,20 @@ export function exploreScopeLabel(
 /** A row this dense stops discriminating past a dozen or so choices. */
 const MAX_VISIBLE_TAGS = 12;
 
+/**
+ * How many pages the screen will fetch by itself when a client-side filter
+ * empties the list, before it gives up and says so.
+ *
+ * There has to be a number. The tag filter and the block list run after the
+ * server page, so "this page added nothing to show" is a state that can repeat
+ * for as long as the catalogue lasts — and with no list on screen there is no
+ * `onEndReached` to put the reader in control of it. Two covers a first page
+ * that happens to hold nothing matching; past that the empty state, which
+ * offers a way to clear the filters, is the more useful answer than a silent
+ * march through a genre 24 rows at a time.
+ */
+const MAX_AUTO_CHASES = 2;
+
 /** Genres offered as a way out of a search that found nothing. */
 const SUGGESTED_GENRES: readonly Genre[] = ["fantasy", "mystery", "romance"];
 
@@ -424,28 +438,36 @@ export default function ExploreScreen({
    * are client-side narrowing, so changing them changes what "empty" means
    * without changing a single row that was fetched.
    */
-  const autoAdvancedAt = useRef(-1);
+  const chasesForNarrowing = useRef(0);
   const narrowing = `${query}\u0000${genre ?? ""}\u0000${category ?? ""}\u0000${
     [...selectedTags].sort().join(",")
   }`;
   useEffect(() => {
-    autoAdvancedAt.current = -1;
+    chasesForNarrowing.current = 0;
   }, [narrowing]);
   useEffect(() => {
     if (visible.length > 0) return;
     if (status === "loading" || loadingMore || !hasMore) return;
-    if (autoAdvancedAt.current === pageStarts.length) return;
-    // RECORD THE CHASE ONLY IF IT HAPPENED. `loadMore` has guards of its own,
-    // and the one that matters here refuses a call whose query key has already
-    // moved on. That is precisely the state this effect is in on the render
-    // where the reader changes filter: the reset above has fired, but `pages`,
-    // `status` and `hasMore` still describe the PREVIOUS query until the
-    // debounced fetch lands. Arming the guard on that refused call sets it to
-    // the same value the new query's first page will produce, so when that page
-    // does arrive the chase declines to run -- and the reader is told the genre
-    // is empty over a catalogue with matching rows one page along. That was the
-    // third variant of this bug; the reset alone did not close it.
-    if (loadMore()) autoAdvancedAt.current = pageStarts.length;
+    if (chasesForNarrowing.current >= MAX_AUTO_CHASES) return;
+    // COUNT THE CHASES, DO NOT MARK WHERE THE LAST ONE HAPPENED. A marker like
+    // `pageStarts.length` only bounds the walk when the page added nothing to
+    // the HOOK's rows -- the server-narrowed case. The client-narrowed case is
+    // the one this effect exists for: a full page of rows the tag filter or the
+    // block list removes still grows `pageStarts`, so the marker moves, the
+    // guard stops matching, and the walk runs page after page until the server
+    // returns a short one. A reader who leaves a tag on and taps a genre could
+    // march through that genre 24 rows at a time without scrolling.
+    //
+    // Two pages is the budget. It covers the case worth covering -- a first
+    // page that happens to hold nothing matching -- and past that the honest
+    // answer is the empty state, which offers a way to clear the filters.
+    //
+    // RECORD ONLY IF IT HAPPENED. `loadMore` refuses a call whose query key has
+    // moved on, which is exactly this effect's state on the render where the
+    // reader changes filter: the reset above has run, but `pages`, `status` and
+    // `hasMore` still describe the previous query until the debounced fetch
+    // lands. Counting a refused call spends the budget on nothing.
+    if (loadMore()) chasesForNarrowing.current += 1;
     // `pages`, not `pageStarts.length`. Every other dep here is a primitive
     // that is VALUE-IDENTICAL either side of a page landing when that page
     // narrows to nothing -- 0 visible, 1 page, "empty", false, true -- and
@@ -454,7 +476,7 @@ export default function ExploreScreen({
     // first page arrived, and the chase simply did not happen. `pages` is a
     // fresh array on every state update, which is exactly the signal wanted:
     // something landed, look again.
-  }, [visible.length, pages, pageStarts.length, status, loadingMore, hasMore, loadMore]);
+  }, [visible.length, pages, status, loadingMore, hasMore, loadMore]);
 
   /**
    * What sits under the last card.
@@ -492,7 +514,15 @@ export default function ExploreScreen({
     // an empty-state headline: telling a reader "no stories match" while the
     // answer is still in flight is simply wrong, and they will have moved on
     // by the time it corrects itself.
-    if (status === "loading") {
+    //
+    // `loadingMore` counts, and leaving it out was a real hole. When a
+    // client-side filter empties a page the chase fetches the next one, and
+    // `status` is `"ready"` throughout -- the hook sets it from the rows the
+    // SERVER returned, which were plentiful. So the reader was shown "This
+    // genre is new here" over a genre with two dozen fetched stories in it,
+    // for as long as the walk lasted, with no spinner anywhere because
+    // `listFooter` draws nothing while the list is empty.
+    if (status === "loading" || loadingMore) {
       return (
         <View style={styles.emptyWrap}>
           <ActivityIndicator color={colors.accent} />
@@ -590,7 +620,17 @@ export default function ExploreScreen({
         )}
       </View>
     );
-  }, [activeFilterCount, category, clearAll, genre, query, searching, source, status]);
+  }, [
+    activeFilterCount,
+    category,
+    clearAll,
+    genre,
+    loadingMore,
+    query,
+    searching,
+    source,
+    status,
+  ]);
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>

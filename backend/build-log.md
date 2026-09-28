@@ -90,6 +90,45 @@ merged manifest this round; it is pinned by `release-config.test.ts`, which
 passed inside the 1,649, and was confirmed against a locally built release AAB on
 2026-09-25 (#138). A fresh gradle build would be the stronger check.
 
+### The chase took four passes to get right, and the last one found the bound was not a bound
+
+Three of these were recorded above as fixed and were not. Keeping the sequence,
+because the shape repeats: **each attempt moved the number the guard holds
+instead of changing what the guard is about.**
+
+1. **Count rows.** Collides with certainty: page 0 is exactly
+   `SEARCH_PAGE_SIZE` whenever `hasMore` is true, so the stored value is always
+   24 and a second query that also narrows to nothing never advances.
+2. **Count pages.** Worse: the first advance of any query happens when only
+   page 0 has landed, so the value is always 1 -- and every fresh query starts
+   at `pageStarts: [0]`, which is also 1.
+3. **Reset the ref on the query.** Right axis at last, and still not enough:
+   the guard was armed on a `loadMore()` the guards had *refused*, and the
+   effect never re-ran after the page it was waiting for landed, because every
+   dep was value-identical across it. `loadMore` now reports whether it acted,
+   and the effect depends on `pages`, which is a fresh array per update.
+4. **Count the chases.** The bound above was still no bound for the case this
+   whole mechanism exists for. A marker like `pageStarts.length` only stops the
+   walk when the page added nothing to the *hook's* rows -- the server-narrowed
+   case. A page that is **full from the server and empty after the client
+   narrows it** -- a tag filter, or an author the reader blocked -- grows
+   `pageStarts`, so the marker moves and the walk runs page after page. A
+   reader who leaves a tag on and taps a genre marched through it 24 rows at a
+   time without scrolling. `MAX_AUTO_CHASES` is 2.
+
+**And the reader was shown a false verdict for the whole walk.** `listEmpty`
+branched on `status` alone, and `status` is `"ready"` throughout -- the hook
+sets it from the rows the *server* returned, which were plentiful. So the screen
+read "No Fantasy stories yet. This genre is new here." over two dozen fetched
+fantasy stories, with no spinner anywhere, because `listFooter` draws nothing
+while the list is empty. `loadingMore` now reaches `listEmpty`.
+
+The test that could not see any of this returned an *empty* page, which stops
+after one pass for an unrelated reason. The new one blocks the author of every
+row, so each page is full from the server and empty after narrowing;
+negative-controlled against the marker guard, where it runs until the harness
+gives up.
+
 ### Verification
 
 - The seed script was run report-only first, then `--apply`, then **`--apply` a
@@ -335,7 +374,9 @@ Three more from the same round:
   block list are applied after the server page; when they left zero rows,
   `FlatList` rendered the empty state, `onEndReached` never fired, and the
   reader was told "no stories match" while `hasMore` was true. An effect now
-  advances a page in that case. It cannot spin: each pass consumes a page.
+  advances a page in that case, **bounded at two** -- see the correction at the
+  end of this entry, where "it cannot spin" turned out to be false for exactly
+  the narrowing the chase exists for.
 - **Re-running the identical query threw the accumulated pages away.** Type a
   character and delete it and the third run is the first query again, so three
   pages collapsed back to 24 rows. `loadedFor` now short-circuits it.
@@ -439,7 +480,7 @@ after a backspace.
 
 ### Verification
 
-Expo **1673/1673** across 155 suites, typecheck clean, lint 0 errors. Nine new
+Expo **1676/1676** across 155 suites, typecheck clean, lint 0 errors. Nine new
 tests on `spreadByKey` (totality, no run before the tail, within-key order,
 determinism, the growing-list seam) and seven on paging, each written against a
 way it fails: repeated `onEndReached`, a stale page appending to a new query, an

@@ -23,6 +23,12 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
+let mockBlockedAuthorIds = new Set<string>();
+jest.mock("@/lib/blocks", () => {
+  const actual = jest.requireActual("@/lib/blocks");
+  return { ...actual, useBlockedAuthorIds: () => mockBlockedAuthorIds };
+});
+
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 jest.mock("lucide-react-native", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -87,6 +93,10 @@ const reachEnd = async (view: ExploreView) => {
     view.getByTestId("explore-list").props.onEndReached();
   });
 };
+
+beforeEach(() => {
+  mockBlockedAuthorIds = new Set<string>();
+});
 
 const idsOnScreen = (view: ExploreView): string[] =>
   view.getByTestId("explore-list").props.data.map((story: Story) => story.id);
@@ -408,6 +418,47 @@ it("chases again on a new query, not just the first one", async () => {
   expect(
     search.mock.calls.filter((c) => c[0].text === "two" && c[0].page === 1),
   ).toHaveLength(1);
+});
+
+// THE CASE THE CHASE EXISTS FOR, and the one its first bound did not bound.
+//
+// A page can be full of rows the SERVER returned and empty after the client
+// narrows it -- the tag filter, or the block list. That still grows
+// `pageStarts`, so a guard keyed on "where did the last chase happen" stops
+// matching and the walk runs page after page: a reader who leaves a tag on and
+// taps a genre marches through it 24 rows at a time without scrolling. The
+// earlier fixture returned an EMPTY page, which stops after one pass for a
+// different reason, so it never saw this.
+it("gives up after a couple of pages when the client filter keeps emptying them", async () => {
+  // Every page is FULL from the server and empty after the client narrows it:
+  // every row is by an author the reader has blocked. That is the shape a tag
+  // filter produces too, and the one a marker-based guard cannot bound,
+  // because `pageStarts` grows on every one of these pages.
+  mockBlockedAuthorIds = new Set(["blocked-author"]);
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(
+      Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
+        ...seedStories[0],
+        id: `p${input.page ?? 0}-${i}`,
+        title: `Story ${input.page ?? 0}-${i}`,
+        authorId: "blocked-author",
+        chapters: [],
+      })),
+      true,
+    )
+  );
+
+  await renderWith(search, 20);
+  await waitFor(() => expect(search).toHaveBeenCalled());
+
+  // Let every timer and promise settle; an unbounded walk would keep going.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  // Page 0 plus at most two chases. Without a count-based bound this walks the
+  // whole catalogue.
+  expect(search.mock.calls.length).toBeLessThanOrEqual(3);
 });
 
 it("starts the next query at page 0, not where the last one stopped", async () => {
