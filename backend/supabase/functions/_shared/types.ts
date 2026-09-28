@@ -11,6 +11,7 @@ import {
   COUNTRY_WORLDS,
   type CountryCode,
 } from "./story-world-countries.ts";
+import type { SupportedTraditionId } from "./traditions.ts";
 
 // ---------------------------------------------------------------------------
 // Primary Genre
@@ -606,6 +607,17 @@ export interface ValidatedGenerationParams {
    * established through the story bible, so the preference is not stored.
    */
   culturalSetting?: CulturalSetting;
+  /**
+   * The reader's faith-tradition preference, INDEPENDENT of `culturalSetting`.
+   * Culture and faith are separate axes and neither is ever derived from the
+   * other: `IN` + `muslim` and `US` + `jewish` are ordinary households.
+   *
+   * Absent means absent — a story with no tradition is written exactly as every
+   * story before this field existed. Not persisted in Phase 1; there is no
+   * column and no migration, so later chapters inherit the world the opening
+   * established through the story bible, exactly as `culturalSetting` does.
+   */
+  tradition?: SupportedTraditionId;
   /** Beats the user pinned. One entry is one schedulable beat. */
   moments: string[];
   /**
