@@ -1421,6 +1421,19 @@ day 10, to a user the old ladder had already stopped paying.
 chapter finished, or ≥60s of dwell. Miss a day and it resets to zero, and the
 rewards restart at day 2.
 
+> **What is actually enforced, as of 2026-09-28: five seconds, measured on the
+> client, and your own story counts.** The 60 above is the rule, not the code.
+> `touch_streak(p_user_id)` takes no duration and no story id, so it cannot
+> apply either half; the client posts any dwell over its own five-second floor,
+> and `handleRecordRead` calls `touchStreak` on every non-throwing RPC. The
+> own-story exclusion the schema intends (`counts_for_earnings`) gates the read
+> count and not the streak. **The entry point is the creation flow**, not a
+> deliberate short visit: an author sits on their own chapter while it is being
+> written to them, so generating on twenty-one consecutive days pays the whole
+> ladder with no reading. Dead until the client began calling `record-read`
+> (#162) and live from that build. Tracked in `backend/ROADMAP.md`; this note
+> comes out when the threshold is enforced server-side.
+
 **Why day 2 is the right first rung.** Median mobile retention falls from **D1
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))
 — the cliff is between day one and day seven, so the first reward has to land

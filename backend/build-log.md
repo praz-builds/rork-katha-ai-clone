@@ -242,6 +242,15 @@ repeats the sixty. What ships is **five seconds, measured on the client**:
 - `touch_streak(p_user_id uuid)` (`00089:85`) takes no duration and no story,
   so it *cannot* apply a 60-second rule — nothing passes it one.
 
+**And the way in is the creation flow, not a deliberate short visit.**
+`useReadTracking(story.id, chapter.id)` is mounted unconditionally in the
+reader, which is where every writer lands while their story is being written to
+them, for minutes at a time. So the reachable version is not "open a story for
+six seconds": it is **generate a story on twenty-one consecutive days and the
+ladder pays**, with no reading and nothing that looks like gaming. That is the
+difference between a hardening task and the product's main flow paying an earn
+mechanic.
+
 Open a story, six seconds, leave. Twenty-one consecutive days of that pays the
 whole ladder: **2 + 4 + 6 + 8 + 10 = 30 credits**, which the pricing doc prices
 at $1.29 blended and $5.34 if all thirty start stories. **And an author's own
@@ -256,10 +265,25 @@ mechanism nobody could reach; at this merge it is a live faucet, so it is
 written here with the number in it rather than left as a note.
 
 The fix is server-side and therefore not in a client-only branch
-(`AGENTS.md:33`: credit logic stays in the backend). Either `record_story_read`
-returns the stored duration for `handleRecordRead` to gate `touchStreak` on, or
-`touch_streak` takes a duration and a story id and applies the 60 and the
-own-story exclusion itself. Carried as a row in `backend/ROADMAP.md`.
+(`AGENTS.md:33`: credit logic stays in the backend), and the two halves cost
+very differently:
+
+- **The own-story half needs no migration.** `row.counts_for_earnings` is
+  already in scope at `_shared/engagement.ts`, two lines above where it is
+  handed to the client; gating the `touchStreak` call on it is one condition.
+  Not free: eight functions import that file (`publish-story`, `library`,
+  `follow-story`, `follow-user`, `like`, `record-read`, `feed`, `bookmark`), so
+  it is an eight-function redeploy under this page's own deploy rule.
+- **The 60-second half needs the server's stored number**, because the client's
+  is not trusted for this: `record_story_read` returns `duration_seconds` and
+  `handleRecordRead` gates on it, or `touch_streak` takes a duration and a story
+  id and applies both rules itself.
+
+Carried as a row in `backend/ROADMAP.md`'s post-push checklist — in the table a
+founder works top to bottom, not as its own heading, which is more visible today
+and less visible in three weeks. The canonical rule is annotated too: a reader
+checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
+`AGENTS.md`, not a chronological log, and both now say what is enforced.
 
 ---
 

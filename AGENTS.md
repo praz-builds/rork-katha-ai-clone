@@ -1286,7 +1286,7 @@ Rules that constrain every future change:
 
 > Deliberately not reproduced. `source-of-truth/CREDITS_AND_PRICING.md` §5 is the only place these amounts and limits are written down, and this file's own working rules forbid copying its tables. The mechanics are: a reading streak with a fixed ladder of milestones, a claimed comment (feedback, read-gated and capped), a code-based referral, and a one-off welcome bonus.
 
-A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). Missing a day resets to zero and rewards restart at day 2. The ladder is data (`streak_ladder()`, migration 00089) and it terminates, so no monthly ceiling is enforced on it; the feedback claim carries its own monthly cap, which is the principle-7 bound.
+A streak is consecutive days with reading activity (one chapter finished or 60s+ dwell, recorded server-side). **What ships enforces five client-measured seconds and counts your own story** — see the note under *Streak* in `source-of-truth/CREDITS_AND_PRICING.md` §5 for why, and `backend/ROADMAP.md` for the fix. Live from the first build carrying #162. Missing a day resets to zero and rewards restart at day 2. The ladder is data (`streak_ladder()`, migration 00089) and it terminates, so no monthly ceiling is enforced on it; the feedback claim carries its own monthly cap, which is the principle-7 bound.
 
 The failed-generation **auto-refund stays** (`refund_generation_operation`) but is not an earn mechanic and is not on this table.
 
