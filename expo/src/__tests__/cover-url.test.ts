@@ -62,7 +62,7 @@ it("answers null for nothing, rather than a broken URL", () => {
 
 it("never transforms twice", () => {
   // Two callers resizing the same URL -- the mapping layer and a component --
-  // must not produce `?width=350?width=232`. The first width wins, because
+  // must not produce `?width=350?width=288`. The first width wins, because
   // whoever set it chose it.
   const once = coverUrl(PUBLIC, "card");
   expect(coverUrl(once, "mini")).toBe(once);

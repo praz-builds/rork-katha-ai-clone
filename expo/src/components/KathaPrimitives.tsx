@@ -7,7 +7,16 @@ import { Image as ExpoImage } from "expo-image";
 import { Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
 import { COVER_ACCEPT_HEADERS, coverUrl, isTransformedCover } from "@/lib/cover-url";
-import { colors, controls, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
+import {
+  colors,
+  controls,
+  fonts,
+  genreGradients,
+  genreLabels,
+  motion,
+  radius,
+  spacing,
+} from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
 /**
@@ -92,7 +101,10 @@ export function FocalImage({
         // uses the library's: the hand-rolled fade this replaced was wrong
         // twice over the ordering of a callback and an effect.
         opacity: 0,
-        transition: "opacity 180ms ease-out",
+        // One source for both halves of the fade: the web `transition` here
+        // and `expo-image`'s `transition` prop below were two hand-written
+        // 180s, which is two places for them to drift apart.
+        transition: `opacity ${motion.fast}ms ease-out`,
       },
       alt: "",
       // THE CACHED CASE IS WHY THERE IS A REF AS WELL AS AN onLoad, and it is
@@ -153,7 +165,7 @@ export function FocalImage({
       // Cross-fade from whatever is underneath -- callers layer a genre
       // gradient there -- rather than the hand-rolled Animated.Value the feed
       // card used to drive from `onLoad`.
-      transition={180}
+      transition={motion.fast}
       recyclingKey={recyclingKey}
       onLoad={onLoad}
       accessible={false}

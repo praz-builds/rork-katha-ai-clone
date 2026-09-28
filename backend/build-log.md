@@ -255,11 +255,11 @@ What was actually needed was fewer bytes and a real disk cache.
 ### What landed
 
 - **`expo/src/lib/cover-url.ts`** rewrites `/object/public/` to
-  `/render/image/public/` and appends a width per surface (mini 232, card 350,
+  `/render/image/public/` and appends a width per surface (mini 288, card 350,
   hero 800, all at `quality=60&resize=cover`). It is a **no-op on anything it
   does not recognise** — an uploaded cover on another host, a data URI, a
   bundled asset, null — and idempotent, so two callers resizing the same URL
-  cannot produce `?width=350?width=232`. Being wrong here has to mean "no
+  cannot produce `?width=350?width=288`. Being wrong here has to mean "no
   faster", never "no image".
 - **`expo-image@3.0.11`** (the SDK 54 version) replaces RN's `Image` inside
   `FocalImage`, which is the single chokepoint every cover goes through. The
@@ -343,6 +343,33 @@ the argument that commit itself makes, turned on its own newest code.
   *softer than on main*, where they arrived full-size — a regression dressed as
   an optimisation. 288, and the docstring now names the component it measures.
 
+### And the fix worth a third of the saving had no test
+
+`Cover` is the caller that Library's shelves and every author page render, and
+it was the one missed on the first pass. It was also the only change in the
+branch nothing guarded: revert `coverUrl(story.coverImageUrl, size)` there and
+`cover-url.test.ts` still passes (it tests the function), `focal-image.test.tsx`
+still passes (it tests the component with a URL it builds itself), and
+`story-feed-card.test.tsx` still passes (it pins the card's call, not `Cover`'s).
+The suite stayed green while every shelf went back to ~2 MB per 96pt thumbnail.
+
+`cover-surfaces.test.tsx` renders `Cover` and reads the width back off the
+source, at both sizes, plus the recycling key, the untouched foreign host and
+the gradient under the art. Negative-controlled: with the call reverted it fails
+and the other three files do not.
+
+One thing learned building it: `Cover` and `FocalImage` live in the same module,
+and a module-internal reference does not go through a `jest.mock` of that
+module — mocking `FocalImage` renders the real one. Mocking `expo-image`, the
+leaf it actually renders, is both simpler and closer to what ships.
+
+**`mini 232` survived in both logs**, four lines above the bullet correcting it
+to 288, in the "what landed" line a reader skims. Both now say 288, and the
+idempotence illustration no longer shows a string the module cannot produce.
+
+**The 180 ms fade is `motion.fast`** rather than two hand-written literals, one
+in the CSS transition and one in the `expo-image` prop — two places to drift.
+
 ### Sequencing with #159
 
 Both branches rewrite `useStorySearch.ts` in opposite directions: #159 builds on
@@ -355,7 +382,7 @@ there.
 
 ### Verification
 
-Expo **1659/1659** across 154 suites, typecheck clean, lint 0 errors, and the
+Expo **1666/1666** across 155 suites, typecheck clean, lint 0 errors, and the
 web bundle exports (7.61 MB) — worth doing here because `expo-image` is a new
 native dependency.
 

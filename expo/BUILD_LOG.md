@@ -5,7 +5,7 @@
 ## 2026-09-27: Covers arrive at 70 KB instead of 2 MB
 
 - **`src/lib/cover-url.ts`** asks Supabase's transform endpoint for a cover at
-  roughly the size it will be drawn at: mini 232, card 350, hero 800, all
+  roughly the size it will be drawn at: mini 288, card 350, hero 800, all
   `quality=60&resize=cover`. Measured against production: the same cover goes
   from **1,978,908 bytes** to **70,810**. It no-ops on any URL it does not
   recognise and never transforms twice.
