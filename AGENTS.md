@@ -50,6 +50,21 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
+**One known exception, from the moment this branch merges.** The voice-preview
+round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
+is part of the module source, so the deployed bundle and main diverge until it
+ships. **`scripts/audit-function-drift.sh` will report drift on that one
+function, and it is a true positive.** Deploy `seed-voice-previews` and the
+surface is clean again; nothing under `_shared/` was touched, so there is no
+importer closure. Do not read that one row as a false alarm and wave the audit
+through -- "16 functions behind main" is on this page because somebody did.
+
+**Whoever deploys it deletes this paragraph.** It is only true between that
+merge and that deploy, and left standing afterwards it is a false exception
+sitting directly under a zero-drift baseline, on the page whose whole job is to
+be what an operator can trust about production. The person running the deploy is
+the only one who knows it has stopped being true.
+
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
 block-author's `library` and `profile` were recorded as needing deployment and
@@ -1131,7 +1146,17 @@ Every cover stores `{ focalX, focalY }` (0-1) on the Story record (default `0.5,
 
 4 additional EN voices. **No voice tiers** -- every voice is available on every tier including free (`source-of-truth/CREDITS_AND_PRICING.md` decision 5).
 
-**Voice samples on the Voices screen** (2026-09-25, `expo/src/lib/voice-preview.ts`): each voice with a `preview_url` from the `voices` function gets a separate 44pt play button. It plays that static file and nothing else -- no provider call, no credit -- with loading, playing (tap to stop) and error states, one sample at a time, stopped on leaving the screen. **Playing a sample never saves the voice**; only pressing the row does. **The clips do not exist in production yet**: `seed-voice-previews` has never been run, so every `voice-previews/*.mp3` in the `audio` bucket answers 404 and every sample shows its error state until an operator runs it. Running it spends RunPod time and is an operational step, not a deploy of this code.
+**Voice samples on the Voices screen** (2026-09-25, `expo/src/lib/voice-preview.ts`): each voice with a `preview_url` from the `voices` function gets a separate 44pt play button. It plays that static file and nothing else -- no provider call, no credit -- with loading, playing (tap to stop) and error states, one sample at a time, stopped on leaving the screen. **Playing a sample never saves the voice**; only pressing the row does.
+
+**All six clips exist in production as of 2026-09-27.** `seed-voice-previews` was run and `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` all answer 200 with real audio (97-115 KB, 128 kbps mono MP3, about seven seconds each). Every sample plays. The note that stood here -- that they 404 and every sample shows its error state -- is no longer true. (It also had the status wrong: a missing object in the public `audio` bucket answers **400**, not 404, which is what all six actually returned when this was measured.)
+
+Three things about running it again, because none of them are obvious:
+
+1. **The bearer is the deployed `SUPABASE_SERVICE_ROLE_KEY` secret, which is no longer the legacy JWT.** Supabase rotated the platform secrets on 2026-09-26 and that secret is now the new-style `sb_secret_...` key. `backend/.env` still holds the legacy `service_role` JWT, which is a perfectly valid key for PostgREST and Storage but is **not** what the seeder compares against, so calling with it returns `401` -- which is exactly the 2026-09-25 failure recorded as `voice_preview_seed_unauthorized`, and it was a key mismatch, not a broken function. Get the right one with `supabase projects api-keys --project-ref <ref> --reveal` and use the `type: "secret"` entry.
+2. **One invocation cannot finish the set.** It generates all six serially through RunPod and the edge worker runs out of compute first: the first call returned `546 WORKER_RESOURCE_LIMIT` after 150s having uploaded three. It is **idempotent** -- `ensureVoicePreviewOnce` checks storage before generating -- so just call it again until every voice reports `exists`. It took three calls.
+3. **Only the six English voices are attempted.** `elvira` and `alvaro` are `edge_tts` and no worker is configured, so they are filtered out before generation rather than failing. They are unseeded on purpose and are not in the client list either.
+
+Running it spends RunPod time and is an operational step, not a deploy of this code.
 
 ### Pipeline
 
@@ -1285,7 +1310,7 @@ Four icon-only tabs in a floating pill, with the **Create** button beside it on 
 - **CreateStudioScreen** (`expo/src/screens/CreateStudioScreen.tsx`): the six-dropdown brief -> generating -> live reader; see "The created story flow" above and `source-of-truth/STORY_GENERATION_FLOW.md`.
 - **Reader**: Substack-style engagement bar, author card, comments preview.
 - **Library** (`expo/src/screens/LibraryScreen.tsx`): 3 segments -- Created, Starred, Characters. Characters lists `saved_characters` and creates or edits one on the brief's Craft character screen.
-- **You -- settings:** *Story world* (`lib/story-world.ts`) is a device-local, closed ISO country picker used only as a default for a creator brief; *Vote on what's next* (`components/profile/FeatureVoteSheet.tsx`, migration 00099, no edge function) is for team-written topics only. Votes grant no credits.
+- **You -- settings:** *Story world* (`lib/story-world.ts`) is a device-local, closed ISO country picker used only as a default for a creator brief. **It is called that in the code and in `source-of-truth/`, not on the screen** -- since 2026-09-27 the row and the picker both read *Where stories are set*, so grep for `story-world` rather than for the label. Also on You: *Vote on what's next* (`components/profile/FeatureVoteSheet.tsx`, migration 00099, no edge function) is for team-written topics only. Votes grant no credits.
 - **You** (`expo/src/screens/ProfileScreen.tsx`): since 2026-09-16 the header is the avatar and the handle on one row with a pencil at the right, and the pencil is the only control that opens the identity editor. **There is no guest card.** The "Sign in to keep all of this" prompt is gone, because the product has no guests past the email step. **Sign out routes to the sign-in screen and leaves the device with no session** -- `signOutToSignIn` in `expo/src/lib/session.ts` clears the stored session (`scope: "local"`) and does *not* mint a replacement guest; the old `restartGuestSession` left a live anonymous identity behind the sign-in screen. Do not reintroduce it.
 
 ### Onboarding

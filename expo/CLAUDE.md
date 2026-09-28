@@ -76,7 +76,7 @@ PR #97 (2026-09-14). What is actually there:
 - Language routing: EN to RunPod, ES to edge-tts (placeholder). The `generate-audio` endpoint accepts `language` in the request body; callers must pass it explicitly.
 - Storage path: `{story_id}/{chapter_id}/{voice_id}.mp3`. Public read, service role upload.
 - Reader shows voice toggle (female/male names from `getDefaultVoices(lang)`).
-- The Voices screen plays each voice's server `preview_url` from its own button (`src/lib/voice-preview.ts`). A sample never writes the preferred voice. The clips 404 in production until `seed-voice-previews` is run -- see *Voices* in `../AGENTS.md`.
+- The Voices screen plays each voice's server `preview_url` from its own button (`src/lib/voice-preview.ts`). A sample never writes the preferred voice. All six clips exist in production as of 2026-09-27 and every sample plays; until `seed-voice-previews` was run they did not exist and the bucket answered 400 for each -- see *Voices* in `../AGENTS.md` for what running it again needs.
 - Audio is **1 credit per chapter, unlocked permanently**, on every tier. Re-listens are free forever. No voice tiers. See `../source-of-truth/CREDITS_AND_PRICING.md` §1.
 - Inngest integration for auto-generation on publish is planned but not yet wired. Currently `generate-audio` is called directly.
 
