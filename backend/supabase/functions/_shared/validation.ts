@@ -24,13 +24,13 @@ import {
   IDENTITY_LENSES,
   type IdentityLens,
   isCulturalSetting,
+  isPlannedChapterCount,
   MAX_BEAT_LENGTH,
   MAX_BRIEF_FIELD_LENGTH,
   MAX_CAST_SIZE,
   MAX_MOMENTS,
-  MAX_STORY_GENRES,
-  isPlannedChapterCount,
   MAX_PLANNED_CHAPTER_COUNT,
+  MAX_STORY_GENRES,
   MAX_STORY_TITLE_LENGTH,
   MIN_PLANNED_CHAPTER_COUNT,
   type PlannedChapterCount,
@@ -40,12 +40,13 @@ import {
   SPICE_LEVELS,
   type SpiceLevel,
   type StoredSpiceLevel,
-  type StoryFlow,
   STORY_MODES,
+  type StoryFlow,
   type StoryMode,
   type ValidatedGenerationParams,
 } from "./types.ts";
 import { parseRequestId, parseUuid } from "./operations.ts";
+import { normalizeTradition } from "./traditions.ts";
 import { parseVisibilityRequest } from "./publish.ts";
 
 // ---------------------------------------------------------------------------
@@ -355,6 +356,16 @@ export function validateGenerationRequest(
   // deploy has not heard of would cost the writer their story to protect the
   // look of the cover. An unknown value renders the genre's own look, which is
   // what every story had before the picker existed.
+  // The faith preference, on exactly the terms as the cultural one above and
+  // for the same reason: normalised, never rejected. An id this deploy does not
+  // support -- a newer client, or one of the declared-but-unsupported
+  // traditions -- writes the story as if no preference had been set. Refusing a
+  // paid generation over a soft preference would cost the writer their story.
+  //
+  // Culture and faith are independent axes; nothing here reads
+  // `culturalSetting` and nothing above reads this.
+  const tradition = normalizeTradition(body.tradition);
+
   const imageStyle = normalizeCoverArtStyle(body.image_style);
 
   // Normalised rather than rejected, on the same terms as the style above and
@@ -462,6 +473,7 @@ export function validateGenerationRequest(
     language,
     whereAndWhen,
     ...(culturalSetting ? { culturalSetting } : {}),
+    ...(tradition ? { tradition } : {}),
     moments,
     beats,
     storyValues,
