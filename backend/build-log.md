@@ -138,6 +138,28 @@ gives up.
   uses (`profiles!comments_user_id_fkey`), which is how the `username` finding
   above was established rather than guessed.
 - No `public.error_events` row was required: nothing failed.
+## 2026-09-27 UTC — Deployed: `seed-voice-previews`, and the surface is clean again
+
+`#157` merged as `ed4d4a1` and its only backend change was a docblock in
+`seed-voice-previews/index.ts`. A comment is part of the module source, so the
+live bundle and main diverged the moment it landed. Deployed it, then verified
+rather than assumed: `scripts/audit-function-drift.sh` against `ed4d4a1`
+downloads all **34** functions and compares every file — **346 of 346
+identical, zero drift.**
+
+**The first attempt deployed the wrong source.** It ran from a feature
+worktree that had branched before `#157`, so it shipped the pre-merge copy —
+byte-identical to what was already live, so no harm, and no progress either.
+The CLI reported "Deployed Functions." both times. **Deploy from a checkout of
+the commit you mean to ship**, which is now a detached worktree at `origin/main`
+kept for exactly this, and let the drift audit be what says it worked.
+
+`AGENTS.md`'s exception paragraph, which existed only for the window between
+that merge and this deploy, is deleted — as it instructed whoever deployed it
+to do.
+
+---
+
 ## 2026-09-27 UTC — Every voice sample plays, and the Story world row says what it does
 
 **Session:** second branch of the pre-launch polish round, from founder feedback
@@ -543,6 +565,288 @@ Cover loading is untouched and still the slowest thing on this screen: ~2 MB
 PNGs decoded into a 116x155pt box. That is its own branch. The 180 ms prefetch
 race in `useStorySearch` is deliberately left in place until then, because it is
 the thing being replaced rather than something to remove twice.
+## 2026-09-27 UTC — How credits work becomes its own screen, and the feedback cap drops to five
+
+**Session:** the last look-and-feel round before launch, from founder feedback on
+four screenshots. This entry covers the credits half; Explore, covers and the
+voice previews are separate branches in the same round. Branch
+`codex/credits-split-and-cap`, in its own worktree, off `ca4a68e`.
+
+### The problem
+
+Profile had two rows pointing at one destination. The credits card ("Get more")
+and the settings row ("How credits work", subtitled "Prices and free credits")
+both called the same `onCredits` prop, and both opened `CreditsScreen` at the
+top — which leads with Paid options, correctly, because a plan is the best price
+per credit. So the row that promised an explanation answered the question with a
+shop, and the explanation itself was three scrolls down.
+
+### What changed
+
+- **`expo/src/screens/HowCreditsWorkScreen.tsx`** is new: a header and the
+  existing `components/credits/HowCreditsWork`, which was already the whole
+  content and remains the only place a price lives in client code. It has no
+  balance pill, no plan card and no packs sheet, and a test asserts their
+  absence — a regression that put a purchase control back on it would rebuild
+  the original problem without failing anything else.
+- **`Screen`** gains `{ name: "how-credits-work" }`; `ProfileScreen` gains an
+  `onHowCredits` prop and the settings row now calls it. Its subtitle is "What
+  each thing costs": "and free credits" went with the split.
+- **`CreditsScreen`** no longer inlines the prices. Under Paid options sit two
+  quiet ghost buttons (`components/credits/SecondaryActions.tsx`): *Get free
+  credits*, which scrolls to the Free credits section using the heading's own
+  measured `onLayout` y rather than a guessed offset (the paid block changes
+  height between a member and a non-member), and *How credits work*, which opens
+  the new screen. They are siblings rather than a link inside a row: a Pressable
+  inside a Pressable is a button inside a button on react-native-web, which is
+  the failure Profile's "Get more" pill is commented against.
+- The earn button's sub-line quotes **only `remaining.month` and the claimable
+  count from `comment_credit_claims`**, never the ledger — `fetchLedger` returns
+  the last fifty rows, so summing it for "earned so far" would quietly
+  undercount an established account. With no answer yet it names the ways
+  instead of inventing a figure.
+
+### The cap: six a month becomes five
+
+Product-owner decision, 2026-09-27. Nothing else about the mechanic moves — still
+1 credit per comment, 40 characters, a qualifying read *before* the comment, one
+per story, one per UTC day, frozen once paid.
+
+- **`00100_feedback_monthly_cap_five.sql`** `create or replace`s two functions
+  from 00089 with one digit changed each: `comment_credit_block_reason` (the
+  `monthly_cap` predicate, which enforces it) and `comment_credit_claims` (the
+  `remaining.month` readout the screen draws). Both bodies are 00089's
+  reproduced verbatim otherwise, so a diff shows the change and nothing else,
+  and both `revoke`/`grant` pairs are restated because `create or replace` does
+  not carry grants forward reliably.
+- **`claim_comment_credit` is deliberately not redefined.** It re-derives its
+  verdict through `comment_credit_block_reason` under the advisory lock
+  immediately before it pays, so the number lives in one place. A second copy
+  here would be a second place to get it wrong.
+- **No backfill, and nothing is clawed back.** The caps are counted from
+  `credit_ledger` at claim time and never stored. Anyone already paid six times
+  this calendar month keeps all six — spent or spendable — and is refused the
+  seventh exactly as they would have been. The new ceiling bites from next month.
+
+`source-of-truth/CREDITS_AND_PRICING.md` moved in the same commit, as the
+contract requires, with the arithmetic recomputed rather than edited: 60 credits
+a year, **$2.58 blended and $10.68** if every credit starts a story, five against
+the principle-7 ceiling of ten. Ten call sites across the document, including
+decisions 23 and 51 and the §5 earn table. The open item about a repeating streak
+rung was re-costed too: at feedback 5 it would reach 11 and breach the ceiling,
+where at 6 it hit it exactly.
+
+`expo/CLAUDE.md`'s Credits-screen contract was corrected to the new order.
+
+### The bug CI caught, and it was a real one
+
+The first version of `00100` rebuilt `comment_credit_block_reason` from
+**00089's** body. That function's latest definition is **00090's**, which added
+the second half of the read gate: as well as 120 seconds of client-reported
+duration summed across the story, at least one read whose *server-set* `read_at`
+is a full minute older than the comment. That second clause is the only part of
+the evidence a forged request cannot choose, and it closes the one-request
+forgery where a read row and a comment are posted in the same round trip.
+
+`create or replace` replaces whatever is live, so copying the older ancestor
+silently reverted it. Nothing about the cap change was wrong; the ancestry was.
+00090's own test — *"one fabricated read with a day's duration is not a
+qualifying read"* — failed in CI with `ok: true` where it expected `not_read`,
+which is exactly what that test exists for.
+
+Fixed by rebuilding from 00090 (and restating the `comment on function` it
+attaches, which a bare replace would also have dropped). `comment_credit_claims`
+really is still 00089's — it has never been revised — so the two halves of this
+migration have different ancestors, and the migration header now says which and
+why. A test in `00100`'s own file asserts the 60-second gate survives the cap
+change, so the next person replacing this function meets the requirement where
+the damage would be done rather than two migrations away.
+
+**The general lesson, worth more than this instance:** before `create or
+replace`, grep every migration for the last definition of that function. Being
+named after the migration that first created it is not evidence.
+
+### What review found on top of that
+
+The reviewer reached the same conclusion about the ancestry independently, and
+added five more, all taken:
+
+- **The catalog comment.** `create or replace` does not clear a `comment on
+  function`, so after a bare replace the catalog would have documented a
+  two-part read gate the function no longer had. Restated with the body.
+- **Two more stale `6/month` sites** in `CREDITS_AND_PRICING.md` — the
+  launch-scope row and the phase-1 earn table. The document is the only place a
+  pricing question is answered and it was answering this one both ways.
+- **Back from the new screen always landed on Profile**, including when it was
+  opened from Get credits' own button, which ejected a reader out of the screen
+  they were shopping on and lost its scroll position — the opposite of the "one
+  tap away" the split was for. `how-credits-work` now carries a required
+  `returnTo`, the same shape `author` already uses, so the compiler makes both
+  call sites say which.
+- **"N ready to claim" over-promised against the daily cap.** Three qualifying
+  comments with one claim a day is one credit, not three, and the second tap
+  came back `daily_cap`. The count is now bounded by `remaining.today` and
+  `remaining.month`, both already in hand and previously unused.
+- **The free-credits button was inert to a screen reader**: it only scrolled, so
+  focus never moved and nothing was announced. It now announces the destination.
+
+**Two later rounds found the document wrong about the gate itself, which is a
+different class from being wrong about a number.**
+
+First, the read requirement. Two rows offered *"120 seconds of dwell, or the
+chapter completed, whichever the read table records"* — and `story_reads` has
+`duration_seconds`, `read_at`, `is_own_story` and `counts_for_earnings`. There
+has never been a completion column, so that alternative named a field nothing
+can read, and `comment_credit_block_reason` does not branch. Both rows also
+omitted the *second* half entirely: `00090`'s requirement that one of those
+reads carry a server-set `read_at` sixty seconds or more older than the comment
+— the only part of the evidence a single round trip cannot forge, and the exact
+clause this branch had to be careful not to revert. The canonical document was
+describing a weaker gate than the database enforces, in the section this branch
+was rewriting.
+
+Then, once it was exact, the harder one: **no reader can pass it.**
+`story_reads` rows come only from `record_story_read`, whose only caller is the
+`record-read` edge function, and **no client calls that endpoint** — `grep` over
+`expo/` finds one comment and no call site, and the production table returned
+**0 rows** when checked. So every feedback claim answers `not_read`, for
+everyone. That is phased work (`ROADMAP.md`, Phase E) rather than a defect, but
+it means the §5 cost arithmetic, the "60 qualifying reads" it buys and the
+principle-7 argument are all projections of a mechanic that pays nobody, and
+five a month is a ceiling on a closed faucet rather than a tightening of an open
+one. The section now says so at its head, with instructions to delete the block
+when `record-read` ships.
+
+A third round found three more:
+
+- **The last `6` in the pricing document**, in the metrics table's alert row for
+  *Feedback claims per user per month*. Its threshold is "> 20% of claimants at
+  the cap", and whoever builds that dashboard reads the cap out of that cell, so
+  at five it would have fired at the wrong number in both directions. The cell
+  now also spells out what "at the cap" means, so the next reader does not have
+  to resolve it against §5.
+- **A degraded `credit-claims` response told a new account it was spent out.**
+  `fetchCreditClaims` defaulted `remaining.today` and `remaining.month` to `0`
+  when the field was absent, which is indistinguishable from a real zero. A 200
+  with a valid `claims` array and no `remaining` — an older deploy, or the shape
+  moving — therefore rendered "Claimed every one this month" to somebody who had
+  never claimed anything. `remaining` is now `… | null`, and both the secondary
+  button and `FeedbackClaimsCard`'s caps line fall back to saying nothing exact.
+  **A missing number is not a zero.**
+- **Two fixtures pinned a shape the server cannot return.** `remaining.today` is
+  `greatest(1 - v_today, 0)`, so it is only ever 1 or 0 and the ready count can
+  never read above 1 in production; the tests said `today: 2`. The bound was
+  right, the fixture was fiction, and a test that pins an impossible shape
+  quietly becomes documentation for a contract that is wrong.
+
+Also finished the accessibility fix properly: the announcement alone left the
+reading cursor on the button, so the next swipe continued from "Get free
+credits" rather than from the section it had just scrolled to.
+`setAccessibilityFocus` on the heading, which now carries
+`accessibilityRole="header"`, moves it.
+
+**Left open, deliberately, and both are pre-existing:** Android's hardware back
+button calls no handler on this screen, so it backs out of the app — but
+`CreditsScreen`, `VoicesScreen` and `JourneyScreen` are all the same, and fixing
+one screen would make the app inconsistent rather than correct. It wants one
+change across every pushed screen. And returning from the explanation remounts
+Get credits, so a reader who had scrolled to Free credits comes back at the top;
+holding the position would mean holding the screen rather than remounting it,
+and the remount is what guarantees the balance on a money screen is not stale.
+
+Three later rounds went entirely into the free-credits button's screen-reader
+behaviour, which is recorded in `expo/BUILD_LOG.md` rather than here because it
+is client-only. The short version, because each one was wrong before it was
+right: native moves focus to the Free credits heading (a scroll moves the screen
+and not the reading cursor); **web announces instead, split on `Platform.OS` and
+not on whether there is a node**, because `setAccessibilityFocus` needs a native
+tag react-native-web has not got while `findNodeHandle` there returns the DOM
+node, so a node-based guard passes and a fallback keyed on it never runs; and
+the `accessibilityLabel` carries the counts, because an explicit label on a
+`Pressable` replaces its children rather than prefixing them.
+
+**`AGENTS.md`'s drift paragraph is #161's, not this branch's.** Both rounds
+rewrote the same lines to the same policy conclusion -- run the audit, do not
+write exceptions in advance -- from two readings of one event. This entry is the
+record with the timestamps (`ed4d4a1` merged 20:29 UTC, deployed and audited
+20:31, and the first deploy attempt shipped the pre-merge copy from a worktree
+that had branched before `#157`), and the paragraph is theirs, so one PR owns
+the text and neither of us resolves it as a merge conflict.
+
+`AGENTS.md`'s production-state paragraph is clarified here. It named
+`00100_reader_preferences` as a migration that must never be applied, and the
+number has since been reused, so the repo described two different `00100`s —
+one page saying apply it first, the other saying never apply it. It now says
+which one is in the tree, and that the withdrawn one is not in the tree at all.
+
+That is a different paragraph from the deployment-drift one above, which is
+#161's and is left untouched here.
+
+### Verification
+
+- **The full migration suite runs green: 311 passed, 0 failed.** Running only
+  the changed files would have missed 00090 entirely.
+- **00089's own test now asserts five.** Its harness applies every `.sql` in the
+  migrations directory before running, so it exercises the current schema rather
+  than a snapshot of 00089 — leaving it at six would have failed, correctly.
+  21/21 pass.
+- `00100_feedback_monthly_cap_five_test.ts`: **five** tests, each calling the
+  function and then reading the ledger rather than checking the function exists.
+  Five paid and the sixth refused; the remaining count counting down from five
+  and never going negative; a refusal writing no ledger row and leaving the
+  comment unclaimed and therefore still editable; **00090's 60-second read
+  gate surviving the cap change**, which is the most valuable of them; and a
+  fresh account being offered five claims this month, which is the one that
+  holds on every day of the month including the 1st. 5/5 pass.
+- **Three of those five would have failed on the 1st of every month.** The
+  helper back-dated the paid rows to `month_start + N hours` to clear the daily
+  cap, and on the 1st `month_start` and `day_start` are the same instant, so
+  the window `[month_start, day_start)` is empty and the daily cap fires first.
+  Twelve times a year, on a suite gated to run whenever a `.sql` file changes.
+  It is a property of the calendar rather than a bug in the function — a reader
+  who has claimed five times on the 1st really is stopped by the daily rule —
+  so the tests now detect the boundary, assert the daily refusal on that day,
+  and keep the monthly assertions for the other thirty. Verified both branches
+  by forcing the flag. `00089`'s test inherited the same pattern and is fixed
+  with it.
+- **And one unconditional test, because the boundary guard opened a gap.** The
+  three tests that need five prior claims all return early on the 1st, so a
+  `00100` that wrote `>= 7` would have passed the whole file that day. *A fresh
+  account is offered five claims this month* needs no back-dating and no prior
+  claim -- `greatest(5 - 0, 0)` holds on any date -- so it is the one assertion
+  that pins the digit every day of the year. Negative-controlled at 7.
+- **The invented zero was fixed one layer too high, and review caught it.**
+  `fetchCreditClaims` now resolves `remaining` to `null` unless both halves
+  arrive as numbers — but `shapeClaims` in `credit-claims` coerced a missing
+  `remaining` to `{today: 0, month: 0}` and emitted it unconditionally, and
+  that function is the client's only source. So the null branch was unreachable
+  and the defence was dormant: if `comment_credit_claims` ever answered without
+  the object, the edge function manufactured the zeros, the client accepted two
+  numbers, and the card rendered "0 left today · 0 left this month" to an
+  account that had claimed nothing. `shapeClaims` now omits the field unless
+  both halves are finite numbers. Zero is still passed through when the server
+  actually said zero — that is a real answer, and the distinction is the whole
+  point.
+- `credit-claims` function tests 9/9. Expo **1671/1671** across 155 suites,
+  typecheck clean, lint 0 errors.
+
+### Not done here, and deliberately
+
+No deploy yet. `00100` has to be applied before `credit-claims` is redeployed,
+and that happens after review and merge, not from this branch. **Check first
+that `00100` is absent from `supabase_migrations.schema_migrations`**: `db
+push` keys on the filename's numeric prefix rather than its name, and the
+number was used once before by the withdrawn `00100_reader_preferences`. The
+production ledger is aligned `00001`-`00099` with nothing pending, so
+production is safe — but any database that ever had the withdrawn one pushed
+to it will skip this file, exit 0, and leave the cap at six behind a green
+deploy. Production was
+verified byte-identical to main earlier today (346/346), so
+`scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
+after this deploy is this change's.
+
+Nothing under `_shared/` was touched, so the deploy set really is
+`credit-claims` alone rather than an importer closure.
 
 ---
 

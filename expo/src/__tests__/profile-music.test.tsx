@@ -56,6 +56,7 @@ const SLOW = { timeout: 10000 };
 const profileProps = () => ({
   credits: 5,
   onCredits: jest.fn(),
+  onHowCredits: jest.fn(),
   onPaywall: jest.fn(),
   onJourney: jest.fn(),
   onPublicProfile: jest.fn(),

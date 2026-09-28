@@ -82,7 +82,14 @@ zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 
 **Reader preferences were removed before deployment (2026-09-26).** Migration
 `00100_reader_preferences`, its profile actions, and its generation prompt
-path must not be applied or deployed; no account data was created.
+path must not be applied or deployed; no account data was created. **The
+number was then reused**: `00100` in the tree is
+`00100_feedback_monthly_cap_five`, which is a normal migration and is meant to
+be applied. `reader_preferences` is not in the tree at all, so nothing here
+asks you to skip a file you can see. Before pushing, check that `00100` is
+absent from `supabase_migrations.schema_migrations` — `db push` keys on the
+numeric prefix, not the name, so a database that ever had the withdrawn one
+applied would skip the new one, exit 0 and report nothing.
 
 **Country Story world has no migration.** Its checked-in contract changed six
 non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,

@@ -13,6 +13,7 @@
  * disabled and the tap cannot go anywhere.
  */
 import React from "react";
+import { AccessibilityInfo, Platform } from "react-native";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockFetchOwnProfile = jest.fn();
@@ -78,6 +79,7 @@ const props = () => ({
   onBack: jest.fn(),
   onPaywall: jest.fn(),
   onJourney: jest.fn(),
+  onHowCredits: jest.fn(),
   onBalance: jest.fn(),
 });
 
@@ -88,7 +90,10 @@ beforeEach(() => {
   mockFetchLedger.mockReset().mockResolvedValue([]);
   mockFetchCreditClaims.mockReset().mockResolvedValue({
     claims: [],
-    remaining: { today: 1, month: 6 },
+    // 5, not 6: after 00100 `remaining.month` is `greatest(5 - v_month, 0)`
+    // and can only be 0-5. This is the `beforeEach` for the whole file, so a
+    // six here would render "6 left this month" under every test in it.
+    remaining: { today: 1, month: 5 },
   });
   mockBootstrapUser.mockReset().mockResolvedValue(null);
   mockPresentCustomerCenter.mockReset().mockResolvedValue(true);
@@ -98,21 +103,139 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-it("lays out paid options, the explanation, the free ways and the history", async () => {
+it("lays out paid options, the two secondary ways, the free ways and the history", async () => {
   const view = await render(<CreditsScreen {...props()} />);
 
   await waitFor(() => view.getByTestId("credits-plus"));
   // The balance the app holds, in the pill.
   expect(view.getByTestId("credits-balance")).toBeTruthy();
   expect(view.getByText("7")).toBeTruthy();
-  for (const section of ["Paid options", "How credits work", "Free credits", "History"]) {
-    expect(view.getByText(section)).toBeTruthy();
+  // Each one a heading, not only the one the free-credits button focuses.
+  // Marking a single section was worse than marking none: heading navigation
+  // found "Free credits" and offered no way to reach the other two.
+  for (const section of ["Paid options", "Free credits", "History"]) {
+    expect(view.getByText(section).props.accessibilityRole).toBe("header");
   }
+  expect(view.getByText("Get credits").props.accessibilityRole).toBe("header");
   expect(view.getByTestId("credits-packs")).toBeTruthy();
-  expect(view.getByTestId("how-credits-work")).toBeTruthy();
+  expect(view.getByTestId("credits-free-cta")).toBeTruthy();
+  expect(view.getByTestId("credits-how-cta")).toBeTruthy();
   expect(view.getByTestId("credits-streak")).toBeTruthy();
   expect(view.getByTestId("credits-feedback")).toBeTruthy();
   expect(view.getByTestId("credits-invite")).toBeTruthy();
+});
+
+// The "Get free credits" button scrolls; a scroll is invisible to a screen
+// reader, so without moving the reading cursor the control is inert to
+// VoiceOver and TalkBack. Three rounds of review fixed this, and until the
+// third nothing had ever pressed the button.
+//
+// BOTH PLATFORMS, because the two paths do different things and the wrong one
+// is silent. `setAccessibilityFocus` needs a native tag and no-ops on
+// react-native-web -- while `findNodeHandle` there returns the DOM node, so a
+// "did we get a node" guard passes and a fallback keyed on it never runs. Web
+// is also the only surface this client can currently be looked at on.
+describe("the free-credits button's screen-reader behaviour", () => {
+  let setFocus: jest.SpyInstance;
+  let announce: jest.SpyInstance;
+
+  beforeEach(() => {
+    setFocus = jest
+      .spyOn(AccessibilityInfo, "setAccessibilityFocus")
+      .mockImplementation(() => {});
+    announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+  });
+  afterEach(() => {
+    setFocus.mockRestore();
+    announce.mockRestore();
+    jest.restoreAllMocks();
+  });
+
+  const press = async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-free-cta"));
+    await fireEvent.press(view.getByTestId("credits-free-cta"));
+  };
+
+  // The counts are the reason the button has a sub-line. A `Pressable` is one
+  // accessibility element and an explicit label REPLACES its children, so a
+  // label of just "Get free credits" made every one of them silent.
+  it("speaks the counts, not just the button's name", async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-free-cta"));
+
+    expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
+      .toBe("Get free credits. Invite a friend to earn credits");
+    // And it tracks the sub-line rather than restating a fixed sentence.
+    expect(view.getByTestId("credits-free-cta").props.accessibilityLabel)
+      .toContain(view.getByTestId("credits-free-cta-sub").props.children);
+  });
+
+  // Both buttons, because they are told apart by their sub-lines: one earns
+  // credits, one explains what a credit buys. Fixing the first and leaving the
+  // second is how the rule ended up written down in three places with a
+  // violation of it sixteen lines below the fix.
+  it("speaks what the explanation button is for", async () => {
+    const view = await render(<CreditsScreen {...props()} />);
+    await waitFor(() => view.getByTestId("credits-how-cta"));
+
+    expect(view.getByTestId("credits-how-cta").props.accessibilityLabel)
+      .toBe("How credits work. What each thing costs");
+  });
+
+  it("moves focus to the section on native", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await press();
+
+    expect(setFocus).toHaveBeenCalledTimes(1);
+    // Not both: focusing the heading makes the screen reader speak it, and the
+    // heading reads "Free credits", so announcing the same words would either
+    // pre-empt it or say it twice.
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it("announces on web, where moving focus reaches nothing", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    await press();
+
+    expect(announce).toHaveBeenCalledWith("Free credits");
+    expect(setFocus).not.toHaveBeenCalled();
+  });
+});
+
+// The other half of the degraded-response fix. `freeCreditsSubtitle` covers
+// the button's sub-line in its own suite; this is the card's caps line, which
+// must disappear rather than read "0 left today · 0 left this month" at
+// somebody who has claimed nothing.
+it("drops the caps line when the server answered without counts", async () => {
+  mockFetchCreditClaims.mockResolvedValue({ claims: [], remaining: null });
+  const view = await render(<CreditsScreen {...props()} />);
+
+  await waitFor(() => view.getByTestId("credits-feedback"));
+  expect(view.queryByTestId("credits-feedback-remaining")).toBeNull();
+});
+
+it("shows the caps line when the server did count", async () => {
+  const view = await render(<CreditsScreen {...props()} />);
+
+  await waitFor(() => view.getByTestId("credits-feedback-remaining"));
+  expect(view.getByText("1 left today · 5 left this month")).toBeTruthy();
+});
+
+// The prices moved to their own screen when Profile's two credit rows were
+// split, so this screen must not also render them inline -- that was the
+// duplication the split existed to remove.
+it("does not inline the prices, and offers them as a button instead", async () => {
+  const opened = props();
+  const view = await render(<CreditsScreen {...opened} />);
+
+  await waitFor(() => view.getByTestId("credits-plus"));
+  expect(view.queryByTestId("how-credits-work")).toBeNull();
+
+  fireEvent.press(view.getByTestId("credits-how-cta"));
+  expect(opened.onHowCredits).toHaveBeenCalledTimes(1);
 });
 
 // D7: the row never sends somebody who already pays to a screen selling it.
