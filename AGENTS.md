@@ -55,15 +55,20 @@ its `seed-voice-previews` docblock shipped: `scripts/audit-function-drift.sh`
 reports **346 of 346 files identical, zero drift.** The claim is dated to that
 commit deliberately — it is a measurement, not a standing property.
 
-**One exception from the moment the credits round merges, and it expires the
-same way.** That branch adds migration `00100_feedback_monthly_cap_five` and
-changes one docblock line in `credit-claims/index.ts` (six → five). A comment
-is part of the module source, so **the audit will report drift on
-`credit-claims`, and it is a true positive.** Apply `00100` first, then deploy
-`credit-claims`; nothing under `_shared/` is touched, so there is no importer
-closure. **Whoever deploys it deletes this paragraph** — left standing after the
-deploy it is a false exception under a zero-drift baseline, which is the same
-failure inverted.
+**Do not write an exception here in advance of a deploy.** It was tried twice
+in one day, for the `seed-voice-previews` docblock and then for this branch's
+`credit-claims` one, and both times the paragraph outlived the condition it
+described: it sat under a zero-drift baseline telling the next operator that a
+drift row on a named function was expected and legitimate. That is a documented
+reason to wave through a *real* drift row, which is the "16 functions behind
+main" failure this page already records.
+
+**Run the audit instead.** `scripts/audit-function-drift.sh` answers the
+question for the tree you are actually on, in about a minute, and it exits
+non-zero. A merge that changes anything under `backend/supabase/functions/` —
+**including a comment, which is module source** — needs a deploy before that
+script is green again, and the script is what says so rather than a note
+predicting it.
 
 **The 2026-09-25 baseline audit was current with main, file for file.** Verified after the 2026-09-25
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied
