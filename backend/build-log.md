@@ -478,7 +478,19 @@ now says which one is in the tree.
   account is offered five claims this month* needs no back-dating and no prior
   claim -- `greatest(5 - 0, 0)` holds on any date -- so it is the one assertion
   that pins the digit every day of the year. Negative-controlled at 7.
-- `credit-claims` function tests 7/7. Expo **1671/1671** across 155 suites,
+- **The invented zero was fixed one layer too high, and review caught it.**
+  `fetchCreditClaims` now resolves `remaining` to `null` unless both halves
+  arrive as numbers — but `shapeClaims` in `credit-claims` coerced a missing
+  `remaining` to `{today: 0, month: 0}` and emitted it unconditionally, and
+  that function is the client's only source. So the null branch was unreachable
+  and the defence was dormant: if `comment_credit_claims` ever answered without
+  the object, the edge function manufactured the zeros, the client accepted two
+  numbers, and the card rendered "0 left today · 0 left this month" to an
+  account that had claimed nothing. `shapeClaims` now omits the field unless
+  both halves are finite numbers. Zero is still passed through when the server
+  actually said zero — that is a real answer, and the distinction is the whole
+  point.
+- `credit-claims` function tests 9/9. Expo **1671/1671** across 155 suites,
   typecheck clean, lint 0 errors.
 
 ### Not done here, and deliberately

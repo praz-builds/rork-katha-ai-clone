@@ -86,12 +86,18 @@ function claimStatus(value: unknown): "claimable" | "claimed" | "ineligible" {
  */
 export function shapeClaims(payload: unknown): {
   claims: Record<string, unknown>[];
-  remaining: { today: number; month: number };
+  remaining?: { today: number; month: number };
 } {
   const parsed = typeof payload === "string" ? safeParse(payload) : payload;
   const root = asRecord(parsed);
   const rows = Array.isArray(root.claims) ? root.claims : [];
   const remaining = asRecord(root.remaining);
+  // Both or neither: a half-present `remaining` is a shape nothing sends, and
+  // guessing the missing half is how a zero gets invented.
+  const counted = typeof remaining.today === "number" &&
+    Number.isFinite(remaining.today) &&
+    typeof remaining.month === "number" &&
+    Number.isFinite(remaining.month);
 
   return {
     claims: rows
@@ -112,10 +118,16 @@ export function shapeClaims(payload: unknown): {
           ...(reason ? { reason } : {}),
         };
       }),
-    remaining: {
-      today: count(remaining.today),
-      month: count(remaining.month),
-    },
+    // OMITTED, NOT COERCED TO ZERO, when the RPC did not answer with both
+    // halves. `count()` turning a missing value into 0 is right for a tally
+    // and wrong here: "the caps allow no more claims this month" and "nobody
+    // counted" are opposite facts, and the client renders the first as
+    // "0 left today · 0 left this month" to an account that has claimed
+    // nothing. The client already treats a missing `remaining` as "say nothing
+    // exact"; this is what lets that branch ever be taken, because the only
+    // source of the field is this function and it used to manufacture it
+    // unconditionally.
+    ...(counted ? { remaining: { today: remaining.today as number, month: remaining.month as number } } : {}),
   };
 }
 
