@@ -7,6 +7,98 @@
 
 ---
 
+## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight
+
+**Session:** the round after the deploy audit, ahead of the first Android build.
+Two jobs: seed what the Play listing screenshots need, and run every gate that
+can fail before an AAB is attempted. Branch `codex/screenshot-fixtures-0927`.
+
+### Production writes (house content only)
+
+`backend/scripts/seed-screenshot-fixtures.ts` — idempotent, with a `--teardown`
+that removes exactly what it created, and a report-only default so it can be
+inspected before it writes.
+
+- Two house reader accounts, `ana_reads` and `tomas_ferreira`, at `@example.com`
+  (RFC 2606 reserves the domain, so neither address can collide with or deliver
+  to a real one), each with a profile carrying a `display_name`, an `avatar_id`
+  and a bio marking it as a house account.
+- One comment each on the Original *A Bridge by Cockcrow*
+  (`0da6a6bb-8b84-458a-8e89-3da7a8046e0d`). **The `comments` table was empty
+  across the entire project**, so screenshot frame 7 — the frame whose caption is
+  "Readers can reply" — was not capturable at all.
+- `stories.comment_count` set to 2 from the real row count. There is no trigger
+  maintaining that counter, so the story page would have shown a count
+  disagreeing with the comment list directly beneath it.
+- A 3-day `streaks` row for the house account, which had none, for the streak
+  pill in frame 1.
+
+No function deploy, no migration, no `db push`, so the **function surface** is
+still byte-identical to main and the 346/346 baseline from the previous entry
+holds unchanged.
+
+**Production data is not unchanged, and not only by this round.** A concurrent
+session seeded `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` into the
+`audio` bucket -- verified here, six objects answering `200` at roughly 100 KB
+each, where all six answered `400` earlier the same day -- and logged two
+failures to `error_events` doing it. So after 2026-09-27 the accurate statement is
+"no function or migration changed", never "production is unchanged": there are six
+new storage objects, two new telemetry rows, and this round's fixtures.
+
+### Two findings that outlived the seeding
+
+- **Every comment renders the handle, not the name its author chose.**
+  `supabase/functions/comments/index.ts:350` returns
+  `author_display_name: profile?.username ?? null`, so a comment shows
+  `profiles.username` while a profile shows `display_name` everywhere else. This is
+  a product bug for **every** author, not a house-account quirk: a reader who set
+  their name to "Ana" is credited under their handle the moment they comment. The
+  house account is only where it became visible -- its reply would read
+  `vivid_lantern_51`, and it cannot be renamed out of the problem because `katha`,
+  `kathaai` and `katha_ai` are all in the `profiles_username_not_reserved` list
+  from 00060, which is the smaller half of the issue. Frame 7 ships with the two
+  reader comments and no author reply. Not fixed here: whether a comment carries
+  the name or the handle is a product decision with a client surface, and it wants
+  its own PR.
+- **Frames 3 and 4 cannot be seeded at all.** Frame 3 is a live generation being
+  photographed mid-stream and frame 4 is a generated character portrait, so both
+  wait on the paid provider (Gemini `429`, OpenRouter `402`). The house account
+  has **0** saved characters with a portrait; the project's 13 portraits all
+  belong to test accounts, and using one would attribute another account's art to
+  the house account.
+
+### Pre-build preflight — all green
+
+Run against main at `ca4a68e` with Node v22.23.0:
+
+| Gate | Result |
+|---|---|
+| `pnpm typecheck` | clean |
+| `pnpm lint` | **0 errors**, 32 warnings (unescaped quotes, one `useMemo` dep, one unused setter) |
+| `pnpm test` | **153 suites, 1,649 tests, all passed** |
+| `npx expo export --platform web` | exported, 3 root files |
+| `pnpm exec expo-doctor` | **18 / 18 checks passed** |
+| i18n parity | EN / ES / PT all **270 keys**, no missing, no extra, no empty |
+
+The i18n sweep also checked for untranslated values: 6 strings in `es` and 7 in
+`pt` are identical to English, and every one is a proper noun (*Romance*,
+*Drama*, *LGBTQ+*, *Total*, *Katha Plus*) or an interpolation-only string
+(`{{length}} / {{max}}`). Nothing is an untranslated sentence.
+
+`android.blockedPermissions` was **not** re-verified against a freshly built
+merged manifest this round; it is pinned by `release-config.test.ts`, which
+passed inside the 1,649, and was confirmed against a locally built release AAB on
+2026-09-25 (#138). A fresh gradle build would be the stronger check.
+
+### Verification
+
+- The seed script was run report-only first, then `--apply`, then **`--apply` a
+  second time to prove idempotency**: the second run reported "auth user exists",
+  "already present" for both comments, and created nothing.
+- The seeded rows were read back through the same join the `comments` function
+  uses (`profiles!comments_user_id_fkey`), which is how the `username` finding
+  above was established rather than guessed.
+- No `public.error_events` row was required: nothing failed.
 ## 2026-09-27 UTC — Every voice sample plays, and the Story world row says what it does
 
 **Session:** second branch of the pre-launch polish round, from founder feedback

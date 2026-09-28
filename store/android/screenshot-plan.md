@@ -34,6 +34,53 @@ Eight screenshots, in listing order. Capture them **after** the final UI feedbac
 
 If only six are made, drop 5 and 8. Keep 1–3 in this order.
 
+## Fixture state (2026-09-27)
+
+What production can and cannot produce for these frames, measured rather than
+assumed. Captures happen on a real device from the closed-test build, so the
+data had to be seeded ahead of the session, not during it.
+
+**Seeded, reversible** — `backend/scripts/seed-screenshot-fixtures.ts`, which is
+idempotent and has a `--teardown` that removes exactly what it created:
+
+- Two house reader accounts, `ana_reads` and `tomas_ferreira` (emails at
+  `@example.com`, which RFC 2606 reserves, so neither can collide with or
+  deliver to a real address), and one comment each on the Original **A Bridge by
+  Cockcrow** (`0da6a6bb-8b84-458a-8e89-3da7a8046e0d`). The `comments` table was
+  **empty across the whole project**, so frame 7 was not capturable at all. A
+  folktale was chosen so the frame carries no romance or horror imagery.
+- `stories.comment_count` set to 2 to match. Nothing maintains that counter --
+  there is no trigger on it -- so it would otherwise have disagreed with the
+  comment list on the same screen.
+- A 3-day `streaks` row for the house account, for the streak pill in frame 1.
+  It had no streak row at all.
+
+**Already there, nothing to do:** 80 published Katha Originals, all with covers
+(frames 1 and 8), and 6 `chapter_audio` rows in `ready` (frame 6).
+
+**Blocked on the paid generation provider** (Gemini `429`, OpenRouter `402`) --
+these two cannot be captured until it is funded, and no fixture substitutes for
+them because both frames are of the thing being generated:
+
+- **Frame 3, live reader mid-generation.** Needs a real run to photograph.
+- **Frame 4, craft character portrait.** The house account has **0** saved
+  characters with a portrait. Thirteen portraits exist in the project but all
+  belong to test accounts, so using one would mean attributing another account's
+  art to the house account.
+
+**Frame 7 has no house-author reply, and cannot have one yet.** Every comment
+renders the handle rather than the name its author chose:
+`supabase/functions/comments/index.ts:350` returns
+`author_display_name: profile?.username ?? null`, so a comment shows
+`profiles.username` while a profile shows `display_name` everywhere else. That is
+a bug for every author, not just this account -- a reader whose name is "Ana" is
+credited as their handle the moment they comment. Here it means the house account
+would appear as `vivid_lantern_51`, and renaming cannot fix it: `katha`, `kathaai`
+and `katha_ai` are all in the `profiles_username_not_reserved` list added by
+migration 00060. The two reader comments read correctly as handles, so capture
+frame 7 with those two; add the author's reply only after the name/handle decision
+is made and shipped.
+
 ## Checklist for the capture session
 
 - [ ] Production build (or the final closed-test build) on a real Android phone, light theme, English UI.
