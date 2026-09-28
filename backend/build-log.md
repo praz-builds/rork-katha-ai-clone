@@ -7,6 +7,48 @@
 
 ---
 
+## 2026-09-28 UTC — The five-a-month cap is live, and the rotor reaches the prices
+
+**Session:** the deploy of #156 plus the two items its last review raised after
+it had merged. Branch `codex/credits-a11y-and-repair`.
+
+### Deployed
+
+1. **`supabase db push`** — `00100_feedback_monthly_cap_five`, the only pending
+   migration. The ledger read `00001`-`00099` beforehand, which is the check the
+   file's own warning asks for: the number was used once by the withdrawn
+   `00100_reader_preferences`, and `db push` keys on the numeric prefix rather
+   than the name, so a database carrying that row would have skipped this file
+   and exited 0 with the cap still at six. Production was not in that state.
+2. **`supabase functions deploy credit-claims`** — the only edge caller of the
+   three changed functions.
+3. **`scripts/audit-function-drift.sh` against `d92ceee`: 346/346 identical, 0
+   drifted.** Merged is not deployed, and the CLI saying "Deployed Functions."
+   is not evidence; the diff of the downloaded bundles is.
+
+**The feedback claim now caps at five a month in production.**
+
+### Two items from the review that landed after the merge
+
+**Heading navigation stopped one level short.** #156's argument was that a rotor
+with one arbitrary entry is worse than an empty one, and it fixed that on
+`CreditsScreen` and on the new screen's title -- but `HowCreditsWork`, which is
+that screen's entire body, has three section titles of its own and none of them
+carried the role. So the rotor offered "How credits work" and no way to reach
+the price table. It has exactly one caller, so the three lines affect nothing
+else, and the test that already asserts the title now asserts all four.
+
+**The `db push` warning named the check and not the repair.** An operator who
+finds the row had no next step. It is
+`supabase migration repair --status reverted 00100`, then push again.
+
+### Verification
+
+Expo **1671/1671** across 155 suites, typecheck clean, lint 0 errors. No
+migration and no function in this change, so nothing to deploy from it.
+
+---
+
 ## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight
 
 **Session:** the round after the deploy audit, ahead of the first Android build.
@@ -508,7 +550,8 @@ number was used once before by the withdrawn `00100_reader_preferences`. The
 production ledger is aligned `00001`-`00099` with nothing pending, so
 production is safe — but any database that ever had the withdrawn one pushed
 to it will skip this file, exit 0, and leave the cap at six behind a green
-deploy. Production was
+deploy. The repair is `supabase migration repair --status reverted 00100`,
+then push again. Production was
 verified byte-identical to main earlier today (346/346), so
 `scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
 after this deploy is this change's.

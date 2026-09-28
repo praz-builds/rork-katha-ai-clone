@@ -89,7 +89,11 @@ be applied. `reader_preferences` is not in the tree at all, so nothing here
 asks you to skip a file you can see. Before pushing, check that `00100` is
 absent from `supabase_migrations.schema_migrations` — `db push` keys on the
 numeric prefix, not the name, so a database that ever had the withdrawn one
-applied would skip the new one, exit 0 and report nothing.
+applied would skip the new one, exit 0 and report nothing. If the row is
+there, `supabase migration repair --status reverted 00100` clears it and the
+push then applies the file. **Production is not in that state**: the ledger
+was `00001`-`00099` when `00100_feedback_monthly_cap_five` was applied on
+2026-09-28, so this is for shadow and local databases.
 
 **Country Story world has no migration.** Its checked-in contract changed six
 non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,
