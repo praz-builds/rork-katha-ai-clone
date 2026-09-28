@@ -37,10 +37,10 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-27)
+## Production state (last verified 2026-09-28, main at `84f94fa`)
 
-**The whole function surface is current with main at `e7222fb`, and nothing was
-deployed on 2026-09-27 because nothing needed it.** All **34** functions were
+**The whole function surface was current with main at `e7222fb` on 2026-09-27,
+and nothing was deployed that day because nothing needed it.** All **34** functions were
 downloaded and every `.ts`/`.json` file in them compared byte for byte with this
 checkout: **346 of 346 identical, zero drift.** The migration ledger is aligned
 `00001`-`00099` with nothing pending. Re-run it yourself with
@@ -50,17 +50,25 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: still
-346 of 346 identical, zero drift, nothing to deploy.** The exception that stood
-here -- that `seed-voice-previews` would drift because #157 changed its docblock
--- was already closed when it was written: the deployed bundle carries the new
-`BEFORE YOU RUN IT` block and `cmp`s clean against main, so that function was
-deployed too. Deleted per its own instruction, which was to remove it the moment
-it stopped being true. Worth keeping the lesson though: **a written-in-advance
-exception outlives the condition it describes.** It was a false exception sitting
-directly under a zero-drift baseline within hours of being added, which is the
-failure it was warning about. Prefer running
-`scripts/audit-function-drift.sh` over trusting a paragraph on this page.
+**Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: 346 of
+346 identical, zero drift, nothing to deploy.** That number is true of that
+commit and stops being true the next time anything under
+`backend/supabase/functions/` merges, so read the commit, not the word "zero".
+
+An exception used to stand here saying `seed-voice-previews` would drift, because
+#157 changed its docblock and a comment is module source. It was accurate when
+written and stayed accurate for about two minutes: `ed4d4a1` merged at 20:29 UTC
+and the author deployed the function at 20:31. What left it on this page was that
+the deletion landed on an unmerged branch, which is the one place deleting it
+does nothing. Verified before removing it -- the deployed bundle carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main.
+
+**So do not write drift exceptions in advance.** The paragraph outlives the
+condition it describes, and one telling an operator that a drift row on a named
+function is expected is a documented reason to wave through a real one -- the
+"16 functions behind main" failure this page already records. Run
+`scripts/audit-function-drift.sh` instead; a deploy obligation belongs in the
+build log, dated and specific.
 
 **"No function or migration changed" is not "production is unchanged".** Three
 sessions wrote to production data on 2026-09-27 without touching a function or a

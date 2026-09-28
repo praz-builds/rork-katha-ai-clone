@@ -39,10 +39,18 @@ whoever deployed the function should delete the paragraph.
 Re-running the audit said otherwise: **346 of 346 identical, zero drift.** So the
 deployed bundle was fetched on its own and checked directly -- it carries the new
 `BEFORE YOU RUN IT` block and `cmp`s clean against main, meaning that function had
-been deployed as well as merged. The exception was untrue by the time it was
-written, and it sat immediately under a zero-drift baseline, where the next
-operator would have had a documented reason to wave a real drift row through.
-Deleted per its own instruction, with the measured result in its place.
+been deployed as well as merged.
+
+**Corrected after the author supplied timestamps:** this entry first said the
+exception was untrue by the time it was written. It was not. `ed4d4a1` merged at
+20:29 UTC and the author deployed `seed-voice-previews` at 20:31, so it was
+accurate for about two minutes. What left it standing on main is that the author's
+deletion of it landed on an unmerged branch -- the one place deleting it does
+nothing -- and main kept the paragraph. The removal was still right, for the
+reason below rather than the one first given: it sat immediately under a zero-drift
+baseline, where the next operator would have had a documented reason to wave a real
+drift row through. Deleted per its own instruction, with the measured result in its
+place.
 
 The lesson is kept on the page instead of the exception: an exception written in
 advance outlives the condition it describes, so run the audit rather than trust a
