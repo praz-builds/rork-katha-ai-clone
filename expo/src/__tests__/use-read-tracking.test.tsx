@@ -43,8 +43,9 @@ function harness() {
 
   subscribe.mockClear();
 
+  let flush: () => void = () => {};
   const Probe = ({ storyId, chapterId }: { storyId: string; chapterId: string | null }) => {
-    useReadTracking(storyId, chapterId, {
+    const tracking = useReadTracking(storyId, chapterId, {
       now: () => clock,
       recordRead: async (input) => {
         posted.push({
@@ -55,12 +56,14 @@ function harness() {
         return { recorded: true, counted: true };
       },
     });
+    flush = tracking.flushNow;
     return null;
   };
 
   return {
     posted,
     Probe,
+    composerFocus: () => flush(),
     subscribe,
     /** Move the clock AND let any timer that is now due fire. */
     advance: async (seconds: number) => {
@@ -291,4 +294,67 @@ it("counts only foreground time towards the threshold", async () => {
 
   await h.advance(1);
   expect(h.posted).toHaveLength(1);
+});
+
+// ── The shape the threshold cannot reach ──────────────────────────────────
+//
+// Two chapters that each stay under 120 seconds. Chapter 1 flushes on the page
+// turn; chapter 2 is still mounted when the reader starts typing, so it has no
+// row at all and the sum is 70 over 140 seconds of real reading. The composer
+// taking focus is the one moment on the path to a claim that a clock cannot
+// see, and the gate counts only reads recorded BEFORE the comment exists.
+it("writes the current chapter's read when the composer takes focus", async () => {
+  const h = harness();
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(70);
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
+  });
+  await h.advance(70);
+
+  // Chapter 2 has nothing recorded yet.
+  expect(h.posted).toHaveLength(1);
+
+  await act(async () => h.composerFocus());
+
+  expect(h.posted).toHaveLength(2);
+  expect(h.posted[1]).toEqual({ storyId: "s1", chapterId: "c2", durationSeconds: 70 });
+});
+
+it("does not write a second row when the composer is focused twice", async () => {
+  // The server would dedup it anyway; asking twice is just a wasted request.
+  const h = harness();
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(70);
+  await act(async () => h.composerFocus());
+  await act(async () => h.composerFocus());
+
+  expect(h.posted).toHaveLength(1);
+});
+
+it("writes nothing when the composer is focused on a chapter barely opened", async () => {
+  // Same reason as the floor everywhere else: under the dedup, a one-second
+  // row is the number that chapter is stuck with for the day.
+  const h = harness();
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(MIN_SECONDS - 1);
+  await act(async () => h.composerFocus());
+
+  expect(h.posted).toEqual([]);
+});
+
+it("leaves the threshold post alone when the composer was focused first", async () => {
+  const h = harness();
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(70);
+  await act(async () => h.composerFocus());
+  // The timer is cancelled by the flush, so crossing 120 adds nothing.
+  await h.advance(300);
+
+  expect(h.posted).toHaveLength(1);
+  expect(h.posted[0].durationSeconds).toBe(70);
 });

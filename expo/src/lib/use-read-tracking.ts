@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { recordRead as defaultRecordRead } from "@/lib/api";
 
@@ -31,12 +31,35 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * `POST_AT_SECONDS` is 120 because **that is the only number anything reads**.
  * `story_reads.duration_seconds` has exactly one consumer in the whole repo —
  * the `sum(...) >= 120` in `comment_credit_block_reason`. Posting the moment
- * foreground dwell crosses it records precisely what the gate tests for, and
- * sets `read_at` two minutes into the read, which clears 00090's separate
- * 60-second `read_at` rule long before a 40-character comment can be typed.
+ * foreground dwell crosses it records precisely what the gate tests for.
  *
  * The cleanup flush stays for chapters that never get that far: it is what
  * feeds `read_count` and the streak for a short read.
+ *
+ * ── AND A FLUSH WHEN THE COMPOSER IS TOUCHED ──────────────────────────────
+ *
+ * `flushNow` is called when the comment box takes focus, which is the one
+ * moment on the path to a claim that a clock cannot see. It is for the shape
+ * the threshold misses: **two chapters that each stay under 120 seconds.**
+ * Chapter 1 flushes at 70s on the page turn; chapter 2 is still mounted and has
+ * no row at all, so the sum is 70 and the claim is refused over 140 seconds of
+ * real reading. Writing chapter 2's row when the reader reaches for the
+ * keyboard makes the sum 140.
+ *
+ * ── WHAT THIS STILL CANNOT DO, AND IT IS THE GATES' OWN ARITHMETIC ────────
+ *
+ * The two server rules are **120 seconds of summed dwell** and **one row whose
+ * `read_at` is at least 60 seconds older than the comment** — and `read_at` is
+ * `now()` at insert, not when the read began. Jointly they mean **no comment
+ * before three minutes can qualify**, whatever this hook does: the earliest
+ * honest row carrying 120 seconds is written at the 120-second mark, and the
+ * 60-second rule then puts the first claimable comment at 180.
+ *
+ * A reader who comments between 2:00 and 3:00 is refused, permanently — the
+ * comment's timestamp never moves and the dedup stops a later read producing an
+ * earlier row. Writing the row sooner would mean claiming 120 seconds of
+ * reading that had not happened. That is 00090's design rather than something
+ * to route around here, and it is written down so the next person does not try.
  *
  * ── THE 24-HOUR DEDUP SHAPES EVERYTHING ELSE ──────────────────────────────
  *
@@ -86,7 +109,7 @@ export function useReadTracking(
   storyId: string,
   chapterId: string | null | undefined,
   options: ReadTrackingOptions = {},
-): void {
+): { flushNow: () => void } {
   const { recordRead = defaultRecordRead, now = Date.now } = options;
 
   // Refs throughout: none of this may cause a render. A reading screen that
@@ -95,6 +118,9 @@ export function useReadTracking(
   const clock = useRef(now);
   send.current = recordRead;
   clock.current = now;
+  // Set by the effect below to its own post; stable identity for callers.
+  const flushRef = useRef<() => void>(() => {});
+  const flushNow = useCallback(() => flushRef.current(), []);
 
   useEffect(() => {
     if (!storyId) return;
@@ -157,10 +183,22 @@ export function useReadTracking(
       clearTimer();
     };
 
+    // What `flushNow` does: report whatever has been measured so far, once.
+    // Below the minimum there is nothing worth a row, and after the threshold
+    // post there is nothing left to say.
+    flushRef.current = () => {
+      if (posted) return;
+      const seconds = dwellMs() / 1000;
+      if (seconds < MIN_SECONDS) return;
+      clearTimer();
+      post(seconds);
+    };
+
     const subscription = AppState.addEventListener("change", onAppState);
     armTimer();
 
     return () => {
+      flushRef.current = () => {};
       subscription.remove();
       clearTimer();
       bank();
@@ -174,4 +212,6 @@ export function useReadTracking(
     // `chapterId` in the deps is what makes turning a page a separate read:
     // the cleanup flushes the chapter being left before the next one starts.
   }, [storyId, chapterId]);
+
+  return { flushNow };
 }

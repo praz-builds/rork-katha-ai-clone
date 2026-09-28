@@ -90,6 +90,26 @@ There is also a **five-second floor**: paging through a story to find your place
 should not write a row per chapter it passes, and under the dedup a one-second
 row makes the 120-second gate *harder* to pass than recording nothing at all.
 
+**And a flush when the composer takes focus**, added after review pointed out
+that the threshold alone misses a real shape: two chapters that each stay under
+120 seconds. Chapter 1 flushes at 70s on the page turn; chapter 2 is still
+mounted and has no row at all, so the sum is 70 over 140 seconds of real
+reading. `ChapterSocial`'s `TextInput` now calls back on focus — the one moment
+on the path to a claim that a clock cannot see — and the row is written before
+the comment exists.
+
+**What still cannot work, and it is the gates' own arithmetic rather than a
+gap here.** The two server rules are 120 seconds of summed dwell *and* one row
+whose `read_at` is at least 60 seconds older than the comment, where `read_at`
+is `now()` at insert. Jointly: **no comment before three minutes can qualify.**
+The earliest honest row carrying 120 seconds is written at the 120-second mark,
+and the 60-second rule then puts the first claimable comment at 180. A reader
+who comments between 2:00 and 3:00 is refused permanently, because the comment's
+timestamp never moves and the dedup stops a later read producing an earlier row.
+Writing the row sooner would mean claiming reading that had not happened. The
+docblock said this cleared "long before a 40-character comment can be typed",
+which was wrong by one gate; it now states the arithmetic.
+
 **One limitation, recorded rather than fixed.** A short first sitting locks the
 duration low for the rest of the day: read 30 seconds, leave, come back and read
 ten minutes, and the second post is deduped so the sum stays 30. Recording the
@@ -99,7 +119,7 @@ which `record_story_read` deliberately does not do. Out of scope here.
 
 ### Verification
 
-Expo **1662/1662** across 154 suites, typecheck clean, lint 0 errors. Eleven new
+Expo **1666/1666** across 154 suites, typecheck clean, lint 0 errors. Fifteen new
 tests, each on a rule that makes the number mean something rather than on the
 happy path: the whole chapter reported once at the end, each chapter counted
 separately across a page turn, background time excluded, a repeated `active`

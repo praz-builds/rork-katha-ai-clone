@@ -848,7 +848,7 @@ export default function ReaderScreen({
    * rather than at a threshold (the server deduplicates over 24 hours, so the
    * first number a chapter gets is the one it keeps).
    */
-  useReadTracking(story.id, chapter.id);
+  const { flushNow: flushRead } = useReadTracking(story.id, chapter.id);
 
   /**
    * The reader follows the chapter being written to it.
@@ -1713,6 +1713,11 @@ export default function ReaderScreen({
                             : undefined
                         }
                         requireSignIn={requireSignIn}
+                        // Write the read row before the comment exists. The
+                        // gate counts only reads recorded BEFORE the comment's
+                        // timestamp, and this composer is inline at the end of
+                        // the chapter, so nobody leaves the screen to use it.
+                        onComposerFocus={flushRead}
                       />
                       </View>
                     ) : null}
