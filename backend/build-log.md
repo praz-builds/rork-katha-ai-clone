@@ -46,6 +46,31 @@ can reach is the wrong kind of precise.
 - **`expo/src/lib/use-read-tracking.ts`** measures the dwell and decides when to
   send it. Wired into `ReaderScreen` with the story and chapter ids.
 
+### The bug the first version shipped, which review caught
+
+It flushed **only** in the effect's cleanup, and that made the headline case
+impossible. **The comment box is inside the reader**: `ChapterSocial` renders at
+the end of the chapter with its own composer, so somebody who reads a chapter
+and says something at the bottom of it never leaves — and the row was written
+*after* the comment. `comment_credit_block_reason` sums only reads with
+`read_at < comment.created_at`, so the sum was 0 and the claim answered
+`not_read`. Ten minutes on a chapter, then "Read the story first": the exact
+experience this branch exists to remove, reproduced by the fix for it.
+
+It did not heal, either. The comment's timestamp is fixed and the 24-hour dedup
+means no later read can produce an earlier row, so that comment was unclaimable
+for good — and a **one-chapter story could never qualify at all**, which is a
+supported shape.
+
+The fix is to post the moment foreground dwell crosses **120 seconds**, without
+waiting for an exit. The number is not arbitrary: `story_reads.duration_seconds`
+has **exactly one consumer in the repository**, the `sum(...) >= 120` in that
+same function. Posting at the threshold records precisely what the gate tests
+for and sets `read_at` two minutes into the read, clearing 00090's separate
+60-second rule long before a 40-character comment can be typed. The cleanup
+flush stays for chapters that never get that far, which is what feeds
+`read_count` and the streak on a short read.
+
 ### The two decisions that shape the number
 
 **Post once, on the way out — never at a threshold.** The server deduplicates
@@ -65,9 +90,16 @@ There is also a **five-second floor**: paging through a story to find your place
 should not write a row per chapter it passes, and under the dedup a one-second
 row makes the 120-second gate *harder* to pass than recording nothing at all.
 
+**One limitation, recorded rather than fixed.** A short first sitting locks the
+duration low for the rest of the day: read 30 seconds, leave, come back and read
+ten minutes, and the second post is deduped so the sum stays 30. Recording the
+30 is still right — it feeds the streak and `read_count`, and 30 fails the gate
+exactly as 0 does — but raising it would need the server to update the row,
+which `record_story_read` deliberately does not do. Out of scope here.
+
 ### Verification
 
-Expo **1659/1659** across 154 suites, typecheck clean, lint 0 errors. Eight new
+Expo **1662/1662** across 154 suites, typecheck clean, lint 0 errors. Eleven new
 tests, each on a rule that makes the number mean something rather than on the
 happy path: the whole chapter reported once at the end, each chapter counted
 separately across a page turn, background time excluded, a repeated `active`

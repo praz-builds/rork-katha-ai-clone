@@ -16,7 +16,7 @@ import React from "react";
 import { AppState } from "react-native";
 import { act, render } from "@testing-library/react-native";
 
-import { MIN_SECONDS, useReadTracking } from "@/lib/use-read-tracking";
+import { MIN_SECONDS, POST_AT_SECONDS, useReadTracking } from "@/lib/use-read-tracking";
 
 type Posted = { storyId: string; chapterId: string | null; durationSeconds: number };
 
@@ -62,8 +62,12 @@ function harness() {
     posted,
     Probe,
     subscribe,
-    advance: (seconds: number) => {
+    /** Move the clock AND let any timer that is now due fire. */
+    advance: async (seconds: number) => {
       clock += seconds * 1000;
+      await act(async () => {
+        jest.advanceTimersByTime(seconds * 1000);
+      });
     },
     appState: (next: string) => {
       for (const listener of [...listeners]) listener(next);
@@ -71,21 +75,29 @@ function harness() {
   };
 }
 
-afterEach(() => jest.restoreAllMocks());
+beforeEach(() => jest.useFakeTimers());
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
 
-it("reports the whole chapter once, when the reader leaves it", async () => {
+// A chapter the reader leaves before the threshold is reported on the way out,
+// with its real dwell. This is what feeds `read_count` and the streak for a
+// short read -- and 90 seconds fails the credit gate exactly as 0 would, so
+// recording it costs the reader nothing.
+it("reports a short chapter on the way out, with its real dwell", async () => {
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  h.advance(200);
-  expect(h.posted).toHaveLength(0); // nothing mid-read
+  await h.advance(90);
+  expect(h.posted).toHaveLength(0); // nothing yet: under the threshold
 
   await act(async () => {
     view.unmount();
   });
 
   expect(h.posted).toEqual([
-    { storyId: "s1", chapterId: "c1", durationSeconds: 200 },
+    { storyId: "s1", chapterId: "c1", durationSeconds: 90 },
   ]);
 });
 
@@ -93,7 +105,7 @@ it("counts each chapter separately as the reader turns pages", async () => {
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  h.advance(130);
+  await h.advance(70);
   await act(async () => {
     view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
   });
@@ -102,33 +114,35 @@ it("counts each chapter separately as the reader turns pages", async () => {
   // screen closes -- the gate sums a story's rows, and a reader who never
   // closes the reader would otherwise have recorded nothing.
   expect(h.posted).toEqual([
-    { storyId: "s1", chapterId: "c1", durationSeconds: 130 },
+    { storyId: "s1", chapterId: "c1", durationSeconds: 70 },
   ]);
 
-  h.advance(45);
+  // And the next chapter starts from zero rather than inheriting the first
+  // one's time, which would post it at the threshold 50 seconds early.
+  await h.advance(45);
   await act(async () => {
     view.unmount();
   });
   expect(h.posted[1]).toEqual({ storyId: "s1", chapterId: "c2", durationSeconds: 45 });
 });
 
-it("counts foreground time only", async () => {
+it("excludes background time from the dwell it reports", async () => {
   // A phone in a pocket with the reader open is not reading, and the credit
   // this feeds is supposed to mean somebody read something.
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  h.advance(60);
+  await h.advance(40);
   await act(async () => h.appState("background"));
-  h.advance(3600); // overnight on the bedside table
+  await h.advance(3600); // overnight on the bedside table
   await act(async () => h.appState("active"));
-  h.advance(70);
+  await h.advance(30);
 
   await act(async () => {
     view.unmount();
   });
 
-  expect(h.posted[0].durationSeconds).toBe(130);
+  expect(h.posted[0].durationSeconds).toBe(70);
 });
 
 it("does not restart the clock when active arrives twice", async () => {
@@ -137,15 +151,15 @@ it("does not restart the clock when active arrives twice", async () => {
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  h.advance(40);
+  await h.advance(40);
   await act(async () => h.appState("active"));
-  h.advance(50);
+  await h.advance(35);
 
   await act(async () => {
     view.unmount();
   });
 
-  expect(h.posted[0].durationSeconds).toBe(90);
+  expect(h.posted[0].durationSeconds).toBe(75);
 });
 
 it("says nothing about a chapter that was paged past", async () => {
@@ -155,7 +169,7 @@ it("says nothing about a chapter that was paged past", async () => {
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  h.advance(MIN_SECONDS - 1);
+  await h.advance(MIN_SECONDS - 1);
   await act(async () => {
     view.unmount();
   });
@@ -166,11 +180,11 @@ it("says nothing about a chapter that was paged past", async () => {
 it("reports the chapter it measured, not whichever is current at unmount", async () => {
   const h = harness();
   const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
-  h.advance(30);
+  await h.advance(30);
   await act(async () => {
     view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
   });
-  h.advance(30);
+  await h.advance(30);
   await act(async () => {
     view.unmount();
   });
@@ -216,4 +230,65 @@ it("never throws into the reader when the endpoint fails", async () => {
   });
   // Reaching here without an unhandled rejection is the assertion.
   expect(failing).not.toHaveBeenCalled(); // 0 seconds is under the minimum
+});
+
+// ── The bug the first version of this hook shipped ────────────────────────
+//
+// The comment box is INSIDE the reader: `ChapterSocial` renders at the end of
+// the chapter with its own composer. So somebody who reads a chapter and says
+// something at the bottom of it never leaves, and a hook that only flushed on
+// the way out wrote the row AFTER the comment. The gate sums reads with
+// `read_at < comment.created_at`, so the sum was zero and the claim was
+// refused -- "Read the story first", after ten minutes on the chapter.
+//
+// It could not heal: the comment's timestamp is fixed, and the 24-hour dedup
+// means no later read can produce an earlier row. A one-chapter story could
+// never qualify at all.
+it("reports the read while the reader is still on the chapter", async () => {
+  const h = harness();
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(POST_AT_SECONDS - 1);
+  expect(h.posted).toHaveLength(0);
+
+  await h.advance(1);
+
+  // Posted without leaving, so the row exists before the composer is used.
+  expect(h.posted).toEqual([
+    { storyId: "s1", chapterId: "c1", durationSeconds: POST_AT_SECONDS },
+  ]);
+});
+
+it("does not post a second time when the reader finally leaves", async () => {
+  // The server dedups per chapter over 24 hours, so a second call tells it
+  // nothing -- and the first row keeps its duration regardless.
+  const h = harness();
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(600);
+  expect(h.posted).toHaveLength(1);
+
+  await act(async () => {
+    view.unmount();
+  });
+  expect(h.posted).toHaveLength(1);
+});
+
+it("counts only foreground time towards the threshold", async () => {
+  // Two minutes on the bedside table is not two minutes of reading, and the
+  // credit this feeds is meant to mean somebody read something.
+  const h = harness();
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(60);
+  await act(async () => h.appState("background"));
+  await h.advance(3600);
+  expect(h.posted).toHaveLength(0);
+
+  await act(async () => h.appState("active"));
+  await h.advance(59);
+  expect(h.posted).toHaveLength(0);
+
+  await h.advance(1);
+  expect(h.posted).toHaveLength(1);
 });
