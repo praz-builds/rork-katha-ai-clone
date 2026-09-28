@@ -1673,6 +1673,8 @@ digit in `comment_credit_block_reason` (which enforces it) and in
 screen); `claim_comment_credit` re-derives the reason under its lock and
 needed no change. Nobody is clawed back: credits already paid at the old cap
 are kept, and the new ceiling applies from the next calendar month.
+**Applied to production on 2026-09-28**, with `credit-claims` redeployed behind
+it; five is what the server enforces today.
 
 **Why claim-after-the-fact, rather than granting when the comment is posted.**
 The 2026-09-10 removal was right about the mechanic it removed: paying at post

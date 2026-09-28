@@ -37,33 +37,99 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-27)
+## Production state (last verified 2026-09-28, main at `d92ceee`)
 
-**The whole function surface is current with main at `e7222fb`, and nothing was
-deployed on 2026-09-27 because nothing needed it.** All **34** functions were
+**The whole function surface was current with main at `e7222fb` on 2026-09-27,
+and nothing was deployed that day because nothing needed it.** All **34** functions were
 downloaded and every `.ts`/`.json` file in them compared byte for byte with this
-checkout: **346 of 346 identical, zero drift.** The migration ledger is aligned
-`00001`-`00099` with nothing pending. Re-run it yourself with
+checkout: **346 of 346 identical, zero drift.** The migration ledger was aligned
+`00001`-`00099` with nothing pending on that date; see the 09-28 deploy below
+for where it stands now. Re-run it yourself with
 `scripts/audit-function-drift.sh`, which is this audit as a script and exits
 non-zero on drift; it was negative-controlled first (appending one comment line
 to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**One known exception, from the moment this branch merges.** The voice-preview
-round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
-is part of the module source, so the deployed bundle and main diverge until it
-ships. **`scripts/audit-function-drift.sh` will report drift on that one
-function, and it is a true positive.** Deploy `seed-voice-previews` and the
-surface is clean again; nothing under `_shared/` was touched, so there is no
-importer closure. Do not read that one row as a false alarm and wave the audit
-through -- "16 functions behind main" is on this page because somebody did.
+**Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: 346 of
+346 identical, zero drift, nothing to deploy.** That number is true of that
+commit and stops being true the next time anything under
+`backend/supabase/functions/` merges, so read the commit, not the word "zero".
 
-**Whoever deploys it deletes this paragraph.** It is only true between that
-merge and that deploy, and left standing afterwards it is a false exception
-sitting directly under a zero-drift baseline, on the page whose whole job is to
-be what an operator can trust about production. The person running the deploy is
-the only one who knows it has stopped being true.
+**Then #156 shipped, so 2026-09-28 was a deploy day after all.** In order:
+`supabase db push` applied **`00100_feedback_monthly_cap_five`**, and
+`credit-claims` was redeployed because it is the only edge caller of the two
+functions that migration replaces. Re-audited afterwards against main at
+`d92ceee`: **346 of 346 identical, zero drift.** So the ledger is now aligned
+`00001`-`00100`, not `00001`-`00099`, and **the feedback claim caps at five a
+month in production**, not six.
+
+An exception used to stand here saying `seed-voice-previews` would drift, because
+#157 changed its docblock and a comment is module source. It was accurate when
+written and stayed accurate for about two minutes: `ed4d4a1` merged at 20:29 UTC
+and the author deployed the function at 20:31. What left it on this page was that
+the deletion landed on an unmerged branch, which is the one place deleting it
+does nothing. Verified before removing it -- the deployed bundle carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main.
+
+**So do not write drift exceptions in advance.** The paragraph outlives the
+condition it describes, and one telling an operator that a drift row on a named
+function is expected is a documented reason to wave through a real one -- the
+"16 functions behind main" failure this page already records. Run
+`scripts/audit-function-drift.sh` instead; a deploy obligation belongs in the
+build log, dated and specific.
+
+**"No function or migration changed" is not "production is unchanged".** Three
+sessions wrote to production data on 2026-09-27 without touching a function or a
+migration, so the zero-drift statement above is narrower than it reads and must
+not be quoted as though production were frozen:
+
+| Written | By | Reversible |
+|---|---|---|
+| `voice-previews/{aria,kai,onyx,nova,echo,fable}.mp3` in the `audio` bucket, plus two `error_events` rows | the voice-preview round | no, and not wanted |
+| Two house reader accounts (`ana_reads`, `tomas_ferreira`, both at `@example.com`), one comment each on *A Bridge by Cockcrow*, `stories.comment_count` set to match, and a 3-day `streaks` row for the house account | the screenshot-fixture round | yes -- `backend/scripts/seed-screenshot-fixtures.ts --teardown`, **while the project has under 200 auth users**: `findAuthUser` reads one page, and past that the teardown prints `absent`, skips both deletes and exits 0 with the fixtures still in production |
+
+The fixtures exist because `store/android/screenshot-plan.md` frame 7 needs
+comments on an Original and frame 1 needs a streak pill, and the `comments` table
+was **empty across the whole project**. They are house content on house accounts;
+**no real user's row was created or modified.** It does read: every invocation,
+including the report-only default, lists up to 200 auth users to find the
+fixture accounts, and reports every comment on the target story whoever wrote
+it. `@example.com` is reserved
+by RFC 2606, so neither address can collide with or deliver to a real one.
+
+**A comment shows the handle, and so does everything else. Whether it should is
+an open product call, not a drifted call site.** A reader who sets their name to
+"Ana" is credited as `ana_reads` the moment they comment --
+`backend/supabase/functions/comments/index.ts:350` returns
+`author_display_name: profile?.username ?? null`. That is the design as the
+schema records it, not an inconsistency: `feed/index.ts:617` takes the byline on
+every story card from `profiles.username`, `expo/src/screens/AuthorScreen.tsx:173`
+renders `@username`, and migration 00069's own column comment on
+`profiles.display_name` reads *"not routable, never shown on a public byline
+(that is username)"*. `display_name` reaches a reader only through the greeting
+and the settings field, both owner-facing.
+
+So **do not "fix" line 350 on its own.** That ships a thread reading "Ana" beside
+a feed card and an author page still reading `ana_reads` for the same person,
+with 00069's column comment now contradicting shipped behaviour -- worse than
+today, reached by following this row exactly. If the product call is that a
+comment carries the name, it is at least five edits: `comments/index.ts:350`
+(the list) **and `:459`** (the body returned when a comment is created), both
+selects that feed them (`:304` and `:415`, which ask for `username` alone and
+would return `null` otherwise), plus `feed/index.ts` and the author page, plus
+00069's comment. Fixing one of the two mappings ships a byline that changes
+between posting and refetching, within one screen, and looks done.
+
+One thing that is simply stale whichever way the call goes:
+`backend/supabase/functions/feed/index.ts:615` says *"`display_name` has never
+existed on profiles."* `00069:41` adds it.
+
+The house account makes the question visible rather than creating it: its reply
+would read `vivid_lantern_51`, and it cannot be renamed out of it (`katha`,
+`kathaai` and `katha_ai` are all in `profiles_username_not_reserved`, migration
+00060). Not claimed by any round in flight, client-side, and it reaches phones by
+OTA, so it does not gate the first AAB.
 
 Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
 were recorded as needing `supabase db push` and are in fact applied, and
