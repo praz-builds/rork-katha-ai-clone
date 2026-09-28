@@ -480,10 +480,10 @@ after a backspace.
 
 ### Verification
 
-Expo **1679/1679** across 155 suites (the baseline is 1651/153 two entries
+Expo **1680/1680** across 155 suites (the baseline is 1651/153 two entries
 below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
 (totality, no run before the tail, within-key order, determinism, the
-growing-list seam) and ten on paging, each written against a way it fails:
+growing-list seam) and eleven on paging, each written against a way it fails:
 repeated `onEndReached`, a stale page appending to a new query, an overlapping
 page, a lying footer, and the state the auto-chase leaves behind.
 `explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
@@ -517,7 +517,12 @@ tested first; both buttons render when both apply. The condition read
 `activeFilterCount`, which counts the sort — a sort cannot empty a page, so a
 reader on "Most loved" whose page the block list emptied was told to clear
 filters and given a button that reset the sort and changed nothing; it reads
-`selectedTags.length` now. And the "more exists but nothing came back" branch
+`results.length` now — which is the exact discriminator, not a proxy:
+`results` is after the block list and before the tags, so an empty one means
+the block list took everything whatever is checked. Keyed on the tag, a reader
+who had blocked an author and left a tag on was told to clear the tag, cleared
+it, saw nothing change, and watched the sentence flip to name the block list
+instead. And the "more exists but nothing came back" branch
 was unreachable in every producer — Supabase compares the row count to the
 page size and `local()` only reports `hasMore` from page 1 — so it is gone,
 and `hasMore` chooses the button rather than the copy.

@@ -565,7 +565,24 @@ export default function ExploreScreen({
      */
     const narrowedAway = searched.length > 0;
     if (narrowedAway) {
-      const tagNarrowed = selectedTags.length > 0;
+      /**
+       * WHICH of the reader's own filters emptied it, and this has to be the
+       * discriminator rather than "is a tag checked".
+       *
+       * `results` is `pages.flat()`: after the block list, before the tags. So
+       * no results at all means the block list took everything, whatever is
+       * checked, and results with nothing visible means the tags did.
+       *
+       * Keying it on `selectedTags.length` instead was wrong in one direction
+       * and reachable: block an author, check a tag under Fantasy, tap Comedy
+       * with the tag still on, and Comedy's first page comes back 24 rows all
+       * by that author. The screen blamed the tag and offered Clear filters;
+       * pressing it cleared the tag, changed nothing on screen, and flipped
+       * the sentence to "everything here is by a writer you blocked". One
+       * action that only changes the diagnosis -- the same shape as the `sort`
+       * defect this branch already fixed, with a different term in it.
+       */
+      const blockedEmptied = results.length === 0;
       const subject = searching
         ? `“${query.trim()}”`
         : category
@@ -578,25 +595,24 @@ export default function ExploreScreen({
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
+            {/* "No stories match "dragon" with your filters", not "Nothing in
+                "dragon"" -- a search term is not a place with contents in it,
+                and the other two shapes already read the way a reader would
+                say it. */}
             {searching
-              ? `Nothing in ${subject} matches your filters`
+              ? `No stories match ${subject} with your filters`
               : `No ${subject} match your filters`}
           </Text>
           <Text style={styles.emptyBody}>
-            {/* `selectedTags`, not `activeFilterCount`: that counts the sort
-                too, and a sort cannot empty a page -- so a reader whose page
-                the block list emptied while they were on "Most loved" was told
-                to clear filters and handed a button that reset the sort and
-                changed nothing. */}
-            {tagNarrowed
-              ? "Your filters are narrower than the catalogue. Clear them to see everything."
-              : "Everything found here is by a writer you blocked."}
+            {blockedEmptied
+              ? "Everything found here is by a writer you blocked."
+              : "Your filters are narrower than the catalogue. Clear them to see everything."}
           </Text>
           {/* BOTH, when both apply. The body says to clear the filters, so the
               button that clears them has to be here -- it used to appear only
               once `hasMore` was false, which is the one state where clearing
               is not the interesting move. */}
-          {tagNarrowed ? (
+          {!blockedEmptied ? (
             <Pressable
               onPress={clearFilters}
               accessibilityRole="button"
@@ -605,16 +621,26 @@ export default function ExploreScreen({
               <Text style={styles.emptyButtonText}>Clear filters</Text>
             </Pressable>
           ) : null}
+          {/* The optional one, so it takes the secondary variant
+              (`expo/DESIGN.md:230`): the body names Clear filters, and whether
+              this exists at all depends on `hasMore`. Two identical filled
+              pills read as two equal choices. */}
           {hasMore ? (
             <Pressable
               onPress={() => loadMore()}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.emptyButton,
+                styles.emptyButtonSecondary,
+                pressed && styles.pressed,
+              ]}
             >
-              <Text style={styles.emptyButtonText}>Keep looking</Text>
+              <Text style={[styles.emptyButtonText, styles.emptyButtonTextSecondary]}>
+                Keep looking
+              </Text>
             </Pressable>
           ) : null}
-          {!tagNarrowed && !hasMore ? (
+          {blockedEmptied && !hasMore ? (
             <Pressable
               onPress={clearAll}
               accessibilityRole="button"
@@ -726,9 +752,9 @@ export default function ExploreScreen({
     loadMore,
     loadingMore,
     query,
+    results.length,
     searched.length,
     searching,
-    selectedTags.length,
     source,
     status,
   ]);
@@ -1129,7 +1155,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyButton: {
-    marginTop: spacing.related,
+    // No `marginTop`: `emptyWrap` already sets `gap`, and this branch is the
+    // first to render two buttons -- with both, the pills sat at twice the gap
+    // of everything above them.
     minHeight: 44,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
@@ -1142,5 +1170,13 @@ const styles = StyleSheet.create({
     color: colors.surface,
     fontWeight: "800",
     fontSize: 14,
+  },
+  emptyButtonSecondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+  },
+  emptyButtonTextSecondary: {
+    color: colors.ink,
   },
 });

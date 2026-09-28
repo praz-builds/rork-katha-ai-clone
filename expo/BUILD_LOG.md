@@ -45,6 +45,22 @@
   walk runs, so the reader was shown "This genre is new here" over two dozen
   fetched stories, with no spinner, because the footer draws nothing when the
   list is empty.
+- **And the empty state stopped blaming the catalogue for the reader's own
+  filters.** Bounding the chase stops the requests; it does not decide what the
+  screen then says, and what it said was "This genre is new here. More will
+  appear as writers publish in it" — over rows that had been fetched and then
+  removed by a tag or the block list, with more pages unasked for, and no way
+  out, because `onEndReached` cannot fire against an empty list. There are three
+  cases now and the right one is chosen by *which* filter emptied it:
+  `searched` is what the server returned, `results` is after the block list and
+  before the tags, so an empty `results` means the block list took everything
+  whatever is checked. A tag gets "your filters are narrower than the
+  catalogue" and a **Clear filters** button; the block list gets its own
+  sentence and no button that would change nothing; `hasMore` adds **Keep
+  looking**, which is the manual form of the scroll that cannot happen without
+  a list. It runs above the genre and the search gates, because the same false
+  statement was in both — a tag left checked while you type gives 24 rows that
+  match the term perfectly and a screen offering a spelling fix.
 - Covers are untouched and still the slowest thing here. Separate branch.
 
 ## 2026-09-27: Voice samples play; the Story world row is named for its job

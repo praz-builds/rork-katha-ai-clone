@@ -575,6 +575,7 @@ it("blames the tag, not the genre, when the tag is what emptied it", async () =>
   });
 
   expect(view.queryByText(/This genre is new here/)).toBeNull();
+  expect(view.getByText("No Fantasy stories match your filters")).toBeTruthy();
   expect(view.getByText(/Your filters are narrower than the catalogue/)).toBeTruthy();
   // The body says to clear them, so the button that clears them is here --
   // alongside Keep looking, not instead of it.
@@ -604,5 +605,49 @@ it("does not blame the search term when a tag is what emptied it", async () => {
   });
 
   expect(view.queryByText(/Try a different spelling/)).toBeNull();
+  // The one title this branch introduces, and the only place the two title
+  // shapes diverge.
+  expect(view.getByText("No stories match \u201cdragon\u201d with your filters")).toBeTruthy();
   expect(view.getByText(/Your filters are narrower than the catalogue/)).toBeTruthy();
+});
+
+
+it("blames the block list even when a tag happens to be checked", async () => {
+  // The discriminator has to be WHICH filter emptied it, not "is a tag on".
+  // `results` is after the block list and before the tags, so an empty
+  // `results` means the block list took everything whatever is checked.
+  //
+  // Keying it on the tag sent the reader in a circle: Clear filters, nothing
+  // appears, and the sentence changes to name the block list instead. One
+  // action that only changes the diagnosis.
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(taggedPage(input.page ?? 0, "dragons"), true)
+  );
+  const view = await renderWith(search, 20);
+  await waitFor(() => expect(search).toHaveBeenCalled());
+
+  await checkFirstTag(view, "Dragons");
+  // Now every row is by a writer they have blocked, tag still checked.
+  mockBlockedAuthorIds = new Set(["blocked-author"]);
+  search.mockImplementation(async (input: SearchInput) =>
+    outcome(
+      taggedPage(input.page ?? 0, "dragons").map((story) => ({
+        ...story,
+        authorId: "blocked-author",
+      })),
+      true,
+    )
+  );
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Comedy"));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  expect(view.getByText(/Everything found here is by a writer you blocked/))
+    .toBeTruthy();
+  expect(view.queryByText(/Your filters are narrower than the catalogue/)).toBeNull();
+  // And no Clear filters, because clearing them would change nothing.
+  expect(view.queryByText("Clear filters")).toBeNull();
 });
