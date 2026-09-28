@@ -659,3 +659,38 @@ it("blames the block list even when a tag happens to be checked", async () => {
   // And no Clear filters, because clearing them would change nothing.
   expect(view.queryByText("Clear filters")).toBeNull();
 });
+
+
+it("does not make a search term sound like a place with contents in it", async () => {
+  // The blocked-while-SEARCHING cell, which is the one shape `No ${subject} to
+  // show` does not fit: `subject` is the quoted term, so it rendered "No
+  // "dragon" to show". Every other subject is a collection of stories and reads
+  // correctly under that wrapper; a search term is not one, which is the
+  // argument the comment above that ternary already makes.
+  mockBlockedAuthorIds = new Set(["blocked-author"]);
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(
+      taggedPage(input.page ?? 0, "dragons").map((story) => ({
+        ...story,
+        authorId: "blocked-author",
+      })),
+      true,
+    )
+  );
+  const view = await renderWith(search, 20);
+  await waitFor(() => expect(search).toHaveBeenCalled());
+
+  await act(async () => {
+    fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "dragon");
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  expect(view.getByText("No stories match \u201cdragon\u201d")).toBeTruthy();
+  expect(view.queryByText("No \u201cdragon\u201d to show")).toBeNull();
+  // The body and the buttons are the block-list ones, as in the genre case.
+  expect(view.getByText(/Everything found here is by a writer you blocked/))
+    .toBeTruthy();
+  expect(view.queryByText("Clear filters")).toBeNull();
+});

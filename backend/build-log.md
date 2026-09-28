@@ -502,10 +502,10 @@ after a backspace.
 
 ### Verification
 
-Expo **1680/1680** across 155 suites (the baseline is 1651/153 two entries
+Expo **1701/1701** across 155 suites (the baseline is 1651/153 two entries
 below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
 (totality, no run before the tail, within-key order, determinism, the
-growing-list seam) and eleven on paging, each written against a way it fails:
+growing-list seam) and twelve on paging, each written against a way it fails:
 repeated `onEndReached`, a stale page appending to a new query, an overlapping
 page, a lying footer, and the state the auto-chase leaves behind.
 `explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
@@ -548,6 +548,17 @@ instead. And the "more exists but nothing came back" branch
 was unreachable in every producer — Supabase compares the row count to the
 page size and `local()` only reports `hasMore` from page 1 — so it is gone,
 and `hasMore` chooses the button rather than the copy.
+
+**The headline splits the same way the body does, and the buttons take their
+weight from what is beside them.** Naming the filters over a sentence that says
+the block list emptied the page sent the reader to the panel's Clear, which
+no-ops in that state -- and the TAGS section is hidden there anyway, because the
+panel's chips come from the rows that came back. The title is "No Comedy stories
+to show" there, and "No stories match “dragon”" when a term is typed, because a
+search term is not a place with contents in it. **Keep looking** is the
+secondary variant only when **Clear filters** is beside it; when the block list
+emptied the page it is the screen's only action and it is filled, rather than
+changing weight depending on whether another page happens to exist.
 
 The block list is now in the chase's reset key too. It is client-side
 narrowing by the same definition as the tags, so blocking an author while
