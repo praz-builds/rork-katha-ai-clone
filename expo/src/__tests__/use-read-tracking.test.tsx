@@ -20,8 +20,21 @@ import { MIN_SECONDS, POST_AT_SECONDS, useReadTracking } from "@/lib/use-read-tr
 
 type Posted = { storyId: string; chapterId: string | null; durationSeconds: number };
 
-/** Drives the hook and lets a test move the clock and the app state by hand. */
-function harness() {
+/** What the server said. The default is a written row. */
+type Reply = { recorded: boolean; counted: boolean } | null;
+
+/**
+ * Drives the hook and lets a test move the clock and the app state by hand.
+ *
+ * `reply` is how the tests below reach the three answers that are not "a row
+ * was written": a deduped read (`recorded: false`, which the server returns
+ * with a 200 and no update to the stored duration), a failure (`null`), and a
+ * request that has not answered yet.
+ */
+function harness(reply: (n: number) => Reply | Promise<Reply> = () => ({
+  recorded: true,
+  counted: true,
+})) {
   const posted: Posted[] = [];
   let clock = 1_000_000;
 
@@ -53,7 +66,7 @@ function harness() {
           chapterId: input.chapterId ?? null,
           durationSeconds: input.durationSeconds,
         });
-        return { recorded: true, counted: true };
+        return await reply(posted.length - 1);
       },
     });
     flush = tracking.flushNow;
@@ -219,20 +232,38 @@ it("removes its app-state listener when the chapter changes", async () => {
 it("never throws into the reader when the endpoint fails", async () => {
   // Nothing a reader can see depends on this, and an error about telemetry
   // over a story they are reading would be worse than the missing row.
+  //
+  // THIS TEST USED TO ASSERT NOTHING. `now: () => 0` is zero dwell, under
+  // `MIN_SECONDS`, so the threshold never came and the endpoint was never
+  // called -- it proved that a call that did not happen did not throw. It
+  // matters here: `post` is async and every caller fires it as a bare `void`,
+  // so a seam that REJECTS rather than resolving null is an unhandled
+  // rejection, and the real `recordRead` catches its own so nothing else in
+  // the suite can reach that path.
+  let clock = 0;
   const failing = jest.fn().mockRejectedValue(new Error("offline"));
   const Probe = () => {
     useReadTracking("s1", "c1", {
-      now: () => 0,
+      now: () => clock,
       recordRead: failing as never,
     });
     return null;
   };
   const view = await render(<Probe />);
+
+  clock += POST_AT_SECONDS * 1000;
+  await act(async () => {
+    jest.advanceTimersByTime(POST_AT_SECONDS * 1000);
+  });
+  expect(failing).toHaveBeenCalledTimes(1);
+
+  clock += 60_000;
   await act(async () => {
     view.unmount();
   });
-  // Reaching here without an unhandled rejection is the assertion.
-  expect(failing).not.toHaveBeenCalled(); // 0 seconds is under the minimum
+  // The threshold post rejected, so `posted` is still false and the cleanup
+  // tries again -- and reaching here at all is the rest of the assertion.
+  expect(failing).toHaveBeenCalledTimes(2);
 });
 
 // ── The bug the first version of this hook shipped ────────────────────────
@@ -407,4 +438,98 @@ it("keeps every path armed when a post fails", async () => {
     view.unmount();
   });
   expect(attempts).toHaveLength(2);
+});
+
+// ── The mirror must never read above the server ───────────────────────────
+//
+// The flush's guard is "does this chapter's dwell, plus what the story already
+// has, clear 120". If the local number is higher than the server's, the guard
+// passes on seconds that do not exist and the flush does the exact thing it
+// was added to prevent: writes a short row and takes the timer with it.
+//
+// Two ways it used to drift, one test each.
+
+it("does not count a deduped read, which the server threw away", async () => {
+  // A re-read inside 24 hours answers `recorded: false` with a 200 and leaves
+  // the stored duration alone -- there is no `update` in that branch. Paging
+  // back one chapter was enough to reach it.
+  const h = harness((n) => ({ recorded: n !== 1, counted: true }));
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(70); // ch1: 70 written, story total 70
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
+  });
+  await h.advance(60); // ch2: 60 posted, DEDUPED -- the server still has 70
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s1" chapterId="c3" />);
+  });
+  await h.advance(10);
+  expect(h.posted).toHaveLength(2);
+
+  // 70 + 10 = 80, so this must not write. Counting the deduped 60 would make
+  // it 140, and ch3 would be locked at 10 for the day with its timer gone.
+  await act(async () => h.composerFocus());
+  expect(h.posted).toHaveLength(2);
+
+  // The timer still delivers the row that actually clears the gate.
+  await h.advance(POST_AT_SECONDS - 10);
+  expect(h.posted[2]).toEqual({
+    storyId: "s1",
+    chapterId: "c3",
+    durationSeconds: POST_AT_SECONDS,
+  });
+});
+
+it("keeps the timer when the flush's own request fails", async () => {
+  // `clearTimer` used to run before the request. A flush that failed then left
+  // `posted` false with nothing left to fire, and the composer is inside the
+  // reader, so the cleanup that would have retried never runs either.
+  const h = harness((n) => (n === 1 ? null : { recorded: true, counted: true }));
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(70);
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
+  });
+  await h.advance(55);
+
+  await act(async () => h.composerFocus()); // 70 + 55 clears the guard, and fails
+  expect(h.posted).toHaveLength(2);
+
+  await h.advance(POST_AT_SECONDS - 55);
+  expect(h.posted[2]).toEqual({
+    storyId: "s1",
+    chapterId: "c2",
+    durationSeconds: POST_AT_SECONDS,
+  });
+});
+
+it("does not post the same chapter twice while the first call is in flight", async () => {
+  // `posted` is set from the reply, so for the length of the request every
+  // caller still reads false. A threshold post over a slow connection and a
+  // page turn a second later ran the cleanup into the same chapter: one row
+  // written, one deduped, and the local total counting both.
+  let release: (() => void) | null = null;
+  const h = harness(
+    () =>
+      new Promise<Reply>((resolve) => {
+        release = () => resolve({ recorded: true, counted: true });
+      }),
+  );
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(POST_AT_SECONDS); // fires, and does not answer
+  expect(h.posted).toHaveLength(1);
+
+  await h.advance(1);
+  await act(async () => {
+    view.unmount();
+  });
+  expect(h.posted).toHaveLength(1);
+
+  await act(async () => {
+    release?.();
+  });
+  expect(h.posted).toHaveLength(1);
 });

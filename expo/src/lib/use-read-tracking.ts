@@ -122,49 +122,92 @@ export function useReadTracking(
   const flushRef = useRef<() => void>(() => {});
   const flushNow = useCallback(() => flushRef.current(), []);
   /**
-   * Seconds this story already has on the server, across the chapters read in
-   * this visit. At hook scope on purpose: the effect is torn down and rebuilt
-   * on every page turn, and the gate sums a STORY's rows, so the composer
-   * flush has to know what the earlier chapters already contributed.
+   * Seconds the SERVER has accepted for this story, across the chapters read
+   * in this visit. At hook scope on purpose: the effect is torn down and
+   * rebuilt on every page turn, and the gate sums a STORY's rows, so the
+   * composer flush has to know what the earlier chapters already contributed.
+   *
+   * It must never read high. Everything the flush does keys off it, and a
+   * number above the server's turns the guard from a protection into the
+   * short-row-plus-cancelled-timer bug it was added to prevent. So it counts
+   * only what came back `recorded: true`, and it is reset inside the effect
+   * rather than during render -- React runs the new render before the old
+   * effect's cleanup, so zeroing it here would hand story B the seconds story
+   * A's last chapter is about to post.
    */
   const recordedForStory = useRef({ storyId: "", seconds: 0 });
-  if (recordedForStory.current.storyId !== storyId) {
-    recordedForStory.current = { storyId, seconds: 0 };
-  }
 
   useEffect(() => {
     if (!storyId) return;
     const target = { storyId, chapterId: chapterId ?? null };
+    if (recordedForStory.current.storyId !== storyId) {
+      recordedForStory.current = { storyId, seconds: 0 };
+    }
 
     let startedAt: number | null = clock.current();
     let bankedMs = 0;
     let posted = false;
+    // True from the moment a request goes out until it answers. `posted` alone
+    // cannot cover that window: it is set from the reply.
+    let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const dwellMs = () =>
       bankedMs + (startedAt === null ? 0 : Math.max(0, clock.current() - startedAt));
 
     /**
-     * Report `seconds`, and only call this chapter done if the server says so.
+     * Report `seconds`, and update what this hook believes only from what the
+     * server actually said.
+     *
+     * Three things were wrong with the obvious version, and all three end in
+     * the same place: a short row written by the flush, a cancelled timer, and
+     * the 120 the gate tests for never arriving.
      *
      * `posted` used to be set on the ATTEMPT. `recordRead` swallows every
      * failure and resolves null, so a dropped request looked exactly like a
-     * written row -- and because the timer, the composer flush and the cleanup
-     * all bail out on `posted`, one failed call silenced the other two. A
-     * token blip at the 120-second mark meant the reader could read for another
-     * twenty minutes and leave with no row, no `read_count` and no streak day.
+     * written row -- and because all three paths bail out on `posted`, one
+     * failed call silenced the other two.
      *
-     * Setting it from a non-null result leaves the later paths armed to retry.
+     * The story mirror used to be incremented on any non-null answer. A
+     * **deduped** read is non-null: the server finds a row for this chapter
+     * inside 24 hours, answers `recorded: false`, and leaves the original
+     * `duration_seconds` alone. Paging back one chapter was enough to lift the
+     * mirror above the server's sum, and the flush's guard is only as good as
+     * that number.
+     *
+     * And `posted` is set after the await, so for the length of the request
+     * every caller still reads false -- a page turn during a slow threshold
+     * post ran the cleanup into the same chapter. `inFlight` closes that
+     * without going back to trusting the attempt.
+     *
+     * `clearTimer` moved in here too, after a delivered post. Cancelling it
+     * before the call meant a failed flush left `posted` false with nothing
+     * left to fire, and the timer is the only path that runs while the reader
+     * is still on the chapter -- which is the only path that helps the case
+     * this hook exists for.
      */
     const post = async (seconds: number) => {
-      const result = await send.current({
-        storyId: target.storyId,
-        chapterId: target.chapterId,
-        durationSeconds: seconds,
-      });
-      if (result === null) return;
-      posted = true;
-      recordedForStory.current.seconds += seconds;
+      if (posted || inFlight) return;
+      inFlight = true;
+      try {
+        const result = await send.current({
+          storyId: target.storyId,
+          chapterId: target.chapterId,
+          durationSeconds: seconds,
+        });
+        if (result === null) return;
+        // Delivered. This chapter has nothing left to say either way, because
+        // a second call inside the window is deduped.
+        posted = true;
+        clearTimer();
+        // But only a WRITTEN row moved the server's sum.
+        if (result.recorded) recordedForStory.current.seconds += seconds;
+      } catch {
+        // `recordRead` catches its own, but a seam a caller injects may not,
+        // and an unhandled rejection is not something a reading screen may do.
+      } finally {
+        inFlight = false;
+      }
     };
 
     const clearTimer = () => {
@@ -221,13 +264,16 @@ export function useReadTracking(
      * chapters of 70 -- and otherwise leaves the timer to do its job, because
      * a threshold post twenty seconds away is strictly better than a short row
      * that locks the chapter for the day.
+     *
+     * It does not touch the timer. `post` cancels it once a post has actually
+     * landed; cancelling here would mean a flush whose request fails takes the
+     * net down with it, on the one path where the reader never leaves.
      */
     flushRef.current = () => {
       if (posted) return;
       const seconds = dwellMs() / 1000;
       if (seconds < MIN_SECONDS) return;
       if (recordedForStory.current.seconds + seconds < POST_AT_SECONDS) return;
-      clearTimer();
       void post(seconds);
     };
 

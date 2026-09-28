@@ -838,15 +838,21 @@ export default function ReaderScreen({
   }, [chapter, chapterIndex, onChapterChange]);
 
   /**
-   * How long this chapter was actually in front of the reader, reported once
-   * when they leave it. This screen is the only place that knows.
+   * How long this chapter was actually in front of the reader. This screen is
+   * the only place that knows.
    *
    * It is what fills `story_reads`, which was empty in production because
    * nothing had ever called `record-read` -- so the feedback credit answered
    * `not_read` to every claim and the streak ladder could only be advanced by
-   * publishing. See `lib/use-read-tracking.ts` for why it posts on the way out
-   * rather than at a threshold (the server deduplicates over 24 hours, so the
-   * first number a chapter gets is the one it keeps).
+   * publishing.
+   *
+   * It reports at the 120-second mark, when the composer takes focus, and on
+   * the way out, in that order of preference. It cannot wait for the exit:
+   * **the comment box is inside this screen**, so a reader who comments at the
+   * end of a chapter never leaves, and the gate counts only reads recorded
+   * before the comment. See `lib/use-read-tracking.ts` -- and note the server
+   * deduplicates over 24 hours, so the first number a chapter gets is the one
+   * it keeps.
    */
   const { flushNow: flushRead } = useReadTracking(story.id, chapter.id);
 

@@ -2864,9 +2864,13 @@ export async function registerPushToken(
  * that shapes when this is allowed to be called. A second read of the same
  * chapter inside a day is answered `recorded: false` and the original row
  * keeps its original `duration_seconds` -- so posting early with a partial
- * number permanently under-records that chapter. Call it **once, on the way
- * out**, with the whole dwell. `useReadTracking` is the only caller and does
- * exactly that.
+ * number permanently under-records that chapter. **Call it once per chapter,
+ * with the largest honest number, and never speculatively.**
+ *
+ * `useReadTracking` is the only caller. It posts at 120 seconds of foreground
+ * dwell -- the one number the credit gate reads -- or on the way out with the
+ * real dwell if the chapter never got that far, and it treats `recorded:
+ * false` as "the server kept what it had", which is what that answer means.
  *
  * SILENT BY DESIGN. Nothing a reader does depends on the answer, and the
  * failure this must never produce is an error message about telemetry over a

@@ -66,20 +66,28 @@ The fix is to post the moment foreground dwell crosses **120 seconds**, without
 waiting for an exit. The number is not arbitrary: `story_reads.duration_seconds`
 has **exactly one consumer in the repository**, the `sum(...) >= 120` in that
 same function. Posting at the threshold records precisely what the gate tests
-for and sets `read_at` two minutes into the read, clearing 00090's separate
-60-second rule long before a 40-character comment can be typed. The cleanup
-flush stays for chapters that never get that far, which is what feeds
-`read_count` and the streak on a short read.
+for and sets `read_at` two minutes into the read. It does **not** clear 00090's
+separate 60-second rule as an earlier draft of this entry claimed — see *What
+still cannot work* below, where the arithmetic is worked out. The cleanup flush
+stays for chapters that never get that far, which is what feeds `read_count`
+and the streak on a short read.
 
 ### The two decisions that shape the number
 
-**Post once, on the way out — never at a threshold.** The server deduplicates
+**Once per chapter, with the largest honest number.** The server deduplicates
 per user and chapter over a 24-hour window: a second call inside it is answered
 `recorded: false` and **the first row keeps its original `duration_seconds`.**
 So a mid-read post of "10 seconds" is not an early estimate, it is the number
-that chapter is stuck with for the day. The dwell accumulates in a ref and is
-flushed when the reader leaves the chapter, leaves the screen, or backgrounds
-the app.
+that chapter is stuck with for the day. That is the whole reason the threshold
+is 120 rather than "report as you go": the first number wins, so it has to be
+the one the gate reads.
+
+The dwell accumulates in a ref and is sent at the threshold, when the composer
+takes focus, or when the reader leaves the chapter or the screen — whichever
+comes first. **Backgrounding the app sends nothing**: it banks the elapsed time
+and cancels the timer, so a reader who swipes out of the app switcher after 90
+seconds loses that row and that streak day. Bounded to reads under two minutes,
+and still open.
 
 **Foreground time only.** An `AppState` subscription banks the elapsed time on
 the way to background and restarts the clock on the way back, so a phone in a
@@ -137,13 +145,31 @@ which `record_story_read` deliberately does not do. Out of scope here.
 
 ### Verification
 
-Expo **1667/1667** across 154 suites, typecheck clean, lint 0 errors. Sixteen new
-tests, each on a rule that makes the number mean something rather than on the
-happy path: the whole chapter reported once at the end, each chapter counted
-separately across a page turn, background time excluded, a repeated `active`
-event not discarding the bank, nothing sent under the floor, the flush naming
-the chapter it measured rather than the current one, one subscription per
-chapter, and a failing endpoint never reaching the reader.
+Expo **1670/1670** across 154 suites (the baseline is 1651/153 at the entry
+below, and the one new suite is this branch's first), typecheck clean, lint 0
+errors. Nineteen new tests, each on a rule that makes the number mean something
+rather than on the happy path: the whole chapter reported once at the end, each
+chapter counted separately across a page turn, background time excluded, a
+repeated `active` event not discarding the bank, nothing sent under the floor,
+the flush naming the chapter it measured rather than the current one, one
+subscription per chapter, and a failing endpoint never reaching the reader.
+
+Three of the nineteen came out of review, and all three are the same defect
+seen from different sides — **the local mirror of the server's total must
+never read high**, because the composer flush keys off it and a flush that
+fires too early writes a short row and cancels the timer:
+
+- a **deduped** read (`recorded: false`, which the server answers with a 200
+  and no update to the stored duration) no longer counts toward it, so paging
+  back one chapter cannot lift it above the server's sum;
+- `clearTimer` moved inside `post`, after a delivered answer, so a flush whose
+  request fails leaves the threshold timer armed — on the one path where the
+  reader never leaves the chapter, that timer is the only retry there is;
+- an `inFlight` flag, because `posted` is set from the reply, so for the length
+  of a slow request a page turn ran the cleanup into the same chapter.
+
+Each was verified by reverting it: exactly one test fails per fix, and the
+three of them together fail exactly three.
 
 **No deploy.** Nothing under `backend/` changes.
 
