@@ -7,6 +7,12 @@
  */
 
 import { characterAppearance, MAX_BRIEF_FIELD_LENGTH } from "./types.ts";
+import {
+  getTradition,
+  narrateOnlyFigures,
+  normalizeTradition,
+  type SupportedTraditionId,
+} from "./traditions.ts";
 
 /**
  * A cast member as an image prompt sees one.
@@ -187,16 +193,6 @@ const GENRE_PROMPTS: Record<string, GenrePromptConfig> = {
     mood: "reflective, bittersweet, human, warm",
     characterApproach: "scene",
   },
-  mythology: {
-    style:
-      "mythological illustration, bold ancient art influence, temple fresco or mural quality",
-    palette:
-      "deep terracotta, burnished bronze, saffron yellow, temple red, dark indigo",
-    composition:
-      "deity or mythical creature in powerful pose, celestial elements, sacred geometry patterns",
-    mood: "epic, ancient, sacred",
-    characterApproach: "portrait",
-  },
   poetry: {
     style:
       "ethereal abstract illustration, dreamy watercolor washes, minimalist and lyrical",
@@ -280,6 +276,18 @@ function normalizeGenre(genre: string): string {
   if (Object.prototype.hasOwnProperty.call(GENRE_PROMPTS, genre)) return genre;
 
   // Alias map for deprecated genres that never had their own cover config.
+  //
+  // `mythology` IS in this map and no longer has a config of its own, which is
+  // the whole point. It used to have one, and that config read
+  // `composition: "deity or mythical creature in powerful pose, celestial
+  // elements, sacred geometry patterns"` with `characterApproach: "portrait"` —
+  // a standing instruction to draw a deity as a close portrait, on a key the
+  // exact-match check above resolved BEFORE ever reaching this map. So a raw
+  // `"mythology"` string never became `fantasy`; it became a deity portrait,
+  // with no human in the loop and, until this round, with nothing in the image
+  // path that knew the story's tradition. It is removed the way `drama` and
+  // `sliceOfLife`'s predecessors were: the key stops existing, and the alias
+  // below is what the string resolves to.
   //
   // `sliceoflife` is deliberately absent: `sliceOfLife` is a real genre with
   // its own entry in GENRE_PROMPTS as of v7, and the case-insensitive loop
@@ -636,6 +644,167 @@ const SAFE_ZONE_CLAUSE =
   "Framing: keep the top 15% of the image free of faces and important detail; place the main character's face, or the single focal point, between 20% and 50% of the image height and near the horizontal centre, so it survives a 3:4 crop and a square crop; the bottom third may be simple and fade out.";
 
 /**
+ * Whether the image being asked for is a scene or a single figure.
+ *
+ * The prohibition half of a depiction rule is the same either way; the
+ * POSITIVE half is not. On a cover or a chapter plate "draw the world around
+ * what is sacred" is a composition the model can execute. On a character
+ * portrait, where the frame is one person, the same sentence would read as an
+ * instruction to abandon the portrait — so the portrait wording says what a
+ * portrait should be instead, and names the substitutes only as the fallback
+ * for a subject that turned out to point at a sacred figure.
+ */
+export type DepictionContext = "scene" | "portrait";
+
+/**
+ * The per-tradition DEPICTION RULES, as prompt clauses.
+ *
+ * ## Why this exists
+ *
+ * Every published story generates its cover automatically, with nobody
+ * looking at it before a reader does. Several traditions hold that certain
+ * figures must not be depicted at all — in mainstream Islamic practice the
+ * prophets, and many families extend that to the Prophet's family and
+ * companions. Until this function existed, nothing anywhere in the image path
+ * knew a story's tradition, so an Islamic story could generate a picture of a
+ * prophet on its own and hand it to the family who paid for it. That is the
+ * failure this clause set is here to prevent, and it is not a quality problem:
+ * it is a harm that cannot be taken back once it has been shown to someone.
+ *
+ * ## Why a prohibition alone is not enough
+ *
+ * "Do not draw X" leaves the model to invent a subject, and a model that has
+ * lost its subject reaches for the nearest thing the rest of the prompt
+ * suggests — which, on a story about a prophet, is a person. So every clause
+ * set this returns states what the picture holds INSTEAD, from the tradition's
+ * own `visualSubstitutes`: the landscape, the light, the objects, the
+ * architecture, the pattern. Positive first, prohibition second.
+ *
+ * ## What it deliberately does NOT do
+ *
+ * It does not add dress. `WARDROBE_CLAUSE` exists because the model's own
+ * prior puts non-white characters in ceremonial clothes and white characters
+ * in a shirt, and a faith layer is exactly the thing that would be written as
+ * "add traditional dress" by someone who had not read it. It does not add a
+ * border, a frame or ornamental edging either — see `NO_FRAME_CLAUSE`; one
+ * source image is cropped three ways and a drawn frame is cut unevenly by all
+ * three. Ornament from `visualSubstitutes` is ornament WITHIN the scene.
+ *
+ * ## Absent is absent
+ *
+ * `normalizeTradition` returns `undefined` for no tradition, for an unknown
+ * one and for a declared-but-unsupported one, and this returns `[]` for all of
+ * them. Every prompt built without a tradition is byte-identical to the one
+ * the same arguments produced before this function existed; there is no empty
+ * block and no default.
+ *
+ * Every phrase here is server-owned — written in this file or read from
+ * `traditions.ts` — and selected by a closed-list id. No caller text reaches
+ * it, which is what makes it safe to carry at the last rung of the safety
+ * ladder in `image.ts`.
+ */
+export function traditionDepictionClauses(
+  tradition?: string,
+  context: DepictionContext = "scene",
+): string[] {
+  const id = normalizeTradition(tradition);
+  if (!id) return [];
+  return buildDepictionClauses(id, context);
+}
+
+/** The three figure classes `DepictionPolicy` rules on, in prompt words. */
+const FIGURE_CLASS_LABELS = {
+  divine: "the Divine",
+  prophets: "prophets, messengers and founders of this tradition",
+  otherSacredFigures: "saints, sages, companions and other revered figures",
+} as const;
+
+type FigureClass = keyof typeof FIGURE_CLASS_LABELS;
+
+const FIGURE_CLASSES = Object.keys(FIGURE_CLASS_LABELS) as FigureClass[];
+
+function buildDepictionClauses(
+  id: SupportedTraditionId,
+  context: DepictionContext,
+): string[] {
+  const tradition = getTradition(id);
+  const depiction = tradition.depiction;
+  const clauses: string[] = [];
+
+  // `visualSubstitutes` is the tradition's own list of what the picture holds
+  // instead, written by us in `traditions.ts` and handed over verbatim. The
+  // fallback is never reached by a supported tradition and exists so a future
+  // entry with an empty list still produces a positive instruction rather than
+  // a bare prohibition.
+  const substitutes = depiction.visualSubstitutes.length > 0
+    ? depiction.visualSubstitutes.join("; ")
+    : "landscape, light, everyday objects, architecture, and pattern or ornament within the scene";
+
+  clauses.push(
+    context === "portrait"
+      ? `Representation: this story is told within ${tradition.promptName}. The subject of this portrait is an ordinary fictional person of that story and never a sacred figure; if the description points at one, draw no person at all and draw instead: ${substitutes}.`
+      : `Representation: this story is told within ${tradition.promptName}. Where it touches what is held sacred, draw the world around it rather than a sacred figure, using: ${substitutes}.`,
+  );
+
+  // The absolute list. `narrateOnlyFigures` already folds in every extension
+  // applied by default — for a Muslim story that is the Prophet's family and
+  // his companions — so the widest reading is the one that reaches the prompt.
+  // The figure-class labels for anything ruled `forbidden` are added beside
+  // it, because a policy can forbid a class the named list does not spell out.
+  //
+  // "No outline or shadow standing in for them" is on purpose, and the word
+  // "silhouette" is on purpose absent: it is a genre `characterApproach` value
+  // in this same file and a banned word in the compositions (see the note on
+  // `GENRE_PROMPTS`), and putting it here would argue with both.
+  const neverDrawn = dedupe([
+    ...FIGURE_CLASSES
+      .filter((key) => depiction[key] === "forbidden")
+      .map((key) => FIGURE_CLASS_LABELS[key]),
+    ...narrateOnlyFigures(id),
+  ]);
+  if (neverDrawn.length > 0) {
+    clauses.push(
+      `This image does not depict, and contains no stand-in for: ${
+        neverDrawn.join("; ")
+      }. No face, no figure, no body, no human form, no outline or shadow standing in for any of them, anywhere in the picture.`,
+    );
+  }
+
+  // `symbolic` is the third answer between forbidden and allowed: the figure
+  // may be present in the image, but only as light, absence, an object or a
+  // pattern — never as a body. Stated separately so a tradition that permits
+  // the scene while refusing the person gets the scene.
+  const symbolic = FIGURE_CLASSES
+    .filter((key) => depiction[key] === "symbolic")
+    .map((key) => FIGURE_CLASS_LABELS[key]);
+  if (symbolic.length > 0) {
+    // Capitalised: these clauses are joined into one running prompt with the
+    // rest, so a lowercase opening reads as the tail of the sentence before it
+    // rather than as the separate rule it is.
+    const subject = symbolic.join(" and ");
+    clauses.push(
+      `${subject.charAt(0).toUpperCase()}${
+        subject.slice(1)
+      } may be present only as light, absence, an object, architecture or pattern, never drawn as a body.`,
+    );
+  }
+
+  // Absolute, and it outranks `allowed` above: a tradition can permit a
+  // figure's presence and still refuse their face.
+  if (!depiction.facesPermittedForSacredFigures) {
+    clauses.push(
+      "No sacred or revered religious figure is given a face or recognisable features.",
+    );
+  }
+
+  return clauses;
+}
+
+function dedupe(values: readonly string[]): string[] {
+  return [...new Set(values.filter((v) => v.trim().length > 0))];
+}
+
+/**
  * How the cast enters the picture, per the genre's `characterApproach`.
  *
  * Shared by the cover and by chapter art so the two cannot drift: a story whose
@@ -757,6 +926,16 @@ export function buildChapterArtPrompt(input: {
   whereAndWhen?: string;
   avoid?: string;
   artStyle?: string;
+  /**
+   * The story's `stories.tradition`, or undefined.
+   *
+   * A chapter plate is generated with no human in the loop exactly as a cover
+   * is, so it carries the same depiction rules. Anything unknown or
+   * unsupported normalises to absent inside `traditionDepictionClauses`, and
+   * absent produces the prompt this function produced before the field
+   * existed, byte for byte.
+   */
+  tradition?: string;
 }): string {
   const safeGenre = normalizeGenre(input.genre);
   const config = GENRE_PROMPTS[safeGenre];
@@ -814,6 +993,7 @@ export function buildChapterArtPrompt(input: {
     SUBJECT_DISCIPLINE_CLAUSE,
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
+    ...traditionDepictionClauses(input.tradition),
     NO_FRAME_CLAUSE,
     `Portrait orientation, subject centered in frame from left to right, high quality, professional book illustration.`,
     // Last, so the picked style is literally the final thing the prompt says.
@@ -881,6 +1061,22 @@ export function buildCoverPrompt(
    * as the setting having been ignored.
    */
   artStyle?: string,
+  /**
+   * The story's `stories.tradition`, or undefined.
+   *
+   * Positional like everything else here, and LAST so every existing call site
+   * is unchanged. It is carried at every rung of the safety ladder in
+   * `image.ts` for the same reason `avoid` is, and a stronger one: a depiction
+   * rule is a negative constraint, so it cannot be what a content filter
+   * objected to — and the rung where the ladder has stripped the prompt down
+   * to genre and title is precisely the rung where a model with no subject
+   * left is most likely to invent the figure a family must not be shown.
+   *
+   * Undefined, unknown and declared-but-unsupported all mean absent, and
+   * absent produces exactly the prompt these arguments produced before this
+   * parameter existed.
+   */
+  tradition?: string,
 ): string {
   const safeGenre = normalizeGenre(genre);
   const config = GENRE_PROMPTS[safeGenre];
@@ -951,6 +1147,18 @@ export function buildCoverPrompt(
     ...(steer ? [`${steer}.`] : []),
     ...(exclusion ? [`Do not depict: ${exclusion}.`] : []),
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks. Pure illustration only.`,
+    // AFTER the no-text line, deliberately, and for two reasons that agree.
+    //
+    // `describePreviousCover` in `cover-regeneration.ts` recovers the previous
+    // cover's subject from the span between "Inspired by the story" and this
+    // line, and quotes it back into the next regeneration's steer. A depiction
+    // rule placed inside that span would be re-sent as a *description of the
+    // subject to vary from* — the one place a constraint must never end up.
+    // Everything from here down is fixed scaffolding to that parser.
+    //
+    // And a model weights the close of a prompt heavily (see
+    // `artStyleOpening`), so the tail is where a rule that must hold belongs.
+    ...traditionDepictionClauses(tradition),
     NO_FRAME_CLAUSE,
     // "From left to right" because the vertical placement is now
     // `SAFE_ZONE_CLAUSE`'s job: a bare "centered" invited the model to put the

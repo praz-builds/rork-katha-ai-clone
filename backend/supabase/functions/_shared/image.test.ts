@@ -3,6 +3,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  generateChapterImage,
   generateCharacterPortrait,
   generateCoverImage,
   generateDraftCharacterPortrait,
@@ -863,4 +864,251 @@ Deno.test("the portrait's style reminder is its final clause, with or without a 
       assertEquals(attempts[0].referenceImage, REFERENCE);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// The depiction rules and the safety ladder.
+//
+// This is the subtle half of threading a tradition into the image path, and
+// the half worth a test file's worth of suspicion. Each rung of the ladder
+// exists to get PAST a provider's moderation filter, and it does that by
+// stripping the prompt: level 1 drops the cast and trims the themes, level 2
+// keeps only genre, title, `avoid` and `artStyle`. A depiction rule added at
+// level 0 only would therefore be discarded at exactly the rung where the
+// prompt is least constrained and the model has the least subject left -- the
+// pipeline would strip the prohibition and then generate the forbidden image,
+// automatically, for a family who had told us their tradition.
+//
+// So these assert the constraint at EVERY attempt the chain makes, not at the
+// first one. `moderationRejection()` on every call is what walks the whole
+// ladder across both providers.
+// ---------------------------------------------------------------------------
+
+/** The two halves that must survive together: prohibition, and a subject to draw instead. */
+function assertDepictionSurvives(prompt: string, where: string) {
+  assert(
+    prompt.includes("contains no stand-in for"),
+    `${where} lost the prohibition: ${prompt}`,
+  );
+  assert(
+    prompt.includes("No face, no figure, no body, no human form"),
+    `${where} lost the no-figure rule: ${prompt}`,
+  );
+  assert(
+    prompt.includes("Muhammad"),
+    `${where} lost the named narrate-only figures: ${prompt}`,
+  );
+  // The positive half. A prohibition with no substitute leaves the model to
+  // invent a subject, and on this rung there is almost nothing else left in
+  // the prompt for it to invent from.
+  assert(
+    prompt.includes("draw the world around it rather than a sacred figure"),
+    `${where} lost the positive substitute: ${prompt}`,
+  );
+  assert(
+    prompt.includes("a water jar, a rope, a wooden boat"),
+    `${where} lost the tradition's own visual substitutes: ${prompt}`,
+  );
+}
+
+Deno.test("a cover's depiction rules survive every rung of the safety ladder", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCoverImage({
+        ...cover,
+        genre: "historical",
+        title: "The Night Journey",
+        themes: ["mercy", "patience"],
+        characters: [{ name: "Yusuf", appearance: "a boy, a lantern" }],
+        whereAndWhen: "a walled city, before dawn",
+        avoid: "no graphic violence",
+        variation: "make it quieter",
+        artStyle: "watercolor",
+        tradition: "muslim",
+      }),
+  );
+
+  // Every rung of the first provider, and every attempt the fallback then
+  // makes. Nothing the chain sends may be missing the constraint.
+  const nano = forModel(attempts, NANO_BANANA).map((a) => a.prompt);
+  assertEquals(nano.length, 3, "the ladder did not run to exhaustion");
+  assert(forModel(attempts, FALLBACK_IMAGE_MODEL).length >= 1);
+  attempts.forEach((attempt, index) => {
+    assertDepictionSurvives(attempt.prompt, `attempt ${index}`);
+  });
+
+  // And the rungs really are different prompts -- otherwise the assertion
+  // above would pass on a ladder that had stopped simplifying.
+  assertEquals(new Set(nano).size, 3, "the rungs were not distinct prompts");
+  // Level 2 is the floor: no cast, no setting, no themes, no steer -- and the
+  // depiction rule is still on it, which is the whole point of this test.
+  assert(!nano[2].includes("a boy, a lantern"), nano[2]);
+  assert(!nano[2].includes("a walled city"), nano[2]);
+  assert(!nano[2].includes("make it quieter"), nano[2]);
+  assert(nano[2].includes("Do not depict: no graphic violence"), nano[2]);
+  assertDepictionSurvives(nano[2], "level 2");
+});
+
+Deno.test("chapter art's depiction rules survive every rung too", async () => {
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateChapterImage({
+        storyId: cover.storyId,
+        chapterNumber: 3,
+        genre: "historical",
+        storyTitle: "The Night Journey",
+        chapterTitle: "The Well",
+        moment: "the rope goes slack",
+        themes: ["mercy"],
+        characters: [{ name: "Yusuf", appearance: "a boy, a lantern" }],
+        whereAndWhen: "a walled city, before dawn",
+        avoid: "no graphic violence",
+        tradition: "muslim",
+      }),
+  );
+
+  const nano = forModel(attempts, NANO_BANANA).map((a) => a.prompt);
+  assertEquals(nano.length, 3);
+  attempts.forEach((attempt, index) => {
+    assertDepictionSurvives(attempt.prompt, `attempt ${index}`);
+  });
+  assert(!nano[2].includes("the rope goes slack"), nano[2]);
+  assertDepictionSurvives(nano[2], "level 2");
+});
+
+Deno.test("a portrait's depiction rules survive every rung", async () => {
+  // Portraits are the likeliest place in this module for a sacred figure to
+  // get a face: the frame is one person and the whole subject is a free-text
+  // appearance line. The ladder shortens that line rung by rung; it must not
+  // shorten the policy with it.
+  const attempts = await withStubbedProviders(
+    () => moderationRejection(),
+    () =>
+      generateCharacterPortrait(
+        cover.storyId,
+        "char-1",
+        {
+          name: "Yusuf",
+          appearance:
+            "A tall man in a grey coat. Grey beard, a staff, a lantern held low.",
+        },
+        "watercolor",
+        "muslim",
+      ),
+  );
+
+  assertEquals(forModel(attempts, NANO_BANANA).length, 3);
+  for (const [index, attempt] of attempts.entries()) {
+    assert(
+      attempt.prompt.includes("contains no stand-in for"),
+      `attempt ${index}: ${attempt.prompt}`,
+    );
+    assert(
+      attempt.prompt.includes("Muhammad"),
+      `attempt ${index}: ${attempt.prompt}`,
+    );
+    assert(
+      attempt.prompt.includes(
+        "an ordinary fictional person of that story and never a sacred figure",
+      ),
+      `attempt ${index}: ${attempt.prompt}`,
+    );
+    assert(
+      attempt.prompt.includes(
+        "No sacred or revered religious figure is given a face",
+      ),
+      `attempt ${index}: ${attempt.prompt}`,
+    );
+  }
+
+  // The subject really was shortened, so the assertions above are about a
+  // ladder that ran rather than one that stood still.
+  const nano = forModel(attempts, NANO_BANANA).map((a) => a.prompt);
+  assert(nano[0].includes("a staff, a lantern held low"), nano[0]);
+  assert(!nano[2].includes("a staff, a lantern held low"), nano[2]);
+});
+
+Deno.test("a story with no tradition sends exactly the prompt it sends today", async () => {
+  // Invariant 6: a NULL tradition behaves exactly as before, at every rung of
+  // the ladder, on every provider. Nothing here is a claim about the wording
+  // of the prompt -- only that adding the field changed none of it.
+  const base = {
+    ...cover,
+    genre: "historical",
+    title: "The Night Journey",
+    themes: ["mercy", "patience"],
+    characters: [{ name: "Yusuf", appearance: "a boy, a lantern" }],
+    whereAndWhen: "a walled city, before dawn",
+    avoid: "no graphic violence",
+    artStyle: "watercolor",
+  };
+  const promptsFor = async (tradition?: string) =>
+    (await withStubbedProviders(
+      () => moderationRejection(),
+      () => generateCoverImage({ ...base, tradition }),
+    )).map((a) => a.prompt);
+
+  const without = await promptsFor(undefined);
+  assert(without.length >= 4, "the ladder did not run");
+  // Unsupported and unknown ids normalise to absent, so they must be
+  // indistinguishable from no tradition at all -- including at level 2.
+  for (const value of [undefined, "buddhist", "secular", "not-a-tradition"]) {
+    assertEquals(await promptsFor(value), without, String(value));
+  }
+  for (const prompt of without) {
+    assert(!prompt.includes("Representation:"), prompt);
+    assert(!prompt.includes("stand-in for"), prompt);
+  }
+});
+
+Deno.test("a depiction rule never fails a cover that would otherwise have succeeded", async () => {
+  // Invariant 1: a cover failure must never block a story, and the reverse of
+  // that promise is that a depiction rule must never be a reason a cover
+  // fails. It is prompt text and nothing else -- no throw, no refusal, no
+  // extra provider round trip -- so a tradition-bearing story reaches the
+  // provider on its first attempt exactly as any other story does.
+  const png = new Uint8Array([
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+    0,
+    0,
+    0,
+    0,
+  ]);
+  const run = (tradition?: string) =>
+    withStubbedProviders(
+      (attempt) =>
+        attempt.model === NANO_BANANA
+          ? openRouterImage(btoa(String.fromCharCode(...png)))
+          : moderationRejection(),
+      () => generateCoverImage({ ...cover, tradition }),
+    );
+
+  // Storage is not reachable from a unit test, so the chain cannot be run to a
+  // stored cover here (the format test above says the same). The claim is made
+  // by comparison instead, which is the claim that matters: a tradition-
+  // bearing story costs the chain exactly what the same story without one
+  // costs. The first provider accepts the image on the first rung either way,
+  // so a depiction rule is not a reason a cover is refused, retried or failed.
+  const withTradition = forModel(await run("muslim"), NANO_BANANA);
+  const without = forModel(await run(undefined), NANO_BANANA);
+  assertEquals(
+    withTradition.length,
+    without.length,
+    "a tradition changed how many times the provider was called",
+  );
+  assertEquals(
+    withTradition.length,
+    1,
+    "the provider should have accepted the first rung",
+  );
+  assertDepictionSurvives(withTradition[0].prompt, "the accepted attempt");
 });

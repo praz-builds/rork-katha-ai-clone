@@ -62,6 +62,20 @@ export interface StoryMediaInput {
    */
   imageStyle?: string;
   /**
+   * The story's faith, off `stories.tradition`.
+   *
+   * Threaded to the cover AND to every cast portrait, and that is the point.
+   * The cover is generated with no human in the loop and is the first thing a
+   * reader sees; the portraits are where a sacred figure is likeliest to be
+   * given a face, because the whole frame is one person. Neither had any idea
+   * what tradition a story belonged to before this field existed.
+   *
+   * Optional, and absent means absent: a story with no tradition set produces
+   * exactly the images it produced before. See `traditionDepictionClauses` in
+   * `cover-prompts.ts` for what a set value adds and why.
+   */
+  tradition?: string;
+  /**
    * Whether to tell the author the story is finished.
    *
    * Off unless the caller asks. The onboarding notify screen is a soft
@@ -131,6 +145,7 @@ export async function generateStoryMedia(
     input.storyId,
     input.userId,
     input.imageStyle,
+    input.tradition,
   );
   if (!castReady) await refundMissingMedia(supabase, input, "cast");
 
@@ -232,14 +247,22 @@ export interface ChapterArtInput {
  * legitimate, so the failure is logged, the art credit is refunded, and the
  * chapter stands.
  */
-export async function generateChapterArt(input: ChapterArtInput): Promise<void> {
+export async function generateChapterArt(
+  input: ChapterArtInput,
+): Promise<void> {
   const supabase = serviceClient();
   try {
     const [storyRead, chapterRead, castRead] = await Promise.all([
       supabase
         .from("stories")
+        // `tradition` is on this read for the same reason `avoid` is: the
+        // prose and the art come from one brief and must not disagree. It is
+        // the nullable column added in migration 00101, so every story written
+        // before it — and every story whose writer set no faith — reads NULL,
+        // which `traditionDepictionClauses` treats as absent and which draws
+        // exactly the picture it drew before.
         .select(
-          "title, genre, primary_genre, themes, where_and_when, avoid, image_style, illustrate_chapters",
+          "title, genre, primary_genre, themes, where_and_when, avoid, image_style, tradition, illustrate_chapters",
         )
         .eq("id", input.storyId)
         .single(),
@@ -313,6 +336,7 @@ export async function generateChapterArt(input: ChapterArtInput): Promise<void> 
       whereAndWhen: asText(story.where_and_when),
       avoid: asText(story.avoid),
       artStyle: asText(story.image_style),
+      tradition: asText(story.tradition),
     });
 
     if (!art) {
@@ -484,6 +508,7 @@ async function generateCastPortraits(
   storyId: string,
   userId: string,
   artStyle?: string,
+  tradition?: string,
 ): Promise<boolean> {
   const { data: cast, error } = await supabase
     .from("characters")
@@ -503,11 +528,17 @@ async function generateCastPortraits(
   // rather than three quarters of it, and nothing is waiting on the result.
   for (const character of cast) {
     try {
-      const portrait = await generateCharacterPortrait(storyId, character.id, {
-        name: character.name,
-        description: character.description ?? undefined,
-        appearance: character.appearance ?? undefined,
-      }, artStyle);
+      const portrait = await generateCharacterPortrait(
+        storyId,
+        character.id,
+        {
+          name: character.name,
+          description: character.description ?? undefined,
+          appearance: character.appearance ?? undefined,
+        },
+        artStyle,
+        tradition,
+      );
       if (!portrait) continue;
 
       const { error: updateError } = await supabase
@@ -549,6 +580,7 @@ async function generateAndStoreCover(
       whereAndWhen: input.whereAndWhen,
       avoid: input.avoid,
       artStyle: input.imageStyle,
+      tradition: input.tradition,
       characters: await readCastForCover(supabase, input.storyId),
     });
 

@@ -49,6 +49,7 @@ import {
   coverArtStyleClause,
   NO_FRAME_CLAUSE,
   type PromptCharacter,
+  traditionDepictionClauses,
 } from "./cover-prompts.ts";
 import { characterAppearance } from "./types.ts";
 
@@ -253,6 +254,15 @@ export async function generateCoverImage(input: {
    * `watercolor`. `auto` (and anything unrecognised) uses the genre's own look.
    */
   artStyle?: string;
+  /**
+   * The story's `stories.tradition`.
+   *
+   * The cover is the one image every reader sees before opening the story, it
+   * is generated with nobody in the loop, and until this field existed the
+   * image path had no idea what tradition a story belonged to. See
+   * `traditionDepictionClauses`. Absent behaves exactly as before.
+   */
+  tradition?: string;
 }): Promise<ImageResult | null> {
   const suffix = input.storageSuffix
     ? `-${input.storageSuffix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}`
@@ -293,8 +303,10 @@ export async function generateChapterImage(input: {
   themes?: string[];
   characters?: PromptCharacter[];
   whereAndWhen?: string;
-  avoid?: string;
   artStyle?: string;
+  avoid?: string;
+  /** The story's `stories.tradition`. See `generateCoverImage`. */
+  tradition?: string;
 }): Promise<ImageResult | null> {
   return await runImageChain({
     label: `chapter art ${input.storyId}#${input.chapterNumber}`,
@@ -317,10 +329,11 @@ export async function generateChapterImage(input: {
  * when everything else has been refused, so it keeps nothing but the genre,
  * the story's name and the chapter number.
  *
- * The *Avoid* exclusion and the writer's `artStyle` survive every rung, for
- * the reasons stated on the cover's ladder: a negative constraint cannot be
- * what a filter objected to, and a style name is a fixed string from our own
- * table, never user text.
+ * The *Avoid* exclusion, the writer's `artStyle` and the story's `tradition`
+ * survive every rung, for the reasons stated on the cover's ladder: a negative
+ * constraint cannot be what a filter objected to, and a style name and a
+ * tradition's depiction rules are both fixed strings from our own tables,
+ * never user text.
  */
 function buildChapterArtPromptForLevel(
   safetyLevel: number,
@@ -336,14 +349,18 @@ function buildChapterArtPromptForLevel(
     whereAndWhen?: string;
     avoid?: string;
     artStyle?: string;
+    tradition?: string;
   },
 ): string {
+  // `base` is what every rung keeps, including the last. The tradition is in
+  // it rather than added per rung, so a rung added later cannot forget it.
   const base = {
     genre: input.genre,
     storyTitle: input.storyTitle,
     chapterNumber: input.chapterNumber,
     avoid: input.avoid,
     artStyle: input.artStyle,
+    tradition: input.tradition,
   };
   if (safetyLevel === 0) {
     return buildChapterArtPrompt({
@@ -378,6 +395,22 @@ function buildChapterArtPromptForLevel(
  * likely to be reached is the one where an unconstrained cover would be most
  * embarrassing - and unlike the cast or the themes, an exclusion cannot be the
  * thing the filter objected to.
+ *
+ * ## The tradition's depiction rules are carried the same way, and must be
+ *
+ * This is the subtle one, and it is the reason this ladder is worth reading
+ * twice. Level 2 keeps nothing but genre, title, `avoid` and `artStyle` — so a
+ * depiction rule threaded in naively, at level 0 only, would be discarded at
+ * exactly the rung where the prompt is least constrained and the model has the
+ * least subject left to draw. The pipeline would strip the prohibition and
+ * then generate the forbidden image, under a story whose family told us their
+ * tradition. Every rung below passes `tradition`, and `image.test.ts` asserts
+ * it at each one rather than trusting this paragraph.
+ *
+ * It is safe to carry for the same reason the exclusion is, and more so: the
+ * clauses are server-owned strings selected by a closed-list id
+ * (`normalizeTradition`), so no caller free text rides in on them, and a
+ * prohibition cannot be the thing a filter objected to.
  */
 function buildCoverPromptForLevel(
   safetyLevel: number,
@@ -390,6 +423,7 @@ function buildCoverPromptForLevel(
     avoid?: string;
     variation?: string;
     artStyle?: string;
+    tradition?: string;
   },
 ): string {
   const {
@@ -401,6 +435,7 @@ function buildCoverPromptForLevel(
     avoid,
     variation,
     artStyle,
+    tradition,
   } = input;
   if (safetyLevel === 0) {
     return buildCoverPrompt(
@@ -412,6 +447,7 @@ function buildCoverPromptForLevel(
       avoid,
       variation,
       artStyle,
+      tradition,
     );
   }
   if (safetyLevel === 1) {
@@ -428,6 +464,7 @@ function buildCoverPromptForLevel(
       avoid,
       variation,
       artStyle,
+      tradition,
     );
   }
   // The last rung drops the steer, and it is the one place the steer must be
@@ -441,7 +478,11 @@ function buildCoverPromptForLevel(
   // multiplier.
   //
   // The exclusion still survives, per the note above: it is a *negative*
-  // constraint, so it cannot be the thing a filter objected to.
+  // constraint, so it cannot be the thing a filter objected to. So does the
+  // tradition, for the same reason and with more at stake: this is the rung
+  // with no cast, no setting, no themes and no steer, which is the rung where
+  // a model asked for "a cover for a story called <a prophet's name>" has
+  // nothing left to draw but the figure the whole layer exists to refuse.
   return buildCoverPrompt(
     genre,
     title,
@@ -451,6 +492,7 @@ function buildCoverPromptForLevel(
     avoid,
     undefined,
     artStyle,
+    tradition,
   );
 }
 
@@ -512,6 +554,15 @@ export async function generateCharacterPortrait(
    * stop -- one pick, one book.
    */
   artStyle?: string,
+  /**
+   * The story's `stories.tradition`.
+   *
+   * A portrait is the likeliest place in this whole module for a sacred figure
+   * to be given a face: the frame is one person, the prompt's entire subject
+   * is an appearance line, and a cast member named for a prophet arrives here
+   * as ordinary free text with nothing around it to say otherwise.
+   */
+  tradition?: string,
 ): Promise<ImageResult | null> {
   const appearance = sanitizeForPrompt(characterAppearance(character));
   if (!appearance) {
@@ -528,7 +579,7 @@ export async function generateCharacterPortrait(
     storagePath,
     aspect: "portrait",
     promptFor: (safetyLevel) =>
-      buildPortraitPrompt(appearance, safetyLevel, false, artStyle),
+      buildPortraitPrompt(appearance, safetyLevel, false, artStyle, tradition),
   });
 }
 
@@ -562,6 +613,15 @@ export async function generateDraftCharacterPortrait(
    * from -- and the writer is comparing it against a cover that will use it.
    */
   artStyle?: string,
+  /**
+   * The tradition the Create brief is currently set to, when the caller knows
+   * it. A draft portrait is drawn before any story row exists, so there is no
+   * `stories.tradition` to read; the endpoint (`generate-character-image`)
+   * does not yet pass this, and until it does a draft portrait behaves exactly
+   * as it does today. The parameter is here so the policy has one door into
+   * this path rather than a second implementation later.
+   */
+  tradition?: string,
 ): Promise<ImageResult | null> {
   const appearance = sanitizeForPrompt(characterAppearance(character));
   if (!appearance) {
@@ -589,6 +649,7 @@ export async function generateDraftCharacterPortrait(
         // so the prompt can never describe an attachment that is not there.
         Boolean(referenceImage) && referenceSurvivesLevel(safetyLevel),
         artStyle,
+        tradition,
       ),
   });
 }
@@ -665,6 +726,16 @@ function buildPortraitPrompt(
   safetyLevel: number,
   hasReference = false,
   artStyle?: string,
+  /**
+   * The story's tradition, or undefined.
+   *
+   * Not a function of `safetyLevel`, on purpose: the depiction clauses are the
+   * same at every rung. The ladder shortens the SUBJECT — the free-text
+   * appearance — and that is the part a filter objects to; shortening the
+   * constraint alongside it would leave the least-constrained prompt as the
+   * one with the least policy on it.
+   */
+  tradition?: string,
 ): string {
   // THE APPEARANCE IS THE WHOLE SUBJECT. A `gender` clause used to lead it,
   // fed by a required row on onboarding's W4 sheet; both are gone, because an
@@ -691,6 +762,7 @@ function buildPortraitPrompt(
     }, soft even lighting, no background scenery.`,
     PORTRAIT_WARDROBE_CLAUSE,
     `The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.`,
+    ...traditionDepictionClauses(tradition, "portrait"),
     NO_FRAME_CLAUSE,
     `Full-body portrait orientation, subject centered in frame, high quality.`,
     // The reference clause does NOT need to follow the orientation line, and

@@ -116,6 +116,44 @@ The `buildCoverPrompt()` function in `_shared/cover-prompts.ts` assembles the pr
    - Portrait orientation, centered composition
    - Professional book cover art quality
 
+5. **Tradition depiction rules** (only when the story has a `tradition`)
+   - Built by `traditionDepictionClauses()` from `_shared/traditions.ts`
+   - Positive first: what the picture holds INSTEAD, from that tradition's
+     `visualSubstitutes` — landscape, light, objects, architecture, pattern
+   - Then the prohibition: the narrate-only figures by name, with no face, no
+     figure, no body, no human form and no stand-in for any of them
+   - Then `symbolic` classes (present only as light, an object, architecture or
+     pattern) and, where the policy forbids it, no face for any sacred figure
+   - A story with no tradition set adds nothing at all — the prompt is
+     byte-identical to the one the same arguments produced before this existed
+
+#### Where the depiction rules sit, and why
+
+After the no-text line, with `NO_FRAME_CLAUSE`. Two reasons agree on that
+position. `describePreviousCover()` in `_shared/cover-regeneration.ts` recovers
+the previous cover's *subject* from the span between "Inspired by the story"
+and the no-text line and quotes it into the next regeneration's steer, so a
+constraint inside that span would be re-sent as a description of the thing to
+vary **from**. And a model weights the close of a prompt heavily, which is
+where a rule that must hold belongs.
+
+They are carried at **every rung** of the safety ladder in `_shared/image.ts`,
+including level 2 (genre + title + `avoid` + `artStyle` only), on the same
+grounds as the `avoid` exclusion and a stronger version of them: a prohibition
+cannot be what a content filter objected to, and the clauses are server-owned
+strings selected by a closed-list id, so no caller text rides in on them. Level
+2 is the rung with no cast, no setting, no themes and no steer — which is
+exactly the rung where a model with nothing left to draw would invent the
+figure the whole layer exists to refuse.
+
+`mythology` no longer has a config of its own. It held
+`composition: "deity or mythical creature in powerful pose, celestial elements,
+sacred geometry patterns"` with `characterApproach: "portrait"`, and
+`normalizeGenre()` matches the exact key *before* the alias map — so a raw
+`"mythology"` string was a standing instruction to draw a deity as a close
+portrait, automatically, for any story. The key is gone; the string resolves
+through the alias to `fantasy`.
+
 ### Prompt Template
 
 > Superseded in detail by `buildCoverPrompt` in `_shared/cover-prompts.ts`, which is the source of truth. Since 2026-09-18 it also carries a cover safe zone (top 15% clear, face between 20% and 50% of the height), a no-border/no-frame clause, "a"/"an" by genre, a lower-cased leading article on where-and-when, and a picked art style stated first and last. The template below is the original shape, kept for orientation.
@@ -168,7 +206,13 @@ Two-column layout:
 - Left: cover `200px` wide, `aspectRatio: 3/4`, `borderRadius: 16`, shadow, `position: sticky; top: 20px` (web only).
 - Right: genre, title (26px), author, controls (left-aligned), body text (16px, `lineHeight: 26`).
 
-## Genre Prompt Configs (16 Genres)
+## Genre Prompt Configs
+
+> The table below has drifted from `GENRE_PROMPTS` in
+> `_shared/cover-prompts.ts`, which is the source of truth and currently holds
+> 21 entries. `mythology` was removed from it (see above) and its row is gone
+> from here; the rest of the table is kept for orientation and is not a
+> complete or current listing.
 
 | Genre | Style | Palette | Composition | Mood | Characters |
 |-------|-------|---------|-------------|------|------------|
@@ -184,7 +228,6 @@ Two-column layout:
 | darkAcademia | moody gothic, candlelit interiors, oil painting | deep mahogany, aged ivory, forest green, antique gold | shadowed hallway, candlelit study, leather books, ivy | intellectual, brooding, secretive | silhouette |
 | drama | emotional painterly, expressive brushwork, literary | muted earth tones, overcast greys, warm accent | contemplative scene, negative space, meaningful object | reflective, bittersweet, human | scene |
 | sliceOfLife | warm cozy, gentle watercolor, soft afternoon light | warm caramel, soft sage, dusty rose, cream, golden hour | intimate everyday scene, kitchen table, warm interior | warm, nostalgic, comforting | scene |
-| mythology | mythological, bold ancient art, temple fresco | deep terracotta, burnished bronze, saffron, temple red | deity/creature in powerful pose, celestial, sacred geometry | epic, ancient, sacred | portrait |
 | poetry | ethereal abstract, dreamy watercolor, minimalist | soft lavender, misty grey-blue, pale rose, ink black | abstract forms, flowing shapes, generous white space | ethereal, contemplative, luminous | scene |
 | comedy | vibrant pop, bold outlines, playful exaggeration | sunshine yellow, electric blue, hot pink, lime green | absurd scene, exaggerated proportions, playful arrangement | joyful, witty, irreverent | scene |
 | bedtime | soft dreamy, gentle moonlit glow, soothing shapes | midnight navy, moonlight silver, warm amber, lavender | nightscape, gentle moon, warm lamp, starlit sky | calm, soothing, magical | scene |
