@@ -11017,3 +11017,33 @@ reverted fix and fail there.
   misrepresenting every all-ages story as bedtime. New generated stories still
   need a separately approved persisted bedtime contract before they can enter
   this shelf.
+
+### The no-character story path gets a cast to invent (2026-09-29)
+
+- No schema, migration, endpoint, or deployment changed. Two prompt edits in
+  `_shared/story-prompts.ts`, both text.
+- `buildUserPrompt` now renders an invent-the-cast block when the creator named
+  nobody AND the chapter is an opening. Naming characters has always been
+  optional (`validation.ts:194` accepts an absent cast; the client strips blank
+  rows), so the cast-less request is the ordinary one, and its whole brief used
+  to be four lines: genre, audience, the fenced idea, the closing instruction.
+  Everything about WHO was carried by one sentence in the Banned Default Names
+  section, which speaks only about names. The block asks for a protagonist with
+  an age and a nameable want, an interiority, supporting characters with a
+  pre-existing relationship, an invented source of conflict, a concrete
+  setting, and an arc built around an idea that is only an image. The last
+  bullet varies by audience: kids get "no more than two other named
+  characters".
+- The block is suppressed entirely when a cast is supplied, and on any chapter
+  past the first, where the people already exist in the story bible and the
+  previous-chapters window. `invented-cast.test.ts` pins the supplied-cast
+  brief byte for byte against the output captured from `main` at `93d422a`.
+- `buildAudienceModeRules` gained one bedtime bullet in Kids Mode: resolve this
+  chapter's tension before its final section, let the last fifth be
+  progressively calmer, no cliffhanger and no new problem near the end. It sits
+  in the audience layer, which is invariant per audience mode, so the cached
+  system prefix is unaffected. It is the one change a supplied cast also gets,
+  because it is about the shape of a bedtime story rather than about who is in
+  it. Adult mode is unchanged, asserted.
+- Quality here is argued from the prompt text, not measured. No generation was
+  run and no paid model was called.

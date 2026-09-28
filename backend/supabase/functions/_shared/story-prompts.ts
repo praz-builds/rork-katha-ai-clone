@@ -838,6 +838,7 @@ ${lengthRule}
 - **Language:** Simple, concrete vocabulary. Short sentences. No complex metaphors or abstract concepts a child couldn't follow.
 - **Content:** No romance, flirting, attraction, or adult relationships. No horror, graphic violence, or death. No substance use. No complex moral ambiguity. No scary scenarios that could cause nightmares.
 - **Tone:** Warm, active, encouraging. Characters solve problems through kindness, cleverness, and teamwork. The world is fundamentally safe even when challenges arise.
+- **Bedtime pacing:** This story is most often read aloud at bedtime, so it has to wind down rather than wind up. Keep the excitement in the middle. Resolve the tension this chapter raises before its final section, and let the last fifth be progressively calmer: quieter verbs, shorter scenes, softer light, smaller spaces, a character settling rather than setting off. No cliffhanger, no surprise on the last page, no new problem introduced near the end. The final image should be a restful one.
 ${endingRule}
 - **Characters:** Child-centered. Protagonists should be children or child-relatable beings (animals, friendly creatures). Adults are supportive background figures.
 - **Sensory details:** Focus on wonder, color, texture, funny sounds. Make the world feel magical and inviting.`;
@@ -1749,6 +1750,54 @@ export function buildUserPrompt(params: {
       if (appearance) {
         parts.push(`  Appearance: ${userField("appearance", appearance)}`);
       }
+    }
+  } else {
+    /*
+      THE OTHER HALF OF THE CAST LAYER, AND THE COMMON ONE.
+
+      Naming characters is optional everywhere in the product and always has
+      been: `validation.ts` accepts a request with no cast block at all, and the
+      client strips blank rows before sending. So the most ordinary request this
+      function receives is a genre, an audience, and one sentence -- "a little
+      girl who is afraid of the ocean" -- and for that request the entire brief
+      was four lines long. Everything about WHO was left to a single sentence in
+      the system prompt's Banned Default Names section, which speaks only about
+      names: "If no names are provided, choose culturally specific, uncommon
+      names that fit the story's setting."
+
+      A name is not a cast. The Story Engine below demands a protagonist with a
+      want, an obstacle and stakes, but nothing told the model that inventing
+      those people -- the supporting cast, the relationships that predate page
+      one, the thing pushing back -- is part of the job when the idea supplies
+      none. An idea like "a boy who discovers a secret garden" contains no
+      conflict at all; without this, the likeliest failure is a lone child
+      wandering a pretty place with nobody to want anything against.
+
+      Rendered ONLY when the creator named nobody, so a brief that carries a
+      cast is byte-identical to the one it was before this block existed, and
+      only on an opening chapter: a continuation's people already exist in the
+      story bible and the previous-chapters window, and telling chapter five to
+      invent a protagonist is how a series gets a second one.
+    */
+    const role = params.chapterRole ?? "standalone";
+    const isOpeningChapter =
+      (role === "standalone" || role === "series_opening") &&
+      !params.seriesState &&
+      !(typeof params.chapterNumber === "number" && params.chapterNumber > 1);
+
+    if (isOpeningChapter) {
+      parts.push(
+        `Cast: the creator named nobody. Inventing these people is part of writing the story, not a gap to write around.`,
+        `- Invent a protagonist and commit to them: a name, an age, and one specific want they could say out loud in their own words. Not "to be braver" but "to walk to the end of the pier without holding anyone's hand."`,
+        `- Give that protagonist an interior life the reader can feel: one thing they are privately proud of, ashamed of or frightened by, and one habit that shows it without naming it.`,
+        `- Invent the people around them. A lone protagonist thinking to themselves is not a story. At minimum one other character with a want of their own that rubs against the protagonist's, and a relationship between them that already existed before the first sentence.`,
+        `- Invent the source of the conflict if the idea supplies none. It can be a person, a rule, a deadline, a place, or something the protagonist believes about themselves. Whichever it is, it has to push back specifically, and more than once.`,
+        `- Invent the setting concretely: one place, physical and particular enough to draw.`,
+        `- The idea may be an image rather than a plot. Build the arc around it anyway: what this character wants when we meet them, what makes today the day it changes, what it costs them, and what is different by the last line.`,
+        params.audienceMode === "kids"
+          ? `- Keep the invented cast small and legible for a young listener: the protagonist and no more than two other named characters, introduced one at a time, each easy to tell apart by how they speak and what they want.`
+          : `- Keep the invented cast tight. Three or four people who matter, each on the page for a reason, is stronger than a crowd.`,
+      );
     }
   }
 
