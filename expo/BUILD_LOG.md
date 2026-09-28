@@ -49,9 +49,25 @@
      than prefixing them, so labelling it "Get free credits" made the whole
      sub-line silent. The label is built from `freeCreditsSubtitle` so the two
      cannot drift.
+- **Every heading on both screens carries the role, not just the one that
+  takes focus** (added 2026-09-28). Marking a single one made heading
+  navigation *worse* than marking none: the rotor found "Free credits" and
+  offered no way to reach Paid options or History, and the new prices screen
+  had no entry at all. Get credits' three sections and both screen titles have
+  it now — and so do the three section titles inside `HowCreditsWork` itself
+  ("Always free…", "What each thing costs", "Worth saying plainly"), which is
+  the whole body of the prices screen, so without them that screen's rotor
+  stopped at the title and the price table was unreachable except by swiping
+  line by line. `HowCreditsWork` has exactly one caller, so nothing else moves.
+  Both screens' tests assert it.
 - Known and deliberate: Android's hardware back calls no handler here, as on
   `CreditsScreen`, `VoicesScreen` and `JourneyScreen`. It wants one change
   across every pushed screen rather than an exception on this one.
+- Also deliberate: `accessibilityRole="header"` is right for VoiceOver and
+  TalkBack, which is what this is for. On react-native-web it maps to an HTML
+  `<header>` rather than a heading, so browser heading navigation still finds
+  nothing — that is the established pattern at ~20 sites in this client and
+  changing it belongs in its own pass, not here.
 
 ## 2026-09-27: Voice samples play; the Story world row is named for its job
 
