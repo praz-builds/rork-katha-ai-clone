@@ -44,7 +44,7 @@ Fixes to what failed the last walk. **Merged, not deployed**: an Expo client cha
 
 ## R5. You
 
-- [ ] "How credits work" reads **Prices and free credits** underneath.
+- [ ] "How credits work" reads **What each thing costs** underneath, and opens a screen that is only the price list — no balance pill, no plan card, no packs. *(Rewritten 2026-09-27: the subtitle was "Prices and free credits" and the row opened Get credits, the same destination as the Credits row above it. Ticking this as superseded was wrong — it is the only box in the file that would have been ticked, so the one screen this round rewrites is the one nobody would have walked.)*
 
 ## R6. Story page summary -- not changed, and why
 

@@ -99,6 +99,7 @@ export { PRIVACY_URL, TERMS_URL };
 export default function ProfileScreen({
   credits,
   onCredits,
+  onHowCredits,
   onPaywall,
   onJourney,
   onPublicProfile,
@@ -108,6 +109,8 @@ export default function ProfileScreen({
 }: {
   credits: number;
   onCredits: () => void;
+  /** The prices, with nothing to buy. A different question from `onCredits`. */
+  onHowCredits: () => void;
   onPaywall: () => void;
   onJourney: () => void;
   onPublicProfile: (authorId: string) => void;
@@ -485,8 +488,8 @@ export default function ProfileScreen({
           <Row
             icon={HelpCircle}
             title="How credits work"
-            subtitle="Prices and free credits"
-            onPress={onCredits}
+            subtitle="What each thing costs"
+            onPress={onHowCredits}
             testID="profile-faq"
             grouped
           />

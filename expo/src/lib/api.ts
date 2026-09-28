@@ -2937,7 +2937,19 @@ export type CreditClaim = {
 
 export type CreditClaimsResult = {
   claims: CreditClaim[];
-  remaining: { today: number; month: number };
+  /**
+   * How many claims the caps still allow, or **null when the server did not
+   * say**.
+   *
+   * Null rather than `{today: 0, month: 0}`, because those two states read the
+   * same to a caller and mean opposite things. An older deploy, or the shape
+   * moving, answers 200 with a valid `claims` array and no `remaining`; the
+   * zeroes it used to default to make "this account has claimed everything
+   * this month" indistinguishable from "the server said nothing", and the
+   * Credits screen rendered the first sentence at a brand-new account that had
+   * never claimed anything. A missing number is not a zero.
+   */
+  remaining: { today: number; month: number } | null;
 };
 
 export type ClaimCreditFailure =
@@ -2988,6 +3000,10 @@ export async function fetchCreditClaims(): Promise<CreditClaimsResult | null> {
     });
     if (error || !data || !Array.isArray(data.claims)) return null;
     const remaining = (data.remaining ?? {}) as Record<string, unknown>;
+    // Both or neither. A half-present `remaining` is a shape nobody has ever
+    // sent, and guessing the missing half is how a zero gets invented.
+    const counted = typeof remaining.today === "number" &&
+      typeof remaining.month === "number";
     return {
       claims: (data.claims as unknown[])
         .map((row): CreditClaim | null => {
@@ -3004,10 +3020,9 @@ export async function fetchCreditClaims(): Promise<CreditClaimsResult | null> {
           };
         })
         .filter((claim): claim is CreditClaim => claim !== null),
-      remaining: {
-        today: typeof remaining.today === "number" ? remaining.today : 0,
-        month: typeof remaining.month === "number" ? remaining.month : 0,
-      },
+      remaining: counted
+        ? { today: remaining.today as number, month: remaining.month as number }
+        : null,
     };
   } catch {
     return null;
@@ -3018,7 +3033,7 @@ export async function fetchCreditClaims(): Promise<CreditClaimsResult | null> {
  * Claim the one feedback credit for a comment.
  *
  * Every rule is the server's (length, a qualifying read before the comment,
- * one per story, one per day, six per month, not reported, not a tester).
+ * one per story, one per day, five per month, not reported, not a tester).
  * The client only relays the verdict; `requestId` makes a double tap one
  * claim rather than two.
  */
