@@ -3,16 +3,49 @@ import React from "react";
 import type { PropsWithChildren } from "react";
 import { useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { Sparkles } from "lucide-react-native";
 import { imageAssets } from "@/data/images";
-import { colors, controls, fonts, genreGradients, genreLabels, radius, spacing } from "@/theme";
+import { COVER_ACCEPT_HEADERS, coverUrl, isTransformedCover } from "@/lib/cover-url";
+import {
+  colors,
+  controls,
+  fonts,
+  genreGradients,
+  genreLabels,
+  motion,
+  radius,
+  spacing,
+} from "@/theme";
 import type { Genre, ImageName, Story } from "@/types/domain";
 
 /**
  * Renders an image with focal-point-aware cropping.
- * On web, uses a native <img> with object-fit/object-position (RN Web's
- * Image component ignores objectPosition). On native, falls back to
- * standard RN Image with center crop.
+ *
+ * On web, a native `<img>` with object-fit/object-position, because
+ * react-native-web's Image ignores objectPosition. On native, `expo-image`.
+ *
+ * WHY `expo-image` AND NOT RN's `Image`, and it is not mainly the cache.
+ * Supabase decides whether to serve a transformed cover as WebP (70 KB) or as
+ * the original format (866 KB) from the request's `Accept` header -- there is
+ * no query parameter for it. RN's `Image` gives no way to set one;
+ * `expo-image` takes `headers` on the source. See `lib/cover-url.ts` for the
+ * measurements. The disk cache and the fade come along with it and are worth
+ * having, but the header is the reason.
+ *
+ * `recyclingKey` is not optional on a `FlatList`: without it a recycled row
+ * shows the previous story's cover until the new one decodes.
+ *
+ * ON WEB THERE IS NO HEADER TO SET. The web branch returns before the
+ * `expo-image` path, and the browser sends its own image `Accept` -- which has
+ * carried `image/webp` in every current engine for years, so the 70 KB is
+ * earned there too, just not by this file. The header below is the native
+ * half, where nothing sends one unless we do.
+ *
+ * NO REDUCED-MOTION BRANCH, deliberately. This is a 150 ms opacity fade from a
+ * gradient the same size, with no movement and no parallax, and what it
+ * replaces is a cover popping in at full strength. If a motion-preference pass
+ * ever lands app-wide it should own this too.
  */
 export function FocalImage({
   source,
@@ -20,12 +53,15 @@ export function FocalImage({
   focalY = 0.5,
   style,
   onLoad,
+  recyclingKey,
 }: {
   source: number | { uri: string };
   focalX?: number;
   focalY?: number;
   style?: { width: number | string; height: number | string };
   onLoad?: () => void;
+  /** The entity this image belongs to, so a recycled row never shows a stale one. */
+  recyclingKey?: string;
 }) {
   if (Platform.OS === "web") {
     let uri: string;
@@ -52,6 +88,10 @@ export function FocalImage({
     // paints positioned boxes above in-flow ones whatever the source order -
     // so a static <img> here loaded fine and was hidden behind the gradient.
     return React.createElement("img", {
+      // Named so a test can find it. The web branch's failure mode is an
+      // invisible cover rather than a slow one, and it is the one surface this
+      // client can currently be looked at on.
+      testID: "focal-image-web",
       src: uri,
       style: {
         position: "absolute",
@@ -62,18 +102,86 @@ export function FocalImage({
         objectFit: "cover",
         objectPosition: `${focalX * 100}% ${focalY * 100}%`,
         display: "block",
+        // The web half of `transition`. `expo-image`'s prop is on the native
+        // branch, which this one returns before ever reaching, so without
+        // these three lines the cover pops in at full opacity the instant it
+        // decodes -- on the only surface this client can currently be looked
+        // at, and with two docblocks claiming it cross-fades.
+        //
+        // CSS rather than React state, for the same reason the native side
+        // uses the library's: the hand-rolled fade this replaced was wrong
+        // twice over the ordering of a callback and an effect.
+        opacity: 0,
+        // One source for both halves of the fade: the web `transition` here
+        // and `expo-image`'s `transition` prop below were two hand-written
+        // 180s, which is two places for them to drift apart.
+        transition: `opacity ${motion.fast}ms ease-out`,
       },
       alt: "",
-      onLoad,
+      // THE CACHED CASE IS WHY THERE IS A REF AS WELL AS AN onLoad, and it is
+      // the whole "gradients forever" bug pointing at the DOM instead of at an
+      // Animated.Value. An image already in the browser cache can finish
+      // loading before React attaches `onLoad`, so the event never fires and
+      // an element left at opacity 0 stays invisible for good. `complete` is
+      // the browser's own answer to "did this already load", checked the
+      // moment the node exists. It skips the fade in that case, which is
+      // right: there is nothing to fade from.
+      //
+      // The only way to stay hidden now is `complete === false` and no load
+      // event ever, which means the image genuinely never arrived -- and the
+      // gradient underneath is the correct thing to be looking at.
+      // `key` on the src, so a REGENERATED cover gets a new element rather
+      // than the old one's inline opacity. The opacity here is written
+      // imperatively, outside React, and React only rewrites style keys that
+      // changed between renders -- `opacity: 0` is in both, so it is never
+      // rewritten, and the `1` left over from the previous load would survive.
+      // That is the second of the two bugs the native side deleted as a class:
+      // the new art would replace the old at full strength the instant it
+      // decoded, with no fade. Remounting is the cheapest way to be sure.
+      key: uri,
+      ref: (node: { complete?: boolean; style?: { opacity: string } } | null) => {
+        if (node?.complete && node.style) node.style.opacity = "1";
+      },
+      onLoad: (event: { currentTarget?: { style?: { opacity: string } } }) => {
+        const target = event?.currentTarget;
+        if (target?.style) target.style.opacity = "1";
+        onLoad?.();
+      },
       draggable: false,
     });
   }
+  // The header goes on only for a URL `coverUrl` rewrote. A bundled asset
+  // gains nothing from it, and somebody's uploaded cover is served by whatever
+  // host holds it.
+  const uri = typeof source === "object" && source !== null && "uri" in source
+    ? source.uri
+    : null;
+  const expoSource = uri !== null && isTransformedCover(uri)
+    ? { uri, headers: COVER_ACCEPT_HEADERS }
+    : source;
+
   return (
-    <Image
-      source={source}
+    <ExpoImage
+      source={expoSource}
       style={StyleSheet.absoluteFill}
-      resizeMode="cover"
+      // `contentFit`/`contentPosition` are expo-image's names for what was
+      // `resizeMode="cover"` plus the focal point the web branch above has
+      // always honoured. Native used to center-crop regardless, so this is the
+      // first time a focal point means anything off the web.
+      contentFit="cover"
+      contentPosition={{ top: `${focalY * 100}%`, left: `${focalX * 100}%` }}
+      // A real disk cache, which `Image.prefetch` never provided: it only ever
+      // warmed the in-memory/HTTP cache for the session. `memory-disk` rather
+      // than `disk` so scrolling back up a shelf returns the decoded bitmap
+      // instead of re-decoding it off the filesystem.
+      cachePolicy="memory-disk"
+      // Cross-fade from whatever is underneath -- callers layer a genre
+      // gradient there -- rather than the hand-rolled Animated.Value the feed
+      // card used to drive from `onLoad`.
+      transition={motion.fast}
+      recyclingKey={recyclingKey}
       onLoad={onLoad}
+      accessible={false}
     />
   );
 }
@@ -126,8 +234,17 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
   // StoryFeedCard and StoryDetailScreen. Reading only `coverImage` meant every
   // story from the database - every one a user wrote - showed the bare genre
   // gradient on Library shelves and author pages.
-  const image = story.coverImageUrl
-    ? { uri: story.coverImageUrl }
+  // `size` is already the surface name `COVER_WIDTHS` uses, so the cover is
+  // asked for at the size this box draws it. Missing this was a third of the
+  // saving: Library's shelves and every author page render `size="mini"` into
+  // a 96pt box, which is the worst bytes-to-pixels ratio in the app -- twenty
+  // saved stories fetched about 40 MB of full-size PNG to paint twenty
+  // thumbnails. It is also where the silent half bites: without the rewrite
+  // `isTransformedCover` is false, so `FocalImage` sends no `Accept` header
+  // either, and there is nothing on screen to say so.
+  const coverUri = coverUrl(story.coverImageUrl, size);
+  const image = coverUri
+    ? { uri: coverUri }
     : story.coverImage
     ? imageAssets[story.coverImage]
     : undefined;
@@ -138,16 +255,29 @@ export function Cover({ story, size = "card" }: { story: Story; size?: "card" | 
 
   return (
     <View style={[styles.cover, size === "mini" ? styles.miniCover : styles.cardCover]}>
+      {/*
+        THE GRADIENT IS ALWAYS UNDER THE ART, never instead of it. These two
+        used to be the arms of one ternary, so a story WITH a cover rendered no
+        gradient at all -- which was invisible while the image painted at full
+        opacity from the first frame, and is not now that it fades in. A shelf
+        thumbnail would fade up from flat `sepiaPlaceholder`, and a cover that
+        never arrives (a 404, or the `cover://` sentinel written while
+        generation is in flight) would leave a flat square with no fallback.
+        `StoryFeedCard` and the story hero have always layered them; this is
+        the same shape.
+      */}
+      <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
       {image ? (
         <FocalImage
           source={image}
           focalX={focalX}
           focalY={adjustedY}
           style={{ width: "100%", height: "100%" }}
+          // Shelves are lists too, and a recycled row otherwise paints the
+          // previous story's cover until the new one decodes.
+          recyclingKey={story.id}
         />
-      ) : (
-        <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
-      )}
+      ) : null}
     </View>
   );
 }

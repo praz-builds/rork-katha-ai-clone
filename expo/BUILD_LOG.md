@@ -2,6 +2,45 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Covers arrive at 70 KB instead of 2 MB
+
+- **`src/lib/cover-url.ts`** asks Supabase's transform endpoint for a cover at
+  roughly the size it will be drawn at: mini 288, card 350, hero 800, all
+  `quality=60&resize=cover`. Measured against production: the same cover goes
+  from **1,978,908 bytes** to **70,810**. It no-ops on any URL it does not
+  recognise and never transforms twice.
+- **The `Accept: image/webp` header is the other half and is easy to miss.**
+  Supabase picks WebP from the request header; there is no `format` parameter.
+  The identical transform URL without it returns PNG at 866 KB.
+- **`expo-image` replaces RN's `Image` inside `FocalImage`.** The reason is the
+  header — RN's `Image` cannot set one — with `cachePolicy="disk"`,
+  `transition`, `recyclingKey` and real `contentPosition` as the dividend.
+  Native honoured no focal point before this; it center-cropped.
+- **`StoryFeedCard`'s hand-rolled fade is deleted.** It was an `Animated.Value`
+  driven from `onLoad`, wrong first in one direction (a fast `onLoad` beat the
+  mount effect that zeroed it, so the first screenful of Explore stayed
+  invisible) and then the other (a regenerated cover reused the old opacity of
+  1 and popped in). `transition` has no ordering to get wrong.
+- **`recyclingKey={story.id}`** on every card *and* every shelf row, because
+  `FlatList` reuses rows and a recycled one otherwise paints the previous
+  story's cover.
+- **All four `FocalImage` callers, including `Cover`.** `Cover` is what
+  Library's shelves and author pages render at `size="mini"` into a **96pt**
+  box — the worst bytes-to-pixels ratio in the app, and the one caller missed
+  on the first pass. `COVER_WIDTHS.mini` having no caller at all was the tell.
+- **`COVER_WIDTHS.mini` is 288, not 232.** The docstring described a 74pt
+  surface that has no caller, so the width was 3× of the wrong box and only
+  2.4× of the real one — which would have made Library thumbnails *softer than
+  on main*, where they arrived full-size. Measure the box, then multiply.
+- **Web fades too.** `transition` is an `expo-image` prop and the web branch
+  returns a bare `<img>`, so the CSS equivalent lives there: `opacity: 0` with
+  a `motion.fast` (150 ms) transition, set to 1 on load — plus a `ref` that checks `complete`,
+  because a cached image can finish before React attaches `onLoad` and an
+  element stuck at opacity 0 is the "gradients forever" bug rebuilt in the DOM.
+- The 180 ms `Image.prefetch` race in `useStorySearch` is removed with its
+  test. It delayed the first paint to get a head start on a 2 MB download and
+  warmed only the session's in-memory cache: it never changed a byte fetched.
+
 ## 2026-09-27: Explore gets one chip row, a mixed feed, and infinite scroll
 
 - **One chip row.** Bedtime was a single `FilterChip` in a plain `View` above

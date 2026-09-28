@@ -81,7 +81,7 @@ const renderWith = (
     <ExploreScreen
       stories={seedStories}
       onStory={jest.fn()}
-      searchOptions={{ search, debounceMs, prefetchTimeoutMs: 0 }}
+      searchOptions={{ search, debounceMs }}
     />,
   );
 
