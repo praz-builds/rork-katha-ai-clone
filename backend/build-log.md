@@ -7,6 +7,162 @@
 
 ---
 
+## 2026-09-28 UTC — The five-a-month cap is live, and the rotor reaches the prices
+
+**Session:** the deploy of #156, the two items its last review raised after it
+had merged, and the operator-docs round from #161, whose session closed with
+findings open. Branch `codex/credits-a11y-and-repair`; it supersedes #161.
+
+### Deployed
+
+1. **`supabase db push`** — `00100_feedback_monthly_cap_five`, the only pending
+   migration. The ledger read `00001`-`00099` beforehand, which is the check the
+   file's own warning asks for: the number was used once by the withdrawn
+   `00100_reader_preferences`, and `db push` keys on the numeric prefix rather
+   than the name, so a database carrying that row would have skipped this file
+   and exited 0 with the cap still at six. Production was not in that state.
+2. **`supabase functions deploy credit-claims`** — the only edge caller of the two
+   functions that migration replaces (`claim_comment_credit` is deliberately
+   not redefined, and re-derives its verdict from one of them under the lock).
+3. **`scripts/audit-function-drift.sh` against `d92ceee`: 346/346 identical, 0
+   drifted.** Merged is not deployed, and the CLI saying "Deployed Functions."
+   is not evidence; the diff of the downloaded bundles is.
+
+**The feedback claim now caps at five a month in production.**
+
+### Two items from the review that landed after the merge
+
+**Heading navigation stopped one level short.** #156's argument was that a rotor
+with one arbitrary entry is worse than an empty one, and it fixed that on
+`CreditsScreen` and on the new screen's title -- but `HowCreditsWork`, which is
+that screen's entire body, has three section titles of its own and none of them
+carried the role. So the rotor offered "How credits work" and no way to reach
+the price table. It has exactly one caller, so the three lines affect nothing
+else, and the test that already asserts the title now asserts all four.
+
+**The `db push` warning named the check and not the repair.** An operator who
+finds the row had no next step. It is
+`supabase migration repair --status reverted 00100`, then push again.
+
+### The docs, brought level in the same push
+
+`AGENTS.md`'s *Production state* opened by saying the ledger was aligned
+`00001`-`00099` with nothing pending, fifty lines above this entry's own record
+of `00100` being applied — so an operator reading the section lead would have
+concluded the cap had not shipped and either reported it as still six or run
+`db push` again looking for it. The lead now carries the deploy, the new ledger
+range and the post-deploy audit against `d92ceee`.
+
+`backend/ROADMAP.md`'s credits section said migration 00089 and a cap the
+pricing doc no longer states; it names 00100 and the five.
+
+### Verification
+
+Expo **1671/1671** across 155 suites, typecheck clean, lint 0 errors. The only
+code in this change is three `accessibilityRole` attributes; everything else is
+documentation, and no migration or function is touched, so nothing to deploy
+from it.
+## 2026-09-28 UTC — Bring the operator docs level with three sessions' production writes
+
+**Session:** docs only, after #155, #157 and #158 all landed within a few hours of
+each other. Nothing was deployed, no migration, no production write.
+Branch `codex/docs-current-0928`.
+
+Three rounds wrote to production on 2026-09-27 and the pages an operator trusts
+had not caught up with any of them together.
+
+### AGENTS.md, Production state
+
+- **Says plainly that "no function or migration changed" is not "production is
+  unchanged".** The zero-drift line reads as though production were frozen, and it
+  is not: a table now names what was written, by which round, and whether it can be
+  taken back — the six `voice-previews/*.mp3` objects and two `error_events` rows
+  from the voice round, and this week's screenshot fixtures with their
+  `--teardown`. The phrasing that needed fixing was mine, from the entry below.
+- **Records that a comment shows the handle, not the author's chosen name**, as an
+  unclaimed bug rather than a house-account curiosity, with why renaming cannot fix
+  it and the note that it ships by OTA and so does not gate the first AAB.
+
+### A drift exception that was false before the ink dried
+
+#157 added a paragraph to Production state warning that
+`scripts/audit-function-drift.sh` **would** report drift on
+`seed-voice-previews`, because that round changed its docblock and a comment is
+part of the module source. It said the reading would be a true positive, and that
+whoever deployed the function should delete the paragraph.
+
+Re-running the audit said otherwise: **346 of 346 identical, zero drift.** So the
+deployed bundle was fetched on its own and checked directly -- it carries the new
+`BEFORE YOU RUN IT` block and `cmp`s clean against main, meaning that function had
+been deployed as well as merged.
+
+**Corrected after the author supplied timestamps:** this entry first said the
+exception was untrue by the time it was written. It was not. `ed4d4a1` merged at
+20:29 UTC and the author deployed `seed-voice-previews` at 20:31, so it was
+accurate for about two minutes. What left it standing on main is that the author's
+deletion of it landed on an unmerged branch -- the one place deleting it does
+nothing -- and main kept the paragraph. The removal was still right, for the
+reason below rather than the one first given: it sat immediately under a zero-drift
+baseline, where the next operator would have had a documented reason to wave a real
+drift row through. Deleted per its own instruction, with the measured result in its
+place.
+
+The lesson is kept on the page instead of the exception: an exception written in
+advance outlives the condition it describes, so run the audit rather than trust a
+paragraph about it.
+
+### ROADMAP
+
+- A P1 row for the comment name-versus-handle decision, marked unclaimed, with its
+  store consequence spelled out: frame 7 has two reader comments and no author
+  reply until it lands.
+- The EAS build row carries the preflight result, so the founder can see that
+  nothing app-side blocks the build and that the project id is the only missing
+  value in the config. It also states what was *not* re-checked —
+  `blockedPermissions` against a freshly built merged manifest.
+
+### Verification
+
+- `scripts/audit-function-drift.sh` against `84f94fa`: **34 functions, 346 files,
+  346 identical, zero drift**, exit 0. The migration ledger was unchanged at
+  `00001`-`00099` on that date; `00100` was applied on the 28th, recorded in the
+  entry above.
+- The `seed-voice-previews` bundle was downloaded on its own and `cmp`d against
+  main, because one slug's status was the claim in question and an aggregate zero
+  could have hidden a skipped download.
+- Docs only. No deploy, no migration, no production write from this session.
+
+**Merged into the entry above rather than shipped on its own.** That session
+closed with two review findings open, and both were about sending the next
+agent at the wrong work:
+
+- **The handle-on-a-comment row had its premise backwards.** It read as an
+  unclaimed one-line defect — `comments/index.ts:350` returns `username`
+  "while every other surface shows `display_name`". No surface does:
+  `feed/index.ts:617` takes every story card's byline from `username`,
+  `AuthorScreen.tsx:173` renders `@username`, and 00069's own column comment on
+  `display_name` says it is "never shown on a public byline (that is
+  username)". Following the row as written would have shipped a thread reading
+  "Ana" beside a feed card still reading `ana_reads`. It is now a product call
+  with its real edit set, and it names the one thing that is simply stale
+  either way: `feed/index.ts:615` claims `display_name` has never existed, and
+  `00069:41` adds it.
+- **Both citations named one of two identical call sites.** The mapping is at
+  `:350` and at `:459`, and both selects ask for `username` alone (`:304`,
+  `:415`), so changing one ships a byline that differs between posting and
+  refetching — within one screen, looking done.
+
+Three smaller ones came with them: the fixture script *does* read (it lists up
+to 200 auth users on every invocation, including the report-only default), so
+the claim is "no real user's row was created or modified"; `--teardown` stops
+being reversible at 201 auth users, because `findAuthUser` reads one page and
+then prints `absent`, skips both deletes and exits 0; and the preflight's
+"nothing app-side blocks the build" is scoped to `ca4a68e`, which is behind
+main.
+
+
+---
+
 ## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight
 
 **Session:** the round after the deploy audit, ahead of the first Android build.
@@ -508,7 +664,8 @@ number was used once before by the withdrawn `00100_reader_preferences`. The
 production ledger is aligned `00001`-`00099` with nothing pending, so
 production is safe — but any database that ever had the withdrawn one pushed
 to it will skip this file, exit 0, and leave the cap at six behind a green
-deploy. Production was
+deploy. The repair is `supabase migration repair --status reverted 00100`,
+then push again. Production was
 verified byte-identical to main earlier today (346/346), so
 `scripts/audit-function-drift.sh` has a clean baseline and any drift it reports
 after this deploy is this change's.
