@@ -7,6 +7,286 @@
 
 ---
 
+## 2026-09-27 UTC — The reader records reads, so two dead mechanics come alive
+
+**Session:** founder decision, taken after review of the credits round found that
+the feedback claim pays nobody. Branch `codex/record-read-client`, in its own
+worktree. **Client only** — the endpoint and the RPC have been deployed and
+correct since 00046 and nothing about them changes.
+
+### What was actually broken
+
+`record-read` and `record_story_read` were written, tested, deployed — and
+**never called**. `grep` over `expo/` found one comment and no call site, and
+`story_reads` returned **0 rows** in production. Two shipped mechanics read that
+table, and both were therefore dead in a way nothing on screen admitted:
+
+- **The feedback credit.** `comment_credit_block_reason` sums the story's reads
+  and answers `not_read` under 120 seconds. With no rows, every claim by every
+  reader returned `not_read`. A reader could spend ten minutes on a story, leave
+  a 300-character comment, tap Claim, and be told *"Read the story first."*
+- **The streak ladder.** `touch_streak` has exactly two callers: `publish-story`
+  and `handleRecordRead`. With the second dead, **a streak advanced only when
+  you published a story** — so a reader who opened one every day for three weeks
+  never reached day 2 of a ladder the earn table calls *"Keep a reading
+  streak"*. The Play listing's streak pill showed something no amount of reading
+  could produce.
+
+Neither was a defect in this round's work; both were unshipped Phase E. What
+made them worth fixing now is that the credits round had just spent nine review
+rounds making the claim's rules exact, and exactness about a mechanism nobody
+can reach is the wrong kind of precise.
+
+### What shipped
+
+- **`expo/src/lib/api.ts` → `recordRead()`.** Clamps the duration into the
+  0–86,400 the endpoint accepts (a clock jump or a screen left open overnight
+  produces numbers outside it), and resolves `null` on any failure. Nothing a
+  reader sees depends on the answer.
+- **`expo/src/lib/use-read-tracking.ts`** measures the dwell and decides when to
+  send it. Wired into `ReaderScreen` with the story and chapter ids.
+
+### The bug the first version shipped, which review caught
+
+It flushed **only** in the effect's cleanup, and that made the headline case
+impossible. **The comment box is inside the reader**: `ChapterSocial` renders at
+the end of the chapter with its own composer, so somebody who reads a chapter
+and says something at the bottom of it never leaves — and the row was written
+*after* the comment. `comment_credit_block_reason` sums only reads with
+`read_at < comment.created_at`, so the sum was 0 and the claim answered
+`not_read`. Ten minutes on a chapter, then "Read the story first": the exact
+experience this branch exists to remove, reproduced by the fix for it.
+
+It did not heal, either. The comment's timestamp is fixed and the 24-hour dedup
+means no later read can produce an earlier row, so that comment was unclaimable
+for good — and a **one-chapter story could never qualify at all**, which is a
+supported shape.
+
+The fix is to post the moment foreground dwell crosses **120 seconds**, without
+waiting for an exit. The number is not arbitrary: `story_reads.duration_seconds`
+has **exactly one consumer in the repository**, the `sum(...) >= 120` in that
+same function. Posting at the threshold records precisely what the gate tests
+for and sets `read_at` two minutes into the read. It does **not** clear 00090's
+separate 60-second rule as an earlier draft of this entry claimed — see *What
+still cannot work* below, where the arithmetic is worked out. The cleanup flush
+stays for chapters that never get that far, which is what feeds `read_count`
+and the streak on a short read.
+
+### The two decisions that shape the number
+
+**Once per chapter, with the largest honest number.** The server deduplicates
+per user and chapter over a 24-hour window: a second call inside it is answered
+`recorded: false` and **the first row keeps its original `duration_seconds`.**
+So a mid-read post of "10 seconds" is not an early estimate, it is the number
+that chapter is stuck with for the day. That is the whole reason the threshold
+is 120 rather than "report as you go": the first number wins, so it has to be
+the one the gate reads.
+
+The dwell accumulates in a ref and is sent at the threshold, when the composer
+takes focus, or when the reader leaves the chapter or the screen — whichever
+comes first. **Backgrounding the app sends nothing**: it banks the elapsed time
+and cancels the timer, so a reader who swipes out of the app switcher after 90
+seconds loses that row and that streak day. Bounded to reads under two minutes,
+and still open.
+
+**Foreground time only.** An `AppState` subscription banks the elapsed time on
+the way to background and restarts the clock on the way back, so a phone in a
+pocket with the reader open contributes nothing. The credit this feeds is meant
+to mean somebody read something.
+
+There is also a **five-second floor**: paging through a story to find your place
+should not write a row per chapter it passes, and under the dedup a one-second
+row makes the 120-second gate *harder* to pass than recording nothing at all.
+
+**And a flush when the composer takes focus**, added after review pointed out
+that the threshold alone misses a real shape: two chapters that each stay under
+120 seconds. Chapter 1 flushes at 70s on the page turn; chapter 2 is still
+mounted and has no row at all, so the sum is 70 over 140 seconds of real
+reading. `ChapterSocial`'s `TextInput` now calls back on focus — the one moment
+on the path to a claim that a clock cannot see — and the row is written before
+the comment exists.
+
+**The earliest a comment can qualify, which is the gates' own arithmetic.** The two server rules are 120 seconds of summed dwell *and* one row
+whose `read_at` is at least 60 seconds older than the comment, where `read_at`
+is `now()` at insert. They read **different rows**, so the answer depends on
+the shape of the read.
+
+On a **one-chapter** story there is only one row and it must satisfy both:
+the earliest honest row carrying 120 seconds lands at t=120, and the 60-second
+rule then puts the first claimable comment at **3:00**. A reader who comments
+between 2:00 and 3:00 is refused permanently, because the comment's timestamp
+never moves and the dedup stops a later read producing an earlier row. Writing
+the row sooner would mean claiming reading that had not happened.
+
+**Across chapters it is 2:01**, and that is the flush's whole point. Chapter 1
+flushes 60 seconds at t=60 on the page turn; the composer takes focus at t=120
+with 60 on chapter 2 and writes the second row. A comment at t=121 sums 120
+across both rows, and chapter 1's row is 61 seconds older than it. The floor is
+the dwell itself, plus a second. An earlier version of this entry said three
+minutes flat, which understated the feature it sits next to.
+
+**The flush's own floor cost a claim before review caught it.** The first
+version posted whatever the dwell was, over the five-second minimum — and that
+floor is for "was this a page turn", not for "can this row satisfy a
+120-second sum". A focus at 100 seconds wrote 100, cancelled the timer, and the
+dedup meant the 120 the gate tests for never arrived; the reader typed for two
+minutes, posted, and was told to read the story first. On a one-chapter story
+that claim **paid** at the previous head. It now posts only when the story's
+already-recorded seconds plus this chapter's dwell clear the threshold, which
+keeps the two-chapter case and drops the one that costs a claim.
+
+**And `posted` was set on the attempt rather than the answer.** `recordRead`
+swallows failures and resolves null, so a dropped request looked exactly like a
+written row — and the timer, the flush and the cleanup all bail out on
+`posted`, so one failure silenced the other two. A token blip at the
+120-second mark meant a reader could read for another twenty minutes and leave
+with no row, no `read_count` and no streak day. It is set from a non-null
+result now, leaving the later paths armed to retry.
+
+**One limitation, recorded rather than fixed.** A short first sitting locks the
+duration low for the rest of the day: read 30 seconds, leave, come back and read
+ten minutes, and the second post is deduped so the sum stays 30. Recording the
+30 is still right — it feeds the streak and `read_count`, and 30 fails the gate
+exactly as 0 does — but raising it would need the server to update the row,
+which `record_story_read` deliberately does not do. Out of scope here.
+
+### Verification
+
+Expo **1672/1672** across 154 suites (the baseline is 1651/153 at the entry
+below, and the one new suite is this branch's first), typecheck clean, lint 0
+errors. Twenty-one new tests, each on a rule that makes the number mean something
+rather than on the happy path: the chapter reported **while the reader is still
+on it**, each counted separately across a page turn, background time excluded,
+a repeated `active` event not discarding the bank, nothing sent under the floor,
+the flush naming the chapter it measured rather than the current one, one
+subscription per chapter, and a failing endpoint never reaching the reader.
+
+Six of the twenty-one came out of review, and they are one defect seen from
+different sides — **the local mirror of the server's total must
+never read high**, because the composer flush keys off it and a flush that
+fires too early writes a short row and cancels the timer:
+
+- a **deduped** read (`recorded: false`, which the server answers with a 200
+  and no update to the stored duration) no longer counts toward it, so paging
+  back one chapter cannot lift it above the server's sum;
+- `clearTimer` moved inside `post`, after a delivered answer, so a flush whose
+  request fails leaves the threshold timer armed — on the one path where the
+  reader never leaves the chapter, that timer is the only retry there is;
+- and an `inFlight` flag, because `posted` is set from the reply, so for the
+  length of a slow request a page turn ran the cleanup into the same chapter.
+  **That flag is gone again** — see below.
+
+Two more came out of the round after, and both are the same invariant again:
+
+- the increment is guarded on the story it was measured for. `post` does not
+  await in the cleanup, and React runs the old effect's cleanup before the new
+  effect's body — so a `storyId` that changes without a remount ran
+  cleanup(A), then B's reset, then A's reply, and B started life holding A's
+  seconds. `ReaderScreen` is rendered with no `key` and its fallback chain can
+  swap the story in place, so it is reachable;
+- and **`inFlight` is gone**. It was added to stop a duplicate and it cost the
+  read instead. The cleanup was exempted first, then the flush, and at that
+  point the flag guarded nothing — every caller already checks `posted`.
+
+  The argument for keeping the flush behind it was that the timer is still
+  armed. **It is not.** `armTimer` sets `timer = null` from inside its own
+  callback before calling `post`, so when the request on the wire is the
+  threshold post there is nothing behind the guard: timer fires at 120, the
+  request is slow, the reader taps the comment box at 125 and is refused, the
+  request fails at 140, and nothing is left to fire. On a one-chapter story
+  where the reader never leaves — this hook's whole premise — the comment at
+  300 sums zero and is refused for good.
+
+  A duplicate costs one request, because the server serialises them:
+  `record_story_read` takes `pg_advisory_xact_lock(user, chapter)` before it
+  looks for a row (`00052:62-68`), transaction-scoped, so two concurrent posts
+  cannot both write; the loser is answered `recorded: false` and the mirror
+  counts only written rows. `touch_streak` takes its own lock and returns early
+  once `last_activity_date` is today (`00069`), and `activity_days` inserts
+  `on conflict do nothing`. Nothing double-advances.
+
+The mirror also rounds the way the request does, so it counts what the server
+stored rather than what was measured.
+
+Each was verified by reverting it: exactly one test fails per fix.
+
+**No deploy.** Nothing under `backend/supabase/` changes — no function, no
+migration, no `_shared/` importer closure. This entry is the only file under
+`backend/` the branch touches.
+
+### What this unblocks, and one thing to watch
+
+The block at the head of *Feedback credits — the claimed comment* in
+`source-of-truth/CREDITS_AND_PRICING.md` says to delete it when `record-read`
+ships from the client. That is this change — **but delete it only once this has
+been in a build readers actually have**, not on merge: no OTA channel is
+configured, so merging changes nothing for anyone until the next build.
+`SecondaryActions`' fallback copy is in the same position and names only the
+invite for the same reason.
+
+Watch the house `streaks` row seeded for the Play screenshots (`#158`): once
+`touch_streak` starts firing on reads it will operate on a hand-written row with
+`next_credit_at` already at 3, so that account may claim a rung it never earned.
+`backend/scripts/seed-screenshot-fixtures.ts --teardown` clears it.
+
+### OPEN, AND THIS IS THE COMMIT THAT OPENS IT: six seconds a day buys a streak day
+
+`source-of-truth/CREDITS_AND_PRICING.md:1420` says a streak day is **"one
+chapter finished, or ≥60s of dwell", server-recorded**, and `AGENTS.md:1296`
+repeats the sixty. What ships is **five seconds, measured on the client**:
+
+- `use-read-tracking.ts`'s `MIN_SECONDS` is 5, and the cleanup posts any dwell
+  at or above it;
+- `_shared/engagement.ts:270` calls `touchStreak` on every non-throwing RPC,
+  including the `recorded: false` a deduped read gets;
+- `touch_streak(p_user_id uuid)` (`00089:85`) takes no duration and no story,
+  so it *cannot* apply a 60-second rule — nothing passes it one.
+
+**And the way in is the creation flow, not a deliberate short visit.**
+`useReadTracking(story.id, chapter.id)` is mounted unconditionally in the
+reader, which is where every writer lands while their story is being written to
+them, for minutes at a time. So the reachable version is not "open a story for
+six seconds": it is **generate a story on twenty-one consecutive days and the
+ladder pays**, with no reading and nothing that looks like gaming. That is the
+difference between a hardening task and the product's main flow paying an earn
+mechanic.
+
+Open a story, six seconds, leave. Twenty-one consecutive days of that pays the
+whole ladder: **2 + 4 + 6 + 8 + 10 = 30 credits**, which the pricing doc prices
+at $1.29 blended and $5.34 if all thirty start stories. **And an author's own
+story counts**: `record_story_read` computes `v_counts_for_earnings := not
+v_is_own_story` (`00052:136`) and gates only the `read_count` increment on it,
+while `touch_streak` sits outside that function and never sees the flag.
+
+None of those lines are new and none of them are this branch's. **What is new
+is that the path was dead — `story_reads` had zero rows — and this branch is
+what turns it on.** Six rounds of review recorded it as a note about a
+mechanism nobody could reach; at this merge it is a live faucet, so it is
+written here with the number in it rather than left as a note.
+
+The fix is server-side and therefore not in a client-only branch
+(`AGENTS.md:33`: credit logic stays in the backend), and the two halves cost
+very differently:
+
+- **The own-story half needs no migration.** `row.counts_for_earnings` is
+  already in scope at `_shared/engagement.ts`, two lines above where it is
+  handed to the client; gating the `touchStreak` call on it is one condition.
+  Not free: eight functions import that file (`publish-story`, `library`,
+  `follow-story`, `follow-user`, `like`, `record-read`, `feed`, `bookmark`), so
+  it is an eight-function redeploy under this page's own deploy rule.
+- **The 60-second half needs the server's stored number**, because the client's
+  is not trusted for this: `record_story_read` returns `duration_seconds` and
+  `handleRecordRead` gates on it, or `touch_streak` takes a duration and a story
+  id and applies both rules itself.
+
+Carried as a row in `backend/ROADMAP.md`'s **P0** table — in the list a founder
+works top to bottom, not as its own heading, which is more visible today and
+less visible in three weeks. P0 and not P1 because neither half can follow the
+build: one is an eight-function redeploy and the other is a migration, while P1
+is for what an OTA or a console toggle can deliver, and the ladder starts paying
+with the first build that carries this branch. The canonical rule is annotated too: a reader
+checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
+`AGENTS.md`, not a chronological log, and both now say what is enforced.
 ## 2026-09-28 UTC — The five-a-month cap is live, and the rotor reaches the prices
 
 **Session:** the deploy of #156, the two items its last review raised after it

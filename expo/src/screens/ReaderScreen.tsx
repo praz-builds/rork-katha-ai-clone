@@ -54,6 +54,7 @@ import {
   getMusicMuted,
   setMusicMuted,
 } from "@/lib/music-storage";
+import { useReadTracking } from "@/lib/use-read-tracking";
 import { normalizeText, pageIndexForOffset, paginateChapter, sentenceAnchorForOffset } from "@/lib/paginate";
 import { splitWords } from "@/lib/sentence";
 import {
@@ -835,6 +836,25 @@ export default function ReaderScreen({
   useEffect(() => {
     onChapterChange?.(chapter, chapterIndex);
   }, [chapter, chapterIndex, onChapterChange]);
+
+  /**
+   * How long this chapter was actually in front of the reader. This screen is
+   * the only place that knows.
+   *
+   * It is what fills `story_reads`, which was empty in production because
+   * nothing had ever called `record-read` -- so the feedback credit answered
+   * `not_read` to every claim and the streak ladder could only be advanced by
+   * publishing.
+   *
+   * It reports at the 120-second mark, when the composer takes focus, and on
+   * the way out, in that order of preference. It cannot wait for the exit:
+   * **the comment box is inside this screen**, so a reader who comments at the
+   * end of a chapter never leaves, and the gate counts only reads recorded
+   * before the comment. See `lib/use-read-tracking.ts` -- and note the server
+   * deduplicates over 24 hours, so the first number a chapter gets is the one
+   * it keeps.
+   */
+  const { flushNow: flushRead } = useReadTracking(story.id, chapter.id);
 
   /**
    * The reader follows the chapter being written to it.
@@ -1699,6 +1719,11 @@ export default function ReaderScreen({
                             : undefined
                         }
                         requireSignIn={requireSignIn}
+                        // Write the read row before the comment exists. The
+                        // gate counts only reads recorded BEFORE the comment's
+                        // timestamp, and this composer is inline at the end of
+                        // the chapter, so nobody leaves the screen to use it.
+                        onComposerFocus={flushRead}
                       />
                       </View>
                     ) : null}

@@ -40,6 +40,13 @@ export type ChapterSocialProps = {
   onAuthor?: (authorId: string) => void;
   /** True when the tap was swallowed by the sign-in prompt. */
   requireSignIn: () => boolean;
+  /**
+   * The reader reached for the keyboard. `ReaderScreen` uses it to write the
+   * read row before the comment exists: the credit gate only counts reads
+   * recorded BEFORE `created_at`, and this composer is inline at the end of
+   * the chapter, so nobody leaves the screen to use it.
+   */
+  onComposerFocus?: () => void;
 };
 
 const POST_FAILED = "Your comment was not posted. Check your connection and try again.";
@@ -68,6 +75,7 @@ export default function ChapterSocial({
   theme,
   onAuthor,
   requireSignIn,
+  onComposerFocus,
 }: ChapterSocialProps) {
   const social = theme.social;
   const [comments, setComments] = useState<Row[]>([]);
@@ -257,6 +265,7 @@ export default function ChapterSocial({
             multiline
             maxLength={500}
             accessibilityLabel="Add a comment"
+            onFocus={onComposerFocus}
           />
           <Pressable
             onPress={handleSubmitComment}
