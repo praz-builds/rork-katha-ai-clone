@@ -433,6 +433,14 @@ node, so a node-based guard passes and a fallback keyed on it never runs; and
 the `accessibilityLabel` carries the counts, because an explicit label on a
 `Pressable` replaces its children rather than prefixing them.
 
+**`AGENTS.md`'s drift paragraph is #161's, not this branch's.** Both rounds
+rewrote the same lines to the same policy conclusion -- run the audit, do not
+write exceptions in advance -- from two readings of one event. This entry is the
+record with the timestamps (`ed4d4a1` merged 20:29 UTC, deployed and audited
+20:31, and the first deploy attempt shipped the pre-merge copy from a worktree
+that had branched before `#157`), and the paragraph is theirs, so one PR owns
+the text and neither of us resolves it as a merge conflict.
+
 `AGENTS.md`'s production-state paragraph was also clarified: it names
 `00100_reader_preferences` as a migration that must never be applied, and the
 number has since been reused, so the repo described two different `00100`s. It
@@ -464,6 +472,12 @@ now says which one is in the tree.
   and keep the monthly assertions for the other thirty. Verified both branches
   by forcing the flag. `00089`'s test inherited the same pattern and is fixed
   with it.
+- **And one unconditional test, because the boundary guard opened a gap.** The
+  three tests that need five prior claims all return early on the 1st, so a
+  `00100` that wrote `>= 7` would have passed the whole file that day. *A fresh
+  account is offered five claims this month* needs no back-dating and no prior
+  claim -- `greatest(5 - 0, 0)` holds on any date -- so it is the one assertion
+  that pins the digit every day of the year. Negative-controlled at 7.
 - `credit-claims` function tests 7/7. Expo **1671/1671** across 155 suites,
   typecheck clean, lint 0 errors.
 

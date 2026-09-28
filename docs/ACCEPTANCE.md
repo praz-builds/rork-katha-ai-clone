@@ -44,7 +44,7 @@ Fixes to what failed the last walk. **Merged, not deployed**: an Expo client cha
 
 ## R5. You
 
-- [ ] "How credits work" reads **Prices and free credits** underneath.
+- [x] "How credits work" reads **Prices and free credits** underneath. *(Superseded 2026-09-27: the subtitle is now **What each thing costs**, and the row opens its own prices screen instead of Get credits. Checked against the copy of the day; see the round below.)*
 
 ## R6. Story page summary -- not changed, and why
 

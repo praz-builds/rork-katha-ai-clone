@@ -50,25 +50,25 @@ to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
 
-**Re-verified 2026-09-27 20:31 UTC against `ed4d4a1`**, after `#157` merged and
-its `seed-voice-previews` docblock shipped: `scripts/audit-function-drift.sh`
-reports **346 of 346 files identical, zero drift.** The claim is dated to that
-commit deliberately — it is a measurement, not a standing property.
+**One known exception, from the moment this branch merges.** The voice-preview
+round changed `seed-voice-previews/index.ts` -- a docblock only, but a comment
+is part of the module source, so the deployed bundle and main diverge until it
+ships. **`scripts/audit-function-drift.sh` will report drift on that one
+function, and it is a true positive.** Deploy `seed-voice-previews` and the
+surface is clean again; nothing under `_shared/` was touched, so there is no
+importer closure. Do not read that one row as a false alarm and wave the audit
+through -- "16 functions behind main" is on this page because somebody did.
 
-**Do not write an exception here in advance of a deploy.** It was tried twice
-in one day, for the `seed-voice-previews` docblock and then for this branch's
-`credit-claims` one, and both times the paragraph outlived the condition it
-described: it sat under a zero-drift baseline telling the next operator that a
-drift row on a named function was expected and legitimate. That is a documented
-reason to wave through a *real* drift row, which is the "16 functions behind
-main" failure this page already records.
+**Whoever deploys it deletes this paragraph.** It is only true between that
+merge and that deploy, and left standing afterwards it is a false exception
+sitting directly under a zero-drift baseline, on the page whose whole job is to
+be what an operator can trust about production. The person running the deploy is
+the only one who knows it has stopped being true.
 
-**Run the audit instead.** `scripts/audit-function-drift.sh` answers the
-question for the tree you are actually on, in about a minute, and it exits
-non-zero. A merge that changes anything under `backend/supabase/functions/` —
-**including a comment, which is module source** — needs a deploy before that
-script is green again, and the script is what says so rather than a note
-predicting it.
+Two roadmap rows were stale and are corrected: migrations `00097` and `00098`
+were recorded as needing `supabase db push` and are in fact applied, and
+block-author's `library` and `profile` were recorded as needing deployment and
+are in fact live and byte-identical.
 
 **The 2026-09-25 baseline audit was current with main, file for file.** Verified after the 2026-09-25
 09:18 UTC deploy rather than assumed: migration `00099_feature_votes` applied
@@ -82,13 +82,7 @@ zero drift.** The only repo file in no bundle is `_shared/prompts.ts`, which has
 
 **Reader preferences were removed before deployment (2026-09-26).** Migration
 `00100_reader_preferences`, its profile actions, and its generation prompt
-path must not be applied or deployed; no account data was created. **It was
-deleted from the repository, never applied anywhere, and the number was
-subsequently reused**: the only `00100` in `backend/supabase/migrations/` is
-`00100_feedback_monthly_cap_five` (2026-09-27), which is unrelated and *is*
-meant to be applied. A deploy operator who reads this paragraph and then finds
-a `00100` in the tree is looking at the feedback cap, not at reader
-preferences.
+path must not be applied or deployed; no account data was created.
 
 **Country Story world has no migration.** Its checked-in contract changed six
 non-test shared files — `_shared/types.ts`, `_shared/story-prompts.ts`,

@@ -200,6 +200,30 @@ Deno.test("five claims a month are paid and the sixth is refused", async () => {
   }
 });
 
+/**
+ * THE ONE ASSERTION THAT PINS THE DIGIT, and it runs on every day of the year.
+ *
+ * The three tests that need five prior claims all return early on the 1st,
+ * because `[month_start, day_start)` is empty and the claims cannot be placed
+ * off today. That left a gap: on the 1st, a `00100` that wrote `>= 7` and
+ * `greatest(7 - v_month, 0)` passed the whole file -- three early returns and
+ * the read-gate test, which never touches the monthly count. Twelve days a
+ * year, on the suite whose whole job is this number.
+ *
+ * A fresh account needs no back-dating and no prior claim: the function returns
+ * `greatest(5 - 0, 0)` whatever the date. So this is unconditional, and it is
+ * the test that fails if the cap is ever changed without meaning to.
+ */
+Deno.test("a fresh account is offered five claims this month", async () => {
+  const db = await createDatabase();
+  try {
+    await seedReadAndCommented(db, 1);
+    assertEquals(await remaining(db), { today: 1, month: 5 });
+  } finally {
+    await db.close();
+  }
+});
+
 Deno.test("the listed remaining count counts down from five", async () => {
   const db = await createDatabase();
   try {
