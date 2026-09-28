@@ -110,6 +110,24 @@ Writing the row sooner would mean claiming reading that had not happened. The
 docblock said this cleared "long before a 40-character comment can be typed",
 which was wrong by one gate; it now states the arithmetic.
 
+**The flush's own floor cost a claim before review caught it.** The first
+version posted whatever the dwell was, over the five-second minimum — and that
+floor is for "was this a page turn", not for "can this row satisfy a
+120-second sum". A focus at 100 seconds wrote 100, cancelled the timer, and the
+dedup meant the 120 the gate tests for never arrived; the reader typed for two
+minutes, posted, and was told to read the story first. On a one-chapter story
+that claim **paid** at the previous head. It now posts only when the story's
+already-recorded seconds plus this chapter's dwell clear the threshold, which
+keeps the two-chapter case and drops the one that costs a claim.
+
+**And `posted` was set on the attempt rather than the answer.** `recordRead`
+swallows failures and resolves null, so a dropped request looked exactly like a
+written row — and the timer, the flush and the cleanup all bail out on
+`posted`, so one failure silenced the other two. A token blip at the
+120-second mark meant a reader could read for another twenty minutes and leave
+with no row, no `read_count` and no streak day. It is set from a non-null
+result now, leaving the later paths armed to retry.
+
 **One limitation, recorded rather than fixed.** A short first sitting locks the
 duration low for the rest of the day: read 30 seconds, leave, come back and read
 ten minutes, and the second post is deduped so the sum stays 30. Recording the
@@ -119,7 +137,7 @@ which `record_story_read` deliberately does not do. Out of scope here.
 
 ### Verification
 
-Expo **1666/1666** across 154 suites, typecheck clean, lint 0 errors. Fifteen new
+Expo **1667/1667** across 154 suites, typecheck clean, lint 0 errors. Sixteen new
 tests, each on a rule that makes the number mean something rather than on the
 happy path: the whole chapter reported once at the end, each chapter counted
 separately across a page turn, background time excluded, a repeated `active`

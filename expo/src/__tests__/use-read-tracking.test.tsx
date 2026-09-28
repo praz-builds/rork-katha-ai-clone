@@ -324,14 +324,19 @@ it("writes the current chapter's read when the composer takes focus", async () =
 
 it("does not write a second row when the composer is focused twice", async () => {
   // The server would dedup it anyway; asking twice is just a wasted request.
+  // Two chapters of 70, so the flush has a story total that clears the gate.
   const h = harness();
-  await render(<h.Probe storyId="s1" chapterId="c1" />);
-
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
   await h.advance(70);
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s1" chapterId="c2" />);
+  });
+  await h.advance(70);
+
   await act(async () => h.composerFocus());
   await act(async () => h.composerFocus());
 
-  expect(h.posted).toHaveLength(1);
+  expect(h.posted).toHaveLength(2);
 });
 
 it("writes nothing when the composer is focused on a chapter barely opened", async () => {
@@ -346,15 +351,60 @@ it("writes nothing when the composer is focused on a chapter barely opened", asy
   expect(h.posted).toEqual([]);
 });
 
-it("leaves the threshold post alone when the composer was focused first", async () => {
+// THE REGRESSION THIS TEST USED TO PIN, now pointing the other way.
+//
+// It asserted that a focus at 70 seconds wrote 70 and cancelled the timer.
+// That is a claim destroyed: the dedup means 70 is the number that chapter
+// keeps for the day, the 120 the gate tests for never arrives, and a reader who
+// then types for two minutes and posts is told to read the story first -- on a
+// one-chapter story, which is a supported shape, and it PAID before the flush
+// was added. `MIN_SECONDS` is a floor for "was this a page turn", not for
+// "can this row satisfy a 120-second sum".
+it("leaves the timer to it when focusing early would lock the chapter short", async () => {
   const h = harness();
   await render(<h.Probe storyId="s1" chapterId="c1" />);
 
-  await h.advance(70);
+  await h.advance(100);
   await act(async () => h.composerFocus());
-  // The timer is cancelled by the flush, so crossing 120 adds nothing.
-  await h.advance(300);
+  expect(h.posted).toEqual([]); // nothing written: 100 would not clear the gate
 
-  expect(h.posted).toHaveLength(1);
-  expect(h.posted[0].durationSeconds).toBe(70);
+  // The timer is still armed, so the row that does clear it still arrives.
+  await h.advance(20);
+  expect(h.posted).toEqual([
+    { storyId: "s1", chapterId: "c1", durationSeconds: POST_AT_SECONDS },
+  ]);
+});
+
+it("keeps every path armed when a post fails", async () => {
+  // `recordRead` swallows failures and resolves null, so an attempt used to be
+  // indistinguishable from a written row -- and the timer, the flush and the
+  // cleanup all bail on `posted`. One dropped request at the 120-second mark
+  // meant the reader could read for another twenty minutes and leave with no
+  // row, no read_count and no streak day.
+  const attempts: number[] = [];
+  let failing = true;
+  const Probe = () => {
+    useReadTracking("s1", "c1", {
+      now: () => Date.now(),
+      recordRead: async (input) => {
+        attempts.push(input.durationSeconds);
+        return failing ? null : { recorded: true, counted: true };
+      },
+    });
+    return null;
+  };
+
+  const view = await render(<Probe />);
+  await act(async () => {
+    jest.advanceTimersByTime(POST_AT_SECONDS * 1000);
+  });
+  expect(attempts).toEqual([POST_AT_SECONDS]);
+
+  // The threshold post failed, so the cleanup tries again rather than assuming
+  // the row is there.
+  failing = false;
+  await act(async () => {
+    view.unmount();
+  });
+  expect(attempts).toHaveLength(2);
 });

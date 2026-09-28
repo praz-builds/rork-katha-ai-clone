@@ -121,6 +121,16 @@ export function useReadTracking(
   // Set by the effect below to its own post; stable identity for callers.
   const flushRef = useRef<() => void>(() => {});
   const flushNow = useCallback(() => flushRef.current(), []);
+  /**
+   * Seconds this story already has on the server, across the chapters read in
+   * this visit. At hook scope on purpose: the effect is torn down and rebuilt
+   * on every page turn, and the gate sums a STORY's rows, so the composer
+   * flush has to know what the earlier chapters already contributed.
+   */
+  const recordedForStory = useRef({ storyId: "", seconds: 0 });
+  if (recordedForStory.current.storyId !== storyId) {
+    recordedForStory.current = { storyId, seconds: 0 };
+  }
 
   useEffect(() => {
     if (!storyId) return;
@@ -134,15 +144,27 @@ export function useReadTracking(
     const dwellMs = () =>
       bankedMs + (startedAt === null ? 0 : Math.max(0, clock.current() - startedAt));
 
-    const post = (seconds: number) => {
-      posted = true;
-      // Not awaited: this runs from a timer or a cleanup, and there is nothing
-      // waiting on the answer.
-      void send.current({
+    /**
+     * Report `seconds`, and only call this chapter done if the server says so.
+     *
+     * `posted` used to be set on the ATTEMPT. `recordRead` swallows every
+     * failure and resolves null, so a dropped request looked exactly like a
+     * written row -- and because the timer, the composer flush and the cleanup
+     * all bail out on `posted`, one failed call silenced the other two. A
+     * token blip at the 120-second mark meant the reader could read for another
+     * twenty minutes and leave with no row, no `read_count` and no streak day.
+     *
+     * Setting it from a non-null result leaves the later paths armed to retry.
+     */
+    const post = async (seconds: number) => {
+      const result = await send.current({
         storyId: target.storyId,
         chapterId: target.chapterId,
         durationSeconds: seconds,
       });
+      if (result === null) return;
+      posted = true;
+      recordedForStory.current.seconds += seconds;
     };
 
     const clearTimer = () => {
@@ -160,7 +182,7 @@ export function useReadTracking(
         if (posted) return;
         // Exactly the threshold, not the measured dwell: the timer may fire a
         // few milliseconds late and the number's only reader is a `>= 120`.
-        post(POST_AT_SECONDS);
+        void post(POST_AT_SECONDS);
       }, Math.max(0, remaining));
     };
 
@@ -183,15 +205,30 @@ export function useReadTracking(
       clearTimer();
     };
 
-    // What `flushNow` does: report whatever has been measured so far, once.
-    // Below the minimum there is nothing worth a row, and after the threshold
-    // post there is nothing left to say.
+    /**
+     * What `flushNow` does: write this chapter's row now, but ONLY if doing so
+     * actually gets the story over the gate.
+     *
+     * The first version posted whatever the dwell was, over `MIN_SECONDS`. That
+     * is a floor for "was this a page turn", not for "can this row satisfy a
+     * 120-second sum", and using it here cost claims that had been paying: a
+     * focus at 100 seconds wrote 100, cancelled the timer, and the dedup meant
+     * the 120 the gate tests for was never coming. The reader then typed for
+     * two minutes, posted, and was told to read the story first.
+     *
+     * So it posts when the story's recorded seconds plus this chapter's dwell
+     * clear the threshold -- which is exactly the case this was added for, two
+     * chapters of 70 -- and otherwise leaves the timer to do its job, because
+     * a threshold post twenty seconds away is strictly better than a short row
+     * that locks the chapter for the day.
+     */
     flushRef.current = () => {
       if (posted) return;
       const seconds = dwellMs() / 1000;
       if (seconds < MIN_SECONDS) return;
+      if (recordedForStory.current.seconds + seconds < POST_AT_SECONDS) return;
       clearTimer();
-      post(seconds);
+      void post(seconds);
     };
 
     const subscription = AppState.addEventListener("change", onAppState);
@@ -207,7 +244,7 @@ export function useReadTracking(
       // would tell the server nothing it does not have.
       if (posted) return;
       if (seconds < MIN_SECONDS) return;
-      post(seconds);
+      void post(seconds);
     };
     // `chapterId` in the deps is what makes turning a page a separate read:
     // the cleanup flushes the chapter being left before the next one starts.
