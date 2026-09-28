@@ -88,7 +88,10 @@ export default function SecondaryActions({
  * It also keeps the line to one row at 390pt, where the button's text column
  * is about 119pt and thirty-nine characters wrapped to three.
  *
- * **Restore the other two the moment `record-read` ships from the client** --
+ * **Restore the other two with the first BUILD that carries `record-read` from
+ * the client — not with the merge, which has happened and reaches nobody: there
+ * is no OTA channel and `app.json` still carries the literal
+ * `UPDATE_PROJECT_ID`** --
  * that is the single change that makes both live, and the doc block says so.
  */
 const NO_NUMBER = "Invite a friend to earn credits";

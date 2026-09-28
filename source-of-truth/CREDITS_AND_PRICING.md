@@ -1617,15 +1617,22 @@ and it is left as designed.
 
 ### Feedback credits — the claimed comment
 
-> **THE FAUCET IS CLOSED TODAY, AND THIS SECTION DESCRIBES THE SCHEMA RATHER
-> THAN THE PRODUCT UNTIL IT OPENS.** *(Recorded 2026-09-27.)* Every claim
-> returns `not_read`, for every reader, because `story_reads` is empty and
-> nothing fills it: rows come only from `record_story_read`, whose only caller
-> is the `record-read` edge function, and **no client calls that endpoint** —
-> `grep` over `expo/` finds one comment and no call site, and the production
-> table had **0 rows** when this was checked. A reader can read a story for ten
-> minutes, leave a 300-character comment, tap Claim, and be told "Read the
-> story first."
+> **THE FAUCET IS CLOSED IN EVERY INSTALLED BUILD, AND THIS SECTION DESCRIBES
+> THE SCHEMA RATHER THAN THE PRODUCT UNTIL ONE SHIPS.** *(Recorded 2026-09-27;
+> the client half merged 2026-09-28.)* Every claim returns `not_read`, for
+> every reader, because `story_reads` is empty and nothing filled it: rows come
+> only from `record_story_read`, whose only caller is the `record-read` edge
+> function, and **no client called that endpoint** — `grep` over `expo/` found
+> one comment and no call site, and the production table had **0 rows** when
+> this was checked. A reader could read a story for ten minutes, leave a
+> 300-character comment, tap Claim, and be told "Read the story first."
+>
+> **The client half is now merged** (`ReaderScreen` mounts `useReadTracking`,
+> which calls `recordRead`), so that grep returns a call site. It changes
+> nothing for anybody yet: there is no OTA channel and `expo/app.json` still
+> carries the literal `UPDATE_PROJECT_ID`, so no installed app calls it. The
+> faucet opens with the **first build** that carries it, not with the merge,
+> and everything below stays a projection until then.
 >
 > This is phased work, not an oversight: `record-read`'s client half is
 > unchecked under Phase E in `backend/ROADMAP.md`. But it changes how the rest
@@ -1635,16 +1642,21 @@ and it is left as designed.
 > a month is a ceiling on a closed faucet, not a tightening of an open one.
 >
 > **The same root cause reaches one row further than it looks.** `touch_streak`
-> writes and pays a streak rung, and it has exactly two callers: `publish-story`
-> and the same dead `record-read`. So **a streak advances only when you publish
-> a story** — a reader who opens one every day for three weeks never reaches
-> day 2, while the earn table calls the mechanic "Keep a reading streak". What
-> *is* reachable today: the welcome bonus, the invite, the guest bootstrap (§9,
-> and reachable enough that a day of local testing exhausts its per-network
-> window), and the streak ladder **for writers only**.
+> writes and pays a streak rung, and it had exactly two callers: `publish-story`
+> and the then-dead `record-read`. So in every installed build **a streak
+> advances only when you publish a story** — a reader who opens one every day
+> for three weeks never reaches day 2, while the earn table calls the mechanic
+> "Keep a reading streak". What *is* reachable in those builds: the welcome
+> bonus, the invite, the guest bootstrap (§9, and reachable enough that a day of
+> local testing exhausts its per-network window), and the streak ladder **for
+> writers only**. With the first build carrying the client half, reading
+> advances it too — on a five-second threshold rather than the sixty this
+> document specifies; see the note under *Streak* above.
 >
-> **Delete this block when `record-read` ships from the client.** The rules
-> below are exact and enforced; they simply have nothing to enforce against.
+> **Delete this block when a build carrying the client half is in readers'
+> hands**, not when it merges — the merge is done and changes nothing for
+> anyone. The rules below are exact and enforced; they simply have nothing to
+> enforce against until then.
 
 
 **Decided 2026-09-16, by the product owner, and it reverses a removal recorded

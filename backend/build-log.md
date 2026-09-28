@@ -232,7 +232,7 @@ Watch the house `streaks` row seeded for the Play screenshots (`#158`): once
 ### OPEN, AND THIS IS THE COMMIT THAT OPENS IT: six seconds a day buys a streak day
 
 `source-of-truth/CREDITS_AND_PRICING.md:1420` says a streak day is **"one
-chapter finished, or ≥60s of dwell", server-recorded**, and `AGENTS.md:1289`
+chapter finished, or ≥60s of dwell", server-recorded**, and `AGENTS.md:1296`
 repeats the sixty. What ships is **five seconds, measured on the client**:
 
 - `use-read-tracking.ts`'s `MIN_SECONDS` is 5, and the cleanup posts any dwell
@@ -279,9 +279,12 @@ very differently:
   `handleRecordRead` gates on it, or `touch_streak` takes a duration and a story
   id and applies both rules itself.
 
-Carried as a row in `backend/ROADMAP.md`'s post-push checklist — in the table a
-founder works top to bottom, not as its own heading, which is more visible today
-and less visible in three weeks. The canonical rule is annotated too: a reader
+Carried as a row in `backend/ROADMAP.md`'s **P0** table — in the list a founder
+works top to bottom, not as its own heading, which is more visible today and
+less visible in three weeks. P0 and not P1 because neither half can follow the
+build: one is an eight-function redeploy and the other is a migration, while P1
+is for what an OTA or a console toggle can deliver, and the ladder starts paying
+with the first build that carries this branch. The canonical rule is annotated too: a reader
 checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
 `AGENTS.md`, not a chronological log, and both now say what is enforced.
 
