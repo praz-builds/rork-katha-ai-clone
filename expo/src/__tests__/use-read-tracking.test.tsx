@@ -9,8 +9,14 @@
  * denies somebody a credit they earned; over-reporting pays for reading nobody
  * did.
  *
- * So: one post per chapter, at the end, counting foreground time only, and
- * nothing at all for a chapter that was paged past.
+ * So: one row per chapter, carrying the largest honest number, counting
+ * foreground time only, and nothing at all for a chapter that was paged past.
+ *
+ * NOT "at the end". The comment box is inside the reader, so a reader who
+ * comments at the bottom of a chapter never leaves it and a row written on the
+ * way out lands after the comment the gate is comparing it to. It posts at 120
+ * seconds, or when the composer takes focus and that would clear the gate, and
+ * only falls back to the exit for a chapter that never got there.
  */
 import React from "react";
 import { AppState } from "react-native";
@@ -585,33 +591,47 @@ it("still writes the read when a slow threshold post fails and the reader leaves
   expect(h.posted[1].storyId).toBe("s1");
 });
 
-it("does not post the same chapter twice while the first call is in flight", async () => {
-  // `posted` is set from the reply, so for the length of the request every
-  // caller still reads false. A threshold post over a slow connection and a
-  // composer focus a second later asked for the same chapter twice.
+it("writes the composer's read even while the threshold post is still out", async () => {
+  // THE CASE AN IN-FLIGHT GUARD USED TO COST, on a one-chapter story where the
+  // reader never leaves -- which is this hook's whole premise.
   //
-  // The CLEANUP is deliberately exempt from this -- see the test above -- so
-  // this is about the paths that have something after them. The flush does:
-  // the timer that is still armed is strictly better than a second request
-  // nobody is waiting on.
-  let release: (() => void) | null = null;
+  // The guard was argued for on the grounds that the timer is still armed. It
+  // is not: `armTimer` sets `timer = null` from inside its own callback before
+  // calling `post`, so when the request on the wire IS the threshold post,
+  // there is nothing behind the guard. The sequence was: timer fires at 120,
+  // request is slow, reader taps the comment box at 125 and is refused, the
+  // request fails at 140, and nothing is left to fire. Comment at 300, sum 0,
+  // "read the story first" -- permanently, because the comment's timestamp
+  // never moves.
+  //
+  // A duplicate costs one request; the server serialises on
+  // `pg_advisory_xact_lock(user, chapter)` before it looks for a row.
+  let fail: ((value: Reply) => void) | null = null;
   const h = harness(
-    () =>
-      new Promise<Reply>((resolve) => {
-        release = () => resolve({ recorded: true, counted: true });
-      }),
+    (n) =>
+      n === 0
+        ? new Promise<Reply>((resolve) => {
+            fail = resolve;
+          })
+        : { recorded: true, counted: true },
   );
   await render(<h.Probe storyId="s1" chapterId="c1" />);
 
   await h.advance(POST_AT_SECONDS); // fires, and does not answer
   expect(h.posted).toHaveLength(1);
 
-  await h.advance(1);
+  await h.advance(5);
   await act(async () => h.composerFocus());
-  expect(h.posted).toHaveLength(1);
+  // The row that makes the claim payable, written while the first is still out.
+  expect(h.posted).toHaveLength(2);
+  expect(h.posted[1]).toEqual({
+    storyId: "s1",
+    chapterId: "c1",
+    durationSeconds: POST_AT_SECONDS + 5,
+  });
 
   await act(async () => {
-    release?.();
+    fail?.(null);
   });
-  expect(h.posted).toHaveLength(1);
+  expect(h.posted).toHaveLength(2);
 });

@@ -155,14 +155,14 @@ which `record_story_read` deliberately does not do. Out of scope here.
 Expo **1672/1672** across 154 suites (the baseline is 1651/153 at the entry
 below, and the one new suite is this branch's first), typecheck clean, lint 0
 errors. Twenty-one new tests, each on a rule that makes the number mean something
-rather than on the happy path: the whole chapter reported once at the end, each
-chapter counted separately across a page turn, background time excluded, a
-repeated `active` event not discarding the bank, nothing sent under the floor,
+rather than on the happy path: the chapter reported **while the reader is still
+on it**, each counted separately across a page turn, background time excluded,
+a repeated `active` event not discarding the bank, nothing sent under the floor,
 the flush naming the chapter it measured rather than the current one, one
 subscription per chapter, and a failing endpoint never reaching the reader.
 
-Three of the nineteen came out of review, and all three are the same defect
-seen from different sides — **the local mirror of the server's total must
+Six of the twenty-one came out of review, and they are one defect seen from
+different sides — **the local mirror of the server's total must
 never read high**, because the composer flush keys off it and a flush that
 fires too early writes a short row and cancels the timer:
 
@@ -172,8 +172,9 @@ fires too early writes a short row and cancels the timer:
 - `clearTimer` moved inside `post`, after a delivered answer, so a flush whose
   request fails leaves the threshold timer armed — on the one path where the
   reader never leaves the chapter, that timer is the only retry there is;
-- an `inFlight` flag, because `posted` is set from the reply, so for the length
-  of a slow request a page turn ran the cleanup into the same chapter.
+- and an `inFlight` flag, because `posted` is set from the reply, so for the
+  length of a slow request a page turn ran the cleanup into the same chapter.
+  **That flag is gone again** — see below.
 
 Two more came out of the round after, and both are the same invariant again:
 
@@ -183,21 +184,35 @@ Two more came out of the round after, and both are the same invariant again:
   cleanup(A), then B's reset, then A's reply, and B started life holding A's
   seconds. `ReaderScreen` is rendered with no `key` and its fallback chain can
   swap the story in place, so it is reachable;
-- and **the cleanup is exempt from `inFlight`**. It is the last thing there
-  is: no timer, no subscription, nothing after it. Skipping it while a slow
-  request was out lost the read outright when that request then failed — the
-  same "nothing was left to fire" this entry describes for the flush, moved to
-  the exit. Letting it through is safe because the server serialises on
-  `pg_advisory_xact_lock(user, chapter)` before it looks for a row (`00052`),
-  so a duplicate cannot write twice; the loser is answered `recorded: false`
-  and adds nothing.
+- and **`inFlight` is gone**. It was added to stop a duplicate and it cost the
+  read instead. The cleanup was exempted first, then the flush, and at that
+  point the flag guarded nothing — every caller already checks `posted`.
+
+  The argument for keeping the flush behind it was that the timer is still
+  armed. **It is not.** `armTimer` sets `timer = null` from inside its own
+  callback before calling `post`, so when the request on the wire is the
+  threshold post there is nothing behind the guard: timer fires at 120, the
+  request is slow, the reader taps the comment box at 125 and is refused, the
+  request fails at 140, and nothing is left to fire. On a one-chapter story
+  where the reader never leaves — this hook's whole premise — the comment at
+  300 sums zero and is refused for good.
+
+  A duplicate costs one request, because the server serialises them:
+  `record_story_read` takes `pg_advisory_xact_lock(user, chapter)` before it
+  looks for a row (`00052:62-68`), transaction-scoped, so two concurrent posts
+  cannot both write; the loser is answered `recorded: false` and the mirror
+  counts only written rows. `touch_streak` takes its own lock and returns early
+  once `last_activity_date` is today (`00069`), and `activity_days` inserts
+  `on conflict do nothing`. Nothing double-advances.
 
 The mirror also rounds the way the request does, so it counts what the server
 stored rather than what was measured.
 
 Each was verified by reverting it: exactly one test fails per fix.
 
-**No deploy.** Nothing under `backend/` changes.
+**No deploy.** Nothing under `backend/supabase/` changes — no function, no
+migration, no `_shared/` importer closure. This entry is the only file under
+`backend/` the branch touches.
 
 ### What this unblocks, and one thing to watch
 

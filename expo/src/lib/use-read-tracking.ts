@@ -139,10 +139,12 @@ export function useReadTracking(
    * It must never read high. Everything the flush does keys off it, and a
    * number above the server's turns the guard from a protection into the
    * short-row-plus-cancelled-timer bug it was added to prevent. So it counts
-   * only what came back `recorded: true`, and it is reset inside the effect
-   * rather than during render -- React runs the new render before the old
-   * effect's cleanup, so zeroing it here would hand story B the seconds story
-   * A's last chapter is about to post.
+   * only what came back `recorded: true`, and the increment checks that the
+   * counter still belongs to the story those seconds were measured on -- that
+   * check in `post` is the guarantee, not where the reset happens. The reset
+   * lives in the effect because that is where the story it belongs to is
+   * established, and a late reply from the previous story is turned away by the
+   * check whichever side of the render it lands on.
    */
   const recordedForStory = useRef({ storyId: "", seconds: 0 });
 
@@ -156,9 +158,6 @@ export function useReadTracking(
     let startedAt: number | null = clock.current();
     let bankedMs = 0;
     let posted = false;
-    // True from the moment a request goes out until it answers. `posted` alone
-    // cannot cover that window: it is set from the reply.
-    let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const dwellMs = () =>
@@ -195,23 +194,32 @@ export function useReadTracking(
      * is still on the chapter -- which is the only path that helps the case
      * this hook exists for.
      */
-    const post = async (seconds: number, { last = false } = {}) => {
+    const post = async (seconds: number) => {
       if (posted) return;
-      // `last` is the cleanup, and it is exempt. Everything else waits, but
-      // the cleanup has nothing after it: no timer, no subscription, no second
-      // chance. Skipping it while a slow request was still out lost the whole
-      // read -- a threshold post at 120 that had not answered when the reader
-      // turned the page at 121, then resolved null, left `posted` false with
-      // nothing left to fire. That is the same "nothing was left to fire"
-      // failure this commit removed from the flush path, relocated.
+      // NO IN-FLIGHT GUARD, and that is a decision rather than an omission.
       //
-      // Letting it through is safe because the SERVER serialises it:
-      // `record_story_read` takes `pg_advisory_xact_lock` on
-      // (user, chapter) before it looks for a row (`00052:64-70`), so two
-      // concurrent posts cannot both write. The loser is answered
-      // `recorded: false`, which adds nothing here.
-      if (inFlight && !last) return;
-      inFlight = true;
+      // There was one. It cost more than it saved, because the thing it was
+      // argued to protect does not exist at the moment it fires: `armTimer`
+      // sets `timer = null` from inside its own callback BEFORE calling here,
+      // so when the in-flight request is the threshold post, there is no timer
+      // behind the guard. A composer focus five seconds later was refused on
+      // the strength of it, the threshold request then failed, and nothing was
+      // left to fire -- on a one-chapter story where the reader never leaves,
+      // which is this hook's whole premise. The claim was refused permanently
+      // over a read that had happened.
+      //
+      // What a duplicate actually costs is one redundant request, because the
+      // SERVER serialises them. `record_story_read` takes
+      // `pg_advisory_xact_lock` on (user, chapter) *before* it looks for a row
+      // (`00052:62-68`), transaction-scoped, so two concurrent posts cannot
+      // both write; the loser is answered `recorded: false`, and the mirror
+      // below counts only written rows. `touch_streak` takes its own lock and
+      // returns early once `last_activity_date` is today (`00069`), and
+      // `activity_days` inserts `on conflict do nothing`, so nothing
+      // double-advances either.
+      //
+      // One wasted call against losing the read. `posted` is still the guard
+      // that matters, and it is set from the reply.
       try {
         // The same rounding the request does (`api.ts`), so the mirror counts
         // what the server stored rather than what was measured. Half a second
@@ -241,8 +249,6 @@ export function useReadTracking(
       } catch {
         // `recordRead` catches its own, but a seam a caller injects may not,
         // and an unhandled rejection is not something a reading screen may do.
-      } finally {
-        inFlight = false;
       }
     };
 
@@ -304,6 +310,11 @@ export function useReadTracking(
      * It does not touch the timer. `post` cancels it once a post has actually
      * landed; cancelling here would mean a flush whose request fails takes the
      * net down with it, on the one path where the reader never leaves.
+     *
+     * And it is not blocked by a request already on the wire. When that
+     * request is the threshold post, the timer behind it has already been
+     * discarded, so refusing here is refusing the last chance there is. See
+     * `post`.
      */
     flushRef.current = () => {
       if (posted) return;
@@ -326,7 +337,7 @@ export function useReadTracking(
       // would tell the server nothing it does not have.
       if (posted) return;
       if (seconds < MIN_SECONDS) return;
-      void post(seconds, { last: true });
+      void post(seconds);
     };
     // `chapterId` in the deps is what makes turning a page a separate read:
     // the cleanup flushes the chapter being left before the next one starts.
