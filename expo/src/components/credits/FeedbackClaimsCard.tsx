@@ -57,12 +57,16 @@ export default function FeedbackClaimsCard({
         <View style={styles.text}>
           <Text style={styles.title}>Leave feedback</Text>
           <Text style={styles.sub}>
-            Comment on a story you have read, at least 40 characters, and claim 1 credit. One per story, one a day, six a month.
+            Comment on a story you have read, at least 40 characters, and claim 1 credit. One per story, one a day, five a month.
           </Text>
         </View>
       </View>
 
-      {claims
+      {/* Only when the server actually counted. A degraded response carries a
+          valid claims list and no `remaining`, and a line reading "0 left
+          today · 0 left this month" invented from that is worse than no line:
+          it tells somebody who has claimed nothing that they are spent out. */}
+      {claims?.remaining
         ? (
           <Text style={styles.caps} testID="credits-feedback-remaining">
             {claims.remaining.today} left today · {claims.remaining.month} left this month

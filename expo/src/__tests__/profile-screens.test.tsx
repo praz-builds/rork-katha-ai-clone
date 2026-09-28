@@ -492,6 +492,7 @@ describe("somebody else's profile", () => {
 const profileProps = () => ({
   credits: 5,
   onCredits: jest.fn(),
+  onHowCredits: jest.fn(),
   onPaywall: jest.fn(),
   onJourney: jest.fn(),
   onPublicProfile: jest.fn(),
@@ -619,8 +620,29 @@ describe("the reader's own profile", () => {
     mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
     const view = await render(<ProfileScreen {...profileProps()} />);
     await waitFor(() => view.getByTestId("profile-faq"));
-    expect(view.getByText("Prices and free credits")).toBeTruthy();
+    // "and free credits" went with the split: this row is the prices, and the
+    // free ways live on Get credits, which the other row opens.
+    expect(view.getByText("What each thing costs")).toBeTruthy();
     expect(view.queryByText("Every price, streaks and invites")).toBeNull();
+    expect(view.queryByText("Prices and free credits")).toBeNull();
+  });
+
+  // Profile used to send both of these rows to the same screen, so the one
+  // that promises an explanation opened a shop. Two intents, two destinations.
+  it("sends the credits row and the explanation row to different screens", async () => {
+    mockFetchOwnProfile.mockResolvedValue(ownProfileFixture());
+    const props = profileProps();
+    const view = await render(<ProfileScreen {...props} />);
+
+    await waitFor(() => view.getByTestId("profile-faq"));
+
+    await fireEvent.press(view.getByTestId("profile-credits"));
+    expect(props.onCredits).toHaveBeenCalledTimes(1);
+    expect(props.onHowCredits).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByTestId("profile-faq"));
+    expect(props.onHowCredits).toHaveBeenCalledTimes(1);
+    expect(props.onCredits).toHaveBeenCalledTimes(1);
   });
 
   // No page title: the tab bar already said "You" in a word they just tapped.
