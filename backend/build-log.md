@@ -106,17 +106,24 @@ reading. `ChapterSocial`'s `TextInput` now calls back on focus — the one momen
 on the path to a claim that a clock cannot see — and the row is written before
 the comment exists.
 
-**What still cannot work, and it is the gates' own arithmetic rather than a
-gap here.** The two server rules are 120 seconds of summed dwell *and* one row
+**The earliest a comment can qualify, which is the gates' own arithmetic.** The two server rules are 120 seconds of summed dwell *and* one row
 whose `read_at` is at least 60 seconds older than the comment, where `read_at`
-is `now()` at insert. Jointly: **no comment before three minutes can qualify.**
-The earliest honest row carrying 120 seconds is written at the 120-second mark,
-and the 60-second rule then puts the first claimable comment at 180. A reader
-who comments between 2:00 and 3:00 is refused permanently, because the comment's
-timestamp never moves and the dedup stops a later read producing an earlier row.
-Writing the row sooner would mean claiming reading that had not happened. The
-docblock said this cleared "long before a 40-character comment can be typed",
-which was wrong by one gate; it now states the arithmetic.
+is `now()` at insert. They read **different rows**, so the answer depends on
+the shape of the read.
+
+On a **one-chapter** story there is only one row and it must satisfy both:
+the earliest honest row carrying 120 seconds lands at t=120, and the 60-second
+rule then puts the first claimable comment at **3:00**. A reader who comments
+between 2:00 and 3:00 is refused permanently, because the comment's timestamp
+never moves and the dedup stops a later read producing an earlier row. Writing
+the row sooner would mean claiming reading that had not happened.
+
+**Across chapters it is 2:01**, and that is the flush's whole point. Chapter 1
+flushes 60 seconds at t=60 on the page turn; the composer takes focus at t=120
+with 60 on chapter 2 and writes the second row. A comment at t=121 sums 120
+across both rows, and chapter 1's row is 61 seconds older than it. The floor is
+the dwell itself, plus a second. An earlier version of this entry said three
+minutes flat, which understated the feature it sits next to.
 
 **The flush's own floor cost a claim before review caught it.** The first
 version posted whatever the dwell was, over the five-second minimum — and that
@@ -145,9 +152,9 @@ which `record_story_read` deliberately does not do. Out of scope here.
 
 ### Verification
 
-Expo **1670/1670** across 154 suites (the baseline is 1651/153 at the entry
+Expo **1672/1672** across 154 suites (the baseline is 1651/153 at the entry
 below, and the one new suite is this branch's first), typecheck clean, lint 0
-errors. Nineteen new tests, each on a rule that makes the number mean something
+errors. Twenty-one new tests, each on a rule that makes the number mean something
 rather than on the happy path: the whole chapter reported once at the end, each
 chapter counted separately across a page turn, background time excluded, a
 repeated `active` event not discarding the bank, nothing sent under the floor,
@@ -168,8 +175,27 @@ fires too early writes a short row and cancels the timer:
 - an `inFlight` flag, because `posted` is set from the reply, so for the length
   of a slow request a page turn ran the cleanup into the same chapter.
 
-Each was verified by reverting it: exactly one test fails per fix, and the
-three of them together fail exactly three.
+Two more came out of the round after, and both are the same invariant again:
+
+- the increment is guarded on the story it was measured for. `post` does not
+  await in the cleanup, and React runs the old effect's cleanup before the new
+  effect's body — so a `storyId` that changes without a remount ran
+  cleanup(A), then B's reset, then A's reply, and B started life holding A's
+  seconds. `ReaderScreen` is rendered with no `key` and its fallback chain can
+  swap the story in place, so it is reachable;
+- and **the cleanup is exempt from `inFlight`**. It is the last thing there
+  is: no timer, no subscription, nothing after it. Skipping it while a slow
+  request was out lost the read outright when that request then failed — the
+  same "nothing was left to fire" this entry describes for the flush, moved to
+  the exit. Letting it through is safe because the server serialises on
+  `pg_advisory_xact_lock(user, chapter)` before it looks for a row (`00052`),
+  so a duplicate cannot write twice; the loser is answered `recorded: false`
+  and adds nothing.
+
+The mirror also rounds the way the request does, so it counts what the server
+stored rather than what was measured.
+
+Each was verified by reverting it: exactly one test fails per fix.
 
 **No deploy.** Nothing under `backend/` changes.
 

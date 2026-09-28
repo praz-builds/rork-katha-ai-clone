@@ -46,20 +46,29 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * real reading. Writing chapter 2's row when the reader reaches for the
  * keyboard makes the sum 140.
  *
- * ── WHAT THIS STILL CANNOT DO, AND IT IS THE GATES' OWN ARITHMETIC ────────
+ * ── THE EARLIEST A COMMENT CAN QUALIFY, WHICH IS THE GATES' ARITHMETIC ──
  *
  * The two server rules are **120 seconds of summed dwell** and **one row whose
- * `read_at` is at least 60 seconds older than the comment** — and `read_at` is
- * `now()` at insert, not when the read began. Jointly they mean **no comment
- * before three minutes can qualify**, whatever this hook does: the earliest
- * honest row carrying 120 seconds is written at the 120-second mark, and the
- * 60-second rule then puts the first claimable comment at 180.
+ * `read_at` is at least 60 seconds older than the comment** -- and `read_at` is
+ * `now()` at insert, not when the read began. They read different rows, which
+ * is what makes the answer depend on the shape of the read.
  *
- * A reader who comments between 2:00 and 3:00 is refused, permanently — the
- * comment's timestamp never moves and the dedup stops a later read producing an
- * earlier row. Writing the row sooner would mean claiming 120 seconds of
- * reading that had not happened. That is 00090's design rather than something
- * to route around here, and it is written down so the next person does not try.
+ * **On a one-chapter story, no comment before three minutes can qualify.**
+ * There is one row, so it has to satisfy both rules: the earliest honest row
+ * carrying 120 seconds is written at t=120, and the 60-second rule then puts
+ * the first claimable comment at t=180. A reader who comments between 2:00 and
+ * 3:00 is refused permanently -- the comment's timestamp never moves and the
+ * dedup stops a later read producing an earlier row. Writing the row sooner
+ * would mean claiming reading that had not happened, so that is 00090's design
+ * rather than something to route around here.
+ *
+ * **Across chapters it is 2:01**, because the sum and the 60-second rule can
+ * be satisfied by different rows -- which is the flush's whole point. Chapter
+ * 1 flushes 60 seconds at t=60 on the page turn; the composer takes focus at
+ * t=120 with 60 on chapter 2 and writes the second row. A comment at t=121
+ * sums 120 across both, and chapter 1's row is 61 seconds older than it. More
+ * chapters do not move that: the floor is the 120 seconds of dwell, plus a
+ * second.
  *
  * ── THE 24-HOUR DEDUP SHAPES EVERYTHING ELSE ──────────────────────────────
  *
@@ -186,22 +195,49 @@ export function useReadTracking(
      * is still on the chapter -- which is the only path that helps the case
      * this hook exists for.
      */
-    const post = async (seconds: number) => {
-      if (posted || inFlight) return;
+    const post = async (seconds: number, { last = false } = {}) => {
+      if (posted) return;
+      // `last` is the cleanup, and it is exempt. Everything else waits, but
+      // the cleanup has nothing after it: no timer, no subscription, no second
+      // chance. Skipping it while a slow request was still out lost the whole
+      // read -- a threshold post at 120 that had not answered when the reader
+      // turned the page at 121, then resolved null, left `posted` false with
+      // nothing left to fire. That is the same "nothing was left to fire"
+      // failure this commit removed from the flush path, relocated.
+      //
+      // Letting it through is safe because the SERVER serialises it:
+      // `record_story_read` takes `pg_advisory_xact_lock` on
+      // (user, chapter) before it looks for a row (`00052:64-70`), so two
+      // concurrent posts cannot both write. The loser is answered
+      // `recorded: false`, which adds nothing here.
+      if (inFlight && !last) return;
       inFlight = true;
       try {
+        // The same rounding the request does (`api.ts`), so the mirror counts
+        // what the server stored rather than what was measured. Half a second
+        // per chapter, always upward, in the one direction it must not drift.
+        const sent = Math.round(seconds);
         const result = await send.current({
           storyId: target.storyId,
           chapterId: target.chapterId,
-          durationSeconds: seconds,
+          durationSeconds: sent,
         });
         if (result === null) return;
         // Delivered. This chapter has nothing left to say either way, because
         // a second call inside the window is deduped.
         posted = true;
         clearTimer();
-        // But only a WRITTEN row moved the server's sum.
-        if (result.recorded) recordedForStory.current.seconds += seconds;
+        // But only a WRITTEN row moved the server's sum -- and only if the
+        // counter still belongs to the story these seconds were measured on.
+        // The cleanup does not await its post, so a `storyId` that changes
+        // without a remount runs: cleanup(A) fires, effect(B) resets the ref,
+        // A's reply lands. Without this clause B starts life holding A's
+        // seconds, and B's first composer focus writes a six-second row and
+        // cancels the timer -- exactly the defect this counter exists to
+        // prevent, with the story mixed up as well.
+        if (result.recorded && recordedForStory.current.storyId === target.storyId) {
+          recordedForStory.current.seconds += sent;
+        }
       } catch {
         // `recordRead` catches its own, but a seam a caller injects may not,
         // and an unhandled rejection is not something a reading screen may do.
@@ -290,7 +326,7 @@ export function useReadTracking(
       // would tell the server nothing it does not have.
       if (posted) return;
       if (seconds < MIN_SECONDS) return;
-      void post(seconds);
+      void post(seconds, { last: true });
     };
     // `chapterId` in the deps is what makes turning a page a separate read:
     // the cleanup flushes the chapter being left before the next one starts.

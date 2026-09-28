@@ -505,11 +505,95 @@ it("keeps the timer when the flush's own request fails", async () => {
   });
 });
 
+it("credits a late reply to the story it was measured on, not the one now open", async () => {
+  // The cleanup does not await its post, and React runs the old effect's
+  // cleanup BEFORE the new effect's body. So on a `storyId` that changes
+  // without a remount -- `App.tsx` renders `ReaderScreen` with no `key`, and
+  // its fallback chain can swap the story in place -- the order is:
+  // cleanup(A) fires, effect(B) zeroes the counter, A's reply lands.
+  //
+  // Without the guard B's mirror starts at A's 120. Six seconds in, the reader
+  // taps the comment box, `120 + 6 >= 120` passes, and B's first chapter is
+  // written as a SIX-SECOND row with its timer cancelled -- locked there for
+  // the day by the dedup. Ten minutes of reading B, and "read the story
+  // first", permanently.
+  let release: ((value: Reply) => void) | null = null;
+  const h = harness(
+    (n) =>
+      n === 0
+        ? new Promise<Reply>((resolve) => {
+            release = resolve;
+          })
+        : { recorded: true, counted: true },
+  );
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(POST_AT_SECONDS); // s1 posts 120, and does not answer yet
+  await act(async () => {
+    view.rerender(<h.Probe storyId="s2" chapterId="c1" />);
+  });
+  await act(async () => {
+    release?.({ recorded: true, counted: true });
+  });
+
+  // s2 has banked nothing, so a focus six seconds in must write nothing for
+  // s2. (s1's cleanup posts again on the swap -- it is exempt from `inFlight`
+  // and the server dedups it -- so what matters here is s2's own rows.)
+  await h.advance(6);
+  await act(async () => h.composerFocus());
+  expect(h.posted.filter((row) => row.storyId === "s2")).toEqual([]);
+
+  // And s2's own timer still delivers the row that clears the gate.
+  await h.advance(POST_AT_SECONDS - 6);
+  expect(h.posted.filter((row) => row.storyId === "s2")).toEqual([
+    { storyId: "s2", chapterId: "c1", durationSeconds: POST_AT_SECONDS },
+  ]);
+});
+
+it("still writes the read when a slow threshold post fails and the reader leaves", async () => {
+  // `inFlight` must not silence the cleanup. The cleanup is the last thing
+  // there is -- no timer, no subscription, nothing after it -- so skipping it
+  // while a request is still out loses the read outright if that request then
+  // fails. Letting it through is safe because the server serialises on
+  // `pg_advisory_xact_lock(user, chapter)` before it looks for a row, so a
+  // duplicate cannot write twice; the loser is answered `recorded: false`.
+  let fail: ((value: Reply) => void) | null = null;
+  const h = harness(
+    (n) =>
+      n === 0
+        ? new Promise<Reply>((resolve) => {
+            fail = resolve;
+          })
+        : { recorded: true, counted: true },
+  );
+  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+
+  await h.advance(POST_AT_SECONDS); // out on the wire, unanswered
+  expect(h.posted).toHaveLength(1);
+
+  await h.advance(1);
+  await act(async () => {
+    view.unmount();
+  });
+  await act(async () => {
+    fail?.(null);
+  });
+
+  // The threshold post failed after the reader had gone. The cleanup's own
+  // attempt is the only one left, and it must have happened.
+  expect(h.posted).toHaveLength(2);
+  expect(h.posted[1].storyId).toBe("s1");
+});
+
 it("does not post the same chapter twice while the first call is in flight", async () => {
   // `posted` is set from the reply, so for the length of the request every
   // caller still reads false. A threshold post over a slow connection and a
-  // page turn a second later ran the cleanup into the same chapter: one row
-  // written, one deduped, and the local total counting both.
+  // composer focus a second later asked for the same chapter twice.
+  //
+  // The CLEANUP is deliberately exempt from this -- see the test above -- so
+  // this is about the paths that have something after them. The flush does:
+  // the timer that is still armed is strictly better than a second request
+  // nobody is waiting on.
   let release: (() => void) | null = null;
   const h = harness(
     () =>
@@ -517,15 +601,13 @@ it("does not post the same chapter twice while the first call is in flight", asy
         release = () => resolve({ recorded: true, counted: true });
       }),
   );
-  const view = await render(<h.Probe storyId="s1" chapterId="c1" />);
+  await render(<h.Probe storyId="s1" chapterId="c1" />);
 
   await h.advance(POST_AT_SECONDS); // fires, and does not answer
   expect(h.posted).toHaveLength(1);
 
   await h.advance(1);
-  await act(async () => {
-    view.unmount();
-  });
+  await act(async () => h.composerFocus());
   expect(h.posted).toHaveLength(1);
 
   await act(async () => {
