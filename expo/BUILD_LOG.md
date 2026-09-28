@@ -2,6 +2,72 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-27: Explore gets one chip row, a mixed feed, and infinite scroll
+
+- **One chip row.** Bedtime was a single `FilterChip` in a plain `View` above
+  `GenreStrip`'s scroll, using the same chip, so two rows of identical chips
+  read as a layout accident. It is now the first chip inside that scroll, with
+  a hairline divider before the genres. `ExploreCategoryStrip` is deleted. The
+  two selections stay independent: a reader can want bedtime comedy.
+- **The feed no longer arrives in genre blocks.** Every engagement count is
+  zero, so every sort ties, `Array.prototype.sort` is stable, and the list fell
+  through to the server's `created_at desc` -- which, because the Originals were
+  published in genre blocks, *is* the genre blocks. `seededShuffle` with
+  `dailyFeedSeed` now decides the ties before the sort (so a real count still
+  wins), and a new `spreadByKey` in `src/lib/feed-shuffle.ts` deals the result
+  out by genre round-robin.
+- **Infinite scroll.** `searchStories` takes a `page` and ends in `.range(...)`
+  with `order("id")` as a total tie-break; `SearchOutcome` carries `hasMore`
+  from the server's row count, before the genre narrowing clips it.
+  `useStorySearch` gains `loadMore`/`loadingMore`/`hasMore` with its own guards
+  -- it continues a query rather than starting one, so the existing sequence
+  guard is not enough on its own. The footer is a spinner, an end-of-list line,
+  or nothing.
+- **`FlatList` is virtualised for the first time.** `initialNumToRender`,
+  `maxToRenderPerBatch`, `windowSize` and `removeClippedSubviews` were set
+  nowhere in the app before this.
+- **Ordering is per page, not per list, and that is load-bearing.** The shuffle
+  and the interleave are whole-list operations; run over a list that grows they
+  re-order the rows already on screen, and the first version did exactly that —
+  4 of the first 24 positions survived a page arriving. `useStorySearch`
+  reports `pageStarts`, the screen orders each page among its own rows, and a
+  rendered page is never an input to anything again. The seam can repeat a
+  genre; the whole list moving is worse. The seed is read once per mount, so a
+  recompute crossing midnight cannot re-deal the feed either.
+- **The auto-advance chase is bounded at two pages**, and that took four
+  attempts. When a client-side filter (tags, blocked authors) empties a page
+  there is no list, so `onEndReached` cannot fire and the screen fetches the
+  next page itself. Three versions guarded that by remembering *where* the last
+  chase happened, and none of them bounded the case it exists for: a page full
+  from the server and empty after narrowing still grows `pageStarts`, so the
+  marker moved and the walk ran page after page. It counts chases now.
+- **And `loadingMore` reaches `listEmpty`.** `status` is `"ready"` while that
+  walk runs, so the reader was shown "This genre is new here" over two dozen
+  fetched stories, with no spinner, because the footer draws nothing when the
+  list is empty.
+- **And the empty state stopped blaming the catalogue for the reader's own
+  filters.** Bounding the chase stops the requests; it does not decide what the
+  screen then says, and what it said was "This genre is new here. More will
+  appear as writers publish in it" — over rows that had been fetched and then
+  removed by a tag or the block list, with more pages unasked for, and no way
+  out, because `onEndReached` cannot fire against an empty list. There are three
+  cases now and the right one is chosen by *which* filter emptied it:
+  `searched` is what the server returned, `results` is after the block list and
+  before the tags, so an empty `results` means the block list took everything
+  whatever is checked. A tag gets "your filters are narrower than the
+  catalogue" and a **Clear filters** button; the block list gets its own
+  sentence and no button that would change nothing; `hasMore` adds **Keep
+  looking**, which is the manual form of the scroll that cannot happen without
+  a list — filled when it is the only action on the screen, secondary only
+  when Clear filters is beside it. The title splits the same way the body does:
+  naming the filters over a sentence that says the block list did it points the
+  reader at the panel's Clear, which no-ops in that state, and the TAGS section
+  is hidden there anyway because the panel's chips come from the rows that came
+  back. It runs above the genre and the search gates, because the same false
+  statement was in both — a tag left checked while you type gives 24 rows that
+  match the term perfectly and a screen offering a spelling fix.
+- Covers are untouched and still the slowest thing here. Separate branch.
+
 ## 2026-09-27: How credits work becomes its own screen
 
 - **Profile's two credit rows now go to two places.** "Credits · Get more" and

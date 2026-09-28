@@ -246,6 +246,45 @@ merged manifest this round; it is pinned by `release-config.test.ts`, which
 passed inside the 1,649, and was confirmed against a locally built release AAB on
 2026-09-25 (#138). A fresh gradle build would be the stronger check.
 
+### The chase took four passes to get right, and the last one found the bound was not a bound
+
+Three of these were recorded above as fixed and were not. Keeping the sequence,
+because the shape repeats: **each attempt moved the number the guard holds
+instead of changing what the guard is about.**
+
+1. **Count rows.** Collides with certainty: page 0 is exactly
+   `SEARCH_PAGE_SIZE` whenever `hasMore` is true, so the stored value is always
+   24 and a second query that also narrows to nothing never advances.
+2. **Count pages.** Worse: the first advance of any query happens when only
+   page 0 has landed, so the value is always 1 -- and every fresh query starts
+   at `pageStarts: [0]`, which is also 1.
+3. **Reset the ref on the query.** Right axis at last, and still not enough:
+   the guard was armed on a `loadMore()` the guards had *refused*, and the
+   effect never re-ran after the page it was waiting for landed, because every
+   dep was value-identical across it. `loadMore` now reports whether it acted,
+   and the effect depends on `pages`, which is a fresh array per update.
+4. **Count the chases.** The bound above was still no bound for the case this
+   whole mechanism exists for. A marker like `pageStarts.length` only stops the
+   walk when the page added nothing to the *hook's* rows -- the server-narrowed
+   case. A page that is **full from the server and empty after the client
+   narrows it** -- a tag filter, or an author the reader blocked -- grows
+   `pageStarts`, so the marker moves and the walk runs page after page. A
+   reader who leaves a tag on and taps a genre marched through it 24 rows at a
+   time without scrolling. `MAX_AUTO_CHASES` is 2.
+
+**And the reader was shown a false verdict for the whole walk.** `listEmpty`
+branched on `status` alone, and `status` is `"ready"` throughout -- the hook
+sets it from the rows the *server* returned, which were plentiful. So the screen
+read "No Fantasy stories yet. This genre is new here." over two dozen fetched
+fantasy stories, with no spinner anywhere, because `listFooter` draws nothing
+while the list is empty. `loadingMore` now reaches `listEmpty`.
+
+The test that could not see any of this returned an *empty* page, which stops
+after one pass for an unrelated reason. The new one blocks the author of every
+row, so each page is full from the server and empty after narrowing;
+negative-controlled against the marker guard, where it runs until the harness
+gives up.
+
 ### Verification
 
 - The seed script was run report-only first, then `--apply`, then **`--apply` a
@@ -389,6 +428,310 @@ Expo **1651/1651** across 153 suites, typecheck clean, lint 0 errors. Production
 checks are the `curl`s above, run against the live project. No migration. One
 function to deploy, `seed-voice-previews`, and only for the docblock — the
 seeding itself was an invocation of an already-deployed function.
+## 2026-09-27 UTC — Explore gets one chip row, a mixed feed, and a bottom it can pass
+
+**Session:** third branch of the pre-launch polish round, from founder feedback
+on four screenshots. Branch `codex/explore-layout-and-paging`, in its own
+worktree, off `ca4a68e`. Client only: no migration, no function, no deploy.
+
+### Three faults, and they are unrelated to each other
+
+**1. Bedtime sat on a shelf above the genres.** `ExploreCategoryStrip` rendered
+one `FilterChip` in a plain `View` directly above `GenreStrip`'s horizontal
+`ScrollView`, using the same chip component. Two rows of identical chips read as
+a layout accident. Merged: Bedtime is now the first chip inside the same scroll,
+followed by a hairline divider, then the genres. **The two selections stay
+independent** -- a reader can want bedtime comedy -- so `category` and `genre`
+remain separate props rather than collapsing into one selected id. The divider
+is `importantForAccessibility="no"`; a screen reader gets the grouping from the
+chips' own labels.
+
+**2. The feed was genre-blocked, and it was an emergent tie-break, not a sort.**
+`searchStories` orders `like_count desc, created_at desc`; the screen then
+re-sorts by views or likes. Every count in this catalogue is **zero**, so every
+comparison ties, `Array.prototype.sort` is stable, and the list fell through to
+the server's `created_at desc`. The Originals were authored and published in
+genre blocks (`backend/originals/slots.json`: S01-S08 romance, S09-S14 comedy,
+S15-S21 fantasy, ...), so that order *is* the genre blocks, reversed.
+
+Fixed the way Home already does it, plus one new piece:
+
+- `seededShuffle` with `dailyFeedSeed(getViewerId(), new Date())` decides the
+  ties, before the sort, so a real engagement count still wins when there is
+  one. Seeded by reader and day, so the page is stable while somebody scrolls
+  it and different tomorrow.
+- A new `spreadByKey` in `lib/feed-shuffle.ts` then deals the list out by genre,
+  round-robin. A shuffle alone is not enough -- runs are what random sequences
+  look like -- and "Newest" does not shuffle at all, because `publishedOffset`
+  is a real distinct value on every row.
+
+**The first version of `spreadByKey` was wrong and its own test caught it.** It
+walked the list in order and moved an item only when it would have made a third
+consecutive neighbour, which preserves the ranking better. It also drains the
+leading key two at a time while spending the others one at a time, so the
+majority key is exhausted early and the list **ends in a long solid run** of
+whatever is left: a run of five where two was promised. Dealing from per-key
+queues cannot do that, because a queue is only ever one ahead of the others. The
+cost is that ranking *across* genres is disturbed; ranking *within* a genre is
+exact, which is where a real signal will show up, and every cross-genre
+comparison today is a tie between zeroes.
+
+**3. Explore stopped at 24 stories, forever.** The query ended in a bare
+`.limit(SEARCH_PAGE_SIZE)`. There was no `onEndReached`, no cursor, no page
+size beyond that one -- `grep` for `onEndReached|initialNumToRender|windowSize|
+maxToRenderPerBatch|removeClippedSubviews` across `expo/src` returned **nothing
+at all** before this change. A reader who reached the bottom of the catalogue
+simply ran out, with nothing to say so.
+
+- `SearchInput` gains `page`, and the query ends in `.range(from, from + size -
+  1)`. A third `order("id")` was added as a **total tie-break**: without it two
+  rows sharing a `like_count` and a `created_at` have no defined relative order
+  and the database may return them differently per page, which is how a row
+  appears twice across a boundary or never at all.
+- `SearchOutcome` gains `hasMore`, derived from the **server's** row count
+  before the genre narrowing clips it. `stories.length === PAGE_SIZE` would end
+  the list early on exactly the filter people use most.
+- `useStorySearch` gains `loadMore`, `loadingMore` and `hasMore`. It does *not*
+  route through `run`, which aborts and replaces -- right for a new query, and
+  exactly wrong for a continuation. Its own guards: a ref against `onEndReached`
+  firing repeatedly in one tick, the existing sequence number, **and** a
+  `loadedFor` query key, because `loadMore` continues a query rather than
+  starting one and the sequence guard alone does not catch a page that outlived
+  a filter change. Pages are appended de-duplicated by id.
+- The footer has three states and one of them is nothing: a spinner while a page
+  is on the way, a quiet line at the true end, and **nothing at all** while more
+  exists but has not been asked for, because a permanent footer under a growing
+  list reads as the end of it.
+- `initialNumToRender`, `maxToRenderPerBatch`, `windowSize` and
+  `removeClippedSubviews` are set for the first time. Each card mounts a cover;
+  rendering the whole accumulated list is what makes a long scroll stutter.
+
+### The bug review caught, and it was the feature eating itself
+
+The first version ordered the **whole accumulated list** on every render: seeded
+shuffle, then sort, then interleave. Both the shuffle and the interleave are
+whole-list operations, so running them over a list that GROWS re-orders the rows
+already on screen. The reader reaches the bottom, asks for more, and the screen
+they were reading is dealt again under their thumb. Measured: **4 of the first
+24 positions survived** a second page arriving.
+
+It was invisible before this round because the list could not grow —
+`.limit(SEARCH_PAGE_SIZE)` meant one page, ever, so neither helper had ever been
+called on a longer version of its own input. And every test passed: they
+asserted determinism *for the same input* and the run limit *on the combined
+list*. Neither is the property a reader feels.
+
+**Fixed by ordering each page among its own rows and concatenating**, which is
+append-stable by construction: a page that has been rendered is never an input
+to anything again. `useStorySearch` now reports `pageStarts` so the screen can
+slice on the boundaries — sliced *before* the blocked-author filter, because
+removing a row would shift every later boundary. The seed is read once per
+mount rather than inside the memo, so a recompute that crosses midnight or lands
+after a sign-in cannot re-order the feed either.
+
+The cost is the seam: two pages can meet on the same genre, one run of two at
+every 24th card. Against the whole list moving, that is the right trade, and it
+is the honest one — the alternative (per-row hash ranks) makes the interleave
+much weaker.
+
+`explore-paging.test.tsx` gains the test that was missing: render page 0, record
+the ids, load page 1, and assert the first 24 are unchanged. Verified against the
+old implementation before keeping it — it fails there with 20 of 24 rows moved.
+
+Three more from the same round:
+
+- **`loadingMoreRef` was cleared before the sequence check**, so a page whose
+  query had moved on released the lock while a newer page was still in flight,
+  and the next `onEndReached` sent a third request for the page already being
+  fetched. Benign — `appendUnseen` drops the rows — and a wasted round trip.
+  Cleared inside the guard now.
+- **The next-page request carried no abort signal** and was not tracked, so a
+  page in flight when the reader left Explore ran to completion. It now has a
+  controller that `run` and the unmount effect both reach.
+- **A client-side filter that emptied page 0 was a dead end.** Tags and the
+  block list are applied after the server page; when they left zero rows,
+  `FlatList` rendered the empty state, `onEndReached` never fired, and the
+  reader was told "no stories match" while `hasMore` was true. An effect now
+  advances a page in that case, **bounded at two** -- see the correction at the
+  end of this entry, where "it cannot spin" turned out to be false for exactly
+  the narrowing the chase exists for.
+- **Re-running the identical query threw the accumulated pages away.** Type a
+  character and delete it and the third run is the first query again, so three
+  pages collapsed back to 24 rows. `loadedFor` now short-circuits it.
+
+### And a regression the append fix introduced, plus three carried ones
+
+- **The identical-query skip reintroduced the stale-answer bug this file exists
+  to prevent.** Skipping `run` also skipped the two things `run` did
+  unconditionally: bumping the sequence and aborting the request in flight. So
+  a superseded request kept the newest sequence and its answer was applied to a
+  query the reader had left. Reachable with a typo and a backspace inside one
+  round trip: "wolf" is loaded, the reader types "wolfs", backspaces to "wolf"
+  — `loadedFor` is still "wolf", because it is only assigned on SUCCESS — the
+  skip fires, and "wolfs" then lands and paints. The box says one thing and the
+  list is the answer to another, with nothing to retry and no self-correction,
+  because no dep changes again. The skip now cancels before it returns, and a
+  test that goes BACK to a landed query — the ingredient the existing race test
+  lacks — was negative-controlled against the broken version.
+- **A genre page fetched 48 rows and showed 24.** `GENRE_SEARCH_FETCH_SIZE` was
+  a compatibility budget for the defensive card filter, and it was harmless
+  while the query ended in `.limit(48)` with no next page. Paging by the fetch
+  window made the discard permanent: `from = page * 48` with a clip to 24 means
+  server rows 24–47 are fetched, thrown away and never asked for again. At the
+  boundary it is worse — a genre with 40 stories returns 40 rows, `hasMore` is
+  `40 === 48` → false, and the footer claims the end over sixteen published
+  stories. One page size everywhere now; the filter stays and a filtered row
+  simply makes a short page, which `hasMore` already handles.
+- **A failed page told the reader the catalogue had ended.** Every failure path
+  in `searchStories` returns `local()` rather than rejecting, so a dropped
+  connection on page 1 landed in `loadMore`'s SUCCESS handler with
+  `hasMore: false` — the spinner replaced by "That is everything for now." over
+  a reader who had simply lost signal, and nothing retries once `hasMore` is
+  false. `local()` now reports `hasMore: true` past page 0, so the footer says
+  nothing and the next scroll tries again. Page 0 and an unconfigured client
+  still report false: there is nothing on screen to keep, and no server to ask.
+- **"Newest" was dealt out by genre.** `spreadByKey` ran unconditionally, so a
+  reader who asked for the newest got one new story and then up to eleven
+  genre-mates that might be months old. Interleaving is right for the default
+  browse and wrong for a sort somebody chose; it is now conditional on
+  `DEFAULT_SORT`.
+
+The auto-advance effect gained a guard in the same round, because making a
+failed page report `hasMore: true` turns "no rows, more exists" into a state
+that can repeat. It now advances only when the row count has grown since its
+last attempt, so a page that adds nothing ends the chase and the reader's next
+scroll still retries.
+
+**Narrowed a claim rather than defending it.** The docblock argued that
+per-page sorting is also the right ranking because the server already chose the
+page. True for Most loved (`like_count desc` on both sides) and near enough for
+Newest; **not true for Trending**, which sorts on `views` while the server pages
+on `like_count`. Invisible today because every count is zero, and the fix when
+it matters is to sort Trending on the server rather than to go back to
+re-ordering the list under the reader. The comment now says so.
+
+### Both of that round's fixes had a silent version of the problem they replaced
+
+Review found each correction reintroducing its own bug. Worth recording as a
+pattern, not three incidents: a fix that changes when a state transition
+happens has to account for every transition that used to ride along with it.
+
+- **Aborting the superseded request left `status` at `"loading"` forever.**
+  `run` set it when it started the request the skip then invalidated, and both
+  of that request's handlers early-return on the sequence check, so nothing
+  ever wrote state again. `loadMore` is guarded on `status !== "loading"`, so
+  **paging switched off for the rest of the query** — the reader scrolls to the
+  bottom of 24 cards and nothing loads, with no spinner and no end-of-list line
+  because `hasMore` is still true. Explore stopped at 24 stories forever, which
+  is the third fault this branch exists to fix, reached through its own fix.
+  The skip now restores the status.
+- **And `run` reset `loadedPage` on the way in.** An abandoned run therefore
+  left it at 0 under however many pages the reader had scrolled, so the next
+  `onEndReached` re-requested page 1 and had every row dropped as a duplicate.
+  It now resets **on success**, which is the only moment the list really is one
+  page long.
+- **A failed page burned its page number.** Making `local()` report
+  `hasMore: true` was right, and it made the retry ask for the page *after* the
+  one that failed — every failure in `searchStories` resolves rather than
+  rejects, so they all land in `loadMore`'s success handler and advanced the
+  cursor. A dropped connection at the bottom of page 0 meant rows 24–47 were
+  never requested again: Explore goes from story 24 to story 49 with no gap
+  visible anywhere. `outcome.source` is the discriminator and was already
+  there — `"local"` holds the cursor, `"supabase"` advances, so a legitimately
+  short page still moves on.
+- **`autoAdvancedAt` outlived its query, and changing the number it holds did
+  not fix that.** Two versions collided with certainty rather than by luck: the
+  row count is always `SEARCH_PAGE_SIZE` on a full page 0, and the page count
+  is always 1 at the first advance of any query, while every fresh query starts
+  at `pageStarts: [0]`. **The ref is what carries across a query, so the ref is
+  what had to be cleared** -- on the query text, genre, category and the
+  selected tags, because tags are client-side narrowing and change what "empty"
+  means without changing a row. Originally recorded here as "it counts rows": the symptom was that one query's page 0
+  narrows to nothing and stops the chase, the reader picks another genre whose
+  page 0 also narrows to nothing, and the second query never advances -- told
+  the genre is empty over a catalogue with matching rows one page along, with
+  no recovery, because `onEndReached` cannot fire when there is no list.
+
+Both new paging tests were negative-controlled: without the cursor fix the
+retry asks for page 2, and without the status restore the list stays at 24 rows
+after a backspace.
+
+### Verification
+
+Expo **1701/1701** across 155 suites (the baseline is 1651/153 two entries
+below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
+(totality, no run before the tail, within-key order, determinism, the
+growing-list seam) and twelve on paging, each written against a way it fails:
+repeated `onEndReached`, a stale page appending to a new query, an overlapping
+page, a lying footer, and the state the auto-chase leaves behind.
+`explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
+than `.limit()`.
+
+**The chase's bound and the copy at the end of it are two different bugs, and
+only the first was fixed at the previous head.** Two chases stop the requests;
+they do not decide what the reader is then told. The genre branch of the empty
+state said *"This genre is new here. More will appear as writers publish in
+it."* — over a genre whose rows had been fetched and then removed by the
+reader's own tag filter or block list, with `hasMore` still true, and with no
+recovery, because `onEndReached` cannot fire against an empty list. It now
+distinguishes the three cases: rows came back and the reader's narrowing
+removed them, pages exist that nobody has asked for, and the genre is actually
+empty. The first two get honest copy and a **Keep looking** button, which is
+the manual version of the scroll that cannot happen without a list.
+
+**And the same false statement was in the search branch**, which the first
+version of the fix did not reach: it was gated on `!searching`, and a reader
+who checks a tag and then types gets 24 rows that match the term, all of them
+removed by the tag, and was told the search matched nothing and offered a
+spelling fix. Harder to escape than the genre case, too — `availableTags` is
+derived from the results, so with none the panel's TAGS section is not drawn
+and the chip that caused it is off screen. The check is
+`searched.length > 0`, which is query-independent, so it is now one branch
+above both and neither can drift from the other.
+
+Three smaller corrections in the same place. The body said to clear the
+filters while the only button fetched another page, because `hasMore` was
+tested first; both buttons render when both apply. The condition read
+`activeFilterCount`, which counts the sort — a sort cannot empty a page, so a
+reader on "Most loved" whose page the block list emptied was told to clear
+filters and given a button that reset the sort and changed nothing; it reads
+`results.length` now — which is the exact discriminator, not a proxy:
+`results` is after the block list and before the tags, so an empty one means
+the block list took everything whatever is checked. Keyed on the tag, a reader
+who had blocked an author and left a tag on was told to clear the tag, cleared
+it, saw nothing change, and watched the sentence flip to name the block list
+instead. And the "more exists but nothing came back" branch
+was unreachable in every producer — Supabase compares the row count to the
+page size and `local()` only reports `hasMore` from page 1 — so it is gone,
+and `hasMore` chooses the button rather than the copy.
+
+**The headline splits the same way the body does, and the buttons take their
+weight from what is beside them.** Naming the filters over a sentence that says
+the block list emptied the page sent the reader to the panel's Clear, which
+no-ops in that state -- and the TAGS section is hidden there anyway, because the
+panel's chips come from the rows that came back. The title is "No Comedy stories
+to show" there, and "No stories match “dragon”" when a term is typed, because a
+search term is not a place with contents in it. **Keep looking** is the
+secondary variant only when **Clear filters** is beside it; when the block list
+emptied the page it is the screen's only action and it is filled, rather than
+changing weight depending on whether another page happens to exist.
+
+The block list is now in the chase's reset key too. It is client-side
+narrowing by the same definition as the tags, so blocking an author while
+Explore is mounted changes what "empty" means without changing a fetched row.
+
+Two record fixes in the same push: the docblock above the guard still argued
+for the marker the commit deleted — four separate claims, including one that
+condemned what the code now does — and the chase test's
+`toBeLessThanOrEqual(3)` was satisfied by the chase not happening at all,
+which is a variant this effect has actually shipped. It is `toBe(3)`.
+
+### Not done here
+
+Cover loading is untouched and still the slowest thing on this screen: ~2 MB
+PNGs decoded into a 116x155pt box. That is its own branch. The 180 ms prefetch
+race in `useStorySearch` is deliberately left in place until then, because it is
+the thing being replaced rather than something to remove twice.
 ## 2026-09-27 UTC — How credits work becomes its own screen, and the feedback cap drops to five
 
 **Session:** the last look-and-feel round before launch, from founder feedback on

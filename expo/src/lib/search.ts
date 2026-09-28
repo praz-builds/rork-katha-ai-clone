@@ -43,14 +43,26 @@ import type { Genre, Story } from "@/types/domain";
 export const SEARCH_PAGE_SIZE = 24;
 
 /**
- * Historical compatibility budget. `primary_genre` has been NOT NULL since
- * migration 00008, so the null-primary legacy arms in `genreClause` cannot
- * match on the current schema. They and this bounded double fetch are retained
- * deliberately until the legacy query-shape cleanup is its own change; do not
- * mistake the defensive card filter for a currently reachable legacy path.
- * The result is always clipped back to the 24-card page.
+ * REMOVED 2026-09-27, and worth knowing why rather than just that it is gone.
+ *
+ * A genre query used to fetch `SEARCH_PAGE_SIZE * 2` rows and clip back to 24
+ * after the defensive card filter below — a compatibility budget for the
+ * null-primary legacy arms in `genreClause`, which `primary_genre` being NOT
+ * NULL since 00008 means cannot actually match.
+ *
+ * Harmless while the query ended in `.limit(48)` with no next page: the
+ * discarded remainder was simply never asked for. **Paging made the discard
+ * permanent.** With `from = page * 48` and the result clipped to 24, server
+ * rows 24-47 are fetched, thrown away, and never requested on any later page.
+ * Worse at the boundary: a genre with 40 stories returns 40 rows, `hasMore` is
+ * `40 === 48` → false, and the footer says "That is everything for now."
+ * over sixteen published stories nobody will ever be shown.
+ *
+ * So: one page size everywhere. The defensive filter stays — it costs a pass
+ * over 24 rows and guards a schema change — but a page that narrows is now
+ * simply a short page, which `hasMore` handles, rather than a page with a
+ * hole behind it.
  */
-export const GENRE_SEARCH_FETCH_SIZE = SEARCH_PAGE_SIZE * 2;
 
 /**
  * How long the field waits after the last keystroke.
@@ -157,10 +169,30 @@ export type SearchInput = {
    * all-ages audience mode, which does not promise a sleep-ready story.
    */
   bedtime?: boolean;
+  /**
+   * Which page to fetch, zero-based. Absent is the first.
+   *
+   * Explore had no paging at all until 2026-09-27: the query ended in a bare
+   * `.limit(SEARCH_PAGE_SIZE)`, so the screen could never show a 25th story
+   * and scrolling to the bottom of the catalogue simply stopped.
+   */
+  page?: number;
 };
 
 export type SearchOutcome = {
   stories: Story[];
+  /**
+   * Whether a further page might exist.
+   *
+   * Derived from the SERVER's row count, before the genre narrowing clips it:
+   * a full page that narrows to three visible rows still means there is more
+   * to ask for, and reporting `stories.length === SEARCH_PAGE_SIZE` would end
+   * the list early on exactly the filter people use most. It can be true once
+   * with nothing behind it -- when the catalogue divides evenly by the page
+   * size -- which costs one empty request and is the cheap direction to be
+   * wrong in.
+   */
+  hasMore: boolean;
   /**
    * Where the rows came from. `local` means the live catalogue could not be
    * reached (or is not configured) and these are the bundled stories — the
@@ -251,12 +283,28 @@ export async function searchStories(
   options: { signal?: AbortSignal; catalogue?: readonly Story[] } = {},
 ): Promise<SearchOutcome> {
   const catalogue = options.catalogue ?? seedStories;
+  // The bundled catalogue is one page and never more: it is the offline
+  // fallback, not a library to walk. Page 1 of a fallback is empty rather
+  // than a second copy of page 0.
+  const page = Number.isInteger(input.page) && (input.page as number) > 0
+    ? (input.page as number)
+    : 0;
+  // A failed page is not the end of the catalogue. `hasMore: false` on a
+  // fallback would be the caller's cue to replace the spinner with "That is
+  // everything for now." over a reader who has simply lost signal at the
+  // bottom of page 0 -- a definite statement, and a false one, that nothing
+  // retries because `loadMore` is a no-op once `hasMore` is false. Keeping it
+  // TRUE past page 0 means the footer says nothing and the next scroll tries
+  // again, which is the honest answer to "we could not tell".
   const local = (): SearchOutcome => ({
-    stories: searchLocalCatalogue(input, catalogue),
+    stories: page === 0 ? searchLocalCatalogue(input, catalogue) : [],
+    hasMore: page > 0,
     source: "local",
   });
 
-  if (!isSupabaseConfigured) return local();
+  // Not configured is not a failure to retry: there is no server to ask, so
+  // page 0's bundled rows really are everything there is.
+  if (!isSupabaseConfigured) return { ...local(), hasMore: false };
 
   const term = sanitizeSearchTerm(input.text);
   const genre = isKnownGenre(input.genre) ? input.genre : null;
@@ -314,10 +362,22 @@ export async function searchStories(
     // all-ages safety mode and must not be broadened into this shelf.
     if (bedtime) query = query.contains("genre", ["bedtime"]);
 
+    // `id` last, as a total tie-break. Without it two rows sharing a
+    // `like_count` and a `created_at` have no defined relative order, and the
+    // database is free to return them differently per page -- which is how a
+    // row appears twice across a page boundary, or never at all. Keyset paging
+    // would sidestep the question entirely; range paging over a deterministic
+    // order is enough for a catalogue this size.
+    // One page size, genre or no genre. See the note where the doubled genre
+    // window used to be declared: paging by a window wider than the page
+    // silently drops every row between them.
+    const size = SEARCH_PAGE_SIZE;
+    const from = page * size;
     query = query
       .order("like_count", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(genre ? GENRE_SEARCH_FETCH_SIZE : SEARCH_PAGE_SIZE);
+      .order("id", { ascending: false })
+      .range(from, from + size - 1);
 
     if (options.signal) query = query.abortSignal(options.signal);
 
@@ -327,14 +387,20 @@ export async function searchStories(
     const stories = data
       .map((row) => mapSearchRow(row))
       .filter((story): story is Story => story !== null);
+    // No `.slice` any more: the page and the fetch are the same size, so
+    // there is no remainder to clip, and clipping one would be dropping rows
+    // no later page asks for. A row the filter removes just makes this page
+    // short, which `hasMore` below already accounts for.
     const visible = genre
-      ? stories.filter((story) => story.genre === genre).slice(0, SEARCH_PAGE_SIZE)
+      ? stories.filter((story) => story.genre === genre)
       : stories;
     return {
       // The card shows the genre `mapSearchRow` settled on, so that is the
       // one the filter answers to. A legacy row whose array leads with some
       // other genre matched the clause above and would render as that genre.
       stories: visible,
+      // `data.length`, not `visible.length`: see `hasMore` on SearchOutcome.
+      hasMore: data.length === size,
       source: "supabase",
     };
   } catch {

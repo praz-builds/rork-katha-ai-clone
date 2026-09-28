@@ -86,22 +86,58 @@ function FilterChip({
   );
 }
 
+/**
+ * Bedtime and the genres, in one scrolling row.
+ *
+ * WHY ONE ROW. Bedtime used to sit in a `View` of its own directly above this
+ * one, drawn by the same `FilterChip`, so it looked exactly like a genre chip
+ * that had been left on a shelf above the genre chips. Two rows of identical
+ * chips read as a layout accident rather than as a distinction; the scroll is
+ * what makes this row a row, and a single chip that cannot scroll is not one.
+ *
+ * WHY THEY ARE STILL TWO SELECTIONS. Bedtime is an editorial classification
+ * and a genre is a genre: a reader can want bedtime comedy. They narrow the
+ * query independently and always have. Sharing a row is a visual decision and
+ * changes nothing about the filter, which is why `category` and `genre` stay
+ * separate props rather than collapsing into one selected id.
+ *
+ * WHAT KEEPS THEM LEGIBLE AS TWO THINGS. A hairline divider after Bedtime.
+ * It costs one element, it is what the eye uses to group the rest as a set,
+ * and it is `importantForAccessibility="no"` because a screen reader gets the
+ * grouping from the chips' own labels and hints instead.
+ */
 export function GenreStrip({
   selected,
   onSelect,
+  category,
+  onCategorySelect,
 }: {
   selected: Genre | null;
   /** Called with the new selection: the genre, or null when it is cleared. */
   onSelect: (genre: Genre | null) => void;
+  category: ExploreCategory | null;
+  /** Independent of the genre: a reader can want bedtime comedy. */
+  onCategorySelect: (category: ExploreCategory | null) => void;
 }) {
+  const bedtimeSelected = category === BEDTIME_CATEGORY;
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.row}
-      accessibilityLabel="Filter by genre"
+      accessibilityLabel="Filter by category and genre"
       keyboardShouldPersistTaps="handled"
     >
+      <FilterChip
+        label={BEDTIME_CATEGORY_LABEL}
+        onPress={() => onCategorySelect(bedtimeSelected ? null : BEDTIME_CATEGORY)}
+        selected={bedtimeSelected}
+        accessibilityLabel={BEDTIME_CATEGORY_SHORT_LABEL}
+        accessibilityHint={bedtimeSelected
+          ? "Selected. Tap to show every story again"
+          : "Show published bedtime stories"}
+      />
+      <View style={styles.divider} importantForAccessibility="no" />
       {UI_GENRES.map((genre) => (
         <FilterChip
           key={genre}
@@ -118,43 +154,19 @@ export function GenreStrip({
   );
 }
 
-/** A composable category row. Genre remains independently selectable below. */
-export function ExploreCategoryStrip({
-  selected,
-  onSelect,
-}: {
-  selected: ExploreCategory | null;
-  onSelect: (category: ExploreCategory | null) => void;
-}) {
-  const bedtimeSelected = selected === BEDTIME_CATEGORY;
-  return (
-    <View
-      style={styles.categoryRow}
-      accessibilityLabel="Filter by category"
-    >
-      <FilterChip
-        label={BEDTIME_CATEGORY_LABEL}
-        onPress={() => onSelect(bedtimeSelected ? null : BEDTIME_CATEGORY)}
-        selected={bedtimeSelected}
-        accessibilityLabel={BEDTIME_CATEGORY_SHORT_LABEL}
-        accessibilityHint={bedtimeSelected
-          ? "Selected. Tap to show every story again"
-          : "Show published bedtime stories"}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   row: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
     gap: spacing.sm,
   },
-  categoryRow: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
+  // A hairline between Bedtime and the genres. Vertically inset so it reads
+  // as a separator between chips rather than as a full-height rule.
+  divider: {
+    width: 1,
+    alignSelf: "stretch",
+    marginVertical: spacing.xs,
+    backgroundColor: colors.border,
   },
   chip: {
     paddingHorizontal: spacing.lg,

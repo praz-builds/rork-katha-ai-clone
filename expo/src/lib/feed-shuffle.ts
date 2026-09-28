@@ -63,3 +63,72 @@ export function seededShuffle<T>(items: readonly T[], seed: string, salt = ""): 
   }
   return out;
 }
+
+/**
+ * Deal the list out by key, round-robin, so neighbours differ.
+ *
+ * WHY EXPLORE NEEDS ONE. The catalogue was authored and published in genre
+ * blocks -- `backend/originals/slots.json` runs romance, then comedy, then
+ * fantasy -- and every engagement count on it is still zero. Sorting by views
+ * or likes therefore ties on every row, `Array.prototype.sort` is stable, and
+ * the list falls through to publication order: eight romance, then six comedy,
+ * then seven fantasy. It reads like a catalogue dump, which is what it is.
+ *
+ * `seededShuffle` alone does not fix it. It breaks the ties, but a shuffle of
+ * a genre-clustered list is still clustered often enough to notice -- runs are
+ * what random sequences actually look like.
+ *
+ * HOW. Group by key, keeping each group in the order it arrived, then take one
+ * from each non-empty group in turn. Two neighbours can only share a key once
+ * every OTHER group has run out, which is the tail and is unavoidable: at that
+ * point there is nothing left to interleave with.
+ *
+ * WHY THIS SHAPE AND NOT A MINIMAL-DISTURBANCE PASS. The first attempt walked
+ * the list in order and moved an item only when it would have made a third
+ * consecutive neighbour. That preserves the ranking better and it is wrong: it
+ * drains the leading key two at a time while spending the others one at a
+ * time, so the majority key is exhausted early and the list ends in a long
+ * solid run of whatever is left. Its own test caught a run of five where two
+ * was promised. Dealing from groups cannot do that, because a group is only
+ * ever ahead of the others by one.
+ *
+ * WHAT IT COSTS. Ranking ACROSS keys is disturbed -- the second card is the
+ * best of another genre rather than the second best overall. Ranking WITHIN a
+ * key is exact, because each group keeps its order. That is the right trade
+ * here: every cross-key comparison is currently a tie between zeroes, and a
+ * discovery surface wants variety in the first screenful more than it wants a
+ * strict ordering nobody can perceive.
+ *
+ * TOTALITY. Every input appears exactly once, and the input is not mutated.
+ * That is load-bearing for the caller, which runs this over a list that GROWS
+ * as pages arrive; a helper that dropped or duplicated a row would show up
+ * only at a page boundary. Deterministic, so a re-render does not reshuffle
+ * under the reader's thumb.
+ */
+export function spreadByKey<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string,
+): T[] {
+  if (items.length < 2) return [...items];
+
+  // A Map keeps insertion order, so the groups come out ordered by the
+  // position of their best-ranked member: the top of the input still leads.
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    const group = groups.get(key);
+    if (group) group.push(item);
+    else groups.set(key, [item]);
+  }
+  if (groups.size === 1) return [...items];
+
+  const queues = [...groups.values()];
+  const out: T[] = [];
+  while (out.length < items.length) {
+    for (const queue of queues) {
+      const next = queue.shift();
+      if (next !== undefined) out.push(next);
+    }
+  }
+  return out;
+}
