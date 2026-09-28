@@ -104,8 +104,12 @@ describe("the native branch", () => {
     expect(props.contentPosition).toEqual({ left: "25%", top: "75%" });
     // The disk cache `Image.prefetch` never gave, and the key that stops a
     // recycled row painting the previous story's art.
-    expect(props.cachePolicy).toBe("disk");
+    expect(props.cachePolicy).toBe("memory-disk");
     expect(props.recyclingKey).toBe("story-1");
+    // Both halves of the fade, or neither. The web branch below pins the same
+    // token; asserting only there let native go back to a literal while the
+    // log claimed the two could not drift.
+    expect(props.transition).toBe(motion.fast);
   });
 });
 

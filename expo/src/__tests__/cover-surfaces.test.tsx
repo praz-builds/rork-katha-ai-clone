@@ -101,8 +101,26 @@ it("draws the genre gradient under the art, not instead of it", async () => {
   // from the first frame, and not once it fades in.
   const view = await render(<Cover story={story} size="mini" />);
   expect(view.getByTestId("expo-image")).toBeTruthy();
-  // The gradient is still rendered alongside it, not replaced by it.
-  expect(JSON.stringify(view.toJSON())).toContain("LinearGradient");
+
+  // UNDER, not merely alongside. "Both are rendered" holds for either order,
+  // and an opaque gradient painted on top of the art is the same blank shelf
+  // seen from the other side.
+  const order = (node: unknown, found: string[] = []): string[] => {
+    if (Array.isArray(node)) {
+      for (const child of node) order(child, found);
+      return found;
+    }
+    if (node === null || typeof node !== "object") return found;
+    const element = node as { type?: unknown; children?: unknown };
+    if (typeof element.type === "string") found.push(element.type);
+    order(element.children, found);
+    return found;
+  };
+  const painted = order(view.toJSON());
+  expect(painted).toContain("LinearGradient");
+  expect(painted.indexOf("LinearGradient")).toBeLessThan(
+    painted.indexOf("ExpoImage"),
+  );
 });
 
 /**
@@ -118,8 +136,21 @@ it("draws the genre gradient under the art, not instead of it", async () => {
 it("asks for the hero surfaces at the hero width", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require("fs") as typeof import("fs");
-  for (const file of ["StoryDetailScreen", "ListenScreen"]) {
+  // Not the exact call text: a reformat, a rename or a destructured
+  // `coverImageUrl` would all be behaviourally identical and would all turn
+  // this red, and a test that goes red on a reformat gets deleted rather than
+  // fixed. What it actually asserts is the pair -- the module is imported and
+  // `"hero"` is asked for -- reported per screen so a failure names one.
+  const asked = ["StoryDetailScreen", "ListenScreen"].map((file) => {
     const source = fs.readFileSync(`${__dirname}/../screens/${file}.tsx`, "utf8");
-    expect(source).toContain('coverUrl(story.coverImageUrl, "hero")');
-  }
+    return {
+      file,
+      usesHelper: source.includes("@/lib/cover-url"),
+      asksForHero: /coverUrl\([^)]*"hero"\)/.test(source),
+    };
+  });
+  expect(asked).toEqual([
+    { file: "StoryDetailScreen", usesHelper: true, asksForHero: true },
+    { file: "ListenScreen", usesHelper: true, asksForHero: true },
+  ]);
 });

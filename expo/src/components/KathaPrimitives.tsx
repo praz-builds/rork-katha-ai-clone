@@ -35,6 +35,17 @@ import type { Genre, ImageName, Story } from "@/types/domain";
  *
  * `recyclingKey` is not optional on a `FlatList`: without it a recycled row
  * shows the previous story's cover until the new one decodes.
+ *
+ * ON WEB THERE IS NO HEADER TO SET. The web branch returns before the
+ * `expo-image` path, and the browser sends its own image `Accept` -- which has
+ * carried `image/webp` in every current engine for years, so the 70 KB is
+ * earned there too, just not by this file. The header below is the native
+ * half, where nothing sends one unless we do.
+ *
+ * NO REDUCED-MOTION BRANCH, deliberately. This is a 150 ms opacity fade from a
+ * gradient the same size, with no movement and no parallax, and what it
+ * replaces is a cover popping in at full strength. If a motion-preference pass
+ * ever lands app-wide it should own this too.
  */
 export function FocalImage({
   source,
@@ -160,8 +171,10 @@ export function FocalImage({
       contentFit="cover"
       contentPosition={{ top: `${focalY * 100}%`, left: `${focalX * 100}%` }}
       // A real disk cache, which `Image.prefetch` never provided: it only ever
-      // warmed the in-memory/HTTP cache for the session.
-      cachePolicy="disk"
+      // warmed the in-memory/HTTP cache for the session. `memory-disk` rather
+      // than `disk` so scrolling back up a shelf returns the decoded bitmap
+      // instead of re-decoding it off the filesystem.
+      cachePolicy="memory-disk"
       // Cross-fade from whatever is underneath -- callers layer a genre
       // gradient there -- rather than the hand-rolled Animated.Value the feed
       // card used to drive from `onLoad`.

@@ -34,14 +34,27 @@ const RENDER_SEGMENT = "/storage/v1/render/image/public/";
 /**
  * The width to request per surface, in source pixels.
  *
- * Roughly 3x the layout size, so the art still looks right on a 3x screen and
- * on the widest phone in each band. Going finer than this is measuring noise:
- * the step from 2 MB to 70 KB is the change, and 350 versus 320 is not.
+ * Roughly 3x the layout size for the two small surfaces, so the art still
+ * looks right on a 3x screen and on the widest phone in each band. Going finer
+ * than that is measuring noise: the step from 2 MB to 70 KB is the change, and
+ * 350 versus 320 is not.
+ *
+ * `hero` is the exception and it is not a miss. A full-bleed hero on a 440pt
+ * phone wants 1320 source pixels, but the cover measured above is **832 x
+ * 1248** -- there are no more pixels to ask for. 800 is the source's own
+ * width, and what the hero saves is `quality=60` and WebP rather than a
+ * downscale. Do not "correct" it upwards; the transform cannot invent detail.
  */
 export const COVER_WIDTHS = {
-  /** Explore, Library and Home rail cards: ~116pt wide. */
+  /**
+   * `Cover size="card"` and the feed card: a 96-140pt range depending on the
+   * surface, widest on Explore's two-up grid. Library's shelves are `mini`.
+   */
   card: 350,
-  /** The story page hero. */
+  /**
+   * The story page hero and the player's cover, both full-bleed. See the note
+   * above on why this is the source width rather than 3x the box.
+   */
   hero: 800,
   /**
    * `Cover size="mini"`: Library shelves and author pages. **96pt**, which is

@@ -395,15 +395,20 @@ The +16 is 24 added against 8 deleted:
 - **`cover-url.test.ts`, 7.** Six of them about *not* breaking an image, and one
   pinning the rewrite to the `Accept` header so the two halves cannot drift
   apart.
-- **`focal-image.test.tsx`, 8.** The component's own contract: the header it
-  sends, the header it does not send for a cover it never rewrote, a bundled
-  asset passed through untouched, the crop settings, the remount on a new
-  source, and a cached image the web `load` event will never fire for.
+- **`focal-image.test.tsx`, 8**, all eight: the header it sends, the header it
+  does not send for a cover it never rewrote, a bundled asset passed through
+  untouched, the crop settings, the URL the web branch asks for, the fade
+  starting hidden and revealing itself on load, the remount on a new source,
+  and a cached image the web `load` event will never fire for. **Both halves of
+  the fade now assert `motion.fast`** — pinning only the web one left native
+  free to go back to a literal, which is the drift the pinning was for.
 - **`cover-surfaces.test.tsx`, 6.** That the *screens* call `coverUrl` — the
   half that has already been wrong once, and the one the other two files cannot
   see. Five render `Cover` for the `card` and `mini` surfaces; the sixth reads
   `StoryDetailScreen` and `ListenScreen` as text, because they call `coverUrl`
-  themselves and `hero` was otherwise the one width nothing pinned.
+  themselves and `hero` was otherwise the one width nothing pinned — on the
+  pair (the helper is imported, and `"hero"` is what it is asked for) rather
+  than on one spelling of the call, so a reformat cannot turn it red.
 - **`story-feed-card.test.tsx`, +3 and −3.** It lost its three opacity tests,
   which tested a mechanism that is now the library's, and gained three on what
   the card still decides for itself: the URL it asks for, the URL it leaves
