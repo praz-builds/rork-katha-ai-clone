@@ -480,10 +480,10 @@ after a backspace.
 
 ### Verification
 
-Expo **1677/1677** across 155 suites (the baseline is 1651/153 two entries
+Expo **1679/1679** across 155 suites (the baseline is 1651/153 two entries
 below), typecheck clean, lint 0 errors. Nine new tests on `spreadByKey`
 (totality, no run before the tail, within-key order, determinism, the
-growing-list seam) and eight on paging, each written against a way it fails:
+growing-list seam) and ten on paging, each written against a way it fails:
 repeated `onEndReached`, a stale page appending to a new query, an overlapping
 page, a lying footer, and the state the auto-chase leaves behind.
 `explore-search-query.test.ts`'s builder mock now resolves at `.range()` rather
@@ -500,6 +500,27 @@ distinguishes the three cases: rows came back and the reader's narrowing
 removed them, pages exist that nobody has asked for, and the genre is actually
 empty. The first two get honest copy and a **Keep looking** button, which is
 the manual version of the scroll that cannot happen without a list.
+
+**And the same false statement was in the search branch**, which the first
+version of the fix did not reach: it was gated on `!searching`, and a reader
+who checks a tag and then types gets 24 rows that match the term, all of them
+removed by the tag, and was told the search matched nothing and offered a
+spelling fix. Harder to escape than the genre case, too — `availableTags` is
+derived from the results, so with none the panel's TAGS section is not drawn
+and the chip that caused it is off screen. The check is
+`searched.length > 0`, which is query-independent, so it is now one branch
+above both and neither can drift from the other.
+
+Three smaller corrections in the same place. The body said to clear the
+filters while the only button fetched another page, because `hasMore` was
+tested first; both buttons render when both apply. The condition read
+`activeFilterCount`, which counts the sort — a sort cannot empty a page, so a
+reader on "Most loved" whose page the block list emptied was told to clear
+filters and given a button that reset the sort and changed nothing; it reads
+`selectedTags.length` now. And the "more exists but nothing came back" branch
+was unreachable in every producer — Supabase compares the row count to the
+page size and `local()` only reports `hasMore` from page 1 — so it is gone,
+and `hasMore` chooses the button rather than the copy.
 
 The block list is now in the chase's reset key too. It is client-side
 narrowing by the same definition as the tags, so blocking an author while

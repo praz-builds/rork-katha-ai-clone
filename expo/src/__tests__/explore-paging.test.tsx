@@ -527,3 +527,82 @@ it("starts the next query at page 0, not where the last one stopped", async () =
   expect(search.mock.calls[0][0].page ?? 0).toBe(0);
   await waitFor(() => expect(idsOnScreen(view)).toHaveLength(SEARCH_PAGE_SIZE));
 });
+
+
+// THE TAG PATH, which is the one the docblock names and the one with the copy
+// a reader is most likely to see: a tag left checked from the previous results
+// while they tap a genre, or type a term.
+//
+// Both of these fetch rows that match perfectly and then remove them here, so
+// what the screen says has to name the filter rather than the catalogue.
+const taggedPage = (n: number, tag: string): Story[] =>
+  Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
+    ...seedStories[0],
+    id: `p${n}-${i}`,
+    title: `Story ${n}-${i}`,
+    genre: "fantasy" as Story["genre"],
+    tags: [tag],
+    chapters: [],
+  }));
+
+/** Check a tag in the filter panel. The chip label is capitalised. */
+const checkFirstTag = async (view: ExploreView, tag: string) => {
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Filters"));
+  });
+  await act(async () => {
+    fireEvent.press(await view.findByText(tag));
+  });
+};
+
+it("blames the tag, not the genre, when the tag is what emptied it", async () => {
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(taggedPage(input.page ?? 0, "dragons"), true)
+  );
+  const view = await renderWith(search, 20);
+  await waitFor(() => expect(search).toHaveBeenCalled());
+
+  await checkFirstTag(view, "Dragons");
+  // Now a tag that nothing coming back carries.
+  search.mockImplementation(async (input: SearchInput) =>
+    outcome(taggedPage(input.page ?? 0, "pirates"), true)
+  );
+  await act(async () => {
+    fireEvent.press(view.getByLabelText("Fantasy"));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  expect(view.queryByText(/This genre is new here/)).toBeNull();
+  expect(view.getByText(/Your filters are narrower than the catalogue/)).toBeTruthy();
+  // The body says to clear them, so the button that clears them is here --
+  // alongside Keep looking, not instead of it.
+  expect(view.getByText("Clear filters")).toBeTruthy();
+  expect(view.getByText("Keep looking")).toBeTruthy();
+});
+
+it("does not blame the search term when a tag is what emptied it", async () => {
+  // Typing does not clear the tags, and the chip that caused this is off
+  // screen by then -- `availableTags` comes from the results, and there are
+  // none. "Try a different spelling" is advice about the wrong thing.
+  const search = jest.fn(async (input: SearchInput) =>
+    outcome(taggedPage(input.page ?? 0, "dragons"), true)
+  );
+  const view = await renderWith(search, 20);
+  await waitFor(() => expect(search).toHaveBeenCalled());
+
+  await checkFirstTag(view, "Dragons");
+  search.mockImplementation(async (input: SearchInput) =>
+    outcome(taggedPage(input.page ?? 0, "pirates"), true)
+  );
+  await act(async () => {
+    fireEvent.changeText(view.getByPlaceholderText(SEARCH_PLACEHOLDER), "dragon");
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  expect(view.queryByText(/Try a different spelling/)).toBeNull();
+  expect(view.getByText(/Your filters are narrower than the catalogue/)).toBeTruthy();
+});

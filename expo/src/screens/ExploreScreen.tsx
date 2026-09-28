@@ -535,6 +535,98 @@ export default function ExploreScreen({
       );
     }
 
+    /**
+     * THE READER'S OWN NARROWING EMPTIED IT, whatever else is on screen.
+     *
+     * This runs before the genre and search branches because it is true of
+     * both, and the first version of it was gated on `!searching` -- which
+     * left the identical false statement in the branch a reader reaches by
+     * typing. Check a tag, then type "dragon": 24 rows come back matching
+     * "dragon", the tag removes them all, and the screen said the search
+     * matched nothing and offered a spelling fix. The term was never the
+     * problem, and the chip that was is no longer on screen, because
+     * `availableTags` is derived from the results.
+     *
+     * `searched` is what the hook returned, before the tag filter and the
+     * block list, so rows in it with nothing visible means the narrowing is
+     * this screen's own. That is query-independent, which is why this is one
+     * branch rather than two.
+     *
+     * This is also the state the auto-chase ends in once its budget of two
+     * pages is spent, so it is the one a reader is guaranteed to land in.
+     * `hasMore` chooses the BUTTON, not the copy: there may be matching rows
+     * one page along, and "Keep looking" is the manual form of the scroll that
+     * cannot happen against an empty list.
+     *
+     * (There is no "nothing fetched but more exists" case to handle: every
+     * producer sets `hasMore` false on an empty page -- Supabase compares the
+     * row count to the page size, and `local()` only reports true from page 1
+     * onward, which page 0 having returned rows is a precondition for.)
+     */
+    const narrowedAway = searched.length > 0;
+    if (narrowedAway) {
+      const tagNarrowed = selectedTags.length > 0;
+      const subject = searching
+        ? `“${query.trim()}”`
+        : category
+          ? genre
+            ? `${BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()} in ${genreLabels[genre]}`
+            : BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()
+          : genre
+            ? `${genreLabels[genre]} stories`
+            : "stories";
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>
+            {searching
+              ? `Nothing in ${subject} matches your filters`
+              : `No ${subject} match your filters`}
+          </Text>
+          <Text style={styles.emptyBody}>
+            {/* `selectedTags`, not `activeFilterCount`: that counts the sort
+                too, and a sort cannot empty a page -- so a reader whose page
+                the block list emptied while they were on "Most loved" was told
+                to clear filters and handed a button that reset the sort and
+                changed nothing. */}
+            {tagNarrowed
+              ? "Your filters are narrower than the catalogue. Clear them to see everything."
+              : "Everything found here is by a writer you blocked."}
+          </Text>
+          {/* BOTH, when both apply. The body says to clear the filters, so the
+              button that clears them has to be here -- it used to appear only
+              once `hasMore` was false, which is the one state where clearing
+              is not the interesting move. */}
+          {tagNarrowed ? (
+            <Pressable
+              onPress={clearFilters}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.emptyButtonText}>Clear filters</Text>
+            </Pressable>
+          ) : null}
+          {hasMore ? (
+            <Pressable
+              onPress={() => loadMore()}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.emptyButtonText}>Keep looking</Text>
+            </Pressable>
+          ) : null}
+          {!tagNarrowed && !hasMore ? (
+            <Pressable
+              onPress={clearAll}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.emptyButtonText}>See every story</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+
     // Nothing typed, a genre chosen, and that genre is empty. Not a search
     // problem, so both the copy and the way out differ from a search miss:
     // this is a gap in the catalogue, it is honest, and it closes as writers
@@ -546,70 +638,6 @@ export default function ExploreScreen({
           : BEDTIME_CATEGORY_SHORT_LABEL.toLowerCase()
         : `${genreLabels[genre!]} stories`;
       const isOfflineBedtime = category === BEDTIME_CATEGORY && source === "local";
-
-      /**
-       * BUT FIRST: IS THE GENRE ACTUALLY EMPTY?
-       *
-       * This is the state the auto-chase ends in once its budget of two is
-       * spent, so it is the one a reader is now guaranteed to land in -- and
-       * the copy below blames the catalogue. Two ways that is a false
-       * statement, and both are the reader's own narrowing:
-       *
-       * - Rows CAME BACK and the tag filter or the block list removed them
-       *   all. `searched` is what the hook returned, before either. Saying
-       *   "this genre is new here" over 72 fetched fantasy stories is wrong
-       *   in a way the reader cannot correct, because `onEndReached` cannot
-       *   fire when there is no list to reach the end of.
-       * - `hasMore` is still true: there are pages nobody has asked for.
-       *   "More will appear as writers publish" is not what is going on; the
-       *   rows may already be there, one page along.
-       *
-       * So those get their own copy and, when there is more to fetch, a way
-       * to carry on looking -- the manual version of the scroll the reader
-       * cannot perform against an empty list.
-       */
-      const narrowedAway = searched.length > 0;
-      if (narrowedAway || hasMore) {
-        return (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>
-              {narrowedAway ? `No ${label} match your filters` : `No ${label} on this page`}
-            </Text>
-            <Text style={styles.emptyBody}>
-              {narrowedAway
-                ? activeFilterCount > 0
-                  ? "Your filters are narrower than this genre. Clear them to see everything."
-                  : "Everything found here is by a writer you blocked."
-                : "There is more of the catalogue to look through than has loaded."}
-            </Text>
-            {hasMore ? (
-              <Pressable
-                onPress={() => loadMore()}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.emptyButtonText}>Keep looking</Text>
-              </Pressable>
-            ) : activeFilterCount > 0 ? (
-              <Pressable
-                onPress={clearFilters}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.emptyButtonText}>Clear filters</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={clearAll}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.emptyButtonText}>See every story</Text>
-              </Pressable>
-            )}
-          </View>
-        );
-      }
       return (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>
@@ -700,6 +728,7 @@ export default function ExploreScreen({
     query,
     searched.length,
     searching,
+    selectedTags.length,
     source,
     status,
   ]);
