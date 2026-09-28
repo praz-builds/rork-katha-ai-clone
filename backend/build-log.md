@@ -229,6 +229,38 @@ Watch the house `streaks` row seeded for the Play screenshots (`#158`): once
 `next_credit_at` already at 3, so that account may claim a rung it never earned.
 `backend/scripts/seed-screenshot-fixtures.ts --teardown` clears it.
 
+### OPEN, AND THIS IS THE COMMIT THAT OPENS IT: six seconds a day buys a streak day
+
+`source-of-truth/CREDITS_AND_PRICING.md:1420` says a streak day is **"one
+chapter finished, or ≥60s of dwell", server-recorded**, and `AGENTS.md:1289`
+repeats the sixty. What ships is **five seconds, measured on the client**:
+
+- `use-read-tracking.ts`'s `MIN_SECONDS` is 5, and the cleanup posts any dwell
+  at or above it;
+- `_shared/engagement.ts:270` calls `touchStreak` on every non-throwing RPC,
+  including the `recorded: false` a deduped read gets;
+- `touch_streak(p_user_id uuid)` (`00089:85`) takes no duration and no story,
+  so it *cannot* apply a 60-second rule — nothing passes it one.
+
+Open a story, six seconds, leave. Twenty-one consecutive days of that pays the
+whole ladder: **2 + 4 + 6 + 8 + 10 = 30 credits**, which the pricing doc prices
+at $1.29 blended and $5.34 if all thirty start stories. **And an author's own
+story counts**: `record_story_read` computes `v_counts_for_earnings := not
+v_is_own_story` (`00052:136`) and gates only the `read_count` increment on it,
+while `touch_streak` sits outside that function and never sees the flag.
+
+None of those lines are new and none of them are this branch's. **What is new
+is that the path was dead — `story_reads` had zero rows — and this branch is
+what turns it on.** Six rounds of review recorded it as a note about a
+mechanism nobody could reach; at this merge it is a live faucet, so it is
+written here with the number in it rather than left as a note.
+
+The fix is server-side and therefore not in a client-only branch
+(`AGENTS.md:33`: credit logic stays in the backend). Either `record_story_read`
+returns the stored duration for `handleRecordRead` to gate `touchStreak` on, or
+`touch_streak` takes a duration and a story id and applies the 60 and the
+own-story exclusion itself. Carried as a row in `backend/ROADMAP.md`.
+
 ---
 
 ## 2026-09-27 UTC — Screenshot fixtures seeded, and the pre-build preflight

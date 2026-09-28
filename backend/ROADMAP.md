@@ -440,6 +440,12 @@ shipped:
 - [x] `credit-claims` edge function (`list`, `claim`) over `claim_comment_credit`: 1 credit per claimed comment after a qualifying read, capped per story / day / month; `create_feedback` no longer grants
 - [ ] v1.1: deferred deep link `katha.ai/i/{code}` resolving the referrer on first launch, with the code field kept as the recovery path (pricing doc §5)
 
+### Open: the streak threshold is five client seconds, not sixty server ones
+
+| Item | When | Status | Notes |
+|---|---|---|---|
+| `touch_streak` must apply the 60-second rule and exclude your own story | Post-push, server-side | [ ] | `../source-of-truth/CREDITS_AND_PRICING.md:1420` and `../AGENTS.md:1289` both say a streak day is one chapter finished or **≥60s of dwell, server-recorded**. What enforces it is `MIN_SECONDS = 5` in the client: `_shared/engagement.ts:270` calls `touchStreak` on every non-throwing RPC including a deduped one, and `touch_streak(p_user_id uuid)` (00089:85) takes no duration and no story, so it cannot apply either rule. Six seconds a day for 21 days pays the full 2+4+6+8+10 ladder, and a writer opening their own chapter counts — `v_counts_for_earnings` (00052:136) gates only `read_count`. **Dead until #162, which is what turns it on.** Fix: `record_story_read` returns the stored duration for `handleRecordRead` to gate on, or `touch_streak` takes the duration and the story id |
+
 ### Remaining Cron Jobs
 
 - [ ] Velocity anomaly check (hourly) — flag accounts with suspicious read patterns

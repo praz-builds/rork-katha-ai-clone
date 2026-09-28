@@ -543,8 +543,8 @@ it("credits a late reply to the story it was measured on, not the one now open",
   });
 
   // s2 has banked nothing, so a focus six seconds in must write nothing for
-  // s2. (s1's cleanup posts again on the swap -- it is exempt from `inFlight`
-  // and the server dedups it -- so what matters here is s2's own rows.)
+  // s2. (s1's cleanup posts again on the swap -- nothing stops it, and the
+  // server dedups it -- so what matters here is s2's own rows.)
   await h.advance(6);
   await act(async () => h.composerFocus());
   expect(h.posted.filter((row) => row.storyId === "s2")).toEqual([]);
@@ -557,10 +557,11 @@ it("credits a late reply to the story it was measured on, not the one now open",
 });
 
 it("still writes the read when a slow threshold post fails and the reader leaves", async () => {
-  // `inFlight` must not silence the cleanup. The cleanup is the last thing
-  // there is -- no timer, no subscription, nothing after it -- so skipping it
-  // while a request is still out loses the read outright if that request then
-  // fails. Letting it through is safe because the server serialises on
+  // Nothing may silence the cleanup. It is the last thing there is -- no
+  // timer, no subscription, nothing after it -- so skipping it while a request
+  // is still out loses the read outright if that request then fails. That is
+  // what an in-flight guard did before it was removed, and it is why one is
+  // not coming back: a duplicate is safe, because the server serialises on
   // `pg_advisory_xact_lock(user, chapter)` before it looks for a row, so a
   // duplicate cannot write twice; the loser is answered `recorded: false`.
   let fail: ((value: Reply) => void) | null = null;

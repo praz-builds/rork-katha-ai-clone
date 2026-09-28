@@ -167,9 +167,9 @@ export function useReadTracking(
      * Report `seconds`, and update what this hook believes only from what the
      * server actually said.
      *
-     * Three things were wrong with the obvious version, and all three end in
-     * the same place: a short row written by the flush, a cancelled timer, and
-     * the 120 the gate tests for never arriving.
+     * Two things were wrong with the obvious version, and both end in the same
+     * place: a short row written by the flush, a cancelled timer, and the 120
+     * the gate tests for never arriving.
      *
      * `posted` used to be set on the ATTEMPT. `recordRead` swallows every
      * failure and resolves null, so a dropped request looked exactly like a
@@ -183,10 +183,11 @@ export function useReadTracking(
      * mirror above the server's sum, and the flush's guard is only as good as
      * that number.
      *
-     * And `posted` is set after the await, so for the length of the request
-     * every caller still reads false -- a page turn during a slow threshold
-     * post ran the cleanup into the same chapter. `inFlight` closes that
-     * without going back to trusting the attempt.
+     * `posted` being set after the await does leave a window where every
+     * caller still reads false, so a page turn during a slow threshold post
+     * can ask for the same chapter twice. A flag for that was tried and
+     * removed -- see the paragraph below on why one redundant request is the
+     * cheaper side of that trade.
      *
      * `clearTimer` moved in here too, after a delivered post. Cancelling it
      * before the call meant a failed flush left `posted` false with nothing

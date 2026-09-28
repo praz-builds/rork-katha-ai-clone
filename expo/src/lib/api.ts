@@ -2867,10 +2867,15 @@ export async function registerPushToken(
  * number permanently under-records that chapter. **Call it once per chapter,
  * with the largest honest number, and never speculatively.**
  *
- * `useReadTracking` is the only caller. It posts at 120 seconds of foreground
- * dwell -- the one number the credit gate reads -- or on the way out with the
- * real dwell if the chapter never got that far, and it treats `recorded:
- * false` as "the server kept what it had", which is what that answer means.
+ * `useReadTracking` is the only caller, and it posts at three moments: at 120
+ * seconds of foreground dwell (the one number the credit gate reads), when the
+ * comment composer takes focus and this chapter's dwell plus the story's
+ * already-recorded seconds would clear that gate, and on the way out with the
+ * real dwell if the chapter never got that far. The middle one is the case a
+ * clock cannot see -- two chapters of 70 seconds, the second still mounted --
+ * and it is why this is not a single call on unmount. It treats
+ * `recorded: false` as "the server kept what it had", which is what that
+ * answer means.
  *
  * SILENT BY DESIGN. Nothing a reader does depends on the answer, and the
  * failure this must never produce is an error message about telemetry over a
