@@ -10,10 +10,19 @@ import {
   MAX_CHAPTER_MOMENT_LENGTH,
   MAX_SETTING_PROMPT_LENGTH,
   NO_FRAME_CLAUSE,
+  type PromptCharacter,
   settingForSentence,
+  traditionDepictionClauses,
 } from "./cover-prompts.ts";
 import { describePreviousCover } from "./cover-regeneration.ts";
 import { PRIMARY_GENRES } from "./types.ts";
+import {
+  DIVINE_DEPICTION_CONFLICT,
+  getTradition,
+  mayDepictDivine,
+  mayDepictProphets,
+  SUPPORTED_TRADITION_IDS,
+} from "./traditions.ts";
 
 /**
  * The cover prompt is the one prompt in the system with no schema, no parser
@@ -933,5 +942,331 @@ Deno.test("a where-and-when that bounds to nothing adds no setting", () => {
   for (const value of ['""', "\u201c\u201d", "<>[]{}", "   \n  "]) {
     const prompt = buildCoverPrompt("mystery", "T", [], undefined, value);
     assert(!prompt.includes("set in"), `${JSON.stringify(value)}: ${prompt}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Per-tradition DEPICTION RULES.
+//
+// Every published story generates a cover with no human in the loop, so these
+// are the assertions standing between a story's declared tradition and an
+// automatically generated picture of a figure a family holds must not be
+// depicted. They are written against the CONTRACT in `traditions.ts` rather
+// than against a hardcoded expectation, so that flipping a `divine`,
+// `prophets` or `otherSacredFigures` value there -- the one-line edit
+// `DIVINE_DEPICTION_CONFLICT` describes -- changes the prompt and these tests
+// together, instead of leaving them agreeing with a policy that no longer
+// exists.
+// ---------------------------------------------------------------------------
+
+/** Every cover prompt argument before the tradition, for a cover with nothing else on it. */
+function traditionCover(tradition?: string): string {
+  return buildCoverPrompt(
+    "contemporary",
+    "A Tuesday",
+    [],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    tradition,
+  );
+}
+
+/**
+ * Ornamental framing is the obvious wrong move for a faith-specific cover, and
+ * `NO_FRAME_CLAUSE` exists because one source image is cropped three ways and
+ * a drawn border is cut unevenly by all three.
+ */
+function assertNoBannedOrnament(prompt: string) {
+  for (const banned of ["ornate border", "decorative border", "gilt frame"]) {
+    assert(
+      !prompt.toLowerCase().includes(banned),
+      `depiction clauses must not ask for ${banned}: ${prompt}`,
+    );
+  }
+}
+
+Deno.test("no tradition leaves every image prompt byte-identical", () => {
+  // Every argument up to, but not including, the tradition.
+  const args: [
+    string,
+    string,
+    string[],
+    PromptCharacter[],
+    string,
+    string,
+    string | undefined,
+    string,
+  ] = [
+    "romance",
+    "The Long Way Back",
+    ["grief", "memory"],
+    [{ name: "Ana", appearance: "tall, grey coat", isHero: true }],
+    "a hill town, off-season",
+    "no graphic violence",
+    undefined,
+    "watercolor",
+  ];
+
+  const before = buildCoverPrompt(...args);
+  // Undefined, an unknown id, a declared-but-unsupported id, and the shapes a
+  // stale or hostile client could send -- including the prototype-chain keys
+  // that `normalizeCoverArtStyle`'s own comment records reaching a provider.
+  // Every one of them means "absent", and absent must produce the prompt the
+  // product produced before the tradition contract existed.
+  for (
+    const value of [
+      undefined,
+      "",
+      "   ",
+      "buddhist",
+      "sikh",
+      "secular",
+      "not-a-tradition",
+      "MUSLIM ",
+      "constructor",
+      "__proto__",
+      "toString",
+    ]
+  ) {
+    assertEquals(
+      buildCoverPrompt(...args, value),
+      before,
+      `tradition=${JSON.stringify(value)} changed the prompt`,
+    );
+    assertEquals(traditionDepictionClauses(value), []);
+  }
+
+  const chapterBase = {
+    genre: "romance",
+    storyTitle: "The Long Way Back",
+    chapterNumber: 3,
+    chapterTitle: "The Station",
+    moment: "she misses the last train",
+    themes: ["grief"],
+    whereAndWhen: "a hill town, off-season",
+    avoid: "no graphic violence",
+    artStyle: "watercolor",
+  };
+  assertEquals(
+    buildChapterArtPrompt({ ...chapterBase, tradition: "buddhist" }),
+    buildChapterArtPrompt(chapterBase),
+  );
+});
+
+Deno.test("a Muslim story's cover shows a substitute subject and no prophet", () => {
+  // The founder's hard rule, and the failure this whole layer exists for.
+  assertEquals(mayDepictProphets("muslim"), false);
+
+  const prompt = buildCoverPrompt(
+    "historical",
+    "The Night Journey",
+    ["mercy"],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    "muslim",
+  );
+
+  assertStringIncludes(prompt, "contains no stand-in for");
+  assertStringIncludes(prompt, "No face, no figure, no body, no human form");
+  assertStringIncludes(prompt, "Muhammad");
+  assertStringIncludes(prompt, "Ahl al-Bayt");
+  assertStringIncludes(prompt, "Sahaba");
+
+  // The positive half, which is the point: a prohibition alone leaves the
+  // model to invent a subject, and the subject it invents on a story like this
+  // one is a person. Every one of the tradition's own `visualSubstitutes` has
+  // to reach the prompt saying what the picture holds instead.
+  const substitutes = getTradition("muslim").depiction.visualSubstitutes;
+  assert(substitutes.length > 0);
+  for (const substitute of substitutes) {
+    assertStringIncludes(prompt, substitute);
+  }
+  assertStringIncludes(prompt, "draw the world around it rather than");
+
+  assertNoBannedOrnament(prompt);
+});
+
+Deno.test("mayDepictDivine is false for every supported tradition, and the prompt says so", () => {
+  // The Phase 1 conservative reading of DIVINE_DEPICTION_CONFLICT. If this
+  // fails, the founder's decision landed -- and the prompt assertion below is
+  // then the thing to revisit, not this line.
+  assertEquals(DIVINE_DEPICTION_CONFLICT.resolved, false);
+  for (const id of SUPPORTED_TRADITION_IDS) {
+    assertEquals(mayDepictDivine(id), false, id);
+
+    const prompt = traditionCover(id);
+    assertStringIncludes(prompt, "the Divine");
+    assertStringIncludes(prompt, "contains no stand-in for");
+    assertNoBannedOrnament(prompt);
+  }
+});
+
+Deno.test("a tradition that forbids faces says so, and one that permits them does not", () => {
+  for (const id of SUPPORTED_TRADITION_IDS) {
+    const permitted = getTradition(id).depiction.facesPermittedForSacredFigures;
+    assertEquals(
+      traditionCover(id).includes("is given a face or recognisable features"),
+      !permitted,
+      id,
+    );
+  }
+});
+
+Deno.test("a symbolic figure class is allowed the scene and refused the body", () => {
+  // Christian: `prophets: "symbolic"` -- the scene without the person.
+  const prompt = traditionCover("christian");
+  assertStringIncludes(
+    prompt,
+    "may be present only as light, absence, an object, architecture or pattern, never drawn as a body",
+  );
+  // `otherSacredFigures: "allowed"` for this tradition, so the clause must not
+  // sweep saints into the same sentence.
+  assert(!prompt.includes("saints, sages, companions"), prompt);
+});
+
+Deno.test("the depiction clauses never touch the wardrobe rule", () => {
+  // `WARDROBE_CLAUSE` stops the model dressing non-white characters in
+  // ceremonial clothes and white characters in a shirt. A faith layer is
+  // exactly the thing likely to be written as "add traditional dress"; the
+  // clause must survive unmodified and nothing here may contradict it.
+  const wardrobe =
+    "Wardrobe: ordinary everyday clothing appropriate to the setting and era " +
+    "of the story, the same register of dress for every character regardless " +
+    "of ethnicity. Do not add ceremonial, festival, folk or traditional " +
+    "national dress unless the story explicitly calls for it.";
+  for (const id of [undefined, ...SUPPORTED_TRADITION_IDS]) {
+    assertStringIncludes(traditionCover(id), wardrobe);
+    for (const context of ["scene", "portrait"] as const) {
+      const clauses = traditionDepictionClauses(id, context).join(" ")
+        .toLowerCase();
+      for (
+        const banned of [
+          "traditional dress",
+          "ceremonial",
+          "festival dress",
+          "religious dress",
+          "devotional dress",
+          "robe",
+        ]
+      ) {
+        assert(!clauses.includes(banned), `${id}/${context}: ${banned}`);
+      }
+    }
+  }
+});
+
+Deno.test("the depiction clauses reintroduce no border, frame or silhouette", () => {
+  for (const id of SUPPORTED_TRADITION_IDS) {
+    for (const context of ["scene", "portrait"] as const) {
+      const clauses = traditionDepictionClauses(id, context).join(" ")
+        .toLowerCase();
+      // "silhouette" is a genre `characterApproach` value and a banned word in
+      // the compositions; a depiction clause using it would argue with both.
+      for (const banned of ["silhouette", "border", "frame", "vignette"]) {
+        assert(!clauses.includes(banned), `${id}/${context}: ${banned}`);
+      }
+    }
+    assertStringIncludes(traditionCover(id), NO_FRAME_CLAUSE);
+  }
+});
+
+Deno.test("the depiction clauses sit outside the span a regeneration quotes back", () => {
+  // `describePreviousCover` recovers the previous cover's SUBJECT from the
+  // span between "Inspired by the story" and the no-text line, and quotes it
+  // into the next regeneration's steer. A constraint that landed inside that
+  // span would be re-sent as a description of the thing to vary FROM.
+  const described = describePreviousCover(
+    buildCoverPrompt(
+      "historical",
+      "The Night Journey",
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "muslim",
+    ),
+  ) ?? "";
+  assert(!described.includes("Representation:"), described);
+  assert(!described.includes("stand-in for"), described);
+});
+
+Deno.test("chapter art carries the same depiction rules as the cover", () => {
+  const prompt = buildChapterArtPrompt({
+    genre: "historical",
+    storyTitle: "The Night Journey",
+    chapterNumber: 4,
+    chapterTitle: "The Well",
+    tradition: "muslim",
+  });
+  assertStringIncludes(prompt, "contains no stand-in for");
+  assertStringIncludes(prompt, "No face, no figure, no body, no human form");
+  assertStringIncludes(prompt, "draw the world around it rather than");
+  assertNoBannedOrnament(prompt);
+});
+
+Deno.test("a portrait's positive half keeps it a portrait", () => {
+  const scene = traditionDepictionClauses("muslim", "scene").join(" ");
+  const portrait = traditionDepictionClauses("muslim", "portrait").join(" ");
+
+  // Same prohibition either way.
+  assertStringIncludes(portrait, "contains no stand-in for");
+  assertStringIncludes(portrait, "Muhammad");
+  // Different positive: a portrait is one ordinary fictional person, and the
+  // substitutes are the fallback for a subject that turned out to point at a
+  // sacred figure -- not an instruction to abandon the portrait.
+  assertStringIncludes(
+    portrait,
+    "an ordinary fictional person of that story and never a sacred figure",
+  );
+  assert(!portrait.includes("draw the world around it rather than"));
+  assert(scene.includes("draw the world around it rather than"));
+});
+
+Deno.test('a raw "mythology" genre resolves to fantasy, not to a deity portrait', () => {
+  // The retired config read `composition: "deity or mythical creature in
+  // powerful pose, celestial elements, sacred geometry patterns"` with
+  // `characterApproach: "portrait"`, and `normalizeGenre` matches the exact
+  // key BEFORE the alias -- so a raw "mythology" string was a standing
+  // instruction to draw a deity as a close portrait, for any story, with
+  // nobody in the loop.
+  assertEquals(hasCoverPromptConfig("mythology"), false);
+
+  const fantasy = buildCoverPrompt("fantasy", "T", []);
+  for (
+    const spelling of ["mythology", "Mythology", "MYTHOLOGY", "myth-ology"]
+  ) {
+    const prompt = buildCoverPrompt(spelling, "T", []);
+    assertEquals(prompt, fantasy, spelling);
+    assert(!prompt.toLowerCase().includes("deity"), spelling);
+    assert(!prompt.toLowerCase().includes("sacred geometry"), spelling);
+  }
+
+  const chapter = buildChapterArtPrompt({
+    genre: "mythology",
+    storyTitle: "T",
+    chapterNumber: 2,
+  });
+  assert(!chapter.toLowerCase().includes("deity"), chapter);
+});
+
+Deno.test("no genre config asks for a deity or sacred geometry", () => {
+  // The generalisation of the test above. `mythology` was the one config that
+  // did; nothing may add another, because a genre config applies to every
+  // story in that genre -- including the ones whose tradition forbids it, and
+  // including the last rung of the safety ladder, where the genre's
+  // composition is most of what is left of the prompt.
+  for (const genre of [...PRIMARY_GENRES, "mythology", "folktale", "bedtime"]) {
+    const prompt = buildCoverPrompt(genre, "T", []).toLowerCase();
+    for (const banned of ["deity", "sacred geometry", "idol", "godlike"]) {
+      assert(!prompt.includes(banned), `${genre} asks for ${banned}`);
+    }
   }
 });
