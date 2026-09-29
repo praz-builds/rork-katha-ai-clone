@@ -247,6 +247,19 @@ const ALLOWED: Record<string, string> = {
     'The floating tab bar. A 64pt pill holding four tabs and the Create ' +
     'button is the app chrome, not a control with a label on it.',
 
+  // A drawing of a control, not a control.
+  'screens/KathaOnboarding.jsx#pagePill':
+    'The "Read" and "Listen" pills inside the intro\'s third slide. That ' +
+    'slide is an ANIMATED MOCK of the reader opening a story -- a 334pt card ' +
+    'standing in for a phone screen, drawn inside the hero -- so these are ' +
+    'pictures of the reader\'s own 50pt pills, with no onPress and nothing ' +
+    'behind them. Drawing them with Button would size them from ' +
+    'controls.primaryCtaHeight, which is the height of a REAL CTA at full ' +
+    'screen width; at the mock\'s scale that is the wrong picture, and it ' +
+    'would also put a focusable, pressable control inside a decorative ' +
+    'carousel slide. The one real button on this screen is "Get started", ' +
+    'and it draws `Primary` like every other screen in the flow.',
+
   // Destructive controls, deliberately unlike every other button in the app.
   // See the note in Button.tsx and the doc comment on `colors.danger`.
   'components/profile/DeleteAccountSheet.tsx#deleteButton':
