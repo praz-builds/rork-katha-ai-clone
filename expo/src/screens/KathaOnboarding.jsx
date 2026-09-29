@@ -161,7 +161,7 @@ const SLIDE_NAMES = ['character', 'story', 'read'];
  * lying about the product, so they are regenerated together or not at all.
  */
 const RAYA_APPEARANCE =
-  'An Indian woman in her twenties with curly black hair and round glasses. Athletic build, olive field jacket, worn hiking boots.';
+  'A tall, curvy Indian woman in her twenties with curly black hair and round glasses. White sleeveless top, short blue jacket, jeans.';
 const APPEARANCE_MAX = 300;
 
 const STORY_IDEA =
@@ -857,9 +857,13 @@ function Directions({ t, inside }) {
 
   return (
     <Animated.View style={[inside ? styles.directionsInside : styles.directionsBelow, container]}>
+      {/* No "WRITTEN BY KATHA AI" badge. The three cards are self-evidently
+          Katha's suggestions -- that is what the screen is showing -- and
+          labelling them was the product explaining itself instead of working.
+          It also put a second, brighter thing on the header line than the
+          question the reader is actually being asked. */}
       <View style={styles.directionsHeader}>
         <Text style={styles.directionsTitle} numberOfLines={1}>Where does it begin?</Text>
-        <View style={styles.aiBadge}><Text style={styles.aiBadgeText} numberOfLines={1}>✦ WRITTEN BY KATHA AI</Text></View>
       </View>
 
       {DIRECTIONS.map((prompt, i) => (
@@ -1271,10 +1275,8 @@ const styles = StyleSheet.create({
 
   directionsInside: { ...StyleSheet.absoluteFillObject, padding: 16 },
   directionsBelow: { position: 'absolute', top: 204, left: 28, right: 28 },
-  directionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 },
-  directionsTitle: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 16, color: C.ink, flexShrink: 1 },
-  aiBadge: { backgroundColor: C.chipPeach, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  aiBadgeText: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, letterSpacing: 0.4, color: C.orangeDeep },
+  directionsHeader: { marginBottom: 10 },
+  directionsTitle: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 16, color: C.ink },
   directionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1.5, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 13, marginBottom: 8 },
   directionNumber: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   directionNumberText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 11 },
@@ -1347,5 +1349,8 @@ const styles = StyleSheet.create({
   bar: { width: 2.5, borderRadius: 2, backgroundColor: C.orangeDeep },
 
   signInTop: { position: 'absolute', top: 40, right: 24, zIndex: 19 },
-  signInTopText: { fontSize: 15, fontWeight: '800', color: C.orange },
+  // 13.5/700, as it was before this rewrite. The handoff spec asked for
+  // 15/800; that is heavier than the same link anywhere else in onboarding and
+  // it pulled the eye to the one control on the screen we do NOT want pressed.
+  signInTopText: { fontSize: 13.5, fontWeight: '700', color: C.orange },
 });

@@ -84,7 +84,7 @@ const CAST = [
   {
     slug: "raya",
     appearance:
-      "An Indian woman in her twenties with curly black hair and round glasses. Athletic build, olive field jacket, worn hiking boots.",
+      "A tall, curvy Indian woman in her twenties with curly black hair and round glasses. White sleeveless top, short blue jacket, jeans.",
   },
   {
     slug: "praz",
@@ -104,6 +104,10 @@ const COVER_PROMPT = [
   "Book cover illustration for an adventure story.",
   `Two hikers together on a forest trail at night: ${CAST[0].appearance} ${CAST[1].appearance}`,
   "They stand close together facing the viewer in a still, dark pine forest under a deep blue night sky.",
+  // STATED AS A RELATIONSHIP, not as two separate heights. Asked for
+  // individually the model drew her at roughly two thirds of his height, which
+  // read as an adult and a child rather than as two friends the same age.
+  "Both are adults in their twenties and thirties and they are close to the same height: her eyes reach about his eyebrows. She is NOT a child and NOT noticeably shorter than him.",
   "One of them holds a warm lantern that lights both their faces; everything beyond falls into cool darkness.",
   "Painterly book-illustration style, atmospheric, deep shadows with warm lamplight.",
   // THE FRAMING IS THE WHOLE POINT OF THIS PROMPT, not a nicety. One source
@@ -113,7 +117,7 @@ const COVER_PROMPT = [
   // SAFE_ZONE_CLAUSE). A wide establishing shot with two small figures low in
   // the frame survives none of those crops — the first draft of this cover was
   // exactly that, and the Home tile showed nothing but empty sky.
-  "KNEE-UP framing: the two figures are large and fill the middle of the frame, and both faces are clearly visible and lit. The forest is background only.",
+  "KNEE-UP framing: the two figures are cut off at the knees by the bottom of the frame, they fill most of the image height, and both faces are large, clearly visible and lit. The forest is background only. Do NOT show their feet or draw them small in a wide landscape.",
   // SAFE_ZONE_CLAUSE, restated from `supabase/functions/_shared/cover-prompts.ts`
   // (it is a module-private const there; copied rather than exported so a
   // script does not widen a shared backend API). Verbatim except that it is
@@ -146,7 +150,11 @@ function portraitPrompt(appearance: string): string {
     "The background is one flat, even, light warm grey colour (#E4DCD0) with no gradient, no texture and no scenery.",
     "The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.",
     "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.",
-    "Full-body portrait orientation, subject centered in frame, head to feet fully inside the frame, high quality.",
+    "Full-body portrait orientation, subject centered in frame, high quality.",
+  // Repeated at the end, in the terms the failure actually takes: the model
+  // returns a knee crop, not a headless figure, so the instruction names the
+  // shoes and the space under them rather than saying "full body" again.
+  "The WHOLE body is visible from the top of the head down to the shoes, with empty background visible below the shoes. Do not crop at the knees, thighs or waist.",
   ].join(" ");
 }
 
@@ -260,6 +268,26 @@ function frameScore(image: Image): number {
     check(image.width - 1, y);
   }
   return edge ? foreign / edge : 0;
+}
+
+/**
+ * How much of the bottom edge the subject is standing on.
+ *
+ * A portrait that is cropped at the knees scores high here, because the legs
+ * run off the bottom of the frame; a full-body one scores near zero, because
+ * there is ground under the feet. The prompt asks for head to feet in so many
+ * words and the model still returns a knee crop often enough to need checking
+ * -- the same lesson as the border and the cover's safe zone. `frameScore`
+ * does not catch it: it averages all four edges, so one bad edge out of four
+ * disappears into three clean ones.
+ */
+function bottomTouch(image: Image): number {
+  let foreign = 0;
+  const y = image.height - 1;
+  for (let x = 0; x < image.width; x++) {
+    if (!nearGround(image.getPixelAt(x + 1, y + 1))) foreign++;
+  }
+  return foreign / image.width;
 }
 
 /**
@@ -399,6 +427,12 @@ async function drawCharacter(
           `border painted into the image (edge score ${score.toFixed(2)})`,
         );
       }
+      const feet = bottomTouch(image);
+      if (feet > 0.15 && attempt < MAX_ATTEMPTS) {
+        throw new Error(
+          `cropped before the feet (bottom edge ${(feet * 100).toFixed(0)}% subject)`,
+        );
+      }
 
       await Deno.writeFile(
         new URL(`${member.slug}-portrait.png`, OUT_DIR),
@@ -412,7 +446,7 @@ async function drawCharacter(
       console.log(
         `[ok] ${member.slug} ${source} -> ${PORTRAIT_W}x${PORTRAIT_H} (edge ${
           score.toFixed(2)
-        }) + cutout`,
+        }, feet ${bottomTouch(image).toFixed(2)}) + cutout`,
       );
       return true;
     } catch (error) {
