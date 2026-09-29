@@ -5,6 +5,80 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-09-30 UTC — Two reviews were read after the merge, not before it
+
+PR #169 rewrote the onboarding intro. It was reviewed three times by a Fable 5.1
+subagent, merged as `23bde57`, and only afterwards did anyone read the two
+**automated** reviews that had been sitting on it the whole time.
+
+### How they were missed, which is the part worth keeping
+
+- The cloud routine posts as **`praz-builds`**, not as a bot. The agent watching
+  the pull request filtered incoming comments for an author matching
+  `claude|github-actions`, so two full reviews went straight past the filter.
+- It then checked `gh run list` and `gh workflow list`, found `Claude Review`
+  `disabled_manually`, and concluded that nothing had reviewed the change. The
+  routine is not a GitHub Action, so it appears in neither listing. CodeAnt is
+  not an Action either, and it had also reviewed.
+- Both conclusions were stated to the founder as fact, and the merge went ahead
+  on them.
+
+**The rule this produces: to find out whether a pull request was reviewed, read
+its comments. Do not infer it from workflow runs, and do not filter by author.**
+`AGENTS.md` now says so, next to the routine's id.
+
+### What the missed reviews had found
+
+One was a live bug, and this session's own earlier fix had made it worse:
+
+**`backend/scripts/generate-intro-characters.ts` rejected the cover its own
+prompt asks for.** A check counted how many pixels of the top row differed from
+the corner and threw `matte survived the trim` unless a fifth of them did.
+`COVER_PROMPT` asks three separate times for an even band of night sky above the
+characters' heads; a cover that obeyed had a near-uniform top row and was
+discarded. It fired on two of the real generations behind the committed assets,
+both times on a good image. That was survivable only because every gate then
+carried `&& attempt < MAX_ATTEMPTS`, which let the third roll through unchecked
+— two paid generations burned per run, and the kept image was the third rather
+than the best. Removing that escape was correct on its own terms (a gate that
+waives itself on the attempt that ships is not a gate) but it converted the
+false positive into a hard failure: three throws, `[fail]`, exit 1, no cover.
+
+The check is deleted. `trimMatte` already measures the thing that actually
+separates a matte from sky — depth — and acts on it, so by the time it returns,
+row 0 is by construction not uniform. The extra check could only ever have
+caught a matte under four pixels deep, which it cannot tell from a horizon.
+
+### Still open, recorded here rather than silently dropped
+
+Not fixed in this entry's change; each is real and none is urgent.
+
+- `expo/assets/onboarding/raya-portrait.png` and `praz-portrait.png` (702 KB
+  together) are referenced by nothing. They are the generator's flat-ground
+  intermediates; only the cutouts and the cover are `require`d. Metro bundles
+  only what is required, so this is repository weight rather than app weight.
+- `cover-trek.png` is 1.5 MB for a surface never drawn larger than 334x230 —
+  about 3.5x the largest shipping cover, and on its own more than half of
+  `assets/onboarding`. A JPEG at display resolution would be a fraction of it.
+- The three `expo/assets/avatars/reader-*.jpg` are now orphaned: they were used
+  only by the deleted `PublishScreen`. `AGENTS.md`, `expo/CLAUDE.md` and
+  `expo/DESIGN.md` still describe that directory as live.
+- The intro's copy is hardcoded English while `expo/src/i18n/{en,es,pt}.json`
+  exists and the sibling onboarding screens go through `i18n.t`. Pre-existing,
+  but the rewrite replaced every string in the file, which was the cheap moment.
+- `INTRO_S2_VARIANT` is always `'A'` and gates variant-B branches that have
+  never been looked at on screen.
+
+### Infrastructure
+
+`Claude Review` and `Claude Mention` are gated behind the repository variable
+`CLAUDE_ACTION_ENABLED` and re-enabled. They need `ANTHROPIC_API_KEY`, which
+this repository does not have; unset, both jobs now **skip** instead of failing,
+and the workflows can stay enabled so their state is visible in the repository
+rather than living in a setting nobody can see. `AGENTS.md` had described that
+gate for days without it existing. No secrets were added and no deploy followed
+— nothing under `supabase/functions/` changed.
+
 ---
 
 ## 2026-09-27 UTC — The reader records reads, so two dead mechanics come alive
