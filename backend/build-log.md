@@ -68,8 +68,24 @@ Not fixed in this entry's change; each is real and none is urgent.
   but the rewrite replaced every string in the file, which was the cheap moment.
 - `INTRO_S2_VARIANT` is always `'A'` and gates variant-B branches that have
   never been looked at on screen.
+- **`trimMatte` bails without cropping when the remainder is under half the
+  original in either axis, at any trim depth.** A cover letterboxed into, say,
+  a 1024x400 band inside a 1024x1024 canvas therefore ships with a flat band
+  across the top, and the `[ok]` line reports no trim, so the run reads clean.
+  The deleted row check covered exactly this case; it was removed for a
+  different and worse fault. Loosening the size bail-out so a letterbox crops
+  instead of bailing is the fix and wants a letterboxed generation to test
+  against. Until then, look at a regenerated cover before committing it.
 
 ### Infrastructure
+
+**Branch protection is available on this repository and is not configured.**
+`AGENTS.md` had said for some time that it was unavailable on the current plan.
+That is false -- the repository is public and protection is free on public
+repositories -- and it was the stated reason the merge gate is documentation
+only. A required-review rule is what would have stopped the #169 merge this
+entry describes. Corrected in `AGENTS.md`; configuring it is a separate
+decision and has not been made here.
 
 `Claude Review` and `Claude Mention` are gated behind the repository variable
 `CLAUDE_ACTION_ENABLED` and re-enabled. They need `ANTHROPIC_API_KEY`, which

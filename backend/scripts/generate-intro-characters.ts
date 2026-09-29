@@ -510,16 +510,37 @@ async function drawCover(apiKey: string): Promise<boolean> {
       const source = fit(image, COVER_SIDE, COVER_SIDE);
 
       /*
-        THERE IS NO SECOND MATTE CHECK, AND THERE MUST NOT BE.
+        THERE IS NO SECOND MATTE CHECK. ONE CASE IS KNOWINGLY UNCOVERED.
 
         One stood here: it counted how many pixels of the top row differed
         from the corner and threw "matte survived the trim" unless at least a
-        fifth of them did. It could not do the job. What separates a matte
-        from sky is DEPTH, which `trimMatte` above already measures and acts
-        on -- it walks inward while whole rows match the corner and reports
-        how far it got. By the time it returns, row 0 is by construction not a
-        uniform row, so the only case the extra check could add is a matte
-        under four pixels deep, which it cannot tell from a clean horizon.
+        fifth of them did. It was deleted because it rejected the framing this
+        file's own prompt asks for -- see below -- not because it caught
+        nothing. Be precise about what went with it.
+
+        `trimMatte` bails and returns 0 without cropping on EITHER half of its
+        guard: a trim under four pixels deep, OR a remainder under half the
+        original in either axis. The depth bail-out is harmless; a sub-four-
+        pixel band is not a matte and could not be told from a clean horizon
+        anyway. **The size bail-out is not harmless, and it is the one the
+        deleted check actually covered.** A 1024x1024 canvas with the
+        illustration letterboxed into a 1024x400 band trims `top` to 312 and
+        `bottom` to 711 -- well past four -- but the remaining height of 400 is
+        under 1024/2, so nothing is cropped, `fit` finds the aspect already
+        square and skips its own crop, and the cover is written with a 312px
+        flat band across the top while the `[ok]` line reports no trim at all.
+        `trimMatte`'s own docblock says Gemini produces that shape often
+        enough to need handling.
+
+        This is accepted rather than fixed, deliberately. Re-adding the row
+        check restores the false positive and, without the per-attempt escape
+        that is also gone, that means no cover can be produced at all.
+        Loosening the size bail-out so a letterbox crops instead of bailing is
+        the real fix and is a change to `trimMatte`'s behaviour that wants a
+        letterboxed generation to test against, which is not something to
+        land untested at the end of a session. It is in the build log's open
+        list. Until then: **look at a regenerated cover before committing it**
+        -- the run log cannot tell you about this one.
 
         What it did instead was reject the framing this file's own prompt asks
         for. `COVER_PROMPT` says "under a deep blue night sky", "keep the top
