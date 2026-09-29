@@ -2,6 +2,35 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-09-29: The intro rehearses the flow again — Character, Story, Read and listen
+
+The three animated screens before **Get started** were Create → Publish → Read. That was true when they were built and had stopped being true: the first thing a new user does after Get started is make a **character** — a name and an appearance — and watch a portrait get drawn (`CharacterOnboarding` W3–W6). The story brief comes after that, community after that. The intro was rehearsing a flow the app no longer has. Merged as PR #169.
+
+Each screen now causes the next: Raya is drawn from two fields, Raya leads a story and Praz joins the cast, and that story is on the shelf ready to read or listen to.
+
+### Five things worth carrying forward
+
+- **The screen cannot be allowed to lie about the product.** The appearance line typed on screen 1 *is* the string that drew the portrait shown beside it: `backend/scripts/generate-intro-characters.ts` and `KathaOnboarding.jsx` carry a byte-identical copy, pinned by `intro-invariants.test.ts`. The script's prompt is a **copy** of `_shared/image.ts`'s module-private `buildPortraitPrompt` — it cannot be imported — differing only in the two clauses marked at the line, plus production's sentence-final period, which is dropped because the appearance lines already end in one. The committed portraits were drawn before `PORTRAIT_WARDROBE_CLAUSE` was restored to that copy; they were not redrawn, because both appearance lines name their own wardrobe and the clause defers to that, and the drawn one had been approved. The same rule fixed the openings on screen 2 — they are real `toDirection()` output over real beats, under the heading `DirectionStep` really uses, and every card is a candidate chapter one because `beats[0]` is chapter one's brief. An earlier draft made them a three-chapter arc, which put "decide about the broken bridge" on a card labelled *Where does it begin?*.
+- **A prompt asks; only a check enforces.** Three defects shipped past prompt text that already forbade them: a border painted into a portrait, a knee-crop instead of a full body, and a matte around the cover. Each now has a test in the generator (`frameScore`, `bottomTouch`, `trimMatte`) that retries rather than trusting the model. `SAFE_ZONE_CLAUSE` went into the cover prompt and was ignored three generations running, so the *crop* holds that line now instead — the cover's box is computed by hand from the morph's own clock, anchored toward the top, because `resizeMode="cover"` always centres and centred cut a character's head off.
+- **Two prompt levers are known-wrong and are recorded so they are not retried.** Telling the model to cut the figures off at the knees pushes their heads *up* out of frame. Tightening the safe zone to "top 20% free" made it worse, not better. Ask for a full standing shot and let the crop tighten it.
+- **Fixed slots do not make spacing consistent; equal content does.** The headline slot was two lines tall to fit the longest headline, so the short ones carried a spare line of slack, and wherever that slack was put it made one slide differ from another — below the headline it opened a hole above the subcopy, above it the same hole under the dots. All three headlines are one line now (286 / 236 / 207pt against 374 available) and the slack is gone rather than moved.
+- **A background Chrome tab reports `visibilityState: hidden` and runs zero animation frames.** Reanimated freezes mid-flight, so the sheet copy sits at whatever opacity it had reached and the intro looks broken. This was misdiagnosed as an `entering={FadeIn}` bug and "fixed" before the real cause was found; the change was reverted. **Screenshots still render, so the tab looks fine.** Verify animated surfaces by measuring geometry, or foreground the window first.
+
+### Verification
+
+- Expo typecheck clean, lint 0 errors, **1738 / 1738 Jest tests**.
+- Driven in the browser at 390 × 844 and at desktop width; layout claims confirmed by measuring rendered geometry — pill heights, slot heights, title widths against their columns, headline line counts in the shipping font.
+- `button-recipe`'s allow-list is one entry **shorter**: the Read/Listen pills are 36pt and sit under the guard's 48pt floor, so the exemption they briefly needed is gone.
+
+### Not deployed, and nothing to deploy
+
+No edge function and no `_shared` module is touched. This is client code plus `expo/assets/onboarding/*` and one backend script, so *Deploy discipline* has nothing to act on here — the change reaches users through an app build, not through `supabase functions deploy`.
+
+### Known gaps
+
+- Screen 2 variant B (collapse-and-stack) exists behind `INTRO_S2_VARIANT` and has never been looked at on screen. A ships.
+- Below about 342pt of WINDOW width -- 286pt of headline plus the 56pt gutter -- the first headline wraps and that slide's spacing stops matching the other two. Separately, the slide cards are 334 wide and centred, so they survive down to a 334pt column and are clipped by the slide's `overflow: hidden` only below that; between 334 and 390 they simply run wider than the sheet's 28pt gutter. The slot is a `minHeight`, so it grows and pushes the subcopy down rather than overlapping. iPhone SE 2 and up are unaffected.
+
 ## 2026-09-27: Covers arrive at 70 KB instead of 2 MB
 
 - **`src/lib/cover-url.ts`** asks Supabase's transform endpoint for a cover at

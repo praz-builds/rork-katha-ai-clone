@@ -114,7 +114,7 @@ describe("KathaOnboarding intro", () => {
       <KathaOnboarding onFinish={jest.fn()} onSignIn={jest.fn()} />,
     );
     const dot = StyleSheet.flatten(
-      view.getByLabelText("Show publish intro").props.style,
+      view.getByLabelText("Show story intro").props.style,
     ) as { height?: number };
     expect(dot.height).toBeGreaterThanOrEqual(44);
   });
@@ -160,7 +160,7 @@ describe("KathaOnboarding intro -- swipe against the auto-advance", () => {
     // Synchronously, so it renders and runs its effects before that
     // microtask; `fireEvent.press` is async and would let it in first.
     // The same responder pair `fireEvent.press` sends, without its await.
-    const dot = view.getByLabelText("Show publish intro").props as Record<
+    const dot = view.getByLabelText("Show story intro").props as Record<
       string,
       (event: unknown) => void
     >;
@@ -178,14 +178,14 @@ describe("KathaOnboarding intro -- swipe against the auto-advance", () => {
       dot.onResponderGrant(touch());
       dot.onResponderRelease(touch());
     });
-    view.getByText("Publish it and watch it come alive");
+    view.getByText("Turn it into a story");
     // Now the swipe's same-value request lands.
     await act(async () => {});
     expect(translateX()).toBe(-390);
 
     // The next real transition must move the hero.
     await fireEvent.press(view.getByLabelText("Show read intro"));
-    view.getByText("Read from an endless library");
+    view.getByText("Read it, or listen");
     expect(translateX()).toBe(-780);
   });
 });

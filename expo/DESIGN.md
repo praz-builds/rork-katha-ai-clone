@@ -42,7 +42,7 @@ Approved sizes:
 
 | Context | `size` prop | Placement |
 | --- | ---: | --- |
-| Intro hero | 28 | Horizontally centered, top 54 |
+| Intro hero | 28 | Horizontally centered, top 34 |
 | Purpose and name screens | 28 | Left aligned within 30 point page gutters |
 | Notification education | 26 | Horizontally centered, 30 points above alert |
 | Default shared fallback | 28 | Use only when no context override is needed |
@@ -130,15 +130,12 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | ---: | --- |
 | 6 | Tiny book spine and progress track |
 | 8 | Small general controls from the shared theme |
-| 9 | Intro notification icon tile |
-| 12 | Intro cover cards |
-| 14 | OTP boxes, reaction chips |
+| 12 | Intro Home cover well |
+| 14 | OTP boxes, intro shelf tiles and direction rows |
 | 15 | Icon badges |
-| 16 | Intro notification |
 | 18 | Text fields and prompt boxes |
 | 18 | Option rows, plan cards, review cards |
-| 20 | Publish card |
-| 22 | Create card, genre chips, edit chips |
+| 22 | Intro slide cards, genre chips, edit chips |
 | 24 | Large shared card radius |
 | 28 | Apple-style notification education alert |
 | 999 | Pills only |
@@ -164,7 +161,7 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Flow H1 | Bricolage | 800 | 31 / 35 | Primary name screen heading |
 | Flow H1 medium | Bricolage | 800 | 28 / 32 | Email, OTP, compact feature headings |
 | Flow H1 compact | Bricolage | 800 | 27 / 31 | Purpose, genre, persona questions |
-| Intro headline | Bricolage | 700 | 27 / 31.3 | Fixed two-line intro message slot |
+| Intro headline | Bricolage | 700 | 27 / 31.3 | Intro message slot, one line (see *The intro* below) |
 | Paywall title | Bricolage | 800 | 25 / 29 | Personalized paywall headline |
 | Notification title | Bricolage | 800 | 22 / 26 | Alert title |
 | Standard body | Hanken | 500 | 15 / 23 | Flow descriptions |
@@ -177,7 +174,28 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Name input | Bricolage | 700 | 24 / natural | First-name entry |
 | Review copy | Hanken | 500 | 12.5 / 17 | Social proof cards |
 | Metadata | Hanken | 400 to 700 | 11 to 13 / 17 to 19 | Hints, labels, prices |
-| Story text in intro | Hanken | 400 | 13.2 / 19 | Generated story lines |
+| Story text in intro | Hanken | 400 | 13 / 18 | Typed story idea on intro screen 2 |
+
+### The intro
+
+The three animated screens before **Get started** are **Character, then Story,
+then Read and listen** (2026-09-29). They were Create, then Publish and
+Community, then Read; that entry described a notification tile, a publish card,
+reaction chips and a rewrite chip, none of which exist any more, and those rows
+have been removed from the tables above rather than left to be matched against.
+`source-of-truth/ONBOARDING_FLOW.md` is canonical for what each screen says.
+
+What this file is still the contract for:
+
+- **Every headline is one line.** The slot is sized to one (`minHeight: 32`),
+  so a longer headline wraps and that slide's dots-to-headline and
+  headline-to-subcopy gaps stop matching the other two. That is the whole
+  reason the headlines are short; it is not a tone choice.
+- Hero band 478, message sheet minimum 322, slide cards at radius 22.
+- The slide cards are 334 wide and the column is clamped to 430. Below about
+  342 points of window width the first headline wraps. See *Narrow windows*
+  under **Intro Frame** for what the cards do; the reference frame is
+  390 x 844.
 
 **Bricolage is for Home display titles and onboarding headings only.** Profile,
 public profile, Journey, and Profile-owned sheet headings, display names, and
@@ -318,96 +336,100 @@ token file here. `Toggle` draws every pixel itself from `@/theme`.
 - Avoid cards inside cards.
 - Use cards for individual story, price, review, or alert objects only.
 - Review card: 286 x 106, radius 18, padding 13, avatar 30, one-point border, subtle warm shadow. At 390 points the next card appears only as a deliberate preview.
-- Intro reaction chip: radius 14, 7 vertical and 11 to 12 horizontal padding.
-- Intro rewrite chip: radius 22, 5 vertical and 10 horizontal padding.
 - Paywall plan card: radius 18, border 2, 16 vertical and 18 horizontal padding.
 
 ## Intro Frame: 390 x 844
 
-The intro must not reflow between Create, Publish, and Read.
+The intro must not reflow between Character, Story, and Read and listen.
 
 | Region | Geometry | Rules |
 | --- | --- | --- |
-| Root | 390 x 844 reference | Warm `#FBF6EC` canvas |
-| Hero | x 0, y 0, w 390, h 522 | Clipped; `#FEFBF3` to `#F3EAD8` gradient |
-| Wordmark | top 54, centered | `BrandWordmark size={28}` |
-| Sign in | top 57, right 24 | 13.5/700, orange, always present |
-| Animation stage | x 0, y 104, w 390, h 360 | Fixed and clipped on every slide |
-| Message sheet | x 0, y 522, w 390, h 322 | `#FAF7F2`, 28 horizontal, 24 top, 20 bottom |
+| Root | 390 x 844 reference | `#FAF7F2` canvas; the column is clamped to `controls.introMaxWidth` (430) and the page scrolls when the window is short |
+| Hero | x 0, y 0, w 390, h 478 | Clipped; `#FEFBF3` to `#F3EAD8` gradient behind the full window width |
+| Wordmark | top 34, centered | `BrandWordmark size={28}` |
+| Sign in | top 40, right 24 | 13.5/700, orange, always present. Not heavier: it is the one control on the screen that should not be pressed |
+| Animation stage | the whole hero, per slide | Each slide centres its own card; clipped |
+| Message sheet | below the hero, min height 322 | `#FAF7F2`, 28 horizontal, 22 top, 24 bottom |
 
 Message-sheet slots are fixed:
 
-- Dots: height 6, gap 6, bottom gap 16. Active dot is 22 x 6; inactive dots are 6 x 6.
-- Headline: fixed height 64, Bricolage 27/31.3.
-- Description: fixed height 54, margin top 8, Hanken 15/22.5.
-- Action slot: fixed height 100, bottom aligned. It remains reserved on slides one and two.
-- Slide three CTA: the shared `Button` at `controls.primaryCtaHeight`. Account sign-in follows with a 14 point gap.
+- Dots: height 6, bottom gap 16. Active dot is 22 x 6; inactive dots are 6 x 6.
+- Headline: **one line**, min height 32, Bricolage 27/31.3. Every headline is written to fit it — see *The intro* above. The slot is a minimum rather than a fixed height so a wrap grows it instead of overlapping the description.
+- Description: fixed height 54, margin top 6, Hanken 15/22.5.
+- Action slot: `flex: 1`, bottom aligned. Reserved on slides one and two.
+- Slide three CTA: the shared `Primary` pill. Account sign-in follows with a 14 point gap.
 
 Animation-object geometry:
 
-- Create card: 306 x 346, radius 22, padding 16.
-- Publish card: width 290, radius 20, padding 18.
-- Continuation notification: width 270, radius 16, anchored 18 points above the stage bottom.
-- Read covers: 92 x 108, radius 12, three rows with 8 point gaps; title copy is capped at two lines.
-- Covers: 86 x 104, radius 12, gap 12. Three rows fit the same 360 point stage.
-- Carousel transition: 600 ms, ease-in-out `(0.77, 0, 0.175, 1)` (the expo-animation skill's on-screen curve; was `(0.45, 0, 0.2, 1)`). A swipe follows the finger, rubber-bands past the first and last slide, and settles with a `{ duration: 400, dampingRatio: 0.8 }` spring carrying the release velocity; a quarter-width drag or a 500 pt/s flick turns the page.
-- Dots: each 6 point dot has a 44 point touch target; the active width change is a 200 ms ease-out transition. The headline, description and Get started crossfade in their fixed slots (opacity only, 220 ms).
+- Character card: 306 x 346, radius 22, padding 16, top 92.
+- Brief card: 334 x 372, radius 22, padding 16, top 84.
+- Read card: 334 x 392, radius 22, top 78, `#F3F2EF`.
+- Shelf tiles: 74 x 96, radius 14, gap 8. This is the intro's own tile size, not the product's `mini` cover, which is a 96 point square.
+- Carousel transition: 600 ms, ease-in-out `(0.77, 0, 0.175, 1)` (the expo-animation skill's on-screen curve). A swipe follows the finger, rubber-bands past the first and last slide, and settles with a `{ duration: 400, dampingRatio: 0.8 }` spring carrying the release velocity; a quarter-width drag or a 500 pt/s flick turns the page.
+- Dots: each 6 point dot has a 44 point touch target; the active width change is a 200 ms ease-out transition. The headline and description crossfade in their fixed slots (opacity only, 300 ms).
 
 Do not size the hero or message sheet from child content. Long copy must be edited to fit the assigned slot.
 
+**Narrow windows.** The cards are 334 wide and centred, so they are fully visible down to a 334 point column and are clipped by the slide's `overflow: hidden` only below that. Between 334 and 390 they simply run wider than the sheet's 28 point gutter. Separately, below about 342 points of window width the first headline wraps and that slide's spacing stops matching the other two.
+
 ## Intro Animation Storyboard
 
-The first two slides use a normalized progress value: a Reanimated shared value on the UI thread, read by each element's `useAnimatedStyle`. React re-renders on a phase change, not per frame; only the typed prompt, the like counter and the draft/published label (text content) re-render themselves as their value changes. Create lasts 10.5 seconds. Publish lasts 9.6 seconds. Read then holds while the cover rows continue looping.
+Each slide has **one shared progress value, counted in milliseconds**, read by every element through `useAnimatedStyle` on the UI thread. React re-renders on a phase change, not per frame; only text content that must change — the typed lines, the counters, the swapped labels — re-renders itself through `useAnimatedReaction`. Times below are milliseconds of that clock.
 
-### Slide 1: Create and Rewrite, 10.5 Seconds
+**Every slide's animation starts 350 ms after the slide becomes active** (`LEAD_IN`), so the carousel transition is most of the way done before anything on the new slide moves. Slide one runs 5,200 ms, slide two 9,200 ms, slide three 8,800 ms and then holds.
 
-| Time | Event |
-| --- | --- |
-| 0 to 420 ms | Create card fades in |
-| 525 to 2,310 ms | Prompt appears character by character using a string slice; cursor blinks until complete |
-| 2,520 to 3,150 ms | Generate button scales and fades in |
-| 3,255 to 3,885 ms | Generate button compresses and releases to communicate a press |
-| 3,885 to 4,515 ms | `Katha is writing...` fades in |
-| 4,620 to 5,670 ms | First generated line rises 6 points and fades in |
-| 5,250 to 6,300 ms | Second line rises and fades in |
-| 5,880 to 6,930 ms | Final line fades in; writing indicator fades out from 5,880 to 6,510 ms |
-| 6,930 to 7,560 ms | The existing word `dream.` receives a pale orange highlight |
-| 7,718 to 8,085 ms | `dream.` moves up and fades out while `warning.` moves into the same fixed 54 x 20 slot and fades in |
-| 8,190 to 8,925 ms | `You rewrote this line` chip rises 6 points and fades in |
-| 8,820 to 9,555 ms | Word highlight clears; final rewritten sentence remains stable |
+**Reduced motion sets every clock to its end frame.** Each slide's end frame is therefore a design deliverable in its own right and must read correctly as a still.
 
-Typing must use `prompt.slice(0, characterCount)`. Never reveal the prompt through a changing-width mask because that changes line wrapping. The rewrite must occur in the original word slot. Do not place the replacement in a detached overlay at screen center.
-
-### Slide 2: Publish and Community, 9.6 Seconds
+### Slide 1: Character
 
 | Time | Event |
 | --- | --- |
-| 1,536 to 2,112 ms | Publish button compresses and releases |
-| 2,112 to 2,880 ms | Publish control fades/scales out and published state takes over |
-| 2,496 to 3,264 ms | Like and comment statistics fade in |
-| 2,880 to 5,568 ms | Like counter advances smoothly from 128 to **246**, then holds |
-| 2,880 to 3,840 ms | Reader label appears |
-| 3,264 to 6,144 ms | Three real avatar assets appear in sequence, each with scale and opacity |
-| 3,840 to 6,816 ms | Three reaction chips appear sequentially, each over 864 ms |
-| 6,912 to 7,872 ms | Continuation notification rises 22 points into its fixed bottom position |
+| 0 to 220 | Card fades in |
+| 0 to 500 | Appearance types from 70 percent to complete, character by character; cursor blinks |
+| 650 to 900 | CTA pulses to 1.06 |
+| 900 to 1,100 | CTA presses to 0.95 and releases |
+| 1,000 to 1,150 | Form dims to 0.5; CTA label becomes `Drawing Raya...` on `#E5560A` |
+| 1,000 to 1,850 | Scan band and its 2 point orange line sweep the card once, top to bottom |
+| 1,850 to 2,350 | Portrait fades in over an `#E9E0D3` ground, scale 1.06 to 1, with the name and `DRAWN BY KATHA` chips. End frame |
 
-Keep reactions readable and inside the 360 point stage. The continuation notification must not be clipped.
+### Slide 2: Story
 
-### Slide 3: Cover Marquee
+| Time | Event |
+| --- | --- |
+| 0 to 400 | Brief card rises 14 points and fades in |
+| 500 to 700 | `Adventure` genre chip fills orange |
+| 800 to 2,800 | Story idea types, character by character; the field takes an orange ring from 800 |
+| 3,000 to 3,250 | Praz joins the cast; the counter goes 1 of 3 to 2 of 3 |
+| 3,400 to 3,900 | `Create story` pulses, then presses |
+| 3,900 to 4,200 | Brief content fades out |
+| 4,000 to 4,300 | Directions container fades in (variant A, in place) |
+| 4,300 / 4,550 / 4,800 | Each direction row rises 14 points and fades in, over 400 ms |
+| 5,400 to 5,800 | `Edit` and `Reprompt` fade in |
+| 5,900 to 6,200 | The chosen row fills `#FFF1E5` with an orange border and tick. End frame |
 
-- Three rows move continuously with linear easing.
-- Durations: 32 seconds, 26 seconds, and 36 seconds.
-- Direction alternates forward, reverse, forward.
-- Each row duplicates a ten-cover strip for a seamless loop.
-- Use the bundled art in `assets/covers`; do not synthesize gradients as replacement covers.
-- Apply 12 percent gradient fades at both horizontal edges.
-- Motion speed must remain calm enough to inspect cover art.
+`INTRO_S2_VARIANT` selects variant A (swap in place) or B (collapse the card to 110 and stack the rows below it). Both end on the same frame. A ships.
+
+### Slide 3: Read and listen
+
+| Time | Event |
+| --- | --- |
+| 0 to 450 | Card fades in |
+| 300 / 600 / 900 | Story card, then the two shelves, rise 10 points and fade in over 400 ms |
+| 1,200 to 3,300 | Both shelves settle from a small inset to flush left, at different rates. They never drift negative: a shelf already says *there is more* by overflowing the right edge, and a negative drift slices the leading tile against the card edge |
+| 2,650 | The first tile's heart fills and its count ticks by one, in one step |
+| 3,000 to 3,350 | The story card takes an orange border, as if tapped |
+| 3,350 to 4,150 | Shared-element morph, ease-out cubic: the cover grows from the Home well to a 334 x 230 band. Its box is computed by hand from this clock, anchored towards the top (`COVER_FOCUS_Y`), because `resizeMode="cover"` always centres and centred cuts a head off |
+| 3,350 to 3,750 | Home content fades out |
+| 3,900 to 4,300 | Story-page text fades in under a gradient into the page |
+| 5,550 to 5,850 | `Listen` presses and becomes `Listening`; the meter then runs continuously. End frame |
+
+The meter is three bars a third of a cycle apart on a plain sine, which is a travelling wave. Do not use `abs(sin)` with arbitrary offsets: it has period pi, so the outer bars fall into phase and pulse against the middle one, and it turns around instantly at every zero crossing.
 
 ## Onboarding Product Sequence
 
 The implemented order is:
 
-1. Animated Create, Publish, and Read introduction.
+1. Animated Character, Story, and Read-and-listen introduction.
 2. First name.
 3. At least three genre interests (`MIN_GENRE_SELECTIONS` in `KathaOnboardingFlowV2.tsx`), with emoji chips. The first selected genre with a create mapping becomes the initial writer-genre chip.
 4. Purpose: Reading, Writing, or A bit of both.
@@ -521,8 +543,8 @@ After onboarding or paywall changes:
 4. Start the preview with `scripts/preview.sh` and open the URL it prints (8090 unless `KATHA_PREVIEW_PORT` overrides it; only 8090 is in `ALLOWED_ORIGINS`, so any other port fails every edge call). It serves `main` from its own worktree -- so run this pass **after** the change has merged. Do not start a server on 8090 from your lane worktree to shortcut it; that silently replaces the reviewed state with your branch (see *The preview shows main, and only main* in AGENTS.md). For a pre-merge look, use port 8091 and expect edge calls to fail CORS.
 5. Open that URL in the in-app browser, and confirm the commit the script printed is the one you expect.
 6. Set the viewport to 390 x 844.
-7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
-8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.
+7. Watch all 5.2 seconds of Character, all 9.2 seconds of Story, and all 8.8 seconds of Read and listen. Each begins 350 ms after its slide becomes active.
+8. Confirm the appearance field finishes typing and the portrait lands whole; Praz joins the cast and the second opening is chosen; the first shelf heart ticks 428 to 429, the cover morphs without cutting either character's head, and **Listen** becomes **Listening** with the meter running.
 9. Confirm all three intro slides use identical hero, stage, sheet, headline, description, and action slots.
 10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, annual paywall trial, weekly no-trial option, close confirmation, email, OTP, success, and Home handoff. There is **no** one-time offer step to verify; if you find one on screen, that is the bug.
 11. Check keyboard-open states, narrow width, and at least one native phone build before release.

@@ -1,24 +1,41 @@
 /*
  * KathaOnboarding.jsx  —  Expo / React Native
- * Katha — animated 3-screen onboarding intro (Create → Publish/Community → Read).
+ * Katha — animated 3-screen onboarding intro (Character → Story → Read & listen).
  *
- * Drop-in Expo component. Reference frame 390×844. Implements ONBOARDING SPEC §1–§10.
- * Motion runs on the UI thread (Reanimated 4, per `.agents/skills/expo-animation`): one
- * shared progress value per phase drives every element through `useAnimatedStyle`, so
- * React renders when the phase changes, not on every frame. The carousel also follows a
- * finger (Gesture Handler), and the whole intro honours the OS reduced-motion setting.
+ * Reference frame 390×844. Motion runs on the UI thread (Reanimated 4, per
+ * `.agents/skills/expo-animation`): ONE shared progress value per phase drives
+ * every element through `useAnimatedStyle`, so React renders when the phase
+ * changes, not on every frame. The carousel follows a finger (Gesture Handler),
+ * and the whole intro honours the OS reduced-motion setting.
+ *
+ * ## What changed, and why (2026-09-29)
+ *
+ * The old intro was Create → Publish → Read. That was true when it was built
+ * and is not true now: the first thing a new user does after "Get started" is
+ * make a CHARACTER — a name and an appearance — and watch a portrait get drawn
+ * (`CharacterOnboarding.tsx`, W3→W6). The story brief comes after that. So the
+ * intro was rehearsing a flow the app no longer has, and each screen now causes
+ * the next one:
+ *
+ *   1. Raya is drawn from two fields.
+ *   2. Raya leads a story; Praz joins the cast; Katha offers directions.
+ *   3. That story is on the shelf, ready to read or listen to.
+ *
+ * ## THE PROGRESS VALUE IS IN MILLISECONDS, NOT 0..1
+ *
+ * It used to be a 0..1 ratio with every window written as a fraction of a
+ * duration that lived in another constant. The timings are authored in ms, so
+ * every window was a division done by hand, and changing one slide's duration
+ * silently moved every beat inside it. `progress` now counts elapsed ms and
+ * `win(t, a, b)` takes ms, so a beat written as 1850–2350 IS 1850–2350.
+ *
+ * `LEAD_IN` is subtracted inside `win`: every slide's animation starts 350ms
+ * after the slide becomes active, so the 600ms carousel transition is most of
+ * the way done before anything on the new slide moves.
  *
  * Deps (all in the Expo managed workflow):
  *   npx expo install expo-font expo-linear-gradient
  *   npx expo install @expo-google-fonts/bricolage-grotesque @expo-google-fonts/hanken-grotesk @expo-google-fonts/baloo-2
- *
- * Usage:
- *   const [ready] = useFonts({ ...Bricolage, ...Hanken, ...Baloo });
- *   if (!ready) return null;
- *   <KathaOnboarding onFinish={() => nav.replace('Paywall')} />
- *
- * Assets: put the 16 covers + 3 avatars in ./assets and require() them in COVERS/AVATARS
- * below (see SPEC §8 for the exact order + filenames).
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -40,6 +57,17 @@ import BrandWordmark from '../components/BrandWordmark';
 import { Primary } from '../components/onboarding/primitives';
 import { controls } from '../theme';
 
+/**
+ * Which screen-2 treatment ships.
+ *
+ * 'A' keeps the directions inside the brief card, swapped in place. 'B'
+ * collapses the card to a 110pt summary and stacks the directions below it.
+ * Both end on the same frame; A ships because the swap keeps the reader's eye
+ * where the idea was, and B's collapse animates a height, which is the one
+ * thing the animation skill asks us not to do without a reason.
+ */
+export const INTRO_S2_VARIANT = 'A';
+
 // ── Color tokens (SPEC §2) ──────────────────────────────────────────────────
 const C = {
   orange: '#FF6B1A', orangePress: '#E5560A', orangeDeep: '#B15A18', orangeEdit: '#8A3E12',
@@ -48,6 +76,8 @@ const C = {
   sheet: '#FAF7F2', card: '#FFFFFF', dotIdle: '#DED5C8', hairline: '#F0E7D6',
   chipPeach: '#FFF1E5', coverInk: '#16110E', phoneBg: '#FBF6EC',
   heroA: '#FEFBF3', heroB: '#F3EAD8', shadowWarm: '#7A2E0E',
+  field: '#DED5C7', stone: '#E4DCD0', portraitGround: '#E9E0D3',
+  appBg: '#F3F2EF', appBorder: '#EEE7DE', heart: '#E85D5D',
 };
 
 // ── Fonts (SPEC §3) — PostScript keys from the @expo-google-fonts packages ───
@@ -63,56 +93,231 @@ const F = {
   baloo: 'Baloo2',
 };
 
-// ── Timeline math (SPEC §5) ─────────────────────────────────────────────────
+// ── Timeline math ───────────────────────────────────────────────────────────
 // Worklets: they run inside `useAnimatedStyle` on the UI thread.
 function clamp01(x) { 'worklet'; return Math.min(1, Math.max(0, x)); }
-function win(p, a, b) { 'worklet'; return clamp01((p - a) / (b - a)); }
 function smooth(x) { 'worklet'; const c = clamp01(x); return c * c * (3 - 2 * c); }
 
-const DUR = [10500, 9600]; // ms — phases 0,1; phase 2 holds
+/** Every slide's animation starts this long after the slide becomes active. */
+const LEAD_IN = 350;
 
-// ── Copy (SPEC §4) ──────────────────────────────────────────────────────────
+/**
+ * 0 before `a` ms, 1 after `b` ms, linear between — with `LEAD_IN` already
+ * taken off, so the numbers here are the numbers in the spec.
+ */
+function win(t, a, b) { 'worklet'; return clamp01((t - LEAD_IN - a) / (b - a)); }
+
+/** Opacity + a small rise: the shape every line and chip enters with. */
+function riseStyle(r, dy) {
+  'worklet';
+  return { opacity: r, transform: [{ translateY: (1 - r) * dy }] };
+}
+
+/** A press: down to 0.95 and back, over the window. */
+function pressScale(t, a, b) { 'worklet'; return 1 - 0.05 * Math.sin(Math.PI * win(t, a, b)); }
+
+/** A pulse: up to 1.06 and back, over the window. */
+function pulseScale(t, a, b) { 'worklet'; return 1 + 0.06 * Math.sin(Math.PI * win(t, a, b)); }
+
+const EASE_OUT_CUBIC = (x) => { 'worklet'; return 1 - Math.pow(1 - clamp01(x), 3); };
+
+/** ms per phase. Phase 2 holds on its end frame. */
+const DUR = [5200, 9200, 8800];
+
+// ── Copy ────────────────────────────────────────────────────────────────────
+/**
+ * What the reader can DO, not what the screen is showing.
+ *
+ * The first pass narrated: "Meet the lead of your story" invites you to be
+ * introduced to somebody who already exists, when the thing on offer is that
+ * YOU make them. Every headline is now the capability in the second person,
+ * and every subcopy is the same shape underneath it -- what it costs you, then
+ * what Katha does with it -- so the three screens read as one promise getting
+ * bigger rather than three descriptions.
+ *
+ * ## Length is load-bearing, not taste
+ *
+ * EVERY HEADLINE IS ONE LINE, and they have to stay that way. The slot used to
+ * be two lines tall to fit the longest of them, which meant the short ones
+ * carried a spare line of slack -- and wherever that slack went, it made one
+ * slide's spacing different from another's. Below the headline it opened a
+ * 30pt hole above the subcopy; above the headline it opened the same hole
+ * under the dots, on slides 1 and 3 but not 2. There is no third place to put
+ * it. The only fix that makes all three slides identical is for all three
+ * headlines to be the same height, so they are all short enough to be one
+ * line: about 21 characters at 27/31.3 in the reference column.
+ *
+ * The subcopy slot is 54pt at 22.5, and all three run to two lines; past about
+ * 85 characters a third appears and is clipped. Keep both bounds.
+ */
 const HEADLINES = [
-  ['Write it with Katha, make it yours',
-    "Start from a single idea, let Katha draft it with you, and grow it from a short story to a novel, rewriting any line until it sounds like you."],
-  ['Publish it and watch it come alive',
-    "Share your story with Katha's readers, feel the reactions land, and see it continue in other hands."],
-  ['Read from an endless library',
-    'From late-night romance to bedtime tales, a new world waits every time you tap in.'],
+  ['Create your character',
+    'A name and one line about their look. Katha draws them, and they lead your story.'],
+  ['Turn it into a story',
+    'Katha drafts it from your idea, then you rewrite any line until it sounds like you.'],
+  ['Read it, or listen',
+    "Katha narrates every chapter. Publish when you're ready, and read what others write."],
 ];
 
-// ── Assets (SPEC §8). Replace paths with your bundled files ──────────────────
-const COVERS = [
-  { t: 'The Door Above the Clouds',       a: 'Maya Brooks',    img: require('../../assets/covers/door-above-the-clouds.jpg') },
-  { t: 'Ravenwick School for Wild Magic', a: 'Ethan Parker',   img: require('../../assets/covers/ravenwick-owl-window.jpg') },
-  { t: "The Maharani's Last Cipher",      a: 'Anika Rao',      img: require('../../assets/covers/maharanis-last-cipher.jpg') },
-  { t: 'The Dog Who Found Saturn',        a: 'Olivia Hart',    img: require('../../assets/covers/saturn-beach-dog.jpg') },
-  { t: 'Midnight Chai Case Files',        a: 'Rumi Khan',      img: require('../../assets/covers/midnight-chai-case-files.jpg') },
-  { t: 'The Wolf on Campus',              a: 'Madison Blake',  img: require('../../assets/covers/wolf-on-campus.jpg') },
-  { t: 'Garden of Little Dragons',        a: 'Claire Whitman', img: require('../../assets/covers/garden-of-little-dragons.jpg') },
-  { t: 'Camp Midnight',                   a: 'Avery Collins',  img: require('../../assets/covers/camp-midnight.jpg') },
-  { t: 'The Girl Beneath the Sea',        a: 'Sana Mir',       img: require('../../assets/covers/girl-beneath-the-sea.jpg') },
-  { t: 'The Bird at Dusk',                a: 'Noah Bennett',   img: require('../../assets/covers/mockingbird-sky.jpg') },
-  { t: 'Train to Moonlit Jaipur',         a: 'Tara Iyer',      img: require('../../assets/covers/moonlit-train-platform.jpg') },
-  { t: 'The Library Under Rain',          a: 'Liam Carter',    img: require('../../assets/covers/library-under-rain.jpg') },
-  { t: 'The Museum Shadow',               a: 'Leela Varma',    img: require('../../assets/covers/gallery-shadow.jpg') },
-  { t: 'The Red Boat',                    a: 'Avery Collins',  img: require('../../assets/covers/old-sea-boat.jpg') },
-  { t: 'Rooftop Summer',                  a: 'Mira James',     img: require('../../assets/covers/rooftop-student.jpg') },
-  { t: 'Neon Jinn of Sector Nine',        a: 'Kabir Bose',     img: require('../../assets/covers/neon-jinn-sector-nine.jpg') },
+const SLIDE_NAMES = ['character', 'story', 'read'];
+
+// ── The cast ────────────────────────────────────────────────────────────────
+/**
+ * Raya leads, Praz joins on screen 2.
+ *
+ * `RAYA_APPEARANCE` is typed on screen 1 character by character AND is the
+ * exact string `backend/scripts/generate-intro-characters.ts` sent to the
+ * portrait model to draw `raya-cutout.png`. The screen shows a field, then
+ * shows what Katha drew from it; if these two ever drift apart the screen is
+ * lying about the product, so they are regenerated together or not at all.
+ */
+const RAYA_APPEARANCE =
+  'An Indian woman in her twenties with curly black hair and round glasses. Athletic build, olive field jacket, worn hiking boots.';
+const APPEARANCE_MAX = 300;
+
+const STORY_IDEA =
+  'Raya and Praz, friends since childhood, trek through the still, dark forests of Silence Ridge.';
+
+/**
+ * The three directions, as the product really makes them.
+ *
+ * NOT hand-written atmosphere, and not hand-written prose either. Each of
+ * these is a real output of `toDirection` (src/lib/directions.ts) — the same
+ * converter the create flow and the chapter-end chips run every beat through
+ * — so the intro shows sentences the product can actually produce.
+ *
+ * THEY ARE THREE OPENINGS, NOT A PLOT. `DirectionStep` asks "Where does it
+ * begin?" and every card it offers is a candidate chapter one, derived from
+ * `beats` where `beats[0]` IS chapter one's brief. So the three cards are
+ * three different ways to start the SAME story -- through its atmosphere,
+ * through the friendship, through the trek going wrong -- and not a
+ * pressure/turn/payoff arc. A previous draft made them an arc, which put a
+ * decision about a broken bridge on a card labelled "where does it begin";
+ * the founder read it as arriving from nowhere, and it was.
+ *
+ * THEY USE ONLY WHAT THE TYPED IDEA CONTAINS. `STORY_IDEA` gives two people, a
+ * friendship going back to childhood, a trek on foot, and a forest that is
+ * unusually still. Every card above is built from exactly those: the silence
+ * the ridge is named for, the promise between two old friends, the trail lost
+ * as the light goes. Nothing enters from outside the sentence -- no rescuers,
+ * no bridges, no fire towers -- because the screen's whole claim is that Katha
+ * read what the writer typed.
+ *
+ * THE THREE FRAMES ARE DELIBERATELY DIFFERENT, and that is a content choice
+ * made in the beats, not a licence taken with the converter:
+ *
+ *   1. opens with an imperative verb, so `ALREADY_IMPERATIVE` passes the beat
+ *      through untouched;
+ *   2. is a beat written as a decision ("Raya must decide whether..."), which
+ *      takes the modal frame and comes back as "Have Raya decide...";
+ *   3. is a "what happens when" beat, which takes the whatHappens frame.
+ *
+ * The first draft of this screen used three plain declarative beats. Every one
+ * of them came back through the one frame that fits any third-person clause,
+ * so the card read "Write it so... / Have... / Write it so..." — real output,
+ * and repetitive enough that the founder read the screen as broken. Beats that
+ * vary in shape produce directions that vary in shape, which is also what the
+ * live screen looks like on a real idea.
+ */
+const DIRECTIONS = [
+  'Open with Raya stopping on the dark trail when the forest suddenly falls completely silent.',
+  'Have Raya decide whether to tell Praz the childhood promise she never kept.',
+  'Show what happens when Praz loses the trail in the darkening still forest.',
 ];
-const AVATARS = [
-  require('../../assets/avatars/reader-black-woman.jpg'),
-  require('../../assets/avatars/reader-brown-man.jpg'),
-  require('../../assets/avatars/reader-white-woman.jpg'),
+
+/**
+ * The title, and it is not decoration.
+ *
+ * "The Long Way Up" described the trek, which any hiking story could be called.
+ * This one names what the chosen direction is ABOUT -- a promise twenty years
+ * old that Raya still has not kept -- so slide 2 and slide 3 are visibly the
+ * same story: the reader picks an opening about a childhood promise, and the
+ * book that appears on the shelf is called after it. It also obeys the
+ * product's own rule for titles (`ONBOARDING_SHAPE_SYSTEM_PROMPT`): one to six
+ * words, specific to this story, never a genre label.
+ *
+ * It also has to be ONE line at 28/32 in the story page's 298pt column, and
+ * fit the Home card's 214pt without an ellipsis. This measures 244 and 133.
+ * Check both when changing it: "The Promise She Never Kept" was an earlier
+ * choice and is the better sentence, but at 380pt it wrapped to two lines and
+ * the second line pushed the blurb down into the Read and Listen pills.
+ */
+const STORY_TITLE = 'Twenty Years Late';
+const STORY_BLURB = 'Raya and Praz trek through the still, dark forests of Silence Ridge.';
+
+// ── Assets ──────────────────────────────────────────────────────────────────
+const RAYA = require('../../assets/onboarding/raya-cutout.png');
+const PRAZ = require('../../assets/onboarding/praz-cutout.png');
+const COVER_TREK = require('../../assets/onboarding/cover-trek.png');
+
+const TRENDING = [
+  { img: require('../../assets/covers/maharanis-last-cipher.jpg'), genre: 'Mystery', likes: '428' },
+  { img: require('../../assets/covers/wolf-on-campus.jpg'), genre: 'Romance', likes: '1.2k' },
+  { img: require('../../assets/covers/neon-jinn-sector-nine.jpg'), genre: 'Sci-fi', likes: '860' },
+  { img: require('../../assets/covers/midnight-chai-case-files.jpg'), genre: 'Mystery', likes: '640' },
+];
+const ORIGINALS = [
+  { img: require('../../assets/covers/garden-of-little-dragons.jpg'), genre: 'Fantasy', likes: '2.1k' },
+  { img: require('../../assets/covers/library-under-rain.jpg'), genre: 'Slice of life', likes: '934' },
+  { img: require('../../assets/covers/door-above-the-clouds.jpg'), genre: 'Adventure', likes: '512' },
+  { img: require('../../assets/covers/ravenwick-owl-window.jpg'), genre: 'Fantasy', likes: '1.4k' },
 ];
 
 const HERO_H = 478;
-const STAGE_H = 340;
-const COVER_W = 76, COVER_H = 110, COVER_GAP = 9;
+
+/**
+ * Where the cover's vertical crop is anchored, 0 = top, 0.5 = centre.
+ *
+ * THE STORY PAGE IS THE CRUEL CROP. One square source is shown as a 70x81
+ * tile on Home (which keeps the full height and trims the sides) and as a
+ * 334x230 band on the story page (which keeps only the middle 69%). Centred,
+ * that band cut the top of the taller character's head off — the cover is OF
+ * the two characters, so beheading one is the one thing it cannot do.
+ *
+ * Biasing the anchor towards the top keeps both heads and spends the slack at
+ * the bottom, which is the character's legs and the forest floor: the part the
+ * gradient fades out anyway. The product's own covers solve this in the prompt
+ * (`SAFE_ZONE_CLAUSE`, cover-prompts.ts) by asking for the faces between 20%
+ * and 50% of the height. That clause is in this cover's prompt too, and across
+ * three generations the model put the heads above it every time, so the crop
+ * is the layer that actually has to hold the line.
+ */
+const COVER_FOCUS_Y = 0.1;
+
+/**
+ * ONE tile size for both shelves, and it is the product's own.
+ *
+ * Trending was 104x100 and Originals 104x86, which is what the handoff drew.
+ * Side by side in one 392pt card that reads as two different components
+ * rather than two shelves of the same thing, and the founder saw it
+ * immediately. One size for both fixes that.
+ *
+ * 74x96 IS THIS SCREEN'S OWN NUMBER, not a product spec. An earlier comment
+ * here claimed it was the "mini" cover size from `backend/COVER_IMAGES.md`;
+ * that file carries no such figure, the product's `mini` cover is a 96pt
+ * SQUARE (`KathaPrimitives.tsx`, `aspectRatio: 1`), and the 74pt width was
+ * explicitly retired in `lib/cover-url.ts`. It is kept because a portrait tile
+ * is what reads as a book at this size and four of them fit the card, but it
+ * is a drawing of a shelf, not the shelf, and it should not be cited as a
+ * precedent by anything else.
+ */
+const TILE_W = 74;
+const TILE_H = 96;
+const TILE_GAP = 8;
+
+/**
+ * The Home story card's padding, and the cover well inside it.
+ *
+ * Shared between the stylesheet and the morph, because they have to agree:
+ * the morph starts at the well's position, and when those two drifted apart
+ * the cover hung off the top and bottom edges of the card it was supposed to
+ * be sitting inside.
+ */
+const STORY_CARD_PAD = 8;
+const SLOT_W = 70;
+const SLOT_H = 68;
 
 // ── Motion (expo-animation SKILL) ───────────────────────────────────────────
-// On-screen movement between slides: the skill's ease-in-out. The slide keeps
-// the 0.6s the SPEC gave it; it is a page of the intro, not a chip.
 const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const SLIDE_MS = 600;
@@ -121,26 +326,40 @@ const SNAP = { duration: 400, dampingRatio: 0.8 };
 // A flick this fast turns the page even if it travelled less than a quarter.
 const FLICK_VELOCITY = 500;
 // The sheet's fixed slots (dots, headline, description, action) plus its
-// padding: DESIGN.md "Message sheet ... h 322". A window shorter than hero +
-// sheet scrolls instead of letting "Get started" slide under the copy.
+// padding. A window shorter than hero + sheet scrolls instead of letting
+// "Get started" slide under the copy.
 const SHEET_MIN_H = 322;
+
+/** A warm shadow, never a neutral grey one. */
+function warmShadow(opacity, color = C.shadowWarm) {
+  return Platform.select({
+    web: { boxShadow: `0 10px 28px rgba(122,46,14,${0.10 * opacity})` },
+    default: {
+      shadowColor: color,
+      shadowOpacity: 0.16 * opacity,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 4,
+    },
+  });
+}
 
 // ── Root ────────────────────────────────────────────────────────────────────
 export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => {} }) {
   const { width: windowW, height: windowH } = useWindowDimensions();
   // THE DESKTOP TRAP. Every slide is one frame wide and the frame used to be
-  // the whole window: on a 1440pt browser each slide was 1440pt, the middle
-  // marquee ran out of covers half way, and a window shorter than 800pt put
-  // "Get started" on top of the copy with nothing to scroll. The frame is a
-  // phone-width column now, and the page scrolls when the window is short.
+  // the whole window: on a 1440pt browser each slide was 1440pt, and a window
+  // shorter than 800pt put "Get started" on top of the copy with nothing to
+  // scroll. The frame is a phone-width column now, and the page scrolls when
+  // the window is short.
   const W = Math.min(windowW, controls.introMaxWidth);
   const [phase, setPhase] = useState(0);
   const reduceMotion = useReducedMotionPreference();
 
-  // Progress through the CURRENT phase, 0..1, on the UI thread. It used to be
+  // Elapsed ms through the CURRENT phase, on the UI thread. It used to be
   // React state set from requestAnimationFrame: a render of the whole intro on
   // every frame for twenty seconds, the first thing anybody sees.
-  const progress = useSharedValue(reduceMotion ? 1 : 0);
+  const progress = useSharedValue(reduceMotion ? DUR[0] : 0);
   const phaseSV = useSharedValue(0);
   const slideX = useSharedValue(0);
   const dragStart = useSharedValue(0);
@@ -149,8 +368,7 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
   // A PHASE, not a boolean: a swipe can ask for the phase the auto-advance
   // committed a frame earlier (the gesture reads `phaseSV`, which syncs after
   // commit). That `setPhase` is a same-value bail-out and runs no effect, and
-  // a boolean left armed swallowed the NEXT real transition: hero on Publish,
-  // sheet on Read.
+  // a boolean left armed swallowed the NEXT real transition.
   const settledByGesture = useRef(null);
 
   const advanceFrom = useCallback((from) => {
@@ -161,12 +379,20 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
   useEffect(() => {
     phaseSV.set(phase);
     cancelAnimation(progress);
+    const total = DUR[phase];
     if (reduceMotion || phase >= 2) {
-      progress.set(1);
+      // The end frame, immediately. Phase 2 holds there anyway; reduced motion
+      // holds there on every slide.
+      progress.set(total + LEAD_IN);
+      if (phase >= 2 && !reduceMotion) {
+        // Phase 2 still PLAYS, it just has nothing after it to advance to.
+        progress.set(0);
+        progress.set(withTiming(total + LEAD_IN, { duration: total + LEAD_IN, easing: Easing.linear }));
+      }
       return undefined;
     }
     progress.set(0);
-    progress.set(withTiming(1, { duration: DUR[phase], easing: Easing.linear }, (finished) => {
+    progress.set(withTiming(total + LEAD_IN, { duration: total + LEAD_IN, easing: Easing.linear }, (finished) => {
       if (finished) scheduleOnRN(advanceFrom, phase);
     }));
     return () => cancelAnimation(progress);
@@ -227,8 +453,9 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
 
   // Each slide's own clock: running while it is the current phase, finished
   // once it has been passed, unstarted before.
-  const p0 = useDerivedValue(() => (phaseSV.get() === 0 ? progress.get() : phaseSV.get() > 0 ? 1 : 0));
-  const p1 = useDerivedValue(() => (phaseSV.get() === 1 ? progress.get() : phaseSV.get() > 1 ? 1 : 0));
+  const p0 = useDerivedValue(() => (phaseSV.get() === 0 ? progress.get() : phaseSV.get() > 0 ? DUR[0] + LEAD_IN : 0));
+  const p1 = useDerivedValue(() => (phaseSV.get() === 1 ? progress.get() : phaseSV.get() > 1 ? DUR[1] + LEAD_IN : 0));
+  const p2 = useDerivedValue(() => (phaseSV.get() === 2 ? progress.get() : 0));
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -248,9 +475,9 @@ export default function KathaOnboarding({ onFinish = () => {}, onSignIn = () => 
           <GestureDetector gesture={pan}>
             <View style={styles.hero}>
               <Animated.View testID="intro-slides" style={[{ flexDirection: 'row', width: W * 3, height: HERO_H }, rowStyle]}>
-                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CreateScreen p={p0} reduceMotion={reduceMotion} /></View>
-                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><PublishScreen p={p1} reduceMotion={reduceMotion} /></View>
-                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen reduceMotion={reduceMotion} /></View>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><CharacterScreen t={p0} reduceMotion={reduceMotion} /></View>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><StoryScreen t={p1} reduceMotion={reduceMotion} /></View>
+                <View style={{ width: W, height: HERO_H, overflow: 'hidden' }}><ReadScreen t={p2} reduceMotion={reduceMotion} /></View>
               </Animated.View>
 
               <View style={[styles.wordmarkWrap, { pointerEvents: 'none' }]}>
@@ -293,17 +520,19 @@ function useReducedMotionPreference() {
   return reduceMotion;
 }
 
-// ── Bottom sheet (SPEC §4) ──────────────────────────────────────────────────
+// ── Bottom sheet ────────────────────────────────────────────────────────────
 function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
   const [h, s] = HEADLINES[phase];
+
   // The copy crossfades in its fixed slots: opacity only, so nothing reflows
   // and reduced motion keeps the same gentle change.
-  const enter = FadeIn.duration(reduceMotion ? 0 : 220).easing(EASE_OUT);
+  const enter = FadeIn.duration(reduceMotion ? 0 : 300).easing(EASE_OUT);
+
   return (
     <View testID="intro-sheet" style={styles.sheet}>
       <View style={styles.dots}>
         {[0, 1, 2].map((n) => (
-          <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Show ${['create', 'publish', 'read'][n]} intro`}
+          <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Show ${SLIDE_NAMES[n]} intro`}
             accessibilityState={{ selected: n === phase }}
             onPress={() => onDot(n)} style={styles.dotHit}>
             {/* A 6pt dot needs a 44pt target; the hit box is negative-margined
@@ -325,7 +554,12 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
         ))}
       </View>
       <Animated.View key={phase} entering={enter}>
-        <Text style={styles.headline}>{h}</Text>
+        {/* One line tall, and every headline is written to fit it: see the
+            note on HEADLINES for why equal content, not a fixed slot, is what
+            makes the three slides' spacing match. */}
+        <View style={styles.headlineSlot}>
+          <Text style={styles.headline}>{h}</Text>
+        </View>
         <Text style={styles.sub}>{s}</Text>
       </Animated.View>
       <View style={styles.actionSlot}>
@@ -333,7 +567,7 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
           <Animated.View entering={enter}>
             <Primary label="Get started" onPress={onFinish} />
             <Pressable onPress={onSignIn} style={{ marginTop: 14, alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, color: '#6B625A' }}>Already have an account? <Text style={{ color: '#FF6B1A', fontWeight: '700' }}>Sign in</Text></Text>
+              <Text style={styles.signInBelow}>Already have an account? <Text style={styles.signInBelowLink}>Sign in</Text></Text>
             </Pressable>
           </Animated.View>
         )}
@@ -342,325 +576,660 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
   );
 }
 
-// ── Screen 0 : CREATE then EDIT (SPEC §5, §6) ───────────────────────────────
-const PROMPT = "Write a mystery-fantasy thriller about a teen who finds a hidden door in her family's old house.";
-
-// Opacity + a small rise, the shape every line and chip on the stage enters with.
-function riseStyle(r, dy) {
-  'worklet';
-  return { opacity: r, transform: [{ translateY: (1 - r) * dy }] };
-}
-
-function CreateScreen({ p, reduceMotion }) {
-  const card = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0, 0.04)) }));
-  const gen = useAnimatedStyle(() => {
-    const v = p.get();
-    const show = smooth(win(v, 0.24, 0.30));
-    const scale = (0.9 + 0.1 * show) * (1 - 0.12 * Math.sin(Math.PI * win(v, 0.31, 0.37)));
-    return { opacity: show, transform: [{ scale }] };
-  });
-  const writing = useAnimatedStyle(() => {
-    const v = p.get();
-    return { opacity: smooth(win(v, 0.37, 0.43)) * (1 - smooth(win(v, 0.56, 0.62))) };
-  });
-  const line0 = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.44, 0.54)), 6));
-  const line1 = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.50, 0.60)), 6));
-  const lastLine = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.56, 0.66)) }));
-  const swapBg = useAnimatedStyle(() => {
-    const v = p.get();
-    const hi = smooth(win(v, 0.60, 0.65)) * (1 - smooth(win(v, 0.90, 0.96)));
-    return { backgroundColor: `rgba(255,107,26,${0.20 * hi})` };
-  });
-  const oldWord = useAnimatedStyle(() => {
-    const v = p.get();
-    return { opacity: 1 - smooth(win(v, 0.65, 0.67)), transform: [{ translateY: -3 * smooth(win(v, 0.65, 0.72)) }] };
-  });
-  const newWord = useAnimatedStyle(() => {
-    const v = p.get();
-    return { opacity: smooth(win(v, 0.69, 0.72)), transform: [{ translateY: 3 * (1 - smooth(win(v, 0.65, 0.72))) }] };
-  });
-  const chip = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.67, 0.72)), 6));
-
-  return (
-    <View style={styles.stage}>
-      <Animated.View style={[styles.createCard, warmShadow(0.40), card]}>
-        <View style={styles.eyebrowRow}>
-          <View style={styles.dot7} />
-          <Text style={styles.eyebrow}>NEW STORY</Text>
-        </View>
-
-        {/* Character-by-character typing keeps line wrapping stable. */}
-        <View style={{ marginTop: 10, minHeight: 54 }}>
-          <TypedPrompt p={p} reduceMotion={reduceMotion} />
-        </View>
-
-        <Animated.View style={[{ marginTop: 10, alignSelf: 'flex-start' }, gen]}>
-          <View style={[styles.pillOrange, warmShadow(0.6, C.orange)]}>
-            <Text style={styles.pillOrangeText}>✦ Generate story</Text>
-          </View>
-        </Animated.View>
-
-        <Animated.Text style={[styles.writing, writing]}>✦ Katha is writing…</Animated.Text>
-
-        <View style={styles.storyBlock}>
-          <Animated.Text style={[styles.storyLine, line0]}>
-            Tara pulled the old wallpaper back as everyone watched:
-          </Animated.Text>
-          <Animated.Text style={[styles.storyLine, line1]}>
-            her brother, aunt, and neighbors crowding the stairs,
-          </Animated.Text>
-          <Animated.View style={[styles.storyLastLine, lastLine]}>
-            <Text style={styles.storyLine}>while the hidden door pulsed like a </Text>
-            <Animated.View style={[styles.wordSwap, swapBg]}>
-              <Animated.Text style={[styles.swapText, oldWord]}>dream.</Animated.Text>
-              <Animated.Text style={[styles.swapText, styles.swapTextNew, newWord]}>warning.</Animated.Text>
-            </Animated.View>
-          </Animated.View>
-        </View>
-
-        <Animated.View style={[{ alignSelf: 'flex-start', marginTop: 7 }, chip]}>
-          <View style={styles.pillPeach}><Text style={styles.pillPeachText}>✎ You rewrote this line</Text></View>
-        </Animated.View>
-      </Animated.View>
-    </View>
-  );
-}
-
 /**
- * The one piece of the Create slide that has to be React: text content. It
- * re-renders only when another character is due (about 95 times over 1.8s),
- * and only itself, never the stage around it.
+ * Text that types itself from a shared clock.
+ *
+ * The one piece of a slide that has to be React: text content. It re-renders
+ * only when another character is due, and only itself, never the stage around
+ * it. `from` is the fraction already on screen when the window opens — screen
+ * 1 starts at 70% deliberately, so the viewer sees a field being finished
+ * rather than sitting through 118 characters of typing.
  */
-function TypedPrompt({ p, reduceMotion }) {
-  const [count, setCount] = useState(reduceMotion ? PROMPT.length : 0);
+function TypedText({ t, a, b, text, style, from = 0, reduceMotion, numberOfLines, showCursor = true }) {
+  const firstCount = Math.floor(text.length * from);
+  const [count, setCount] = useState(reduceMotion ? text.length : firstCount);
   useAnimatedReaction(
-    () => Math.floor(PROMPT.length * smooth(win(p.get(), 0.05, 0.22))),
+    () => {
+      const r = from + (1 - from) * clamp01(win(t.get(), a, b));
+      return Math.floor(text.length * r);
+    },
     (next, previous) => {
       if (next !== previous) scheduleOnRN(setCount, next);
     },
   );
   const cursor = useAnimatedStyle(() => {
-    const v = p.get();
-    const typing = smooth(win(v, 0.05, 0.22)) < 1;
-    return { opacity: typing && Math.floor(v * 80) % 2 === 0 ? 1 : 0 };
+    const v = t.get();
+    const typing = win(v, a, b) < 1 && v > LEAD_IN;
+    // 450ms blink: one frame of the cycle on, one off.
+    return { opacity: typing && Math.floor(v / 450) % 2 === 0 ? 1 : 0 };
   });
   return (
-    <Text style={styles.prompt} numberOfLines={3}>
-      {PROMPT.slice(0, count)}
-      <Animated.Text style={[{ color: C.orange }, cursor]}>|</Animated.Text>
+    <Text style={style} numberOfLines={numberOfLines}>
+      {text.slice(0, count)}
+      {showCursor ? <Animated.Text style={[{ color: C.orange }, cursor]}>|</Animated.Text> : null}
     </Text>
   );
 }
 
-// ── Screen 1 : PUBLISH then COMMUNITY (SPEC §5, §7) ─────────────────────────
-function PublishScreen({ p }) {
-  const publishBtn = useAnimatedStyle(() => {
-    const v = p.get();
-    const out = smooth(win(v, 0.22, 0.30));
-    const scale = (1 - 0.12 * Math.sin(Math.PI * win(v, 0.16, 0.22))) * (1 - 0.06 * out);
-    return { opacity: 1 - out, transform: [{ scale }] };
+/** A live character counter driven by the same clock as the typing. */
+function TypedCounter({ t, a, b, total, from, reduceMotion }) {
+  const [count, setCount] = useState(reduceMotion ? total : Math.floor(total * from));
+  useAnimatedReaction(
+    () => {
+      const r = from + (1 - from) * clamp01(win(t.get(), a, b));
+      return Math.floor(total * r);
+    },
+    (next, previous) => {
+      if (next !== previous) scheduleOnRN(setCount, next);
+    },
+  );
+  return <Text style={styles.counter}>{count} / {APPEARANCE_MAX}</Text>;
+}
+
+/** A label that swaps once the clock passes `at`. */
+function SwapLabel({ t, at, before, after, style }) {
+  const [past, setPast] = useState(false);
+  useAnimatedReaction(() => t.get() >= at + LEAD_IN, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setPast, next);
   });
-  const stats = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.26, 0.34)) }));
-  const readers = useAnimatedStyle(() => ({ opacity: smooth(win(p.get(), 0.30, 0.40)) }));
-  const note = useAnimatedStyle(() => riseStyle(smooth(win(p.get(), 0.72, 0.82)), 22));
+  return <Text style={style}>{past ? after : before}</Text>;
+}
+
+// ── Screen 0 : CHARACTER ────────────────────────────────────────────────────
+/**
+ * Two fields, a press, a scan, a face.
+ *
+ * The fields are NAME and APPEARANCE and nothing else, because that is all the
+ * product asks for (`CharacterOnboarding.tsx` W4). Adding a third would make
+ * the screen's own promise — "two details are all it takes" — false.
+ */
+function CharacterScreen({ t, reduceMotion }) {
+  const card = useAnimatedStyle(() => ({ opacity: smooth(win(t.get(), 0, 220)) }));
+  // The form dims under the scan rather than disappearing: the person keeps
+  // seeing what the portrait was made from.
+  const form = useAnimatedStyle(() => ({ opacity: 1 - 0.5 * smooth(win(t.get(), 1000, 1150)) }));
+  const cta = useAnimatedStyle(() => {
+    const v = t.get();
+    return { transform: [{ scale: pulseScale(v, 650, 900) * pressScale(v, 900, 1100) }] };
+  });
+  const ctaFill = useAnimatedStyle(() => ({
+    backgroundColor: win(t.get(), 1000, 1000.1) > 0 ? C.orangePress : C.orange,
+  }));
+  const scan = useAnimatedStyle(() => {
+    const v = t.get();
+    const r = win(v, 1000, 1850);
+    return {
+      opacity: r > 0 && r < 1 ? 1 : 0,
+      transform: [{ translateY: -90 + r * (346 + 90) }],
+    };
+  });
+  const portrait = useAnimatedStyle(() => {
+    const r = smooth(win(t.get(), 1850, 2350));
+    return { opacity: r, transform: [{ scale: 1.06 - 0.06 * r }] };
+  });
 
   return (
     <View style={styles.stage}>
-      {/* reaction chips (absolute — SPEC §7) */}
-      <ReactionChip p={p} at={0.40} text="the door gave me chills" style={{ top: 54, left: 38 }} />
-      <ReactionChip p={p} at={0.52} text="♥ liked" peach style={{ top: 132, right: 22 }} />
-      <ReactionChip p={p} at={0.62} text="read it twice ✦" style={{ top: 258, left: 34 }} />
-
-      <View style={styles.stageCenter}>
-        <View style={[styles.publishCard, warmShadow(0.45)]}>
-          <View style={{ flexDirection: 'row' }}>
-            <BookSpine />
-            <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={styles.bookTitle}>The Forgotten Door</Text>
-              <BookStatus p={p} />
-              <View style={{ height: 32, marginTop: 12 }}>
-                <Animated.View style={[{ position: 'absolute' }, publishBtn]}>
-                  <View style={[styles.pillOrangeSm, warmShadow(0.6, C.orange)]}>
-                    <Text style={styles.pillOrangeText}>Publish story</Text>
-                  </View>
-                </Animated.View>
-                <Animated.View style={[{ position: 'absolute', top: 6, flexDirection: 'row' }, stats]}>
-                  <Hearts p={p} />
-                  <Text style={[styles.stat, { color: C.muted, marginLeft: 16 }]}>💬 24</Text>
-                </Animated.View>
-              </View>
-            </View>
+      <Animated.View style={[styles.characterCard, warmShadow(0.45), card]}>
+        <Animated.View style={form}>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.dot7} />
+            <Text style={styles.eyebrow}>NEW CHARACTER</Text>
           </View>
-          <View style={styles.hairline} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
-            <View style={{ flexDirection: 'row' }}>
-              {AVATARS.map((src, i) => <ReaderAvatar key={i} p={p} i={i} src={src} />)}
-            </View>
-            <Animated.Text style={[styles.readers, readers]}>new readers today</Animated.Text>
-          </View>
-        </View>
-      </View>
 
-      {/* continuation notification, bottom 40 */}
-      <Animated.View style={[{ position: 'absolute', bottom: 18, left: 0, right: 0, alignItems: 'center' }, note]}>
-        <NotificationCard />
+          <Text style={styles.fieldLabel}>NAME</Text>
+          <View style={styles.nameField}><Text style={styles.nameValue}>Raya</Text></View>
+
+          <View style={styles.labelRow}>
+            <Text style={styles.fieldLabel}>APPEARANCE</Text>
+            <TypedCounter t={t} a={0} b={500} total={RAYA_APPEARANCE.length} from={0.7} reduceMotion={reduceMotion} />
+          </View>
+          <View style={styles.appearanceField}>
+            <TypedText
+              t={t} a={0} b={500} text={RAYA_APPEARANCE} from={0.7}
+              reduceMotion={reduceMotion} style={styles.appearanceText} numberOfLines={4}
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View style={[styles.characterCtaWrap, cta]}>
+          <Animated.View style={[styles.ctaPill, ctaFill, warmShadow(0.6, C.orange)]}>
+            <SwapLabel t={t} at={1000} before="Bring Raya to life" after="Drawing Raya…" style={styles.ctaLabel} />
+          </Animated.View>
+        </Animated.View>
+
+        {/* The scan band sweeps the whole card once, then the portrait lands
+            on top of it. Both are clipped by the card's own radius. */}
+        <Animated.View style={[styles.scanBand, scan, { pointerEvents: 'none' }]}>
+          <LinearGradient
+            colors={['rgba(255,107,26,0)', 'rgba(255,107,26,0.22)', 'rgba(255,107,26,0.5)']}
+            locations={[0, 0.7, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.scanLine} />
+        </Animated.View>
+
+        <Animated.View style={[styles.portraitLayer, portrait]}>
+          <Image source={RAYA} resizeMode="contain" style={styles.portraitImage} />
+          <View style={styles.portraitChipLeft}><Text style={styles.portraitChipLeftText}>Raya</Text></View>
+          <View style={styles.portraitChipRight}><Text style={styles.portraitChipRightText}>DRAWN BY KATHA</Text></View>
+        </Animated.View>
       </Animated.View>
     </View>
   );
 }
 
-function BookStatus({ p }) {
-  const [published, setPublished] = useState(false);
-  useAnimatedReaction(() => p.get() >= 0.26, (next, previous) => {
-    if (next !== previous) scheduleOnRN(setPublished, next);
-  });
-  return <Text style={styles.bookSub}>{published ? 'by you · published' : 'Draft · ready to share'}</Text>;
-}
+// ── Screen 1 : STORY ────────────────────────────────────────────────────────
+const GENRES = ['Romance', 'Adventure', 'Fantasy', 'Thriller'];
 
-/** Likes count up 128 → 246. Text, so React; re-renders only itself. */
-function Hearts({ p }) {
-  const [hearts, setHearts] = useState(128);
-  useAnimatedReaction(() => 128 + Math.round(smooth(win(p.get(), 0.30, 0.58)) * 118), (next, previous) => {
-    if (next !== previous) scheduleOnRN(setHearts, next);
-  });
-  return <Text style={[styles.stat, { color: C.orangeDeep }]}>♥ {hearts}</Text>;
-}
+function StoryScreen({ t, reduceMotion }) {
+  const collapses = INTRO_S2_VARIANT === 'B';
 
-function ReaderAvatar({ p, i, src }) {
-  const style = useAnimatedStyle(() => {
-    const a = [0.34, 0.44, 0.54][i];
-    const r = smooth(win(p.get(), a, a + 0.10));
-    // From 0.5, never from nothing (SKILL: no scale(0)).
-    return { opacity: r, transform: [{ scale: 0.5 + 0.5 * r }] };
+  const cardEnter = useAnimatedStyle(() => {
+    const r = smooth(win(t.get(), 0, 400));
+    return { opacity: r, transform: [{ translateY: (1 - r) * 14 }] };
   });
+  // Variant A swaps the brief for the directions inside one card; B collapses
+  // the card to a summary and stacks the directions below it.
+  const cardBody = useAnimatedStyle(() => ({ opacity: 1 - smooth(win(t.get(), 3900, 4200)) }));
+  const cardHeight = useAnimatedStyle(() => {
+    if (!collapses) return { height: 372 };
+    return { height: 372 - 262 * EASE_OUT_CUBIC(win(t.get(), 3900, 4500)) };
+  });
+  const summary = useAnimatedStyle(() => ({
+    opacity: collapses ? smooth(win(t.get(), 4200, 4600)) : 0,
+  }));
+  const createCta = useAnimatedStyle(() => {
+    const v = t.get();
+    return { transform: [{ scale: pulseScale(v, 3400, 3650) * pressScale(v, 3650, 3900) }] };
+  });
+
   return (
-    <Animated.Image source={src}
-      style={[{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: '#fff',
-        marginLeft: i === 0 ? 0 : -8 }, style]} />
+    <View style={styles.stage}>
+      <Animated.View style={[styles.briefCard, warmShadow(0.45), cardEnter, cardHeight]}>
+        {/* The brief. Fades out at 3900 in both variants. */}
+        <Animated.View style={[StyleSheet.absoluteFill, styles.briefBody, cardBody]}>
+          <View style={styles.kidsRow}>
+            <View style={styles.kidsTrack}><View style={styles.kidsKnob} /></View>
+            {/* "All-ages", not "For kids". `CreateBriefFlow.tsx` renders
+                All-ages and `source-of-truth/STORY_GENERATION_FLOW.md` §3
+                states it as the on-screen label; "kids" is the internal
+                `audienceMode` value, not a string a user ever sees. */}
+            <Text style={styles.kidsLabel}>All-ages</Text>
+          </View>
+
+          <View style={styles.genreRow}>
+            {GENRES.map((g) => <GenreChip key={g} t={t} label={g} selected={g === 'Adventure'} />)}
+          </View>
+
+          <Text style={[styles.eyebrow, styles.eyebrowOrange]}>CREATE</Text>
+          <Text style={styles.briefTitle}>What is your story about?</Text>
+
+          <IdeaField t={t} reduceMotion={reduceMotion} />
+
+          <View style={styles.labelRow}>
+            <Text style={styles.fieldLabel}>WHO&apos;S IN IT</Text>
+            <CastCount t={t} />
+          </View>
+          <View style={styles.castRow}>
+            <CastChip label="Raya" source={RAYA} selectedAt={0} t={t} />
+            <CastChip label="Praz" source={PRAZ} selectedAt={3000} t={t} />
+          </View>
+
+          <Animated.View style={[styles.createCtaWrap, createCta]}>
+            <View style={[styles.ctaPill, styles.ctaPillOrange, warmShadow(0.6, C.orange)]}>
+              <Text style={styles.ctaLabel}>Create story</Text>
+            </View>
+          </Animated.View>
+        </Animated.View>
+
+        {/* Variant B only: what the collapsed card says instead. */}
+        {collapses && (
+          <Animated.View style={[styles.summaryRow, summary]}>
+            <View style={styles.summaryAvatars}>
+              <Image source={RAYA} style={styles.summaryAvatar} />
+              <Image source={PRAZ} style={[styles.summaryAvatar, styles.summaryAvatarOverlap]} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.summaryTitle}>Adventure · Raya and Praz</Text>
+              <Text style={styles.summaryIdea} numberOfLines={2}>{STORY_IDEA}</Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Variant A only: the directions live inside the same card. */}
+        {!collapses && <Directions t={t} inside />}
+      </Animated.View>
+
+      {/* Variant B only: the directions stack below the collapsed card. */}
+      {collapses && <Directions t={t} inside={false} />}
+    </View>
   );
 }
 
-function ReactionChip({ p, at, text, peach, style }) {
-  const motion = useAnimatedStyle(() => {
-    const r = smooth(win(p.get(), at, at + 0.09));
-    return { opacity: r, transform: [{ translateY: (1 - r) * 8 }, { scale: 0.92 + 0.08 * r }] };
+function GenreChip({ t, label, selected }) {
+  const style = useAnimatedStyle(() => {
+    const on = selected ? smooth(win(t.get(), 500, 700)) : 0;
+    return {
+      backgroundColor: on > 0.5 ? C.orange : 'transparent',
+      borderColor: on > 0.5 ? C.orange : C.field,
+    };
+  });
+  const text = useAnimatedStyle(() => {
+    const on = selected ? smooth(win(t.get(), 500, 700)) : 0;
+    return { color: on > 0.5 ? '#FFFFFF' : C.inkSoft };
   });
   return (
-    <Animated.View style={[{ position: 'absolute', zIndex: 4 },
-      peach ? [styles.chipOrange, warmShadow(0.5, C.orange)] : [styles.chipWhite, warmShadow(0.35)], style, motion]}>
-      <Text style={peach ? styles.chipOrangeText : styles.chipWhiteText}>{text}</Text>
+    <Animated.View style={[styles.genreChip, style]}>
+      <Animated.Text style={[styles.genreChipText, text]}>{label}</Animated.Text>
     </Animated.View>
   );
 }
 
-function BookSpine() {
+function IdeaField({ t, reduceMotion }) {
+  const ring = useAnimatedStyle(() => ({
+    borderColor: win(t.get(), 800, 800.1) > 0 ? C.orange : C.field,
+  }));
   return (
-    <View style={{ width: 58, height: 78, borderRadius: 6, overflow: 'hidden' }}>
-      <LinearGradient colors={['#2E5D57', '#1C3A36']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill} />
-      <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: 'rgba(0,0,0,0.28)' }} />
-      <Text style={styles.spineTitle}>The Forgotten Door</Text>
-    </View>
+    <Animated.View style={[styles.ideaField, ring]}>
+      <TypedText
+        t={t} a={800} b={2800} text={STORY_IDEA} reduceMotion={reduceMotion}
+        style={styles.ideaText} numberOfLines={3}
+      />
+    </Animated.View>
   );
 }
 
-function NotificationCard() {
-  return (
-    <View style={[styles.notif, warmShadow(0.6, C.ink)]}>
-      <LinearGradient colors={[C.orange, C.orangePress]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={styles.notifTile}><Text style={{ color: '#fff', fontSize: 16 }}>✦</Text></LinearGradient>
-      <View style={{ flex: 1, marginLeft: 11 }}>
-        <Text style={styles.notifTitle}>Mira continued your story</Text>
-        <Text style={styles.notifBody}>"She followed the light down…"</Text>
-      </View>
-    </View>
-  );
-}
-
-// ── Screen 2 : READ marquee (SPEC §8) ───────────────────────────────────────
-function ReadScreen({ reduceMotion }) {
-  const rows = [
-    { reverse: false, dur: 32000, start: 0 },
-    { reverse: true,  dur: 26000, start: 6 },
-    { reverse: false, dur: 36000, start: 11 },
-  ];
-  return (
-    <View style={[styles.stage, styles.stageCenter, { flexDirection: 'column' }]}>
-      {rows.map((r, i) => (
-        <View key={i} style={{ marginTop: i === 0 ? 0 : COVER_GAP }}>
-          <MarqueeRow {...r} reduceMotion={reduceMotion} />
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function MarqueeRow({ reverse, dur, start, reduceMotion }) {
-  const strip = Array.from({ length: 14 }, (_, i) => COVERS[(start + i) % COVERS.length]);
-  const unitWidth = strip.length * (COVER_W + COVER_GAP);
-  // Constant motion: linear, looping on the UI thread, stopped under reduced
-  // motion on the representative first covers (DESIGN.md "Reduced Motion").
-  const x = useSharedValue(0);
-
-  useEffect(() => {
-    cancelAnimation(x);
-    if (reduceMotion) {
-      x.set(0);
-      return undefined;
-    }
-    x.set(reverse ? 1 : 0);
-    x.set(withRepeat(withTiming(reverse ? 0 : 1, { duration: dur, easing: Easing.linear }), -1, false));
-    return () => cancelAnimation(x);
-  }, [dur, reduceMotion, reverse, x]);
-
-  const style = useAnimatedStyle(() => ({ transform: [{ translateX: -unitWidth * x.get() }] }));
-
-  return (
-    <MaskedFade>
-      <Animated.View style={[{ flexDirection: 'row' }, style]}>
-        {[...strip, ...strip].map((c, i) => <CoverCard key={i} c={c} last={i === strip.length * 2 - 1} />)}
-      </Animated.View>
-    </MaskedFade>
-  );
-}
-
-// edge fade via overlaid gradients (works without @react-native-masked-view)
-function MaskedFade({ children }) {
-  return (
-    <View style={{ height: COVER_H, overflow: 'hidden' }}>
-      {children}
-      <LinearGradient colors={[C.heroB, 'rgba(243,234,216,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={[styles.fadeL, { pointerEvents: 'none' }]} />
-      <LinearGradient colors={['rgba(243,234,216,0)', C.heroB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={[styles.fadeR, { pointerEvents: 'none' }]} />
-    </View>
-  );
-}
-
-function CoverCard({ c, last }) {
-  return (
-    <View style={[{ width: COVER_W, height: COVER_H, borderRadius: 12, overflow: 'hidden', backgroundColor: C.coverInk,
-      marginRight: last ? 0 : COVER_GAP }, warmShadow(0.5)]}>
-      <Image source={c.img} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      <LinearGradient colors={['rgba(24,20,16,0)', 'rgba(24,20,16,0.12)', 'rgba(24,20,16,0.82)']}
-        locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
-      <LinearGradient colors={['rgba(0,0,0,0.16)', 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 }} />
-      <View style={{ position: 'absolute', left: 8, right: 8, bottom: 9, top: 24, justifyContent: 'flex-end' }}>
-        <Text style={styles.coverTitle} numberOfLines={2}>{c.t}</Text>
-        <Text style={styles.coverAuthor}>{c.a.toUpperCase()}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ── warm drop shadow helper (SPEC §9) ───────────────────────────────────────
-function warmShadow(opacity, color = C.shadowWarm) {
-  return Platform.select({
-    ios: { shadowColor: color, shadowOpacity: opacity, shadowRadius: 15, shadowOffset: { width: 0, height: 12 } },
-    android: { elevation: 12 },
-    default: {},
+function CastCount({ t }) {
+  const [two, setTwo] = useState(false);
+  useAnimatedReaction(() => t.get() >= 3250 + LEAD_IN, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setTwo, next);
   });
+  return <Text style={styles.counter}>{two ? 2 : 1} of 3</Text>;
+}
+
+/**
+ * A cast member. Raya is already in (she is the character screen 1 drew);
+ * Praz joins at 3000, which is the moment the intro's two halves meet.
+ */
+function CastChip({ label, source, selectedAt, t }) {
+  const chip = useAnimatedStyle(() => {
+    const on = smooth(win(t.get(), selectedAt, selectedAt + 250));
+    return {
+      borderColor: on > 0.5 ? C.orange : C.field,
+      backgroundColor: on > 0.5 ? C.chipPeach : 'transparent',
+    };
+  });
+  const [added, setAdded] = useState(selectedAt === 0);
+  useAnimatedReaction(() => t.get() >= selectedAt + 250 + LEAD_IN, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setAdded, next);
+  });
+  return (
+    <Animated.View style={[styles.castChip, chip]}>
+      <View style={styles.castAvatar}>
+        <Image source={source} style={styles.castAvatarImage} resizeMode="cover" />
+      </View>
+      <Text style={styles.castChipText}>{label}</Text>
+      <Text style={styles.castChipMark}>{added ? '✓' : '+'}</Text>
+    </Animated.View>
+  );
+}
+
+/**
+ * "Where does it begin?" — the real heading of the real screen.
+ *
+ * The create flow calls this step `heading="Where does it begin?"`
+ * (`components/create/DirectionStep.tsx`), and the cards are imperative
+ * instructions, not blurbs. The handoff brief called it "Choose a direction"
+ * with three atmospheric third-person sentences; both were inventions, and an
+ * intro that teaches a screen the app does not have is worse than no intro.
+ */
+function Directions({ t, inside }) {
+  const container = useAnimatedStyle(() => ({
+    opacity: inside ? smooth(win(t.get(), 4000, 4300)) : smooth(win(t.get(), 4300, 4700)),
+  }));
+  const actions = useAnimatedStyle(() => ({ opacity: smooth(win(t.get(), 5400, 5800)) }));
+
+  return (
+    <Animated.View style={[inside ? styles.directionsInside : styles.directionsBelow, container]}>
+      {/* No "WRITTEN BY KATHA AI" badge. The three cards are self-evidently
+          Katha's suggestions -- that is what the screen is showing -- and
+          labelling them was the product explaining itself instead of working.
+          It also put a second, brighter thing on the header line than the
+          question the reader is actually being asked. */}
+      <View style={styles.directionsHeader}>
+        <Text style={styles.directionsTitle} numberOfLines={1}>Where does it begin?</Text>
+      </View>
+
+      {DIRECTIONS.map((prompt, i) => (
+        <DirectionRow key={i} t={t} index={i} prompt={prompt} />
+      ))}
+
+      <Animated.View style={[styles.directionActions, inside ? null : styles.directionActionsPlain, actions]}>
+        <View style={inside ? styles.directionActionPill : null}>
+          <Text style={inside ? styles.directionActionText : styles.directionActionLink}>✎ Edit</Text>
+        </View>
+        <View style={inside ? styles.directionActionPill : null}>
+          <Text style={inside ? styles.directionActionText : styles.directionActionLink}>↻ Reprompt</Text>
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+/** Row enter times from the spec: 4300/4550/4800, each over 400ms. */
+const ROW_IN = [4300, 4550, 4800];
+
+/**
+ * The card the demo picks, and it is the second one.
+ *
+ * "Have Raya decide whether to tell Praz the childhood promise she never kept"
+ * is the opening that goes through the friendship rather than through the
+ * weather or the trail, and it is the one the story on slide 3 is named after.
+ * Picking the first card instead would have the intro choose the most obvious
+ * option on the screen and then show a story that came from a different one.
+ */
+const CHOSEN_DIRECTION = 1;
+
+function DirectionRow({ t, index, prompt }) {
+  const enter = useAnimatedStyle(() => {
+    const a = ROW_IN[index];
+    return riseStyle(smooth(win(t.get(), a, a + 400)), 14);
+  });
+  // One row is chosen at the very end of the slide; see CHOSEN_DIRECTION.
+  const chosen = useAnimatedStyle(() => {
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
+    return {
+      backgroundColor: on > 0.5 ? C.chipPeach : C.card,
+      borderColor: on > 0.5 ? C.orange : C.appBorder,
+    };
+  });
+  const numberStyle = useAnimatedStyle(() => {
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
+    return { backgroundColor: on > 0.5 ? C.orange : C.stone };
+  });
+  const numberText = useAnimatedStyle(() => {
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
+    return { color: on > 0.5 ? '#FFFFFF' : C.inkSoft };
+  });
+  const tick = useAnimatedStyle(() => ({
+    opacity: index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0,
+  }));
+
+  return (
+    <Animated.View style={[styles.directionRow, chosen, enter]}>
+      <Animated.View style={[styles.directionNumber, numberStyle]}>
+        <Animated.Text style={[styles.directionNumberText, numberText]}>{index + 1}</Animated.Text>
+      </Animated.View>
+      <Text style={styles.directionText} numberOfLines={3}>{prompt}</Text>
+      <Animated.Text style={[styles.directionTick, tick]}>✓</Animated.Text>
+    </Animated.View>
+  );
+}
+
+// ── Screen 2 : READ & LISTEN ────────────────────────────────────────────────
+/**
+ * Home, then one story opening out of it.
+ *
+ * The cover is a SEPARATE layer above the Home content, not the tile inside
+ * the story card: a shared-element morph needs one node that survives the
+ * transition, and animating the tile would drag the card's layout with it.
+ */
+function ReadScreen({ t, reduceMotion }) {
+  /*
+    WHERE THE COVER STARTS IS MEASURED, NOT WRITTEN DOWN.
+
+    The morph began at a hard-coded left 15.5 / top 39.5 / 70x81 taken from
+    the handoff's mock. The well is 70x68 (SLOT_W/SLOT_H) and this Home has
+    different section labels, so it sits lower — and the cover spent the first three seconds of the slide
+    hanging off the top and bottom of the white card it was supposed to be
+    inside. Anything derived twice drifts; the story card reports its own box
+    and the well's offset inside it is a shared constant, so there is now one
+    source for it.
+
+    Seeded with the value for the reference frame so the first paint, before
+    any layout has been reported, is already close rather than at 0,0.
+  */
+  const slotX = useSharedValue(14 + STORY_CARD_PAD);
+  const slotY = useSharedValue(43 + STORY_CARD_PAD);
+  const onStoryCardLayout = useCallback((event) => {
+    const { x, y } = event.nativeEvent.layout;
+    slotX.set(x + STORY_CARD_PAD);
+    slotY.set(y + STORY_CARD_PAD);
+  }, [slotX, slotY]);
+
+  const card = useAnimatedStyle(() => ({ opacity: smooth(win(t.get(), 0, 450)) }));
+  const home = useAnimatedStyle(() => ({ opacity: 1 - smooth(win(t.get(), 3350, 3750)) }));
+  const storyCard = useAnimatedStyle(() => riseStyle(smooth(win(t.get(), 300, 700)), 10));
+  const trending = useAnimatedStyle(() => {
+    const r = smooth(win(t.get(), 600, 1000));
+    return {
+      opacity: r,
+      // SETTLES TO FLUSH, never past it. Both shelves used to drift NEGATIVE,
+      // which slides the first tile off the card's left edge and slices it in
+      // half — motion that reads as a broken layout. A shelf already says
+      // "there is more" by overflowing the RIGHT edge (four 74pt tiles and
+      // three gaps is 320 against 306 of usable width), so the drift only has
+      // to be movement, not displacement. Starting inset and settling flush
+      // gives that and can never cut the leading tile.
+      transform: [{ translateY: (1 - r) * 10 }, { translateX: 12 * (1 - smooth(win(t.get(), 1200, 3300))) }],
+    };
+  });
+  const originals = useAnimatedStyle(() => {
+    const r = smooth(win(t.get(), 900, 1300));
+    return {
+      opacity: r,
+      // Same rule as Trending above, a little further out so the two shelves
+      // do not move in lockstep.
+      transform: [{ translateY: (1 - r) * 10 }, { translateX: 22 * (1 - smooth(win(t.get(), 1200, 3300))) }],
+    };
+  });
+  const tapped = useAnimatedStyle(() => ({
+    borderColor: smooth(win(t.get(), 3000, 3350)) > 0.5 ? C.orange : 'transparent',
+  }));
+
+  // The morph. One ease-out cubic drives every property so they cannot drift.
+  const cover = useAnimatedStyle(() => {
+    const r = EASE_OUT_CUBIC(win(t.get(), 3350, 4150));
+    const x = slotX.get();
+    const y = slotY.get();
+    return {
+      left: x * (1 - r),
+      top: y * (1 - r),
+      width: SLOT_W + (334 - SLOT_W) * r,
+      height: SLOT_H + (230 - SLOT_H) * r,
+      // The well is 12pt; the four corners round down to the page's square
+      // top edge together, so the tile never looks half-rounded mid-morph.
+      borderRadius: 12 * (1 - r),
+    };
+  });
+  /*
+    The cover's own box, sized by hand rather than by `resizeMode`.
+
+    A square source covering a box is a square whose side is the LONGER of the
+    box's two dimensions; where that square sits inside the box is the crop.
+    Computing it here, from the same `r` as the morph above, is what makes the
+    anchor controllable at all — `resizeMode="cover"` always centres, and
+    centred is the framing that cut a character's head off.
+  */
+  const coverImg = useAnimatedStyle(() => {
+    const r = EASE_OUT_CUBIC(win(t.get(), 3350, 4150));
+    const w = SLOT_W + (334 - SLOT_W) * r;
+    const h = SLOT_H + (230 - SLOT_H) * r;
+    const side = Math.max(w, h);
+    return {
+      width: side,
+      height: side,
+      left: -(side - w) / 2,
+      top: -(side - h) * COVER_FOCUS_Y,
+    };
+  });
+  const coverPill = useAnimatedStyle(() => ({ opacity: 1 - smooth(win(t.get(), 3350, 3650)) }));
+  const page = useAnimatedStyle(() => ({ opacity: smooth(win(t.get(), 3900, 4300)) }));
+  const listen = useAnimatedStyle(() => ({ transform: [{ scale: pressScale(t.get(), 5550, 5750) }] }));
+
+  return (
+    <View style={styles.stage}>
+      <Animated.View style={[styles.readCard, warmShadow(0.45), card]}>
+        {/* ── Home ── */}
+        <Animated.View style={[StyleSheet.absoluteFill, styles.readBody, home]}>
+          <Text style={styles.sectionLabel}>YOUR STORIES</Text>
+          <Animated.View onLayout={onStoryCardLayout} style={[styles.homeStoryCard, tapped, storyCard]}>
+            {/* The cover's slot. The drawn cover is the layer below, which is
+                why this is an empty well and not an Image. */}
+            <View style={styles.homeCoverSlot} />
+            <View style={styles.homeStoryText}>
+              <Text style={styles.homeStoryTitle} numberOfLines={1}>{STORY_TITLE}</Text>
+              <Text style={styles.homeStoryBlurb} numberOfLines={2}>{STORY_BLURB}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Animated.View>
+
+          <Text style={styles.sectionLabel}>TRENDING NOW</Text>
+          <Animated.View style={[styles.tileRow, trending]}>
+            {TRENDING.map((tile, i) => (
+              <CoverTile key={i} tile={tile} t={t} liveHeart={i === 0} />
+            ))}
+          </Animated.View>
+
+          <Text style={styles.sectionLabel}>KATHA ORIGINALS</Text>
+          <Animated.View style={[styles.tileRow, originals]}>
+            {ORIGINALS.map((tile, i) => <CoverTile key={i} tile={tile} t={t} />)}
+          </Animated.View>
+        </Animated.View>
+
+        {/* ── The cover, morphing from the Home tile to the story page ── */}
+        <Animated.View style={[styles.coverLayer, cover]}>
+          <Animated.Image source={COVER_TREK} style={[styles.coverImage, coverImg]} resizeMode="cover" />
+          <Animated.View style={[styles.genrePill, styles.coverGenrePill, coverPill]}>
+            <Text style={styles.genrePillText}>Adventure</Text>
+          </Animated.View>
+          <Animated.View style={[styles.coverFade, page]}>
+            <LinearGradient
+              colors={['rgba(243,242,239,0)', C.appBg]}
+              locations={[0.45, 0.95]}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        </Animated.View>
+
+        {/* ── The story page ── */}
+        <Animated.View style={[StyleSheet.absoluteFill, styles.pageBody, page, { pointerEvents: 'none' }]}>
+          <Text style={styles.pageTitle} numberOfLines={2}>{STORY_TITLE}</Text>
+          <Text style={styles.pageMeta}>@praz · Sep 29, 2026 · 4/4 chapters</Text>
+          <View style={styles.pageGenreChip}><Text style={styles.pageGenreText}>Adventure</Text></View>
+          <Text style={styles.pageBlurb}>{STORY_BLURB}</Text>
+        </Animated.View>
+
+        <Animated.View style={[styles.pageActions, page]}>
+          <View style={styles.pagePill}><Text style={styles.pagePillText}>📖 Read</Text></View>
+          <Animated.View style={[styles.pagePill, listen]}>
+            <ListenLabel t={t} reduceMotion={reduceMotion} />
+          </Animated.View>
+        </Animated.View>
+      </Animated.View>
+    </View>
+  );
+}
+
+function CoverTile({ tile, t, liveHeart }) {
+  return (
+    <View style={styles.tile}>
+      <Image source={tile.img} style={styles.tileImage} resizeMode="cover" />
+      <View style={[styles.genrePill, styles.tileGenrePill]}>
+        <Text style={styles.genrePillText} numberOfLines={1}>{tile.genre}</Text>
+      </View>
+      <View style={styles.likePill}>
+        {liveHeart
+          ? <LiveHeart t={t} />
+          : <Text style={styles.likeText} numberOfLines={1}>♡ {tile.likes}</Text>}
+      </View>
+    </View>
+  );
+}
+
+/** One heart flips from outline to filled, and the count ticks by one. */
+function LiveHeart({ t }) {
+  const [liked, setLiked] = useState(false);
+  useAnimatedReaction(() => t.get() >= 2650 + LEAD_IN, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setLiked, next);
+  });
+  return (
+    <Text style={[styles.likeText, liked && styles.likeTextOn]} numberOfLines={1}>
+      {liked ? '♥ 429' : '♡ 428'}
+    </Text>
+  );
+}
+
+/**
+ * "Listen", pressed, becomes "Listening" with three bars that keep moving.
+ *
+ * The bars are the one thing on the intro that animates after its slide's
+ * clock has run out, so they get their own repeating value rather than a
+ * window on `t`. Reduced motion leaves them at the still heights the end frame
+ * is defined with.
+ */
+function ListenLabel({ t, reduceMotion }) {
+  const [listening, setListening] = useState(reduceMotion);
+  useAnimatedReaction(() => t.get() >= 5850 + LEAD_IN, (next, previous) => {
+    if (next !== previous) scheduleOnRN(setListening, next);
+  });
+
+  const beat = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion || !listening) return undefined;
+    beat.set(withRepeat(withTiming(1, { duration: BAR_CYCLE_MS, easing: Easing.linear }), -1));
+    return () => cancelAnimation(beat);
+  }, [beat, listening, reduceMotion]);
+
+  return (
+    <View style={styles.listenRow}>
+      <View style={styles.equaliser}>
+        {[0, 1, 2].map((k) => <Bar key={k} k={k} beat={beat} live={listening && !reduceMotion} />)}
+      </View>
+      <Text style={styles.pagePillText}>{listening ? 'Listening' : 'Listen'}</Text>
+    </View>
+  );
+}
+
+/**
+ * The three equaliser bars.
+ *
+ * ## Why this is a plain sine and a third of a cycle apart
+ *
+ * It was `5 + 9·|sin(t/140 + k·1.4)|`, straight from the handoff spec, and it
+ * looked wrong for two separate reasons.
+ *
+ * `|sin|` has period π, so offsets of 0, 1.4 and 2.8 land at 0%, 45% and 89%
+ * of a cycle — the first and third bars end up nearly in phase, rising and
+ * falling together while the middle one does the opposite. That is the
+ * "outside two together, middle against them" pulse the founder saw, and it
+ * reads as a heartbeat, not as music.
+ *
+ * `|sin|` also turns around instantly at every zero crossing, because the
+ * curve reflects instead of easing through the bottom. Even with good phases
+ * it twitches at the floor of each bounce.
+ *
+ * A plain sine mapped into 0..1, with the bars exactly a third of a cycle
+ * apart, gives the standard travelling wave: at any instant all three bars are
+ * at different heights, each one peaks after the one to its left, and every
+ * turn eases. `BAR_MAX` is taller in the middle because that is what a level
+ * meter looks like — three bars of identical range read as a machine.
+ */
+const BAR_CYCLE_MS = 760;
+/** The still heights, used before playback starts and under reduced motion. */
+const BAR_REST = [5, 9, 6];
+const BAR_MIN = 3;
+const BAR_MAX = [8, 11, 9];
+
+function Bar({ k, beat, live }) {
+  const style = useAnimatedStyle(() => {
+    if (!live) return { height: BAR_REST[k] };
+    // k / 3 of a cycle apart: 0°, 120°, 240°.
+    const wave = 0.5 + 0.5 * Math.sin(2 * Math.PI * (beat.get() + k / 3));
+    return { height: BAR_MIN + (BAR_MAX[k] - BAR_MIN) * wave };
+  });
+  return <Animated.View style={[styles.bar, style]} />;
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -671,9 +1240,10 @@ const styles = StyleSheet.create({
   heroBand: { position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H },
   column: { flexGrow: 1 },
   hero: { height: HERO_H, flexShrink: 0, overflow: 'hidden' },
-  wordmarkWrap: { position: 'absolute', top: 54, left: 0, right: 0, alignItems: 'center' },
-  stage: { position: 'absolute', top: 88, left: 0, right: 0, height: STAGE_H, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  stageCenter: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  wordmarkWrap: { position: 'absolute', top: 34, left: 0, right: 0, alignItems: 'center' },
+  // The stage is the whole hero: each slide positions its own card inside it,
+  // centred rather than hard-left so the layout survives the 430pt clamp.
+  stage: { position: 'absolute', top: 0, left: 0, right: 0, height: HERO_H, alignItems: 'center' },
 
   // sheet
   sheet: { flexGrow: 1, minHeight: SHEET_MIN_H, backgroundColor: C.sheet, paddingHorizontal: 28, paddingTop: 22, paddingBottom: 24 },
@@ -681,53 +1251,158 @@ const styles = StyleSheet.create({
   // 44pt tall, 3pt either side of the dot: adjacent targets meet at the SPEC's
   // 6pt gap, and the negative margin keeps the visible row at 6pt.
   dotHit: { height: 44, marginVertical: -19, paddingHorizontal: 3, justifyContent: 'center' },
-  headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink, height: 64 },
-  sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 8 },
+  // `minHeight`, not `height`: at the reference width all three headlines are
+  // one line and this is exactly their height, so every slide's dots-to-
+  // headline and headline-to-subcopy gaps are identical. On a column narrow
+  // enough to wrap one, the slot grows and pushes the subcopy down rather than
+  // letting the second line overlap it -- the CTA below is in a `flex: 1` slot
+  // pinned to the bottom, so nothing else moves.
+  headlineSlot: { minHeight: 32, justifyContent: 'flex-end' },
+  headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink },
+  sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 6 },
   actionSlot: { flex: 1, justifyContent: 'flex-end' },
+  signInBelow: { fontSize: 14, color: C.muted },
+  signInBelowLink: { color: C.orange, fontWeight: '700' },
 
-  // create card
-  createCard: { width: 306, height: 346, backgroundColor: C.card, borderRadius: 22, padding: 16, paddingBottom: 14 },
+  // ── screen 1: character ──
+  characterCard: { position: 'absolute', top: 92, width: 306, height: 346, backgroundColor: C.card, borderRadius: 22, padding: 16, overflow: 'hidden' },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   dot7: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.orange },
-  eyebrow: { fontFamily: F.hankenXbold, fontSize: 10, letterSpacing: 0, color: C.muted3 },
-  prompt: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 13.5, lineHeight: 18.5, color: C.inkBody2 },
-  pillOrange: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 15, paddingVertical: 9 },
-  pillOrangeSm: { backgroundColor: C.orange, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 8 },
-  pillOrangeText: { fontFamily: F.hankenBold, fontSize: 12, color: '#fff' },
-  writing: { height: 14, fontFamily: F.hankenSemi, fontSize: 10.5, color: C.orangeDeep, marginTop: 7 },
-  storyBlock: { marginTop: 6, paddingTop: 7, borderTopWidth: 1, borderTopColor: C.hairline },
-  storyLine: { fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.inkSoft, marginBottom: 1, flexShrink: 1 },
-  storyLastLine: { minHeight: 38, flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap' },
-  wordSwap: { position: 'relative', width: 58, height: 20, borderRadius: 6 },
-  swapText: { position: 'absolute', left: 2, top: 0, fontFamily: F.hanken, fontSize: 13.2, lineHeight: 19, color: C.orangeEdit },
-  swapTextNew: { fontFamily: F.hankenBold },
-  pillPeach: { backgroundColor: C.chipPeach, borderRadius: 22, paddingHorizontal: 10, paddingVertical: 5 },
-  pillPeachText: { fontFamily: F.hankenBold, fontSize: 10.5, color: C.orangeDeep },
+  eyebrow: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, letterSpacing: 0.6, color: C.muted3 },
+  eyebrowOrange: { color: C.orange },
+  fieldLabel: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, letterSpacing: 0.6, color: C.muted3, marginTop: 12 },
+  labelRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  counter: { fontFamily: F.hankenSemi, fontWeight: '600', fontSize: 10, color: C.muted2, marginTop: 12 },
+  nameField: { height: 40, borderWidth: 1.5, borderColor: C.field, borderRadius: 12, justifyContent: 'center', paddingHorizontal: 12, marginTop: 6 },
+  nameValue: { fontFamily: F.hankenSemi, fontWeight: '600', fontSize: 15, color: C.ink },
+  appearanceField: { height: 104, borderWidth: 2, borderColor: C.orange, borderRadius: 14, padding: 10, marginTop: 6 },
+  appearanceText: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 13.5, lineHeight: 18.5, color: C.inkBody2 },
+  characterCtaWrap: { position: 'absolute', left: 16, right: 16, bottom: 16 },
+  ctaPill: { height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: C.orange },
+  ctaPillOrange: { backgroundColor: C.orange },
+  ctaLabel: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 14, color: '#FFFFFF' },
+  scanBand: { position: 'absolute', left: 0, right: 0, height: 90 },
+  scanLine: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, backgroundColor: C.orange, ...Platform.select({ web: { boxShadow: '0 0 18px 4px rgba(255,107,26,0.6)' }, default: { shadowColor: C.orange, shadowOpacity: 0.6, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } } }) },
+  // Centred by the LAYOUT, not by `resizeMode`. Both of the obvious style
+  // shapes -- insets with `width: undefined`, and insets on all four sides --
+  // put Raya in the right-hand third of her own card on web, because
+  // react-native-web sizes an inset Image from its intrinsic width. The layer
+  // is a flex column that centres and bottom-aligns, and the image is given
+  // the exact box the 450x630 source fits: 326 tall, 326 * 450/630 = 233 wide.
+  portraitLayer: { ...StyleSheet.absoluteFillObject, backgroundColor: C.portraitGround, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 6 },
+  portraitImage: { width: 233, height: 326 },
+  portraitChipLeft: { position: 'absolute', top: 12, left: 12, backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  portraitChipLeftText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12, color: C.ink },
+  portraitChipRight: { position: 'absolute', top: 12, right: 12, backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  portraitChipRightText: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 9, letterSpacing: 0.6, color: '#FFFFFF' },
 
-  // publish card
-  publishCard: { zIndex: 2, width: 290, backgroundColor: C.card, borderRadius: 20, padding: 18 },
-  bookTitle: { fontFamily: F.briBold, fontSize: 16, color: C.ink },
-  bookSub: { fontFamily: F.hanken, fontSize: 11, color: C.muted2, marginTop: 2 },
-  stat: { fontFamily: F.hankenSemi, fontSize: 12 },
-  hairline: { height: 1, backgroundColor: C.hairline, marginTop: 16 },
-  readers: { fontFamily: F.hankenSemi, fontSize: 11.5, color: C.muted2, marginLeft: 10 },
-  spineTitle: { position: 'absolute', left: 7, bottom: 7, right: 7, fontFamily: F.briBold, fontSize: 8.5, lineHeight: 9, color: '#F1F5F2' },
+  // ── screen 2: story ──
+  briefCard: { position: 'absolute', top: 84, width: 334, backgroundColor: C.card, borderRadius: 22, overflow: 'hidden' },
+  briefBody: { padding: 16 },
+  kidsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  kidsTrack: { width: 34, height: 20, borderRadius: 999, backgroundColor: C.stone, justifyContent: 'center', paddingHorizontal: 2 },
+  kidsKnob: { width: 16, height: 16, borderRadius: 8, backgroundColor: C.card },
+  kidsLabel: { fontFamily: F.hankenSemi, fontWeight: '600', fontSize: 12, color: C.muted },
+  genreRow: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  genreChip: { height: 30, borderRadius: 999, borderWidth: 1.5, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
+  genreChipText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12 },
+  briefTitle: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 18, color: C.ink, marginTop: 2 },
+  ideaField: { height: 78, borderWidth: 1.5, borderRadius: 14, padding: 10, marginTop: 8 },
+  ideaText: { fontFamily: F.hanken, fontSize: 13, lineHeight: 18, color: C.inkSoft },
+  castRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  castChip: { height: 40, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 999, paddingLeft: 6, paddingRight: 12 },
+  castAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.stone, overflow: 'hidden' },
+  // The head of a full-body cutout: scaled up and pinned to the top of the
+  // circle, which is where a standing figure's face is.
+  castAvatarImage: { width: 28, height: 84, marginTop: 1 },
+  castChipText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 13, color: C.ink },
+  castChipMark: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 13, color: C.orange },
+  createCtaWrap: { position: 'absolute', left: 16, right: 16, bottom: 16 },
+  summaryRow: { position: 'absolute', left: 16, right: 16, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  summaryAvatars: { flexDirection: 'row' },
+  summaryAvatar: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: C.card, backgroundColor: C.stone },
+  summaryAvatarOverlap: { marginLeft: -8 },
+  summaryTitle: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 13, color: C.ink },
+  summaryIdea: { fontFamily: F.hanken, fontSize: 13, lineHeight: 18, color: C.muted },
 
-  chipWhite: { backgroundColor: C.card, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7 },
-  chipWhiteText: { fontFamily: F.hankenSemi, fontSize: 11, color: C.inkSoft },
-  chipOrange: { backgroundColor: C.orange, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 7 },
-  chipOrangeText: { fontFamily: F.hankenBold, fontSize: 12, color: '#fff' },
+  directionsInside: { ...StyleSheet.absoluteFillObject, padding: 16 },
+  directionsBelow: { position: 'absolute', top: 204, left: 28, right: 28 },
+  directionsHeader: { marginBottom: 10 },
+  directionsTitle: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 16, color: C.ink },
+  directionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1.5, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 13, marginBottom: 8 },
+  directionNumber: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  directionNumberText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 11 },
+  directionText: { flex: 1, fontFamily: F.hanken, fontSize: 12.5, lineHeight: 16, color: C.inkSoft },
+  directionTick: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 13, color: C.orange },
+  directionActions: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  directionActionsPlain: { justifyContent: 'center', gap: 20 },
+  directionActionPill: { height: 36, flex: 1, borderRadius: 999, borderWidth: 1.5, borderColor: C.field, alignItems: 'center', justifyContent: 'center' },
+  directionActionText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12.5, color: C.inkSoft },
+  directionActionLink: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12.5, color: C.orangeDeep },
 
-  notif: { width: 270, flexDirection: 'row', alignItems: 'center', backgroundColor: C.ink, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 },
-  notifTile: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  notifTitle: { fontFamily: F.hankenBold, fontSize: 12.5, color: '#FAF7F2' },
-  notifBody: { fontFamily: F.hankenIt, fontStyle: 'italic', fontSize: 11, color: '#B7ADA1', marginTop: 1 },
+  // ── screen 3: read & listen ──
+  readCard: { position: 'absolute', top: 78, width: 334, height: 392, backgroundColor: C.appBg, borderRadius: 22, overflow: 'hidden' },
+  readBody: { padding: 14 },
+  sectionLabel: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, letterSpacing: 1, color: C.muted2, marginTop: 10, marginBottom: 6 },
+  homeStoryCard: { height: 84, flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, borderWidth: 1.5, padding: STORY_CARD_PAD, gap: 10 },
+  homeCoverSlot: { width: SLOT_W, height: SLOT_H, borderRadius: 12, backgroundColor: C.stone },
+  homeStoryText: { flex: 1 },
+  homeStoryTitle: { fontFamily: F.briBold, fontWeight: '700', fontSize: 15, color: C.ink },
+  homeStoryBlurb: { fontFamily: F.hanken, fontSize: 11.5, lineHeight: 15, color: C.muted, marginTop: 2 },
+  chevron: { fontSize: 20, color: C.muted3, marginRight: 4 },
+  tileRow: { flexDirection: 'row', gap: TILE_GAP },
+  tile: { width: TILE_W, flexShrink: 0 },
+  tileImage: { width: TILE_W, height: TILE_H, borderRadius: 14 },
+  genrePill: { position: 'absolute', backgroundColor: '#0F0E0C', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  tileGenrePill: { left: 5, bottom: 5 },
+  coverGenrePill: { left: 10, bottom: 10 },
+  genrePillText: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 8.5, color: '#FFFFFF' },
+  likePill: { position: 'absolute', right: 5, top: 5, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
+  likeText: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, color: C.muted },
+  likeTextOn: { color: C.heart },
 
-  coverTitle: { fontFamily: F.briXbold, fontSize: 8.8, lineHeight: 9.6, color: '#fff' },
-  coverAuthor: { fontFamily: F.hankenXbold, fontSize: 5.8, letterSpacing: 0, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  coverLayer: { position: 'absolute', overflow: 'hidden' },
+  // Position only; every dimension comes from `coverImg` above. An inset box
+  // with undefined width/height sizes the node from the source's intrinsic
+  // pixels on web, which is why the Home tile and the opened page both used to
+  // show nothing but empty night sky.
+  coverImage: { position: 'absolute' },
+  coverFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 230 },
 
-  fadeL: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '12%' },
-  fadeR: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '12%' },
-  signInTop: { position: 'absolute', top: 57, right: 24, zIndex: 19 },
-  signInTopText: { fontSize: 13.5, fontWeight: '700', color: '#FF6B1A' },
+  pageBody: { paddingHorizontal: 18, paddingTop: 186 },
+  pageTitle: { fontFamily: F.briBold, fontWeight: '700', fontSize: 28, lineHeight: 32, color: C.ink },
+  pageMeta: { fontFamily: F.hanken, fontSize: 11.5, color: C.muted, marginTop: 6 },
+  pageGenreChip: { alignSelf: 'flex-start', borderWidth: 1.5, borderColor: C.field, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginTop: 8 },
+  pageGenreText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 11, color: C.inkSoft },
+  pageBlurb: { fontFamily: F.hanken, fontSize: 13.5, lineHeight: 19, color: C.inkSoft, marginTop: 10 },
+  // Content-width and left-aligned, not two half-width blocks. Stretched edge
+  // to edge they were the heaviest thing on the slide, competing with the one
+  // control the screen actually wants pressed.
+  pageActions: { position: 'absolute', left: 18, right: 18, bottom: 18, flexDirection: 'row', gap: 8 },
+  /*
+    OUTLINED AND SMALL, for a composition reason rather than a taste one.
+
+    "Get started" sits directly below this slide in the sheet and is the one
+    real, filled, accent CTA on the screen. These began as two filled 50pt
+    pills stretched edge to edge, which put three orange blocks down the same
+    column with the only pressable one at the bottom. Outlining them fixed the
+    colour competition; they were still the heaviest shapes on the slide, so
+    they are now 36pt and content-width as well.
+
+    The outline treatment is the app's own second tier
+    (`components/reader/ChapterEnd.tsx#secondaryButton`). At 36pt they also sit
+    under the button-recipe guard's 48pt floor, so the allow-list entry this
+    screen used to need is gone -- see `__tests__/button-recipe.test.ts`.
+  */
+  pagePill: { height: 36, borderRadius: 999, borderWidth: 1.5, borderColor: C.orange, backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  pagePillText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12.5, color: C.orangeDeep },
+  listenRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  equaliser: { flexDirection: 'row', alignItems: 'center', gap: 2.5, height: 11 },
+  bar: { width: 2.5, borderRadius: 2, backgroundColor: C.orangeDeep },
+
+  signInTop: { position: 'absolute', top: 40, right: 24, zIndex: 19 },
+  // 13.5/700, as it was before this rewrite. The handoff spec asked for
+  // 15/800; that is heavier than the same link anywhere else in onboarding and
+  // it pulled the eye to the one control on the screen we do NOT want pressed.
+  signInTopText: { fontSize: 13.5, fontWeight: '700', color: C.orange },
 });

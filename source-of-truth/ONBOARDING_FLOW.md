@@ -55,8 +55,14 @@ the person keeps rather than a truncated sample of one they cannot finish.
 
 The three-screen animated intro in
 [`expo/src/screens/KathaOnboarding.jsx`](../expo/src/screens/KathaOnboarding.jsx)
-is unchanged: Create, then Publish and Community, then Read. This specification
-begins at **Get started**.
+is **Character, then Story, then Read and listen** (2026-09-29). It was Create,
+then Publish and Community, then Read until that date, which had stopped being
+true: the first thing a person does after **Get started** is make a character
+(W3-W6 below), and the story brief comes after that, so the intro was
+rehearsing a flow the app no longer has. Each screen now causes the next -- a
+character is drawn from the two fields W4 really asks for, that character leads
+a story and a second cast member joins, and the finished story is on the shelf
+to read or listen to. This specification begins at **Get started**.
 
 ---
 
@@ -270,8 +276,8 @@ analytics. From W5 onward the character is a `user_characters` row.
 ## 2. Flow diagram
 
 ~~~text
-INTRO ×3, unchanged
-Create → Publish / Community → Read
+INTRO ×3
+Character → Story → Read and listen
                          │
                     Get started
                          │
@@ -2287,7 +2293,9 @@ error logging contract and contain identifiers and enums only.
 
 ## Decisions
 
-1. **Intro remains unchanged.**
+1. **Intro rehearses the flow that follows it** (2026-09-29). Character, then
+   Story, then Read and listen. It was unchanged from the original three
+   screens until then; see the note above §1 for why that stopped holding.
 2. **Name and genre interests precede Purpose; Purpose remains the branch.**
 3. **Every retained question changes a downstream surface.**
 4. **R1 uses eight static lines and exactly three picks.**
