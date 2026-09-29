@@ -45,9 +45,19 @@ the Action's `if:` — so pushing to a draft and waiting is the same forever-wai
 with one event substituted. `.github/pull_request_template.md` carried the
 identical defect in the file a contributor reads first: a checkbox saying
 "Latest Claude Review completed successfully", which after the gate cannot be
-ticked honestly. `backend/originals/NEXT_SESSION_PROMPT.md`, a paste-into-a-new-
-session prompt and therefore read as operative, handed a fresh agent both
+ticked honestly.
+
+`backend/originals/NEXT_SESSION_PROMPT.md` is pasted into a fresh session and
+therefore read as operative, not as history, and it handed an agent both
 removed instructions ("Claude review" and "merge only when green"); corrected.
+
+`README.md` said pull requests are "reviewed automatically by **Claude** via
+`claude-review.yml`" and that `@claude` reaches that reviewer. It is the
+public-facing statement of who reviews and the only one of these files a
+non-agent reads. It now names the routine and CodeAnt, says the routine skips
+drafts and bot-authored pull requests, states that `@claude` reaches nobody,
+and points the merge gate at `AGENTS.md` rather than at `CLAUDE.md`, which is
+now only a redirect.
 
 The `paths-ignore` bullet was wrong in both halves and is replaced: that filter
 lives in the Action's `on:` block and governs only the Action, while the
