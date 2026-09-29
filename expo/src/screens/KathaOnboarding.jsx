@@ -290,9 +290,16 @@ const COVER_FOCUS_Y = 0.1;
  * Trending was 104x100 and Originals 104x86, which is what the handoff drew.
  * Side by side in one 392pt card that reads as two different components
  * rather than two shelves of the same thing, and the founder saw it
- * immediately. 74x96 is the "mini" cover size from `backend/COVER_IMAGES.md`
- * -- a real display spec the app already cuts covers to -- so the rows are
- * consistent with each other AND with the rest of the product.
+ * immediately. One size for both fixes that.
+ *
+ * 74x96 IS THIS SCREEN'S OWN NUMBER, not a product spec. An earlier comment
+ * here claimed it was the "mini" cover size from `backend/COVER_IMAGES.md`;
+ * that file carries no such figure, the product's `mini` cover is a 96pt
+ * SQUARE (`KathaPrimitives.tsx`, `aspectRatio: 1`), and the 74pt width was
+ * explicitly retired in `lib/cover-url.ts`. It is kept because a portrait tile
+ * is what reads as a book at this size and four of them fit the card, but it
+ * is a drawing of a shelf, not the shelf, and it should not be cited as a
+ * precedent by anything else.
  */
 const TILE_W = 74;
 const TILE_H = 96;
@@ -547,13 +554,9 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
         ))}
       </View>
       <Animated.View key={phase} entering={enter}>
-        {/* The headline slot is two lines tall so the sheet never reflows
-            between slides. A one-line headline therefore leaves a line of
-            slack, and that slack used to fall BETWEEN the headline and the
-            subcopy -- a 30pt hole that made the two look unrelated on two of
-            the three screens. Bottom-aligning the headline inside its own slot
-            moves the slack above it instead, against the dots, where it reads
-            as breathing room. The slot keeps its height either way. */}
+        {/* One line tall, and every headline is written to fit it: see the
+            note on HEADLINES for why equal content, not a fixed slot, is what
+            makes the three slides' spacing match. */}
         <View style={styles.headlineSlot}>
           <Text style={styles.headline}>{h}</Text>
         </View>
@@ -748,7 +751,11 @@ function StoryScreen({ t, reduceMotion }) {
         <Animated.View style={[StyleSheet.absoluteFill, styles.briefBody, cardBody]}>
           <View style={styles.kidsRow}>
             <View style={styles.kidsTrack}><View style={styles.kidsKnob} /></View>
-            <Text style={styles.kidsLabel}>For kids</Text>
+            {/* "All-ages", not "For kids". `CreateBriefFlow.tsx` renders
+                All-ages and `source-of-truth/STORY_GENERATION_FLOW.md` §3
+                states it as the on-screen label; "kids" is the internal
+                `audienceMode` value, not a string a user ever sees. */}
+            <Text style={styles.kidsLabel}>All-ages</Text>
           </View>
 
           <View style={styles.genreRow}>
@@ -972,9 +979,9 @@ function ReadScreen({ t, reduceMotion }) {
   /*
     WHERE THE COVER STARTS IS MEASURED, NOT WRITTEN DOWN.
 
-    The morph began at a hard-coded left 15.5 / top 39.5 taken from the
-    handoff's mock. This Home has different section labels, so the real well
-    sits lower — and the cover spent the first three seconds of the slide
+    The morph began at a hard-coded left 15.5 / top 39.5 / 70x81 taken from
+    the handoff's mock. The well is 70x68 (SLOT_W/SLOT_H) and this Home has
+    different section labels, so it sits lower — and the cover spent the first three seconds of the slide
     hanging off the top and bottom of the white card it was supposed to be
     inside. Anything derived twice drifts; the story card reports its own box
     and the well's offset inside it is a shared constant, so there is now one

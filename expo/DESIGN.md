@@ -130,15 +130,12 @@ The shared theme exposes 8, 14, 18, 24, and pill. Onboarding uses additional val
 | ---: | --- |
 | 6 | Tiny book spine and progress track |
 | 8 | Small general controls from the shared theme |
-| 9 | Intro notification icon tile |
-| 12 | Intro cover cards |
+| 12 | Intro Home cover well |
 | 14 | OTP boxes, reaction chips |
 | 15 | Icon badges |
-| 16 | Intro notification |
 | 18 | Text fields and prompt boxes |
 | 18 | Option rows, plan cards, review cards |
-| 20 | Publish card |
-| 22 | Create card, genre chips, edit chips |
+| 22 | Intro slide cards, genre chips, edit chips |
 | 24 | Large shared card radius |
 | 28 | Apple-style notification education alert |
 | 999 | Pills only |
@@ -164,7 +161,7 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Flow H1 | Bricolage | 800 | 31 / 35 | Primary name screen heading |
 | Flow H1 medium | Bricolage | 800 | 28 / 32 | Email, OTP, compact feature headings |
 | Flow H1 compact | Bricolage | 800 | 27 / 31 | Purpose, genre, persona questions |
-| Intro headline | Bricolage | 700 | 27 / 31.3 | Fixed two-line intro message slot |
+| Intro headline | Bricolage | 700 | 27 / 31.3 | Intro message slot, one line (see *The intro* below) |
 | Paywall title | Bricolage | 800 | 25 / 29 | Personalized paywall headline |
 | Notification title | Bricolage | 800 | 22 / 26 | Alert title |
 | Standard body | Hanken | 500 | 15 / 23 | Flow descriptions |
@@ -177,7 +174,28 @@ All font files are bundled in `assets/fonts` and loaded in `App.tsx` under these
 | Name input | Bricolage | 700 | 24 / natural | First-name entry |
 | Review copy | Hanken | 500 | 12.5 / 17 | Social proof cards |
 | Metadata | Hanken | 400 to 700 | 11 to 13 / 17 to 19 | Hints, labels, prices |
-| Story text in intro | Hanken | 400 | 13.2 / 19 | Generated story lines |
+| Story text in intro | Hanken | 400 | 13 / 18 | Typed story idea on intro screen 2 |
+
+### The intro
+
+The three animated screens before **Get started** are **Character, then Story,
+then Read and listen** (2026-09-29). They were Create, then Publish and
+Community, then Read; that entry described a notification tile, a publish card,
+reaction chips and a rewrite chip, none of which exist any more, and those rows
+have been removed from the tables above rather than left to be matched against.
+`source-of-truth/ONBOARDING_FLOW.md` is canonical for what each screen says.
+
+What this file is still the contract for:
+
+- **Every headline is one line.** The slot is sized to one (`minHeight: 32`),
+  so a longer headline wraps and that slide's dots-to-headline and
+  headline-to-subcopy gaps stop matching the other two. That is the whole
+  reason the headlines are short; it is not a tone choice.
+- Hero band 478, message sheet minimum 322, slide cards at radius 22.
+- The slide cards are 334 wide and the column is clamped to 430. Below about
+  342 points of window width the first headline wraps, and below 390 the cards
+  are wider than the gutter allows and are clipped by the slide's own
+  `overflow: hidden`. The reference frame is 390 x 844.
 
 **Bricolage is for Home display titles and onboarding headings only.** Profile,
 public profile, Journey, and Profile-owned sheet headings, display names, and
@@ -318,8 +336,6 @@ token file here. `Toggle` draws every pixel itself from `@/theme`.
 - Avoid cards inside cards.
 - Use cards for individual story, price, review, or alert objects only.
 - Review card: 286 x 106, radius 18, padding 13, avatar 30, one-point border, subtle warm shadow. At 390 points the next card appears only as a deliberate preview.
-- Intro reaction chip: radius 14, 7 vertical and 11 to 12 horizontal padding.
-- Intro rewrite chip: radius 22, 5 vertical and 10 horizontal padding.
 - Paywall plan card: radius 18, border 2, 16 vertical and 18 horizontal padding.
 
 ## Intro Frame: 390 x 844

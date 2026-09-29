@@ -10,10 +10,22 @@
  * file and the typed line ever drift apart, the screen is lying about the
  * product. Keeping both in one table is what stops that.
  *
- * THE PROMPT IS THE PRODUCTION ONE. `portraitPrompt` below is
- * `buildPortraitPrompt` from `supabase/functions/_shared/image.ts` with the
- * appearance substituted and nothing else changed. The intro must show what
- * the real pipeline really draws, not a prettier hand-tuned variant.
+ * THE PROMPT IS THE PRODUCTION ONE, COPIED, PLUS TWO CLAUSES THIS SCRIPT
+ * NEEDS. `buildPortraitPrompt` in `supabase/functions/_shared/image.ts` is
+ * module-private and cannot be imported, so `portraitPrompt` below is a copy
+ * of it, in the same order, for the `auto` art style and with no reference
+ * image -- which is what onboarding sends. It differs in exactly two places,
+ * both marked at the line:
+ *
+ *   1. the background is pinned to a flat `#E4DCD0`, because the cutout is
+ *      made by subtracting a known colour;
+ *   2. a closing clause names the shoes and the ground under them, because
+ *      "full body" alone came back as a knee crop.
+ *
+ * Everything else, including `PORTRAIT_WARDROBE_CLAUSE`, is verbatim. An
+ * earlier version of this header claimed the prompt was production's with
+ * "nothing else changed" while silently dropping the wardrobe clause, and
+ * AGENTS.md repeated the claim. If `image.ts` changes, change this with it.
  *
  * WHAT IT WRITES, per character:
  *   <slug>-portrait.png  450x630, flat #E4DCD0 ground — the house portrait
@@ -149,17 +161,21 @@ function portraitPrompt(appearance: string): string {
   return [
     `Character portrait illustration of ${appearance}`,
     "Full body, standing, facing the viewer, on a plain neutral background.",
-    "Painterly book-illustration style, soft even lighting, no background scenery.",
-    // The flat ground is ours, not the product's: the product composites onto
-    // whatever surface it is drawn on, and the intro needs a known colour to
-    // subtract for the cutout.
+      "Painterly book-illustration style, soft even lighting, no background scenery.",
+    // DIFFERENCE 1 of 2 from production. The flat ground is ours: the product
+    // composites onto whatever surface it is drawn on, and the intro needs a
+    // known colour to subtract for the cutout.
     "The background is one flat, even, light warm grey colour (#E4DCD0) with no gradient, no texture and no scenery.",
+    // Verbatim from `_shared/image.ts`. It is what stops an Indian character
+    // defaulting to festival dress, so it matters more here, not less.
+    "Wardrobe: ordinary everyday clothing appropriate to the setting and era, the same register of dress for every character regardless of ethnicity, unless the character description specifies otherwise. No ceremonial, festival, folk or traditional national dress unless asked for.",
     "The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.",
     "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.",
     "Full-body portrait orientation, subject centered in frame, high quality.",
-  // Repeated at the end, in the terms the failure actually takes: the model
-  // returns a knee crop, not a headless figure, so the instruction names the
-  // shoes and the space under them rather than saying "full body" again.
+  // DIFFERENCE 2 of 2 from production, repeated at the end in the terms the
+  // failure actually takes: the model returns a knee crop, not a headless
+  // figure, so the instruction names the shoes and the space under them
+  // rather than saying "full body" again.
   "The WHOLE body is visible from the top of the head down to the shoes, with empty background visible below the shoes. Do not crop at the knees, thighs or waist.",
   ].join(" ");
 }
@@ -424,17 +440,24 @@ async function drawCharacter(
       const image = await Image.decode(raw);
       const source = fit(image, PORTRAIT_W, PORTRAIT_H);
 
+      // THE GATES ARE NOT ADVISORY ON THE LAST ATTEMPT.
+      //
+      // Both of these read `&& attempt < MAX_ATTEMPTS`, which meant the third
+      // try skipped them: a bordered or knee-cropped portrait was written over
+      // the committed file, logged as `[ok]`, counted as drawn, and the run
+      // exited 0. That is the exact failure this script exists to prevent,
+      // arriving through the one path nobody looks at. A failed gate now
+      // throws on every attempt; the retry loop catches it, and when the
+      // attempts run out `drawCharacter` returns false, the file on disk is
+      // left alone, and `main` exits 1.
       const score = frameScore(image);
-      // Retried rather than accepted: a painted-in border is exactly the defect
-      // this regeneration exists to remove, and it is cheaper to redraw than to
-      // ship it and crop it by hand later.
-      if (score > 0.35 && attempt < MAX_ATTEMPTS) {
+      if (score > 0.35) {
         throw new Error(
           `border painted into the image (edge score ${score.toFixed(2)})`,
         );
       }
       const feet = bottomTouch(image);
-      if (feet > 0.15 && attempt < MAX_ATTEMPTS) {
+      if (feet > 0.15) {
         throw new Error(
           `cropped before the feet (bottom edge ${(feet * 100).toFixed(0)}% subject)`,
         );
@@ -486,7 +509,8 @@ async function drawCover(apiKey: string): Promise<boolean> {
           foreign++;
         }
       }
-      if (foreign < image.width * 0.2 && attempt < MAX_ATTEMPTS) {
+      // Enforced on every attempt, for the reason given in `drawCharacter`.
+      if (foreign < image.width * 0.2) {
         throw new Error("top edge is a flat band — matte survived the trim");
       }
 
