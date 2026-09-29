@@ -84,7 +84,7 @@ const CAST = [
   {
     slug: "raya",
     appearance:
-      "A tall, curvy Indian woman in her twenties with curly black hair and round glasses. White sleeveless top, short blue jacket, jeans.",
+      "An Indian woman in her twenties with curly black hair and round glasses. Athletic build, olive field jacket, worn hiking boots.",
   },
   {
     slug: "praz",
@@ -107,7 +107,7 @@ const COVER_PROMPT = [
   // STATED AS A RELATIONSHIP, not as two separate heights. Asked for
   // individually the model drew her at roughly two thirds of his height, which
   // read as an adult and a child rather than as two friends the same age.
-  "Both are adults in their twenties and thirties and they are close to the same height: her eyes reach about his eyebrows. She is NOT a child and NOT noticeably shorter than him.",
+  "She is as tall as he is. Draw the tops of their two heads at exactly the same level in the frame, and their eyes on the same horizontal line, as if a ruler laid across the picture touched both crowns. Both are adults.",
   "One of them holds a warm lantern that lights both their faces; everything beyond falls into cool darkness.",
   "Painterly book-illustration style, atmospheric, deep shadows with warm lamplight.",
   // THE FRAMING IS THE WHOLE POINT OF THIS PROMPT, not a nicety. One source
@@ -117,7 +117,13 @@ const COVER_PROMPT = [
   // SAFE_ZONE_CLAUSE). A wide establishing shot with two small figures low in
   // the frame survives none of those crops — the first draft of this cover was
   // exactly that, and the Home tile showed nothing but empty sky.
-  "KNEE-UP framing: the two figures are cut off at the knees by the bottom of the frame, they fill most of the image height, and both faces are large, clearly visible and lit. The forest is background only. Do NOT show their feet or draw them small in a wide landscape.",
+  // "Cut them off at the knees, do not show their feet" was tried and is the
+  // wrong lever: pushing the figures DOWN out of frame pushes their heads UP
+  // out of it, and two generations running came back with the taller
+  // character's scalp clipped by the top edge. Asking for a standing full
+  // shot, and letting the crop do the tightening, is what actually produced a
+  // frame with both faces safely inside it.
+  "Framing: a full standing shot of the two figures together, filling the middle of the frame and taking up most of the image height, with both faces clearly visible and lit. The forest is background only.",
   // SAFE_ZONE_CLAUSE, restated from `supabase/functions/_shared/cover-prompts.ts`
   // (it is a module-private const there; copied rather than exported so a
   // script does not widen a shared backend API). Verbatim except that it is
@@ -127,7 +133,7 @@ const COVER_PROMPT = [
   // of a square source -- and the first cover that got this far had the taller
   // character's head at 3% of the image height, so the story page beheaded him.
   "Framing: keep the top 15% of the image free of faces and important detail; place BOTH faces between 20% and 50% of the image height and near the horizontal centre, so they survive a square crop and a wide 3:2 crop; the bottom third may be simple and fade out.",
-  "Leave clear empty space above both heads. Neither head may touch the top edge.",
+  "There is a clear band of night sky and distant trees above both heads. Neither head touches or is cut by the top edge.",
   "The image must contain NO text, NO titles, NO words, NO letters, NO watermarks.",
   "No border, no frame, no decorative edge, no vignette; the illustration runs to every edge.",
   "Square 1:1 framing, high quality.",

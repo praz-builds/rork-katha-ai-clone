@@ -161,7 +161,7 @@ const SLIDE_NAMES = ['character', 'story', 'read'];
  * lying about the product, so they are regenerated together or not at all.
  */
 const RAYA_APPEARANCE =
-  'A tall, curvy Indian woman in her twenties with curly black hair and round glasses. White sleeveless top, short blue jacket, jeans.';
+  'An Indian woman in her twenties with curly black hair and round glasses. Athletic build, olive field jacket, worn hiking boots.';
 const APPEARANCE_MAX = 300;
 
 const STORY_IDEA =
