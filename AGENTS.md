@@ -1515,10 +1515,11 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - Never commit or push directly to `main`.
 - Before editing, fetch `origin/main` and create a `codex/<task-slug>` branch from it.
 - Commit only task-related files to the feature branch, push it, and open a pull request targeting `main`.
-- After every code-changing push, wait for **Claude Review**'s incremental review (the `Review the diff` check).
-- Merge only when Claude Review's latest review completed successfully and raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
+- After every code-changing push, wait for the standing review. **It arrives as a pull request COMMENT, not as a check.** Do not wait for a `Review the diff` check: that is the gated-off Action and it reports `skipped` with no body (see *Pull request review* below). An agent that waits for it waits forever -- #149 and #150 both stalled on exactly this and had to be merged by hand.
+- **To find out whether a pull request was reviewed, read its comments, and do not filter by author.** The routine posts as `praz-builds`, the same as a human, and is not an Action, so it appears in neither `gh run list` nor `gh workflow list`. On #169 an agent checked those two listings, concluded nothing had reviewed the change, said so, and merged past two reviews sitting in the comments.
+- Merge only when the latest review raised nothing outstanding, no message requests changes, all actionable conversations are resolved, required validation passes, and the branch is current with `main`.
 - A green commit status alone is not approval. Read the latest review body.
-- **A pull request whose every file is an ignored path gets no review at all** -- lockfiles, `expo/assets/**`, `.agents/**`, and image and audio files are filtered out of the trigger to save credit. A generated asset drop therefore lands unreviewed. When such a PR also carries code worth looking at, ask for the review explicitly with an `@claude` comment naming the paths.
+- **The routine has no path filter**, so an asset-only or lockfile-only pull request is reviewed like any other. The `paths-ignore` list lives in `.github/workflows/claude-review.yml` and governs only the gated-off Action. Do not ask for a review with an `@claude` comment: with `CLAUDE_ACTION_ENABLED` unset that reaches nobody and returns no reply at all.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
 - Exceptions require explicit user authorization and documentation in the pull request.
 
