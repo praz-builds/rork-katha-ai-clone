@@ -229,19 +229,20 @@ const DIRECTIONS = [
  * The title, and it is not decoration.
  *
  * "The Long Way Up" described the trek, which any hiking story could be called.
- * This one names what the chosen direction is ABOUT -- the promise Raya never
- * kept -- so slide 2 and slide 3 are visibly the same story: the reader picks
- * an opening about a childhood promise, and the book that appears on the shelf
- * is called after it. It also obeys the product's own rule for titles
- * (`ONBOARDING_SHAPE_SYSTEM_PROMPT`): one to six words, specific to this story,
- * never a genre label.
+ * This one names what the chosen direction is ABOUT -- a promise twenty years
+ * old that Raya still has not kept -- so slide 2 and slide 3 are visibly the
+ * same story: the reader picks an opening about a childhood promise, and the
+ * book that appears on the shelf is called after it. It also obeys the
+ * product's own rule for titles (`ONBOARDING_SHAPE_SYSTEM_PROMPT`): one to six
+ * words, specific to this story, never a genre label.
  *
- * It also has to be ONE line at 28/32 in the story page's 298pt column. "The
- * Promise She Never Kept" was the first choice and is the better sentence, but
- * it measures 380pt: it wrapped to two lines, and the second line pushed the
- * blurb down into the Read and Listen pills.
+ * It also has to be ONE line at 28/32 in the story page's 298pt column, and
+ * fit the Home card's 214pt without an ellipsis. This measures 244 and 133.
+ * Check both when changing it: "The Promise She Never Kept" was an earlier
+ * choice and is the better sentence, but at 380pt it wrapped to two lines and
+ * the second line pushed the blurb down into the Read and Listen pills.
  */
-const STORY_TITLE = 'The Unkept Promise';
+const STORY_TITLE = 'Twenty Years Late';
 const STORY_BLURB = 'Raya and Praz trek through the still, dark forests of Silence Ridge.';
 
 // ── Assets ──────────────────────────────────────────────────────────────────
