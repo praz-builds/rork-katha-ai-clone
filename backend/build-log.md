@@ -431,6 +431,7 @@ is for what an OTA or a console toggle can deliver, and the ladder starts paying
 with the first build that carries this branch. The canonical rule is annotated too: a reader
 checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
 `AGENTS.md`, not a chronological log, and both now say what is enforced.
+
 ---
 
 ## 2026-09-29 UTC — The cultural/faith layer, shipped and deployed
