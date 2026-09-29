@@ -28,6 +28,8 @@ import {
   STORY_SHAPE_OUTPUT,
   STORY_SHAPE_SYSTEM_PROMPT,
 } from "../_shared/story-shape.ts";
+import { classifyTraditionForGeneration } from "../_shared/tradition-classify.ts";
+import { normalizeTradition } from "../_shared/traditions.ts";
 
 /**
  * The shaping call's budget, and why it is not the library default.
@@ -203,6 +205,14 @@ export async function handleRequest(
       chapterLength: body?.chapter_length,
       plannedChapterCount: body?.planned_chapter_count,
       culturalSetting: body?.cultural_setting,
+      // The faith axis. No picker exists yet, so it comes from classifying the
+      // idea -- pure, deterministic, no model call. An explicit value from a
+      // future client wins outright: a stated preference is never overruled by
+      // a guess about the same thing. `normalizeStoryShapeBrief` reduces both
+      // to a supported id or to nothing, so neither can reach the prompt as
+      // written.
+      tradition: normalizeTradition(body?.tradition) ??
+        classifyTraditionForGeneration(idea).tradition,
     });
 
     /**

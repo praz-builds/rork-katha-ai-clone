@@ -102,6 +102,7 @@ import {
   buildUserPrompt,
   PROSE_CLOSING_INSTRUCTION,
 } from "../_shared/story-prompts.ts";
+import { classifyTraditionForGeneration } from "../_shared/tradition-classify.ts";
 import {
   buildChapterMetadataPrompt,
   CHAPTER_METADATA_OUTPUT,
@@ -177,6 +178,7 @@ serve(async (req) => {
       language,
       whereAndWhen,
       culturalSetting,
+      tradition: requestedTradition,
       moments,
       beats,
       storyValues,
@@ -196,6 +198,27 @@ serve(async (req) => {
     const chapterRole: ChapterRole = storyMode === "series"
       ? "series_opening"
       : "standalone";
+
+    /**
+     * THE FAITH AXIS, RESOLVED ONCE, HERE -- the same three lines as
+     * `generate-story/index.ts`, for the same reasons.
+     *
+     * No picker ships yet, so the tradition comes from classifying the writer's
+     * own idea: `classifyTraditionForGeneration` is pure, deterministic and
+     * free, and it applies Phase 1's canonical downgrade, so "retell the story
+     * of Noah" becomes an original story in that tradition's spirit rather than
+     * a recollection of scripture with a sacred name on it.
+     *
+     * AN EXPLICIT REQUEST VALUE WINS OUTRIGHT. `validation.ts` has already
+     * normalised `input.tradition` to a supported id or to `undefined`, and a
+     * stated preference is never overruled by a guess about the same thing.
+     * The classifier only ever fills a gap.
+     *
+     * Absent stays absent: no default tradition, no empty block, and a prompt
+     * byte-identical to the one this request produced before the layer existed.
+     */
+    const tradition = requestedTradition ??
+      classifyTraditionForGeneration(seed).tradition;
 
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(
@@ -328,6 +351,12 @@ serve(async (req) => {
         p_beats: beats,
         p_image_style: imageStyle,
         p_story_flow: storyFlow,
+        // Persisted because it must outlive this request. Continuations re-read
+        // the row (a faith constraint that expired after chapter one would be
+        // worse than none), and the cover pipeline reads it at publish time to
+        // apply the depiction rules. `null` for every story without one, which
+        // is what every story written before migration 00101 carries.
+        p_tradition: tradition ?? null,
       },
     );
 
@@ -527,6 +556,7 @@ serve(async (req) => {
             characters,
             whereAndWhen,
             culturalSetting,
+            tradition,
             moments,
             beats,
             chapterNumber: 1,

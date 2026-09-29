@@ -119,6 +119,7 @@ import {
   buildContinuationSystemPrompt,
   buildContinuationUserPrompt,
 } from "../_shared/story-prompts.ts";
+import { normalizeTradition } from "../_shared/traditions.ts";
 import {
   isEmptySeriesState,
   mergeSeriesState,
@@ -302,7 +303,7 @@ serve(async (req) => {
     }
 
     const STORY_COLUMNS =
-      "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, status, is_public, is_curated, forked_from_story_id";
+      "id, title, genre, primary_genre, audience_mode, identity_lenses, spice_level, topic, author_id, language, story_mode, series_state, previously_summary, where_and_when, moments, beats, story_values, writing_style, avoid, chapter_length, planned_chapter_count, grounding, status, is_public, is_curated, forked_from_story_id, tradition";
 
     const { data: sourceStory, error: sourceStoryError } = await serviceClient
       .from("stories")
@@ -600,6 +601,10 @@ serve(async (req) => {
       plannedChapterCount,
       seed: (story.topic as string) ?? "",
       whereAndWhen: (story.where_and_when as string) ?? undefined,
+      // Same as the continuation path: read off the row, never re-classified.
+      // A reimagined chapter that dropped the tradition would replace a chapter
+      // written under it with one written without, inside the same story.
+      tradition: normalizeTradition(story.tradition),
       moments,
       beats,
       storyValues,

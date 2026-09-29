@@ -290,27 +290,46 @@ async function runClaimedRegeneration(args: {
     // Past this line the attempt has cost money whatever happens next, so it
     // stays counted against the ceiling however this call ends.
     args.attempt.reachedProvider = true;
-    image = await generate({
-      storyId,
-      genre: stringOr(claim.primary_genre, "contemporary"),
-      title: stringOr(claim.title, "Untitled"),
-      themes: stringArray(claim.themes),
-      whereAndWhen: optionalString(claim.where_and_when),
-      avoid: optionalString(claim.avoid),
-      // Off the claim, not off the request. A regeneration is the writer
-      // asking for a different picture in the same style they already picked;
-      // rebuilding the prompt without it would charge them a credit to have
-      // their anime cover replaced by the genre default.
-      artStyle: optionalString(claim.image_style),
-      variation: buildVariationSteer(
-        args.promptNote,
-        optionalString(claim.cover_prompt),
-      ),
-      // A distinct key per attempt. The public cover URL carries no version, so
-      // overwriting the old object would leave every CDN edge and every image
-      // cache serving the picture the user just paid to replace.
-      storageSuffix: `r${numberOr(claim.regen_count, 0) + 1}`,
-    });
+    // Declared as a variable rather than written inline, and with the faith
+    // axis widened onto it, for one reason: `tradition` is threaded into
+    // `generateCoverImage`'s input by the IMAGE lane, in a branch this one
+    // cannot touch (`image.ts` is theirs). Typing the input as the generator's
+    // own parameter list widened by the field means this compiles on either
+    // side of that merge and is live the moment their side lands -- and it
+    // stays honestly typed in the meantime, instead of being cast to `any` or
+    // smuggled in through a spread. Once `image.ts` carries the field the
+    // intersection is a no-op and can be deleted.
+    //
+    // WHY IT MATTERS THAT IT IS HERE AT ALL: a regeneration builds its prompt
+    // from the claim and never re-reads the row, so a story's first cover would
+    // honour its depiction policy and a regenerated one would silently not.
+    // Migration 00101 puts `tradition` on the claim; this is the half that
+    // reads it.
+    const coverInput:
+      & Parameters<CoverImageGenerator>[0]
+      & { tradition?: string } = {
+        storyId,
+        genre: stringOr(claim.primary_genre, "contemporary"),
+        title: stringOr(claim.title, "Untitled"),
+        themes: stringArray(claim.themes),
+        whereAndWhen: optionalString(claim.where_and_when),
+        avoid: optionalString(claim.avoid),
+        // Off the claim, not off the request. A regeneration is the writer
+        // asking for a different picture in the same style they already picked;
+        // rebuilding the prompt without it would charge them a credit to have
+        // their anime cover replaced by the genre default.
+        artStyle: optionalString(claim.image_style),
+        tradition: optionalString(claim.tradition),
+        variation: buildVariationSteer(
+          args.promptNote,
+          optionalString(claim.cover_prompt),
+        ),
+        // A distinct key per attempt. The public cover URL carries no version,
+        // so overwriting the old object would leave every CDN edge and every
+        // image cache serving the picture the user just paid to replace.
+        storageSuffix: `r${numberOr(claim.regen_count, 0) + 1}`,
+      };
+    image = await generate(coverInput);
   } catch (error) {
     await restore();
     return await settleFailedAttempt(client, {
