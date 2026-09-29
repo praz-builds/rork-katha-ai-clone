@@ -45,20 +45,36 @@ describe('the intro tells the truth about the product', () => {
     expect(typed).toBe(drawn);
   });
 
-  it('shows openings the real converter would produce, not written prose', () => {
+  it('shows openings the real converter really produces from real beats', () => {
     const block = /const DIRECTIONS = \[([\s\S]*?)\];/.exec(screen)?.[1];
     expect(block).toBeDefined();
     const directions = [...(block ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(directions).toHaveLength(3);
 
-    // Each card is already an imperative instruction, which is the shape
-    // `toDirection` emits and leaves alone (`ALREADY_IMPERATIVE`). Running one
-    // back through the converter must therefore return it unchanged. A card
-    // written as prose, or a converter whose frames stopped producing this
-    // shape, fails here.
-    for (const direction of directions) {
-      expect(toDirection(direction)).toBe(direction);
-    }
+    /*
+      THE BEATS ARE THE TEST, not the cards.
+
+      A first version asserted `toDirection(card) === card`, which is true of
+      any string opening with one of the 36 verbs in `ALREADY_IMPERATIVE` --
+      including "Open", "Have" and "Show". Prose someone wrote by hand starting
+      "Show ..." passed it, so it pinned "is an imperative fixed point" and not
+      "is real converter output". It also left the two cards that do NOT come
+      from the passthrough frame completely unguarded.
+
+      These are the beats the shaping call actually returned, kept here because
+      they exist nowhere else in the repo -- only their converted forms ship.
+      Each one exercises a different frame, which is the whole reason the three
+      cards read differently, so a change to any of those frames fails here.
+    */
+    const beats = [
+      // ALREADY_IMPERATIVE: passed through untouched.
+      'Open with Raya stopping on the dark trail when the forest suddenly falls completely silent',
+      // MODAL_CLAUSE: "X must decide ..." -> "Have X decide ...".
+      'Raya must decide whether to tell Praz the childhood promise she never kept',
+      // The whatHappens frame: "What will happen when ..." -> "Show what happens when ...".
+      'What will happen when Praz loses the trail in the darkening still forest?',
+    ];
+    expect(beats.map((beat) => toDirection(beat))).toEqual(directions);
   });
 
   it('keeps every intro headline to one line', () => {

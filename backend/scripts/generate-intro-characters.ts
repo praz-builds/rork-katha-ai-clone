@@ -22,10 +22,22 @@
  *   2. a closing clause names the shoes and the ground under them, because
  *      "full body" alone came back as a knee crop.
  *
- * Everything else, including `PORTRAIT_WARDROBE_CLAUSE`, is verbatim. An
- * earlier version of this header claimed the prompt was production's with
+ * Everything else, including `PORTRAIT_WARDROBE_CLAUSE`, is verbatim, with one
+ * byte of difference: production writes `of ${subject}.` and this writes
+ * `of ${appearance}`, because every appearance line here already ends in a
+ * period and production's would produce `boots..`.
+ *
+ * An earlier version of this header claimed the prompt was production's with
  * "nothing else changed" while silently dropping the wardrobe clause, and
- * AGENTS.md repeated the claim. If `image.ts` changes, change this with it.
+ * AGENTS.md and the build log repeated the claim. If `image.ts` changes,
+ * change this with it.
+ *
+ * THE COMMITTED PORTRAITS PREDATE THE RESTORED WARDROBE CLAUSE and were not
+ * redrawn. Both appearance lines name their own wardrobe and the clause defers
+ * to the description ("unless the character description specifies otherwise"),
+ * so it is close to inert for these two -- and the drawn Raya is the one the
+ * founder picked out of several. A replacement drawn from this script will get
+ * the clause; that is the point of it being here.
  *
  * WHAT IT WRITES, per character:
  *   <slug>-portrait.png  450x630, flat #E4DCD0 ground — the house portrait
