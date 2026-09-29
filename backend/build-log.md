@@ -5,7 +5,7 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
-## 2026-09-30 UTC — Two reviews were read after the merge, not before it
+## 2026-09-29 UTC — Two reviews were read after the merge, not before it
 
 PR #169 rewrote the onboarding intro. It was reviewed three times by a Fable 5.1
 subagent, merged as `23bde57`, and only afterwards did anyone read the two
