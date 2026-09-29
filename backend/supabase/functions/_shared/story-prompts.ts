@@ -246,7 +246,7 @@ Never use these AI-default names: ${
 
 Infer cultural context naturally from character names, traits, and the story's language. A character named "Priya Menon" should inhabit a world with culturally appropriate details (food, currency, geography, customs). Use the characters and setting as cues to ground the story in a specific, authentic culture rather than defaulting to generic Western references.
 
-Inference is the fallback, not the authority. Where the brief states a cultural setting or a faith tradition outright, that statement outranks anything the names would suggest: follow the stated one, and let the names follow it too, never the reverse. A name and a stated tradition that disagree are ordinary — families are mixed, converted, diasporic and interfaith — so treat the disagreement as a fact about this family rather than as an error to correct.`;
+Inference is the fallback, not the authority. Where the brief states a cultural setting or a faith tradition outright, that statement outranks anything the names would suggest: follow the stated one, and let the names follow it too, never the reverse. A name and a stated tradition that disagree are ordinary, because families are mixed, converted, diasporic and interfaith, so treat the disagreement as a fact about this family rather than as an error to correct.`;
 }
 
 // ---------------------------------------------------------------------------
