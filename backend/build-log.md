@@ -44,10 +44,20 @@ than the best. Removing that escape was correct on its own terms (a gate that
 waives itself on the attempt that ships is not a gate) but it converted the
 false positive into a hard failure: three throws, `[fail]`, exit 1, no cover.
 
-The check is deleted. `trimMatte` already measures the thing that actually
-separates a matte from sky — depth — and acts on it, so by the time it returns,
-row 0 is by construction not uniform. The extra check could only ever have
-caught a matte under four pixels deep, which it cannot tell from a horizon.
+The check is deleted, and the deletion is a **trade, not a clean win**. What it
+caught was a matte that `trimMatte` declines to crop: that function bails and
+returns 0 whenever the remainder would be under half the original in either
+axis, at any depth, so a letterboxed cover — illustration in a 1024x400 band
+inside a 1024x1024 canvas — keeps its flat band and the `[ok]` line reports no
+trim. Before, that output hard-failed the run. Now it is written over the
+committed asset and the run reports success. That is still the right way round,
+because the alternative is a script that cannot produce a cover at all, but the
+silence is the cost: **look at a regenerated cover before committing it.** The
+uncovered case and the real fix are in the open list below.
+
+What the check could *not* do, and what no row-uniformity test can, is tell a
+flat band from a clean horizon — which is why it rejected the framing the
+prompt asks for.
 
 ### Still open, recorded here rather than silently dropped
 
@@ -76,6 +86,11 @@ Not fixed in this entry's change; each is real and none is urgent.
   different and worse fault. Loosening the size bail-out so a letterbox crops
   instead of bailing is the fix and wants a letterboxed generation to test
   against. Until then, look at a regenerated cover before committing it.
+- Root `BUILD_LOG.md:75` still reads "branch protection remains unavailable for
+  this private repository on the current plan." It is a dated 2026-08-22 entry
+  and self-qualifies with *private*, which this repository no longer is, so it
+  is history rather than a live claim — but it is what a grep for "branch
+  protection" returns alongside the correction in `AGENTS.md`.
 
 ### Infrastructure
 
