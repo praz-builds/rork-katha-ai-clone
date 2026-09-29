@@ -38,7 +38,7 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-28, main at `d92ceee`)
+## Production state (last verified 2026-09-29, main at `c4a034b`)
 
 **The whole function surface was current with main at `e7222fb` on 2026-09-27,
 and nothing was deployed that day because nothing needed it.** All **34** functions were
@@ -51,6 +51,13 @@ non-zero on drift; it was negative-controlled first (appending one comment line
 to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
+
+**Re-audited 2026-09-29 after the faith round (#164-#167): migration `00101`
+applied, eight functions deployed, and 357 of 357 files identical, zero drift
+against `c4a034b`.** The audit named eight functions where only three folders had
+changed -- `generate-character-image` and `regenerate-cover` reached the changed
+`_shared` files transitively. `stories.tradition` exists and is null for every
+pre-existing story, which is byte-for-byte the product that existed before it.
 
 **Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: 346 of
 346 identical, zero drift, nothing to deploy.** That number is true of that
