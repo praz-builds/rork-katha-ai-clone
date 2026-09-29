@@ -7,11 +7,12 @@
 
 ## Repository Map
 
-- `source-of-truth/` -- **the four canonical documents. If any other file in this repository disagrees with one of them, the file there is right and the other is stale -- this file included.** See [`source-of-truth/README.md`](source-of-truth/README.md) for precedence between them.
+- `source-of-truth/` -- **the five canonical documents. If any other file in this repository disagrees with one of them, the file there is right and the other is stale -- this file included.** See [`source-of-truth/README.md`](source-of-truth/README.md) for precedence between them.
   - `CREDITS_AND_PRICING.md` -- every credit price, plan price, grant, store SKU, earn mechanic, render tier and unit cost. Any pricing question is answered there and nowhere else.
   - `STORY_GENERATION_FLOW.md` -- the create flow: every field, label, ordering rule and post-generation step.
   - `STORY_PROMPT_SYSTEM.md` -- the prompt architecture (was `backend/prompts/story-generator.md`).
   - `ONBOARDING_FLOW.md` -- onboarding, both paywalls, the blocked-credits sheet. (The one-time offer was removed 2026-09-10; §14 records why.)
+  - `DESIGN_SYSTEM.md` -- the visual language: type, colour, elevation, radius, the semantic spacing rhythm, and the control recipes built from them. **Scoped**: it governs the onboarding flow today, plus the neutral ramp on every surface. Every other surface keeps the existing `type` scale and `lucide-react-native` until migrated deliberately, one at a time -- see its §2 for that boundary, and `expo/DESIGN.md` for the surfaces still on the old system.
 - `expo/` -- approved and active Expo SDK 54 application.
 - `backend/` -- Supabase schema, migrations, Edge Functions, prompts, and backend roadmap.
 - `docs/research/*.md` -- tracked craft-research memos backing specific `GENRE_VOICES` modules (an explicit exception in `.gitignore`; the rest of `docs/research/` and all of `docs/design/` stay gitignored, local-only agent working artifacts).
@@ -22,14 +23,14 @@
 
 ## Working Rules
 
-- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding.
+- Read `expo/CLAUDE.md`, `expo/DESIGN.md`, and `expo/BUILD_LOG.md` before changing product UI, onboarding, paywalls, or shared branding. **Where `expo/DESIGN.md` and `source-of-truth/DESIGN_SYSTEM.md` overlap -- which is onboarding, the paywalls, and the neutral ramp -- `DESIGN_SYSTEM.md` wins**, because it is canonical and `expo/DESIGN.md` is Reference Material. Outside that scope `expo/DESIGN.md` is still the description of what those surfaces actually do, and it is not superseded: the migration is deliberate and one surface at a time.
 - Read `backend/ROADMAP.md` and `backend/build-log.md` before changing Supabase or generation infrastructure.
 - **Read the relevant `source-of-truth/` document before touching what it governs** -- pricing/credits, the create flow, the prompt system, or onboarding. They are canonical; never hardcode a value that contradicts one, and never copy their tables into another file. A change that crosses two of them updates both in the same commit.
 - Run Expo commands from `expo/` and Supabase commands from `backend/`.
 - Treat the iOS and Android folders as reference implementations unless a task explicitly targets native code.
 - Keep frontend and backend contracts in this repository. Do not create another Katha application or backend repository.
 - Never commit `.env` files, service-role keys, provider secrets, build output, dependencies, or local Supabase state.
-- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents.
+- Do not reintroduce migration handoff files, duplicate image directories, alternate wordmarks, or parallel design-system documents. `source-of-truth/DESIGN_SYSTEM.md` and `expo/DESIGN.md` are not a violation of that last one while the migration is in progress: they are one system at two stages, with the precedence above deciding between them. Do not add a third.
 - **Rule:** Money, credits, API keys, and trusted generation logic stay in the backend. User-facing UI stays in Expo. When a feature spans both, update the contract and both workspaces in the same pull request.
 - **Build log:** Every session that modifies code, schema, or infrastructure MUST append an entry to `backend/build-log.md`.
 
@@ -1522,6 +1523,54 @@ See `backend/ROADMAP.md` for the full phased execution plan with checklists. The
 - **The routine has no path filter**, so an asset-only or lockfile-only pull request is reviewed like any other. The `paths-ignore` list lives in `.github/workflows/claude-review.yml` and governs only the gated-off Action. Do not ask for a review with an `@claude` comment: with `CLAUDE_ACTION_ENABLED` unset that reaches nobody and returns no reply at all.
 - Merge through GitHub and delete the feature branch afterward. Never push a merge commit directly to `main`.
 - Exceptions require explicit user authorization and documentation in the pull request.
+
+### The review loop -- iterate, do not stall
+
+The standing review is a loop, not a gate you wait at. Run it to completion
+yourself:
+
+1. Push. The reviewer fires on the push and posts a **comment** naming the head
+   SHA it reviewed. It takes a few minutes; a comment naming an older SHA is a
+   previous round, not this one.
+2. Read every finding. For each one, either **fix it and say so**, or **reply
+   saying why it is wrong**. The reviewer posts a plain pull request comment,
+   not an inline review, so there is no **Resolve conversation** button on its
+   findings and nothing to tick -- answer by replying with a comment naming the
+   commit that addressed each one. A finding you silently ignore counts as
+   outstanding and blocks the merge.
+3. Push the fixes. That fires the next round automatically.
+4. Repeat until the newest comment covers the current head SHA and raises
+   nothing outstanding.
+
+Only then merge. **Do not stop after one round because findings exist** --
+findings are the normal result of round one, and later rounds routinely find
+real bugs in the fixes from earlier ones. PR #170 took eight rounds and rounds
+two and three each found a live bug introduced by the previous round's fix. Do
+not wait for a human to relay the review to you; read it from the pull request
+yourself.
+
+**What "checks are clear" means**, exactly, because getting this wrong has
+already stalled three pull requests:
+
+- The two **CI** checks -- `Typecheck + Lint + Test` and `Edge Functions —
+  Typecheck + Test` -- must pass. GitHub will not stop you merging over a red
+  one, because branch protection is not configured here, but these can turn
+  green, so a red one is a real failure to fix.
+- `Smoke - web bundle builds` is **not** part of that gate. It is gated on
+  `push` (`ci.yml`), so on a pull request it always reports **skipped** --
+  neither a pass nor a blocker. It never turns green until the branch is on
+  `main`.
+- **`Review the diff` reports `skipped` on every pull request and that is
+  correct.** It is the gated-off Action (see *Pull request review*), it carries
+  no review body, and it can never turn green while `CLAUDE_ACTION_ENABLED` is
+  unset. Waiting for it is the single most expensive mistake on this
+  repository: #149, #150 and one session in #169 all stalled on it. A pull
+  request opened before 2026-09-25 may instead carry a stale **red** one from
+  when the Action ran unguarded; that is equally not a blocker.
+- CodeAnt's comment is advisory, not a gate.
+- **The gate is the review comment, not a check.** A fully green check list
+  does not mean the review happened.
+
 
 ### Pull request review
 
