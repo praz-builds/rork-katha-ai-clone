@@ -33,6 +33,10 @@ The Supabase project id is committed in `backend/supabase/config.toml`; credenti
 
 ## Pull Request Reviews
 
-Pull requests targeting `main`, including incremental updates, are reviewed automatically by **Claude** via [`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml). Writing `@claude` in any thread reaches the same reviewer for a question or a fix. Direct work on `main` is prohibited; the complete merge gate is defined in [`CLAUDE.md`](CLAUDE.md).
+Pull requests targeting `main`, including incremental updates, are reviewed automatically — but **not** by the GitHub Action. The standing reviewer is a claude.ai cloud routine fired by webhook on every pull request **that is not a draft or bot-authored** — it drops those before reviewing, so a draft gets no comment and no signal that it was looked at. Mark it ready for review to get one. CodeAnt AI reviews alongside it. The routine posts as `praz-builds` rather than as a bot and is not an Action, so it appears in neither `gh run list` nor `gh workflow list`: **to check whether a pull request was reviewed, read its comments.**
+
+[`.github/workflows/claude-review.yml`](.github/workflows/claude-review.yml) and [`claude-mention.yml`](.github/workflows/claude-mention.yml) are a fallback, gated off behind the repository variable `CLAUDE_ACTION_ENABLED`. Until that variable is set and an `ANTHROPIC_API_KEY` secret exists, **writing `@claude` in a thread reaches nobody and you get no reply at all** — the job is skipped silently, so nothing indicates the request was received.
+
+Direct work on `main` is prohibited; the complete merge gate is defined in [`AGENTS.md`](AGENTS.md).
 
 Run `scripts/setup-repo.sh` after cloning to enable the tracked pre-push guard that rejects direct local pushes to `main`.

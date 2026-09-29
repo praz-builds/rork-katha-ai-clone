@@ -5,6 +5,150 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-09-29 UTC — Two reviews were read after the merge, not before it
+
+PR #169 rewrote the onboarding intro. It was reviewed three times by a Fable 5.1
+subagent, merged as `23bde57`, and only afterwards did anyone read the two
+**automated** reviews that had been sitting on it the whole time.
+
+### How they were missed, which is the part worth keeping
+
+- The cloud routine posts as **`praz-builds`**, not as a bot. The agent watching
+  the pull request filtered incoming comments for an author matching
+  `claude|github-actions`, so two full reviews went straight past the filter.
+- It then checked `gh run list` and `gh workflow list`, found `Claude Review`
+  `disabled_manually`, and concluded that nothing had reviewed the change. The
+  routine is not a GitHub Action, so it appears in neither listing. CodeAnt is
+  not an Action either, and it had also reviewed.
+- Both conclusions were stated to the founder as fact, and the merge went ahead
+  on them.
+
+**The rule this produces: to find out whether a pull request was reviewed, read
+its comments. Do not infer it from workflow runs, and do not filter by author.**
+`AGENTS.md` now says so, next to the routine's id.
+
+### The same trap, in the bullets agents execute
+
+This was the third time, not the first. `AGENTS.md`'s Mandatory Git Workflow
+told agents to "wait for **Claude Review**'s incremental review (the `Review
+the diff` check)" and to merge only once it "completed successfully". Gated
+off, that check reports `skipped` and carries no body, so the condition can
+never be met — the contract instructed an agent that it may never merge
+anything. **#149 and #150 both stalled on exactly that and were merged by hand
+once somebody worked out why.** It is a more reusable lesson than the author
+filter, because it recurs every time the gate is toggled.
+
+Those bullets now say the review arrives as a comment, that you find it by
+reading comments without filtering by author, and that **the routine skips
+drafts and bot-authored pull requests** — its own prompt does, independently of
+the Action's `if:` — so pushing to a draft and waiting is the same forever-wait
+with one event substituted. `.github/pull_request_template.md` carried the
+identical defect in the file a contributor reads first: a checkbox saying
+"Latest Claude Review completed successfully", which after the gate cannot be
+ticked honestly.
+
+`backend/originals/NEXT_SESSION_PROMPT.md` is pasted into a fresh session and
+therefore read as operative, not as history, and it handed an agent both
+removed instructions ("Claude review" and "merge only when green"); corrected.
+
+`README.md` said pull requests are "reviewed automatically by **Claude** via
+`claude-review.yml`" and that `@claude` reaches that reviewer. It is the
+public-facing statement of who reviews and the only one of these files a
+non-agent reads. It now names the routine and CodeAnt, says the routine skips
+drafts and bot-authored pull requests, states that `@claude` reaches nobody,
+and points the merge gate at `AGENTS.md` rather than at `CLAUDE.md`, which is
+now only a redirect.
+
+The `paths-ignore` bullet was wrong in both halves and is replaced: that filter
+lives in the Action's `on:` block and governs only the Action, while the
+routine has no path filter and enumerates every open pull request — so an
+asset-only pull request *is* reviewed, where the bullet said it gets none — and
+the remedy it prescribed, an `@claude` comment, is the thing that now reaches
+nobody.
+
+### What the missed reviews had found
+
+One was a live bug, and this session's own earlier fix had made it worse:
+
+**`backend/scripts/generate-intro-characters.ts` rejected the cover its own
+prompt asks for.** A check counted how many pixels of the top row differed from
+the corner and threw `matte survived the trim` unless a fifth of them did.
+`COVER_PROMPT` asks three separate times for an even band of night sky above the
+characters' heads; a cover that obeyed had a near-uniform top row and was
+discarded. It fired on two of the real generations behind the committed assets,
+both times on a good image. That was survivable only because every gate then
+carried `&& attempt < MAX_ATTEMPTS`, which let the third roll through unchecked
+— two paid generations burned per run, and the kept image was the third rather
+than the best. Removing that escape was correct on its own terms (a gate that
+waives itself on the attempt that ships is not a gate) but it converted the
+false positive into a hard failure: three throws, `[fail]`, exit 1, no cover.
+
+The check is deleted, and the deletion is a **trade, not a clean win**. What it
+caught was a matte that `trimMatte` declines to crop: that function bails and
+returns 0 whenever the remainder would be under half the original in either
+axis, at any depth, so a letterboxed cover — illustration in a 1024x400 band
+inside a 1024x1024 canvas — keeps its flat band and the `[ok]` line reports no
+trim. Before, that output hard-failed the run. Now it is written over the
+committed asset and the run reports success. That is still the right way round,
+because the alternative is a script that cannot produce a cover at all, but the
+silence is the cost: **look at a regenerated cover before committing it.** The
+uncovered case and the real fix are in the open list below.
+
+What the check could *not* do, and what no row-uniformity test can, is tell a
+flat band from a clean horizon — which is why it rejected the framing the
+prompt asks for.
+
+### Still open, recorded here rather than silently dropped
+
+Not fixed in this entry's change; each is real and none is urgent.
+
+- `expo/assets/onboarding/raya-portrait.png` and `praz-portrait.png` (702 KB
+  together) are referenced by nothing. They are the generator's flat-ground
+  intermediates; only the cutouts and the cover are `require`d. Metro bundles
+  only what is required, so this is repository weight rather than app weight.
+- `cover-trek.png` is 1.5 MB for a surface never drawn larger than 334x230 —
+  about 3.5x the largest shipping cover, and on its own more than half of
+  `assets/onboarding`. A JPEG at display resolution would be a fraction of it.
+- The three `expo/assets/avatars/reader-*.jpg` are now orphaned: they were used
+  only by the deleted `PublishScreen`. `AGENTS.md`, `expo/CLAUDE.md` and
+  `expo/DESIGN.md` still describe that directory as live.
+- The intro's copy is hardcoded English while `expo/src/i18n/{en,es,pt}.json`
+  exists and the sibling onboarding screens go through `i18n.t`. Pre-existing,
+  but the rewrite replaced every string in the file, which was the cheap moment.
+- `INTRO_S2_VARIANT` is always `'A'` and gates variant-B branches that have
+  never been looked at on screen.
+- **`trimMatte` bails without cropping when the remainder is under half the
+  original in either axis, at any trim depth.** A cover letterboxed into, say,
+  a 1024x400 band inside a 1024x1024 canvas therefore ships with a flat band
+  across the top, and the `[ok]` line reports no trim, so the run reads clean.
+  The deleted row check covered exactly this case; it was removed for a
+  different and worse fault. Loosening the size bail-out so a letterbox crops
+  instead of bailing is the fix and wants a letterboxed generation to test
+  against. Until then, look at a regenerated cover before committing it.
+- Root `BUILD_LOG.md:75` still reads "branch protection remains unavailable for
+  this private repository on the current plan." It is a dated 2026-08-22 entry
+  and self-qualifies with *private*, which this repository no longer is, so it
+  is history rather than a live claim — but it is what a grep for "branch
+  protection" returns alongside the correction in `AGENTS.md`.
+
+### Infrastructure
+
+**Branch protection is available on this repository and is not configured.**
+`AGENTS.md` had said for some time that it was unavailable on the current plan.
+That is false -- the repository is public and protection is free on public
+repositories -- and it was the stated reason the merge gate is documentation
+only. A required-review rule is what would have stopped the #169 merge this
+entry describes. Corrected in `AGENTS.md`; configuring it is a separate
+decision and has not been made here.
+
+`Claude Review` and `Claude Mention` are gated behind the repository variable
+`CLAUDE_ACTION_ENABLED` and re-enabled. They need `ANTHROPIC_API_KEY`, which
+this repository does not have; unset, both jobs now **skip** instead of failing,
+and the workflows can stay enabled so their state is visible in the repository
+rather than living in a setting nobody can see. `AGENTS.md` had described that
+gate for days without it existing. No secrets were added and no deploy followed
+— nothing under `supabase/functions/` changed.
+
 ---
 
 ## 2026-09-27 UTC — The reader records reads, so two dead mechanics come alive

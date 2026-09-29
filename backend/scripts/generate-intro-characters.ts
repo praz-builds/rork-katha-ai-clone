@@ -509,22 +509,57 @@ async function drawCover(apiKey: string): Promise<boolean> {
       const trimmed = trimMatte(image);
       const source = fit(image, COVER_SIDE, COVER_SIDE);
 
-      // The cover is centre-cropped three ways by the client, so a surviving
-      // border shows as a sliver down one edge of one of them. Same bar as the
-      // portraits, measured against the cover's own corner rather than the
-      // portrait ground.
-      const corner = channels(image.getPixelAt(1, 1));
-      let foreign = 0;
-      for (let x = 0; x < image.width; x++) {
-        const c = channels(image.getPixelAt(x + 1, 1));
-        if (Math.abs(c.r - corner.r) + Math.abs(c.g - corner.g) + Math.abs(c.b - corner.b) > 90) {
-          foreign++;
-        }
-      }
-      // Enforced on every attempt, for the reason given in `drawCharacter`.
-      if (foreign < image.width * 0.2) {
-        throw new Error("top edge is a flat band — matte survived the trim");
-      }
+      /*
+        THERE IS NO SECOND MATTE CHECK. ONE CASE IS KNOWINGLY UNCOVERED.
+
+        One stood here: it counted how many pixels of the top row differed
+        from the corner and threw "matte survived the trim" unless at least a
+        fifth of them did. It was deleted because it rejected the framing this
+        file's own prompt asks for -- see below -- not because it caught
+        nothing. Be precise about what went with it.
+
+        `trimMatte` bails and returns 0 without cropping on EITHER half of its
+        guard: a trim under four pixels deep, OR a remainder under half the
+        original in either axis. The depth bail-out is harmless; a sub-four-
+        pixel band is not a matte and could not be told from a clean horizon
+        anyway. **The size bail-out is not harmless, and it is the one the
+        deleted check actually covered.** A 1024x1024 canvas with the
+        illustration letterboxed into a 1024x400 band trims `top` to 312 and
+        `bottom` to 711 -- well past four -- but the remaining height of 400 is
+        under 1024/2, so nothing is cropped, `fit` finds the aspect already
+        square and skips its own crop, and the cover is written with a 312px
+        flat band across the top while the `[ok]` line reports no trim at all.
+        `trimMatte`'s own docblock says Gemini produces that shape often
+        enough to need handling.
+
+        This is accepted rather than fixed, deliberately. Re-adding the row
+        check restores the false positive and, without the per-attempt escape
+        that is also gone, that means no cover can be produced at all.
+        Loosening the size bail-out so a letterbox crops instead of bailing is
+        the real fix and is a change to `trimMatte`'s behaviour that wants a
+        letterboxed generation to test against, which is not something to
+        land untested at the end of a session. It is in the build log's open
+        list. Until then: **look at a regenerated cover before committing it**
+        -- the run log cannot tell you about this one.
+
+        What it did instead was reject the framing this file's own prompt asks
+        for. `COVER_PROMPT` says "under a deep blue night sky", "keep the top
+        15% of the image free of faces and important detail", and "a clear
+        band of night sky and distant trees above both heads" -- three
+        instructions whose whole point is an even top edge. A cover that
+        obeyed them had a near-uniform top row and was thrown away. It fired
+        on two of the real generations behind the committed assets, each time
+        on an image that was fine.
+
+        That was survivable only while every gate carried `&& attempt <
+        MAX_ATTEMPTS`, which let the third roll through unchecked: two paid
+        generations burned, and the image kept was the third rather than the
+        best. Removing that escape (correctly -- a gate that waives itself on
+        the attempt that ships is not a gate) turned the same false positive
+        into a hard failure: three throws, `[fail]`, exit 1, and no cover
+        produced at all. Deleting the check is the fix; `trimMatte` is the
+        one that was doing the work.
+      */
 
       await Deno.writeFile(
         new URL("cover-trek.png", OUT_DIR),

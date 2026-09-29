@@ -37,7 +37,23 @@ jobs:
     runs-on: ubuntu-latest
     # Fork PRs receive no secrets, so the job would fail rather than review.
     # Drafts and bot PRs are skipped deliberately.
+    # THE GATE THAT AGENTS.md ALREADY CLAIMED WAS HERE.
+    #
+    # This workflow needs `ANTHROPIC_API_KEY`, and that secret does not
+    # exist on this repository. Without it the action runs with an empty
+    # key and fails, posting "Claude encountered an error" on every pull
+    # request -- which is why both Claude workflows were switched off by
+    # hand on 2026-09-25 and stayed off. Disabling a workflow is invisible
+    # state: nothing in the repository says it happened, and AGENTS.md went
+    # on calling Claude-as-reviewer a mandatory merge gate for four days.
+    #
+    # Gated instead. With the variable unset this job is skipped, which
+    # reads as "skipped" on the pull request rather than as a failure, and
+    # the workflow can stay ENABLED so its state is legible. Set the secret
+    # and `gh variable set CLAUDE_ACTION_ENABLED --body true` to turn it on;
+    # no workflow edit is needed.
     if: >-
+      vars.CLAUDE_ACTION_ENABLED == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.draft == false &&
       !endsWith(github.event.pull_request.user.login, '[bot]')
