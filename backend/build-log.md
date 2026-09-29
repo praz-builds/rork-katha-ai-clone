@@ -27,6 +27,35 @@ subagent, merged as `23bde57`, and only afterwards did anyone read the two
 its comments. Do not infer it from workflow runs, and do not filter by author.**
 `AGENTS.md` now says so, next to the routine's id.
 
+### The same trap, in the bullets agents execute
+
+This was the third time, not the first. `AGENTS.md`'s Mandatory Git Workflow
+told agents to "wait for **Claude Review**'s incremental review (the `Review
+the diff` check)" and to merge only once it "completed successfully". Gated
+off, that check reports `skipped` and carries no body, so the condition can
+never be met — the contract instructed an agent that it may never merge
+anything. **#149 and #150 both stalled on exactly that and were merged by hand
+once somebody worked out why.** It is a more reusable lesson than the author
+filter, because it recurs every time the gate is toggled.
+
+Those bullets now say the review arrives as a comment, that you find it by
+reading comments without filtering by author, and that **the routine skips
+drafts and bot-authored pull requests** — its own prompt does, independently of
+the Action's `if:` — so pushing to a draft and waiting is the same forever-wait
+with one event substituted. `.github/pull_request_template.md` carried the
+identical defect in the file a contributor reads first: a checkbox saying
+"Latest Claude Review completed successfully", which after the gate cannot be
+ticked honestly. `backend/originals/NEXT_SESSION_PROMPT.md`, a paste-into-a-new-
+session prompt and therefore read as operative, handed a fresh agent both
+removed instructions ("Claude review" and "merge only when green"); corrected.
+
+The `paths-ignore` bullet was wrong in both halves and is replaced: that filter
+lives in the Action's `on:` block and governs only the Action, while the
+routine has no path filter and enumerates every open pull request — so an
+asset-only pull request *is* reviewed, where the bullet said it gets none — and
+the remedy it prescribed, an `@claude` comment, is the thing that now reaches
+nobody.
+
 ### What the missed reviews had found
 
 One was a live bug, and this session's own earlier fix had made it worse:
