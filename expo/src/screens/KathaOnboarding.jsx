@@ -161,13 +161,30 @@ const STORY_IDEA =
  * converter the create flow and the chapter-end chips run every beat through
  * — so the intro shows sentences the product can actually produce.
  *
+ * THEY ARE THREE OPENINGS, NOT A PLOT. `DirectionStep` asks "Where does it
+ * begin?" and every card it offers is a candidate chapter one, derived from
+ * `beats` where `beats[0]` IS chapter one's brief. So the three cards are
+ * three different ways to start the SAME story -- through its atmosphere,
+ * through the friendship, through the trek going wrong -- and not a
+ * pressure/turn/payoff arc. A previous draft made them an arc, which put a
+ * decision about a broken bridge on a card labelled "where does it begin";
+ * the founder read it as arriving from nowhere, and it was.
+ *
+ * THEY USE ONLY WHAT THE TYPED IDEA CONTAINS. `STORY_IDEA` gives two people, a
+ * friendship going back to childhood, a trek on foot, and a forest that is
+ * unusually still. Every card above is built from exactly those: the silence
+ * the ridge is named for, the promise between two old friends, the trail lost
+ * as the light goes. Nothing enters from outside the sentence -- no rescuers,
+ * no bridges, no fire towers -- because the screen's whole claim is that Katha
+ * read what the writer typed.
+ *
  * THE THREE FRAMES ARE DELIBERATELY DIFFERENT, and that is a content choice
  * made in the beats, not a licence taken with the converter:
  *
  *   1. opens with an imperative verb, so `ALREADY_IMPERATIVE` passes the beat
  *      through untouched;
- *   2. is a beat written as a decision ("Praz must choose between..."), which
- *      takes the modal frame and comes back as "Have Praz choose...";
+ *   2. is a beat written as a decision ("Raya must decide whether..."), which
+ *      takes the modal frame and comes back as "Have Raya decide...";
  *   3. is a "what happens when" beat, which takes the whatHappens frame.
  *
  * The first draft of this screen used three plain declarative beats. Every one
@@ -178,9 +195,9 @@ const STORY_IDEA =
  * live screen looks like on a real idea.
  */
 const DIRECTIONS = [
-  'Follow Raya up the ridge at dusk, when the trail markers stop matching her map.',
-  'Have Praz choose between the broken bridge and a night in the open.',
-  'Show what happens when Raya and Praz reach the fire tower and find it already lit.',
+  'Open with Raya stopping on the dark trail when the forest suddenly falls completely silent.',
+  'Have Raya decide whether to tell Praz the childhood promise she never kept.',
+  'Show what happens when Praz loses the trail in the darkening still forest.',
 ];
 
 const STORY_TITLE = 'The Long Way Up';
@@ -224,6 +241,32 @@ const HERO_H = 478;
  * is the layer that actually has to hold the line.
  */
 const COVER_FOCUS_Y = 0.1;
+
+/**
+ * ONE tile size for both shelves, and it is the product's own.
+ *
+ * Trending was 104x100 and Originals 104x86, which is what the handoff drew.
+ * Side by side in one 392pt card that reads as two different components
+ * rather than two shelves of the same thing, and the founder saw it
+ * immediately. 74x96 is the "mini" cover size from `backend/COVER_IMAGES.md`
+ * -- a real display spec the app already cuts covers to -- so the rows are
+ * consistent with each other AND with the rest of the product.
+ */
+const TILE_W = 74;
+const TILE_H = 96;
+const TILE_GAP = 8;
+
+/**
+ * The Home story card's padding, and the cover well inside it.
+ *
+ * Shared between the stylesheet and the morph, because they have to agree:
+ * the morph starts at the well's position, and when those two drifted apart
+ * the cover hung off the top and bottom edges of the card it was supposed to
+ * be sitting inside.
+ */
+const STORY_CARD_PAD = 8;
+const SLOT_W = 70;
+const SLOT_H = 68;
 
 // ── Motion (expo-animation SKILL) ───────────────────────────────────────────
 const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
@@ -858,6 +901,28 @@ function DirectionRow({ t, index, prompt }) {
  * transition, and animating the tile would drag the card's layout with it.
  */
 function ReadScreen({ t, reduceMotion }) {
+  /*
+    WHERE THE COVER STARTS IS MEASURED, NOT WRITTEN DOWN.
+
+    The morph began at a hard-coded left 15.5 / top 39.5 taken from the
+    handoff's mock. This Home has different section labels, so the real well
+    sits lower — and the cover spent the first three seconds of the slide
+    hanging off the top and bottom of the white card it was supposed to be
+    inside. Anything derived twice drifts; the story card reports its own box
+    and the well's offset inside it is a shared constant, so there is now one
+    source for it.
+
+    Seeded with the value for the reference frame so the first paint, before
+    any layout has been reported, is already close rather than at 0,0.
+  */
+  const slotX = useSharedValue(14 + STORY_CARD_PAD);
+  const slotY = useSharedValue(43 + STORY_CARD_PAD);
+  const onStoryCardLayout = useCallback((event) => {
+    const { x, y } = event.nativeEvent.layout;
+    slotX.set(x + STORY_CARD_PAD);
+    slotY.set(y + STORY_CARD_PAD);
+  }, [slotX, slotY]);
+
   const card = useAnimatedStyle(() => ({ opacity: smooth(win(t.get(), 0, 450)) }));
   const home = useAnimatedStyle(() => ({ opacity: 1 - smooth(win(t.get(), 3350, 3750)) }));
   const storyCard = useAnimatedStyle(() => riseStyle(smooth(win(t.get(), 300, 700)), 10));
@@ -865,14 +930,23 @@ function ReadScreen({ t, reduceMotion }) {
     const r = smooth(win(t.get(), 600, 1000));
     return {
       opacity: r,
-      transform: [{ translateY: (1 - r) * 10 }, { translateX: -30 * smooth(win(t.get(), 1200, 3300)) }],
+      // SETTLES TO FLUSH, never past it. Both shelves used to drift NEGATIVE,
+      // which slides the first tile off the card's left edge and slices it in
+      // half — motion that reads as a broken layout. A shelf already says
+      // "there is more" by overflowing the RIGHT edge (four 74pt tiles and
+      // three gaps is 320 against 306 of usable width), so the drift only has
+      // to be movement, not displacement. Starting inset and settling flush
+      // gives that and can never cut the leading tile.
+      transform: [{ translateY: (1 - r) * 10 }, { translateX: 12 * (1 - smooth(win(t.get(), 1200, 3300))) }],
     };
   });
   const originals = useAnimatedStyle(() => {
     const r = smooth(win(t.get(), 900, 1300));
     return {
       opacity: r,
-      transform: [{ translateY: (1 - r) * 10 }, { translateX: -40 + 30 * smooth(win(t.get(), 1200, 3300)) }],
+      // Same rule as Trending above, a little further out so the two shelves
+      // do not move in lockstep.
+      transform: [{ translateY: (1 - r) * 10 }, { translateX: 22 * (1 - smooth(win(t.get(), 1200, 3300))) }],
     };
   });
   const tapped = useAnimatedStyle(() => ({
@@ -882,13 +956,16 @@ function ReadScreen({ t, reduceMotion }) {
   // The morph. One ease-out cubic drives every property so they cannot drift.
   const cover = useAnimatedStyle(() => {
     const r = EASE_OUT_CUBIC(win(t.get(), 3350, 4150));
+    const x = slotX.get();
+    const y = slotY.get();
     return {
-      left: 15.5 + (0 - 15.5) * r,
-      top: 39.5 + (0 - 39.5) * r,
-      width: 70 + (334 - 70) * r,
-      height: 81 + (230 - 81) * r,
-      borderTopLeftRadius: 14 * (1 - r),
-      borderBottomLeftRadius: 14 * (1 - r),
+      left: x * (1 - r),
+      top: y * (1 - r),
+      width: SLOT_W + (334 - SLOT_W) * r,
+      height: SLOT_H + (230 - SLOT_H) * r,
+      // The well is 12pt; the four corners round down to the page's square
+      // top edge together, so the tile never looks half-rounded mid-morph.
+      borderRadius: 12 * (1 - r),
     };
   });
   /*
@@ -902,8 +979,8 @@ function ReadScreen({ t, reduceMotion }) {
   */
   const coverImg = useAnimatedStyle(() => {
     const r = EASE_OUT_CUBIC(win(t.get(), 3350, 4150));
-    const w = 70 + (334 - 70) * r;
-    const h = 81 + (230 - 81) * r;
+    const w = SLOT_W + (334 - SLOT_W) * r;
+    const h = SLOT_H + (230 - SLOT_H) * r;
     const side = Math.max(w, h);
     return {
       width: side,
@@ -922,7 +999,7 @@ function ReadScreen({ t, reduceMotion }) {
         {/* ── Home ── */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.readBody, home]}>
           <Text style={styles.sectionLabel}>YOUR STORIES</Text>
-          <Animated.View style={[styles.homeStoryCard, tapped, storyCard]}>
+          <Animated.View onLayout={onStoryCardLayout} style={[styles.homeStoryCard, tapped, storyCard]}>
             {/* The cover's slot. The drawn cover is the layer below, which is
                 why this is an empty well and not an Image. */}
             <View style={styles.homeCoverSlot} />
@@ -936,13 +1013,13 @@ function ReadScreen({ t, reduceMotion }) {
           <Text style={styles.sectionLabel}>TRENDING NOW</Text>
           <Animated.View style={[styles.tileRow, trending]}>
             {TRENDING.map((tile, i) => (
-              <CoverTile key={i} tile={tile} height={100} t={t} liveHeart={i === 0} />
+              <CoverTile key={i} tile={tile} t={t} liveHeart={i === 0} />
             ))}
           </Animated.View>
 
           <Text style={styles.sectionLabel}>KATHA ORIGINALS</Text>
           <Animated.View style={[styles.tileRow, originals]}>
-            {ORIGINALS.map((tile, i) => <CoverTile key={i} tile={tile} height={86} t={t} />)}
+            {ORIGINALS.map((tile, i) => <CoverTile key={i} tile={tile} t={t} />)}
           </Animated.View>
         </Animated.View>
 
@@ -980,10 +1057,10 @@ function ReadScreen({ t, reduceMotion }) {
   );
 }
 
-function CoverTile({ tile, height, t, liveHeart }) {
+function CoverTile({ tile, t, liveHeart }) {
   return (
     <View style={styles.tile}>
-      <Image source={tile.img} style={[styles.tileImage, { height }]} resizeMode="cover" />
+      <Image source={tile.img} style={styles.tileImage} resizeMode="cover" />
       <View style={[styles.genrePill, styles.tileGenrePill]}>
         <Text style={styles.genrePillText} numberOfLines={1}>{tile.genre}</Text>
       </View>
@@ -1159,15 +1236,15 @@ const styles = StyleSheet.create({
   readCard: { position: 'absolute', top: 78, width: 334, height: 392, backgroundColor: C.appBg, borderRadius: 22, overflow: 'hidden' },
   readBody: { padding: 14 },
   sectionLabel: { fontFamily: F.hankenXbold, fontWeight: '800', fontSize: 10, letterSpacing: 1, color: C.muted2, marginTop: 10, marginBottom: 6 },
-  homeStoryCard: { height: 84, flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, borderWidth: 1.5, padding: 8, gap: 10 },
-  homeCoverSlot: { width: 70, height: 68, borderRadius: 12, backgroundColor: C.stone },
+  homeStoryCard: { height: 84, flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, borderWidth: 1.5, padding: STORY_CARD_PAD, gap: 10 },
+  homeCoverSlot: { width: SLOT_W, height: SLOT_H, borderRadius: 12, backgroundColor: C.stone },
   homeStoryText: { flex: 1 },
   homeStoryTitle: { fontFamily: F.briBold, fontWeight: '700', fontSize: 15, color: C.ink },
   homeStoryBlurb: { fontFamily: F.hanken, fontSize: 11.5, lineHeight: 15, color: C.muted, marginTop: 2 },
   chevron: { fontSize: 20, color: C.muted3, marginRight: 4 },
-  tileRow: { flexDirection: 'row', gap: 8 },
-  tile: { width: 104, flexShrink: 0 },
-  tileImage: { width: 104, borderRadius: 14 },
+  tileRow: { flexDirection: 'row', gap: TILE_GAP },
+  tile: { width: TILE_W, flexShrink: 0 },
+  tileImage: { width: TILE_W, height: TILE_H, borderRadius: 14 },
   genrePill: { position: 'absolute', backgroundColor: '#0F0E0C', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
   tileGenrePill: { left: 5, bottom: 5 },
   coverGenrePill: { left: 10, bottom: 10 },
