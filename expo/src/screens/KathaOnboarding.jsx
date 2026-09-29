@@ -135,16 +135,27 @@ const DUR = [5200, 9200, 8800];
  * what Katha does with it -- so the three screens read as one promise getting
  * bigger rather than three descriptions.
  *
- * Length is load-bearing, not taste. The headline slot is two lines at 31.3
- * (64pt) and the subcopy slot is 54pt at 22.5; a subcopy past about 85
- * characters becomes a third line and is clipped. Keep them under it.
+ * ## Length is load-bearing, not taste
+ *
+ * EVERY HEADLINE IS ONE LINE, and they have to stay that way. The slot used to
+ * be two lines tall to fit the longest of them, which meant the short ones
+ * carried a spare line of slack -- and wherever that slack went, it made one
+ * slide's spacing different from another's. Below the headline it opened a
+ * 30pt hole above the subcopy; above the headline it opened the same hole
+ * under the dots, on slides 1 and 3 but not 2. There is no third place to put
+ * it. The only fix that makes all three slides identical is for all three
+ * headlines to be the same height, so they are all short enough to be one
+ * line: about 21 characters at 27/31.3 in the reference column.
+ *
+ * The subcopy slot is 54pt at 22.5, and all three run to two lines; past about
+ * 85 characters a third appears and is clipped. Keep both bounds.
  */
 const HEADLINES = [
-  ['Create your own character',
+  ['Create your character',
     'A name and one line about their look. Katha draws them, and they lead your story.'],
-  ['Turn one line into a whole story',
+  ['Turn it into a story',
     'Katha drafts it from your idea, then you rewrite any line until it sounds like you.'],
-  ['Read it, or listen to it',
+  ['Read it, or listen',
     "Katha narrates every chapter. Publish when you're ready, and read what others write."],
 ];
 
@@ -214,7 +225,23 @@ const DIRECTIONS = [
   'Show what happens when Praz loses the trail in the darkening still forest.',
 ];
 
-const STORY_TITLE = 'The Long Way Up';
+/**
+ * The title, and it is not decoration.
+ *
+ * "The Long Way Up" described the trek, which any hiking story could be called.
+ * This one names what the chosen direction is ABOUT -- the promise Raya never
+ * kept -- so slide 2 and slide 3 are visibly the same story: the reader picks
+ * an opening about a childhood promise, and the book that appears on the shelf
+ * is called after it. It also obeys the product's own rule for titles
+ * (`ONBOARDING_SHAPE_SYSTEM_PROMPT`): one to six words, specific to this story,
+ * never a genre label.
+ *
+ * It also has to be ONE line at 28/32 in the story page's 298pt column. "The
+ * Promise She Never Kept" was the first choice and is the better sentence, but
+ * it measures 380pt: it wrapped to two lines, and the second line pushed the
+ * blurb down into the Read and Listen pills.
+ */
+const STORY_TITLE = 'The Unkept Promise';
 const STORY_BLURB = 'Raya and Praz trek through the still, dark forests of Silence Ridge.';
 
 // ── Assets ──────────────────────────────────────────────────────────────────
@@ -885,29 +912,40 @@ function Directions({ t, inside }) {
 /** Row enter times from the spec: 4300/4550/4800, each over 400ms. */
 const ROW_IN = [4300, 4550, 4800];
 
+/**
+ * The card the demo picks, and it is the second one.
+ *
+ * "Have Raya decide whether to tell Praz the childhood promise she never kept"
+ * is the opening that goes through the friendship rather than through the
+ * weather or the trail, and it is the one the story on slide 3 is named after.
+ * Picking the first card instead would have the intro choose the most obvious
+ * option on the screen and then show a story that came from a different one.
+ */
+const CHOSEN_DIRECTION = 1;
+
 function DirectionRow({ t, index, prompt }) {
   const enter = useAnimatedStyle(() => {
     const a = ROW_IN[index];
     return riseStyle(smooth(win(t.get(), a, a + 400)), 14);
   });
-  // Row one is the one the demo picks, at the very end of the slide.
+  // One row is chosen at the very end of the slide; see CHOSEN_DIRECTION.
   const chosen = useAnimatedStyle(() => {
-    const on = index === 0 ? smooth(win(t.get(), 5900, 6200)) : 0;
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
     return {
       backgroundColor: on > 0.5 ? C.chipPeach : C.card,
       borderColor: on > 0.5 ? C.orange : C.appBorder,
     };
   });
   const numberStyle = useAnimatedStyle(() => {
-    const on = index === 0 ? smooth(win(t.get(), 5900, 6200)) : 0;
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
     return { backgroundColor: on > 0.5 ? C.orange : C.stone };
   });
   const numberText = useAnimatedStyle(() => {
-    const on = index === 0 ? smooth(win(t.get(), 5900, 6200)) : 0;
+    const on = index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0;
     return { color: on > 0.5 ? '#FFFFFF' : C.inkSoft };
   });
   const tick = useAnimatedStyle(() => ({
-    opacity: index === 0 ? smooth(win(t.get(), 5900, 6200)) : 0,
+    opacity: index === CHOSEN_DIRECTION ? smooth(win(t.get(), 5900, 6200)) : 0,
   }));
 
   return (
@@ -1205,7 +1243,13 @@ const styles = StyleSheet.create({
   // 44pt tall, 3pt either side of the dot: adjacent targets meet at the SPEC's
   // 6pt gap, and the negative margin keeps the visible row at 6pt.
   dotHit: { height: 44, marginVertical: -19, paddingHorizontal: 3, justifyContent: 'center' },
-  headlineSlot: { height: 64, justifyContent: 'flex-end' },
+  // `minHeight`, not `height`: at the reference width all three headlines are
+  // one line and this is exactly their height, so every slide's dots-to-
+  // headline and headline-to-subcopy gaps are identical. On a column narrow
+  // enough to wrap one, the slot grows and pushes the subcopy down rather than
+  // letting the second line overlap it -- the CTA below is in a `flex: 1` slot
+  // pinned to the bottom, so nothing else moves.
+  headlineSlot: { minHeight: 32, justifyContent: 'flex-end' },
   headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink },
   sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 6 },
   actionSlot: { flex: 1, justifyContent: 'flex-end' },
