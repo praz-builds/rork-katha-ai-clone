@@ -193,9 +193,9 @@ What this file is still the contract for:
   reason the headlines are short; it is not a tone choice.
 - Hero band 478, message sheet minimum 322, slide cards at radius 22.
 - The slide cards are 334 wide and the column is clamped to 430. Below about
-  342 points of window width the first headline wraps, and below 390 the cards
-  are wider than the gutter allows and are clipped by the slide's own
-  `overflow: hidden`. The reference frame is 390 x 844.
+  342 points of window width the first headline wraps. See *Narrow windows*
+  under **Intro Frame** for what the cards do; the reference frame is
+  390 x 844.
 
 **Bricolage is for Home display titles and onboarding headings only.** Profile,
 public profile, Journey, and Profile-owned sheet headings, display names, and
@@ -416,7 +416,7 @@ Each slide has **one shared progress value, counted in milliseconds**, read by e
 | 0 to 450 | Card fades in |
 | 300 / 600 / 900 | Story card, then the two shelves, rise 10 points and fade in over 400 ms |
 | 1,200 to 3,300 | Both shelves settle from a small inset to flush left, at different rates. They never drift negative: a shelf already says *there is more* by overflowing the right edge, and a negative drift slices the leading tile against the card edge |
-| 2,500 to 2,650 | The first tile's heart fills and its count ticks by one |
+| 2,650 | The first tile's heart fills and its count ticks by one, in one step |
 | 3,000 to 3,350 | The story card takes an orange border, as if tapped |
 | 3,350 to 4,150 | Shared-element morph, ease-out cubic: the cover grows from the Home well to a 334 x 230 band. Its box is computed by hand from this clock, anchored towards the top (`COVER_FOCUS_Y`), because `resizeMode="cover"` always centres and centred cuts a head off |
 | 3,350 to 3,750 | Home content fades out |
@@ -543,8 +543,8 @@ After onboarding or paywall changes:
 4. Start the preview with `scripts/preview.sh` and open the URL it prints (8090 unless `KATHA_PREVIEW_PORT` overrides it; only 8090 is in `ALLOWED_ORIGINS`, so any other port fails every edge call). It serves `main` from its own worktree -- so run this pass **after** the change has merged. Do not start a server on 8090 from your lane worktree to shortcut it; that silently replaces the reviewed state with your branch (see *The preview shows main, and only main* in AGENTS.md). For a pre-merge look, use port 8091 and expect edge calls to fail CORS.
 5. Open that URL in the in-app browser, and confirm the commit the script printed is the one you expect.
 6. Set the viewport to 390 x 844.
-7. Watch all 10.5 seconds of Create and all 9.6 seconds of Publish.
-8. Confirm prompt wrapping remains fixed, the button visibly presses, the rewritten word changes in place, likes reach 246, avatars use real assets, and the notification is not clipped.
+7. Watch all 5.2 seconds of Character, all 9.2 seconds of Story, and all 8.8 seconds of Read and listen. Each begins 350 ms after its slide becomes active.
+8. Confirm the appearance field finishes typing and the portrait lands whole; Praz joins the cast and the second opening is chosen; the first shelf heart ticks 428 to 429, the cover morphs without cutting either character's head, and **Listen** becomes **Listening** with the meter running.
 9. Confirm all three intro slides use identical hero, stage, sheet, headline, description, and action slots.
 10. Complete purpose, name, genre, all three persona branch variants, building, notification actions, annual paywall trial, weekly no-trial option, close confirmation, email, OTP, success, and Home handoff. There is **no** one-time offer step to verify; if you find one on screen, that is the bug.
 11. Check keyboard-open states, narrow width, and at least one native phone build before release.
