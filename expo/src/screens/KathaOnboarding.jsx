@@ -125,13 +125,27 @@ const EASE_OUT_CUBIC = (x) => { 'worklet'; return 1 - Math.pow(1 - clamp01(x), 3
 const DUR = [5200, 9200, 8800];
 
 // ── Copy ────────────────────────────────────────────────────────────────────
+/**
+ * What the reader can DO, not what the screen is showing.
+ *
+ * The first pass narrated: "Meet the lead of your story" invites you to be
+ * introduced to somebody who already exists, when the thing on offer is that
+ * YOU make them. Every headline is now the capability in the second person,
+ * and every subcopy is the same shape underneath it -- what it costs you, then
+ * what Katha does with it -- so the three screens read as one promise getting
+ * bigger rather than three descriptions.
+ *
+ * Length is load-bearing, not taste. The headline slot is two lines at 31.3
+ * (64pt) and the subcopy slot is 54pt at 22.5; a subcopy past about 85
+ * characters becomes a third line and is clipped. Keep them under it.
+ */
 const HEADLINES = [
-  ['Meet the lead of your story',
-    'Describe them in a line and Katha draws them. Two details are all it takes.'],
-  ['Katha drafts it, you steer it',
-    "AI-written directions to choose from. Edit any line or reprompt until it's yours."],
-  ['Your story, ready to read or listen',
-    'Read or listen anywhere, publish it, and see what other writers share.'],
+  ['Create your own character',
+    'A name and one line about their look. Katha draws them, and they lead your story.'],
+  ['Turn one line into a whole story',
+    'Katha drafts it from your idea, then you rewrite any line until it sounds like you.'],
+  ['Read it, or listen to it',
+    "Katha narrates every chapter. Publish when you're ready, and read what others write."],
 ];
 
 const SLIDE_NAMES = ['character', 'story', 'read'];
@@ -474,9 +488,11 @@ function useReducedMotionPreference() {
 // ── Bottom sheet ────────────────────────────────────────────────────────────
 function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
   const [h, s] = HEADLINES[phase];
+
   // The copy crossfades in its fixed slots: opacity only, so nothing reflows
   // and reduced motion keeps the same gentle change.
   const enter = FadeIn.duration(reduceMotion ? 0 : 300).easing(EASE_OUT);
+
   return (
     <View testID="intro-sheet" style={styles.sheet}>
       <View style={styles.dots}>
@@ -503,7 +519,16 @@ function BottomSheet({ phase, onDot, onFinish, onSignIn, reduceMotion }) {
         ))}
       </View>
       <Animated.View key={phase} entering={enter}>
-        <Text style={styles.headline}>{h}</Text>
+        {/* The headline slot is two lines tall so the sheet never reflows
+            between slides. A one-line headline therefore leaves a line of
+            slack, and that slack used to fall BETWEEN the headline and the
+            subcopy -- a 30pt hole that made the two look unrelated on two of
+            the three screens. Bottom-aligning the headline inside its own slot
+            moves the slack above it instead, against the dots, where it reads
+            as breathing room. The slot keeps its height either way. */}
+        <View style={styles.headlineSlot}>
+          <Text style={styles.headline}>{h}</Text>
+        </View>
         <Text style={styles.sub}>{s}</Text>
       </Animated.View>
       <View style={styles.actionSlot}>
@@ -1103,8 +1128,7 @@ function ListenLabel({ t, reduceMotion }) {
   const beat = useSharedValue(0);
   useEffect(() => {
     if (reduceMotion || !listening) return undefined;
-    // 880ms is one full cycle of sin(t/140): the spec's own period.
-    beat.set(withRepeat(withTiming(1, { duration: 880, easing: Easing.linear }), -1));
+    beat.set(withRepeat(withTiming(1, { duration: BAR_CYCLE_MS, easing: Easing.linear }), -1));
     return () => cancelAnimation(beat);
   }, [beat, listening, reduceMotion]);
 
@@ -1118,13 +1142,42 @@ function ListenLabel({ t, reduceMotion }) {
   );
 }
 
-/** height = 5 + 9·|sin(t/140 + k·1.4)|, or the still frame's 6/12/8. */
-const BAR_REST = [6, 12, 8];
+/**
+ * The three equaliser bars.
+ *
+ * ## Why this is a plain sine and a third of a cycle apart
+ *
+ * It was `5 + 9·|sin(t/140 + k·1.4)|`, straight from the handoff spec, and it
+ * looked wrong for two separate reasons.
+ *
+ * `|sin|` has period π, so offsets of 0, 1.4 and 2.8 land at 0%, 45% and 89%
+ * of a cycle — the first and third bars end up nearly in phase, rising and
+ * falling together while the middle one does the opposite. That is the
+ * "outside two together, middle against them" pulse the founder saw, and it
+ * reads as a heartbeat, not as music.
+ *
+ * `|sin|` also turns around instantly at every zero crossing, because the
+ * curve reflects instead of easing through the bottom. Even with good phases
+ * it twitches at the floor of each bounce.
+ *
+ * A plain sine mapped into 0..1, with the bars exactly a third of a cycle
+ * apart, gives the standard travelling wave: at any instant all three bars are
+ * at different heights, each one peaks after the one to its left, and every
+ * turn eases. `BAR_MAX` is taller in the middle because that is what a level
+ * meter looks like — three bars of identical range read as a machine.
+ */
+const BAR_CYCLE_MS = 760;
+/** The still heights, used before playback starts and under reduced motion. */
+const BAR_REST = [5, 9, 6];
+const BAR_MIN = 3;
+const BAR_MAX = [8, 11, 9];
 
 function Bar({ k, beat, live }) {
   const style = useAnimatedStyle(() => {
     if (!live) return { height: BAR_REST[k] };
-    return { height: 5 + 9 * Math.abs(Math.sin(beat.get() * 2 * Math.PI + k * 1.4)) };
+    // k / 3 of a cycle apart: 0°, 120°, 240°.
+    const wave = 0.5 + 0.5 * Math.sin(2 * Math.PI * (beat.get() + k / 3));
+    return { height: BAR_MIN + (BAR_MAX[k] - BAR_MIN) * wave };
   });
   return <Animated.View style={[styles.bar, style]} />;
 }
@@ -1148,8 +1201,9 @@ const styles = StyleSheet.create({
   // 44pt tall, 3pt either side of the dot: adjacent targets meet at the SPEC's
   // 6pt gap, and the negative margin keeps the visible row at 6pt.
   dotHit: { height: 44, marginVertical: -19, paddingHorizontal: 3, justifyContent: 'center' },
-  headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink, height: 64 },
-  sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 8 },
+  headlineSlot: { height: 64, justifyContent: 'flex-end' },
+  headline: { fontFamily: F.briBold, fontWeight: '700', fontSize: 27, lineHeight: 31.3, letterSpacing: 0, color: C.ink },
+  sub: { fontFamily: F.hanken, fontWeight: '500', fontSize: 15, lineHeight: 22.5, color: C.muted, height: 54, marginTop: 6 },
   actionSlot: { flex: 1, justifyContent: 'flex-end' },
   signInBelow: { fontSize: 14, color: C.muted },
   signInBelowLink: { color: C.orange, fontWeight: '700' },
@@ -1267,23 +1321,30 @@ const styles = StyleSheet.create({
   pageGenreChip: { alignSelf: 'flex-start', borderWidth: 1.5, borderColor: C.field, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginTop: 8 },
   pageGenreText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 11, color: C.inkSoft },
   pageBlurb: { fontFamily: F.hanken, fontSize: 13.5, lineHeight: 19, color: C.inkSoft, marginTop: 10 },
-  pageActions: { position: 'absolute', left: 18, right: 18, bottom: 18, flexDirection: 'row', gap: 10 },
+  // Content-width and left-aligned, not two half-width blocks. Stretched edge
+  // to edge they were the heaviest thing on the slide, competing with the one
+  // control the screen actually wants pressed.
+  pageActions: { position: 'absolute', left: 18, right: 18, bottom: 18, flexDirection: 'row', gap: 8 },
   /*
-    OUTLINED, not filled, and for a composition reason rather than a taste one.
-    "Get started" sits directly below this slide in the sheet, and it is the
-    one real, filled, accent CTA on the screen. Two filled orange pills inside
-    the illustration competed with it -- three orange blocks stacked down the
-    same column, with the only pressable one in the middle of them. The
-    accent-outlined, accent-labelled treatment is the app's own second tier
-    (`components/reader/ChapterEnd.tsx#secondaryButton`), so these read as the
-    reader's controls without out-shouting the button the screen actually
-    wants pressed.
+    OUTLINED AND SMALL, for a composition reason rather than a taste one.
+
+    "Get started" sits directly below this slide in the sheet and is the one
+    real, filled, accent CTA on the screen. These began as two filled 50pt
+    pills stretched edge to edge, which put three orange blocks down the same
+    column with the only pressable one at the bottom. Outlining them fixed the
+    colour competition; they were still the heaviest shapes on the slide, so
+    they are now 36pt and content-width as well.
+
+    The outline treatment is the app's own second tier
+    (`components/reader/ChapterEnd.tsx#secondaryButton`). At 36pt they also sit
+    under the button-recipe guard's 48pt floor, so the allow-list entry this
+    screen used to need is gone -- see `__tests__/button-recipe.test.ts`.
   */
-  pagePill: { flex: 1, height: 50, borderRadius: 999, borderWidth: 1.5, borderColor: C.orange, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
-  pagePillText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 14, color: C.orangeDeep },
-  listenRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  equaliser: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
-  bar: { width: 3, borderRadius: 2, backgroundColor: C.orangeDeep },
+  pagePill: { height: 36, borderRadius: 999, borderWidth: 1.5, borderColor: C.orange, backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  pagePillText: { fontFamily: F.hankenBold, fontWeight: '700', fontSize: 12.5, color: C.orangeDeep },
+  listenRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  equaliser: { flexDirection: 'row', alignItems: 'center', gap: 2.5, height: 11 },
+  bar: { width: 2.5, borderRadius: 2, backgroundColor: C.orangeDeep },
 
   signInTop: { position: 'absolute', top: 40, right: 24, zIndex: 19 },
   signInTopText: { fontSize: 15, fontWeight: '800', color: C.orange },

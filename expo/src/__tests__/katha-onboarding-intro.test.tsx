@@ -178,14 +178,14 @@ describe("KathaOnboarding intro -- swipe against the auto-advance", () => {
       dot.onResponderGrant(touch());
       dot.onResponderRelease(touch());
     });
-    view.getByText("Katha drafts it, you steer it");
+    view.getByText("Turn one line into a whole story");
     // Now the swipe's same-value request lands.
     await act(async () => {});
     expect(translateX()).toBe(-390);
 
     // The next real transition must move the hero.
     await fireEvent.press(view.getByLabelText("Show read intro"));
-    view.getByText("Your story, ready to read or listen");
+    view.getByText("Read it, or listen to it");
     expect(translateX()).toBe(-780);
   });
 });
