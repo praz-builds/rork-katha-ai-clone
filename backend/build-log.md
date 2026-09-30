@@ -163,8 +163,12 @@ Migration `00101` applied first, then the eight functions the drift audit named.
   `JP`+`buddhist`, converts and interfaith families are all expressible, and
   neither axis is ever derived from the other.
 - **`_shared/tradition-classify.ts`** — a pure, non-LLM classifier over the idea
-  text. Adversarially checked: "a church bake sale mystery", "a girl named
-  Christian" and "Grandma's Christmas cookies" all classify as no tradition.
+  text. Adversarially checked, in `_shared/tradition-classify.test.ts`: "A
+  bedtime story about a boy named Christian who loses his football", "A story
+  about a church bake sale that runs out of lemon cake" and "A tale about the
+  school Christmas play going hilariously wrong" all classify as no tradition.
+  Quoted as the test asserts them, so grepping the file for these strings finds
+  them.
 - **The depiction rules.** Muslim prophets are narrate-only: no face, no figure,
   no body, no outline or shadow standing in for them, and no character voices
   them. The cover prompt states a positive substitute subject *first* (landscape,

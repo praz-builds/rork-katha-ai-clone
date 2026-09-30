@@ -40,6 +40,19 @@ When available, use the local Expo skills in `.agents/skills` for Expo, React Na
 
 ## Production state (last verified 2026-09-29, main at `c4a034b`)
 
+**Re-audited 2026-09-29 after the faith round (#164-#167): migration `00101`
+applied, eight functions deployed, and 357 of 357 files identical, zero drift
+against `c4a034b`.** Five function folders changed -- `continue-story`,
+`generate-story`, `generate-story-stream`, `reimagine-chapter` and
+`shape-story` -- and three more reached the changed `_shared` files
+transitively with nothing in their own folders touched: `edit-story`,
+`generate-character-image` and `regenerate-cover`. Five plus three is the
+eight; deploy all of them. `stories.tradition` exists and is null for every
+pre-existing story, which is byte-for-byte the product that existed before it.
+**The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
+says `00001`-`00100`, which was true on its date and is the range this one
+supersedes.
+
 **The whole function surface was current with main at `e7222fb` on 2026-09-27,
 and nothing was deployed that day because nothing needed it.** All **34** functions were
 downloaded and every `.ts`/`.json` file in them compared byte for byte with this
@@ -51,23 +64,6 @@ non-zero on drift; it was negative-controlled first (appending one comment line
 to a downloaded copy was reported as drift), so the zero is a measurement rather
 than an empty loop. This supersedes nothing below -- the 09-25 and 09-26 deploys
 below are what made it true.
-
-**Read the 2026-09-29 paragraph first: it carries the current number.** The
-paragraphs below it are earlier audits, kept because each one records what was
-true on its own date, not superseded prose.
-
-**Re-audited 2026-09-29 after the faith round (#164-#167): migration `00101`
-applied, eight functions deployed, and 357 of 357 files identical, zero drift
-against `c4a034b`.** The audit named eight functions where only **five** folders had
-changed -- `edit-story`, `generate-character-image` and `regenerate-cover`
-reached the changed `_shared` files transitively, with nothing in their own
-folders touched. Five plus those three is the eight; an earlier version of this
-sentence said three folders and named two transitive functions, which adds to
-seven and would have left `edit-story` un-deployed on the old `story-prompts.ts`. `stories.tradition` exists and is null for every
-pre-existing story, which is byte-for-byte the product that existed before it.
-**The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
-says `00001`-`00100`, which was true on its date and is the range this one
-supersedes.
 
 **Re-audited 2026-09-28 against main at `84f94fa`, after #157 and #158: 346 of
 346 identical, zero drift, nothing to deploy.** That number is true of that
