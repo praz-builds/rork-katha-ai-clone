@@ -46,8 +46,8 @@ against `c4a034b`.** Five function folders changed -- `continue-story`,
 `generate-story`, `generate-story-stream`, `reimagine-chapter` and
 `shape-story` -- and three more reached the changed `_shared` files
 transitively with nothing in their own folders touched: `edit-story`,
-`generate-character-image` and `regenerate-cover`. Five plus three is the
-eight; deploy all of them. `stories.tradition` exists and is null for every
+`generate-character-image` and `regenerate-cover`. The set was eight, not
+the five. `stories.tradition` exists and is null for every
 pre-existing story, which is byte-for-byte the product that existed before it.
 **The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
 says `00001`-`00100`, which was true on its date and is the range this one

@@ -189,8 +189,16 @@ Migration `00101` applied first, then the eight functions the drift audit named.
 
 1. **The safety ladder would have stripped the depiction rules.** When a provider
    rejects a cover the prompt is simplified and retried; level 2 keeps only genre,
-   title, `avoid` and art style. The tradition sits in the `base` object every rung
-   keeps, so a rung added later cannot forget it.
+   title, `avoid` and art style. **A test holds this line, not the argument
+   shape.** `image.test.ts:914` ("a cover's depiction rules survive every rung of
+   the safety ladder") drives `buildCoverPromptForLevel` to exhaustion and runs
+   `assertDepictionSurvives` against every prompt the chain sends. The cover
+   ladder's three rungs each call `buildCoverPrompt` positionally and each repeats
+   `tradition` by hand as the ninth argument (`image.ts:441`, `:458`, `:486`), so
+   a fourth rung added later CAN forget it -- and would reproduce this trap
+   silently, at the rung with no cast, setting, themes or steer left. The
+   `base`-object construction that makes forgetting impossible is the *chapter
+   art* ladder (`image.ts:357-363`), not this one. Do not weaken the test.
 2. **Regenerated covers would have lost the rules silently.** `regenerateCover`
    builds its input from the `claim_cover_regeneration` RPC, not a row select, so
    the first cover would have obeyed the policy and the second would not. The RPC
@@ -210,6 +218,26 @@ Migration `00101` applied first, then the eight functions the drift audit named.
   lint 0 errors, 160 suites / 1,738 tests, expo-doctor 18/18.
 
 ### What is NOT verified, and matters most
+
+**The narrate-only rule does not reach the paragraph editor, and `edit-story` is
+in this entry's own deploy set.** "No character voices them" is enforced in two
+places — the image layer via `narrateOnly` and the story-prompt layer via
+`narrationRules` — and neither is the edit path. `edit-story/index.ts` sends a
+fixed four-line `EDIT_SYSTEM_PROMPT` and contains no `tradition` at all
+(`grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
+`reimagine-chapter` and 10 in `generate-story`).
+
+So: a writer opens a story whose family set `tradition: "muslim"`, selects the
+paragraph where the prophet appears, and types *"have him say this out loud"*.
+The edit complies, because the rule is not in the prompt it sends, and
+`enforceProseIntegrity` does not object — it guards against losing text, not
+against what the text says. The chapter persists with attributed dialogue the
+cover path would refuse to draw.
+
+`edit-story` is in the eight deployed above because its bundle carries the
+changed `_shared` files, not because it uses them. It is deployed into the
+faith layer carrying none of it. **Threading `tradition` through the edit path
+is open work**, not done here.
 
 **No image was generated.** Every image test asserts a prompt string. Whether the
 model obeys "no face, no figure, no human form" is untested and untestable from
