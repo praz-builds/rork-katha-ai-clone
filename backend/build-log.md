@@ -1784,8 +1784,9 @@ carried through to the place an agent actually reads:
 - Promoting it made **`expo/DESIGN.md` stale by declaration** -- 559 lines that
   open "the definitive design contract" -- while `AGENTS.md` still routed UI
   work to it and separately forbade "parallel design-system documents". The
-  contract now says which wins where they overlap (onboarding, the paywalls,
-  the neutral ramp), that `expo/DESIGN.md` still describes the unmigrated
+  contract now says which wins where they overlap (onboarding and the
+  neutral ramp — the paywalls are out of `DESIGN_SYSTEM.md`'s scope by its own
+  §4.1, and an earlier version of this line and of `AGENTS.md` included them), that `expo/DESIGN.md` still describes the unmigrated
   surfaces, and that the two are one system at two stages rather than a
   violation of the no-parallel rule.
 
