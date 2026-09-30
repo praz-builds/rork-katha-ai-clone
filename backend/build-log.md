@@ -5,6 +5,47 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-09-30 UTC — `@claude` has no author gate, and the contract said it did
+
+`AGENTS.md` claimed `@claude` "can only be invoked by users with write access".
+`claude-mention.yml`'s `if:` tests `vars.CLAUDE_ACTION_ENABLED` and an
+`@claude` string across four triggers and nothing else — no `author_association`,
+no same-repository test, no bot test — while the workflow holds
+`contents: write`, `pull-requests: write` and `issues: write`.
+`claude-review.yml` has no author check either, so there is none to copy.
+
+Inert today only because the variable is unset. **Setting that variable is the
+act that makes the absence live**, which is why the corrected line, and now the
+workflow's own header, say to write the author check first.
+
+**Writing one is harder than it looks**, and this entry exists mostly to record
+why. Three traps, each of which yields a gate that reads as done:
+
+1. The four triggers carry different payloads — two read
+   `github.event.comment`, `pull_request_review` reads `github.event.review`,
+   `issues` reads `github.event.issue`. One check on `comment.user` fails both
+   ways: open on two events, or silently killing `@claude` on them.
+2. On `issues: [assigned]` the actor is the assigner, not the issue's author,
+   so `github.event.issue.user` gates the wrong person.
+3. `github.triggering_actor` is a login, not an association, so it cannot carry
+   an `author_association` test — and on a **Re-run** it is whoever pressed the
+   button. (Documented behaviour, not observed here: runs have reached the
+   action on this repository, but only before the gate existed, and none was
+   re-run.)
+
+The shape that survives all three is to resolve the actor's permission in a
+step, the way the workflow already resolves the branch, and gate on its output.
+That is a direction, not a specification.
+
+Also corrected: `AGENTS.md` put the paywalls inside the scope
+`source-of-truth/DESIGN_SYSTEM.md` wins, which its §2 *Migration boundary*
+explicitly excludes — in the bullet telling an agent to read those files before
+changing paywalls, so following it would migrate the surface as a side effect
+of unrelated work, which §2 forbids.
+
+**Nothing to deploy**: no path under `backend/supabase/functions/`, and the
+workflow change is comment-only.
+
 ## 2026-09-29 UTC — Two reviews were read after the merge, not before it
 
 PR #169 rewrote the onboarding intro. It was reviewed three times by a Fable 5.1
