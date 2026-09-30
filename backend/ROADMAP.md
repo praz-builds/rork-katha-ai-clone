@@ -114,7 +114,10 @@ client-supplied `chapter_body` with no model involved and which no prompt
 change reaches at all. See `backend/build-log.md`, the 2026-09-29 faith-round
 entry, *What is NOT verified, and matters most*.
 
-- [ ] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (`index.ts:329`)
+- [ ] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (`index.ts:329`).
+      **Blocked on an input:** that endpoint has no tradition field, no story row to read one from, and never
+      classifies. Needs a client picker plus a field, or a classifier call on the Craft sheet's own text —
+      the same shape as the `artStyle` gap, which stayed open until the client started sending `imageStyle`.
 - [ ] `edit-story` applies the tradition's `narrationRules` on the model route — both call sites, `index.ts:374` and `:324`
 - [ ] The whole-chapter save at `edit-story/index.ts:111` is covered by a check on what is written, not a prompt
 

@@ -253,8 +253,16 @@ would leave scripture quotation open for three traditions — in the layer whose
 own `notes` field says both layers must honour the rule independently and
 neither may rely on the other.
 
-So: a writer opens a story whose family set `tradition: "muslim"`, selects the
-paragraph where the prophet appears, and types *"have him say this out loud"*.
+**And nobody chose the constraint they are escaping.** `stories.tradition` has
+exactly one setter in the shipped product — `classifyTraditionForGeneration`
+over the writer's own idea text (`generate-story`, `generate-story-stream`,
+`shape-story`). Each has an explicit-request branch no client fills; the source
+says why in its own words: *"No picker ships yet."* `grep -rn tradition
+expo/src` finds it in no client file.
+
+That makes the exposure sharper, not softer. A writer whose idea text happened
+to classify as `muslim` selects the paragraph where the prophet appears and
+types *"have him say this out loud"*.
 The edit complies, because the rule is not in the prompt it sends, and
 `enforceProseIntegrity` does not object — it guards against losing text, not
 against what the text says. The chapter persists with attributed dialogue the
@@ -267,9 +275,14 @@ It does not: `generate-character-image/index.ts:329` calls it with four
 arguments, ending at `artStyle`, and `grep -c tradition` on that function
 returns **0** — the same zero cited above for `edit-story`.
 
-So a writer whose Create brief is set to `muslim` can open the Craft sheet,
-draft a character named for a prophet, and get a portrait drawn with no
-depiction rule applied: no `narrateOnly`, no positive substitute. The same
+The endpoint has nothing to pass, which is the point: its body is
+`request_id`, `name`, `appearance`, `description`, `reference_image` and
+`image_style` — no tradition field, no story row yet, and it never classifies.
+Closing it is a client picker plus a field, or a classifier call on what the
+Craft sheet actually has; the same shape as the `artStyle` gap recorded below,
+which stayed open until the client started sending `imageStyle`. So a draft
+portrait today is drawn with no depiction rule applied at all: no
+`narrateOnly`, no positive substitute. The same
 figure reaching a *cover* is refused, by the safety ladder this entry spends a
 numbered trap defending. That is the image layer — the layer this round exists
 for — and the output is a rendered image, not a prompt string.
