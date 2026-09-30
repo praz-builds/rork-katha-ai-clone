@@ -38,7 +38,24 @@
 
 When available, use the local Expo skills in `.agents/skills` for Expo, React Native, native mobile, EAS, or simulator work. Prefer the relevant specialized skill before implementation and run the applicable review/testing workflow before broad or release-sensitive changes. Do not commit moving-source skill lockfiles without immutable revisions and verified hashes.
 
-## Production state (last verified 2026-09-28, main at `d92ceee`)
+## Production state (last verified 2026-09-29, main at `c4a034b`)
+
+**Re-audited 2026-09-29 after the faith round (#164-#167): migration `00101`
+applied, eight functions deployed, and 357 of 357 files identical, zero drift
+against `c4a034b`.** Five function folders changed -- `continue-story`,
+`generate-story`, `generate-story-stream`, `reimagine-chapter` and
+`shape-story` -- and three more reached the changed `_shared` files
+transitively with nothing in their own folders touched: `edit-story`,
+`generate-character-image` and `regenerate-cover`. The set was eight, not
+the five. `stories.tradition` exists and is null for every
+pre-existing story, which is byte-for-byte the product that existed before it.
+**The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
+says `00001`-`00100`, which was true on its date and is the range this one
+supersedes. **Zero drift is not full coverage:** three write paths enforce none
+of the tradition rules -- `generate-character-image` draws a draft portrait
+without them, and both of `edit-story`'s routes write prose without them. See
+the Phase B checklist in `backend/ROADMAP.md` before extending or relying on
+the tradition constraint.
 
 **The whole function surface was current with main at `e7222fb` on 2026-09-27,
 and nothing was deployed that day because nothing needed it.** All **34** functions were

@@ -151,6 +151,180 @@ gate for days without it existing. No secrets were added and no deploy followed
 
 ---
 
+## 2026-09-29 UTC — The cultural/faith layer, shipped and deployed
+
+**Session:** four lanes, merged as #164, #165, #166 and #167, then deployed.
+Migration `00101` applied first, then the eight functions the drift audit named.
+
+### What shipped
+
+- **`_shared/traditions.ts`** — a closed contract with a per-tradition
+  representation policy. Culture and faith are independent axes: `IN`+`christian`,
+  `JP`+`buddhist`, converts and interfaith families are all expressible, and
+  neither axis is ever derived from the other.
+- **`_shared/tradition-classify.ts`** — a pure, non-LLM classifier over the idea
+  text. Adversarially checked, in `_shared/tradition-classify.test.ts`: "A
+  bedtime story about a boy named Christian who loses his football", "A story
+  about a church bake sale that runs out of lemon cake" and "A tale about the
+  school Christmas play going hilariously wrong" all classify as no tradition.
+  Quoted as the test asserts them, so grepping the file for these strings finds
+  them.
+- **The depiction rules.** Muslim prophets are narrate-only: no face, no figure,
+  no body, no outline or shadow standing in for them, and no character voices
+  them. The cover prompt states a positive substitute subject *first* (landscape,
+  light, objects, architecture, pattern) and the prohibition second, because a
+  prohibition alone leaves the model to invent a subject.
+- **The precedence fix.** `buildBaseRules` told the model culture is derived from
+  character names, from the system prompt's strongest layer, with "Priya Menon" as
+  a worked example. A stated tradition now outranks inference from names, as
+  static text so the cache prefix survives.
+- **Migration `00101`** — `stories.tradition`, so the constraint survives into
+  chapters 2..N and reaches the cover pipeline at publish time.
+- **The no-character path** (#164): the cast-less brief went from 250 bytes to
+  1,681. The model is now asked for a protagonist with an age and a want, a
+  supporting cast with relationships predating page one, an invented conflict, and
+  an arc for an idea that is only an image.
+
+### Three traps avoided, each verified rather than assumed
+
+1. **The safety ladder would have stripped the depiction rules.** When a provider
+   rejects a cover the prompt is simplified and retried; level 2 keeps only genre,
+   title, `avoid` and art style. **A test holds this line, not the argument
+   shape.** `image.test.ts:914` ("a cover's depiction rules survive every rung of
+   the safety ladder") drives `buildCoverPromptForLevel` to exhaustion and runs
+   `assertDepictionSurvives` against every prompt the chain sends. The cover
+   ladder's three rungs each call `buildCoverPrompt` positionally and each repeats
+   `tradition` by hand as the ninth argument (`image.ts:441`, `:458`, `:486`), so
+   a fourth rung added later CAN forget it -- and would reproduce this trap
+   silently, at the rung with no cast, setting, themes or steer left. The
+   `base`-object construction that makes forgetting impossible is the *chapter
+   art* ladder (`image.ts:357-363`), not this one. Do not weaken the test.
+2. **Regenerated covers would have lost the rules silently.** `regenerateCover`
+   builds its input from the `claim_cover_regeneration` RPC, not a row select, so
+   the first cover would have obeyed the policy and the second would not. The RPC
+   now returns the tradition.
+3. **Deploy ordering.** `_shared/media.ts` selects `tradition`, so functions
+   deployed before `00101` would have broken cover generation for **every** story.
+   `p_tradition text default null` on `begin_story_generation` makes the migration
+   safe to apply ahead of the functions.
+
+### Verification
+
+- Migration `00101` applied; `stories.tradition` answers over PostgREST.
+- Drift audit named **8** functions, not the 5 whose folders changed —
+  `edit-story`, `generate-character-image` and `regenerate-cover` drifted only transitively.
+  After deploying: **357 of 357 files identical, zero drift** against `c4a034b`.
+- Backend suite 1301 passed / 0 failed. Expo on the same main: typecheck clean,
+  lint 0 errors, 160 suites / 1,738 tests, expo-doctor 18/18.
+
+### What is NOT verified, and matters most
+
+**The edit path applies NO tradition rules at all, for any tradition, and
+`edit-story` is in this entry's own deploy set.** Not one rule and not one
+tradition: all four supported traditions (`christian`, `muslim`, `jewish`,
+`hindu`) carry six `narrationRules` each, plus `UNIVERSAL_SCRIPTURE_RULES`, and
+none of them reach a paragraph edit.
+
+The mechanism is **not** a missing import — `edit-story` does reach
+`story-prompts.ts` transitively through `story-stream.ts`, which is why its
+bundle carried the changed `_shared` files and why it is in the deploy set
+above. It simply never uses them: the function contains no `tradition` at all
+(`grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
+`reimagine-chapter` and 10 in `generate-story`), so it never reads the column
+off the row and never calls the builder that applies the rules. An earlier
+version of this paragraph said it did not import the module; that was a direct
+grep mistaken for a dependency check, and it contradicted the deploy-set
+sentence twenty lines up.
+
+Three of the four traditions carry their own scripture-quotation prohibition
+(`muslim`, `jewish`, `hindu`). Taking the Muslim set as the worked example, two
+of its rules are sharper than the dialogue one:
+
+- *"Never quote the Qur'an and never quote a hadith, in Arabic or in
+  translation, however short and however sure you are of it."* A writer selects
+  a paragraph and types *"add the verse he recited here"*. The chapter persists
+  with quoted scripture the generation path would have refused to write, on the
+  same story, under the same classified tradition.
+- *"Do not resolve the story by divine intervention."* *"Make the rescue
+  miraculous"* lands the same way.
+
+Scoping a later fix to the dialogue rule, or to the Muslim tradition alone,
+would leave scripture quotation open for three traditions — in the layer whose
+own `notes` field says both layers must honour the rule independently and
+neither may rely on the other.
+
+**And nobody chose the constraint they are escaping.** `stories.tradition` has
+exactly one setter in the shipped product — `classifyTraditionForGeneration`
+over the writer's own idea text (`generate-story`, `generate-story-stream`,
+`shape-story`). Each has an explicit-request branch no client fills; the source
+says why in its own words -- *"No picker ships yet"* in `generate-story` and
+`generate-story-stream`, *"No picker exists yet"* in `shape-story`. No client file sends a
+`tradition` field; the three explicit-request branches exist for a picker that
+does not ship. (`grep -rn tradition expo/src` is not the check -- it matches the
+English word inside a seeded story excerpt.)
+
+That makes the exposure sharper, not softer. A writer whose idea text happened
+to classify as `muslim` selects the paragraph where the prophet appears and
+types *"have him say this out loud"*.
+The edit complies, because the rule is not in the prompt it sends, and
+`enforceProseIntegrity` does not object — it guards against losing text, not
+against what the text says. The chapter persists with attributed dialogue the
+cover path would refuse to draw.
+
+**A third path is uncovered, and it renders an image.**
+`generateDraftCharacterPortrait` (`_shared/image.ts:594`) takes a `tradition`
+parameter and its own docblock says the endpoint "does not yet pass this".
+It does not: `generate-character-image/index.ts:329` calls it with four
+arguments, ending at `artStyle`, and `grep -c tradition` on that function
+returns **0** — the same zero cited above for `edit-story`.
+
+The endpoint has nothing to pass, which is the point: its body is
+`request_id`, `name`, `appearance`, `description`, `reference_image` and
+`image_style` — no tradition field, no story row yet, and it never classifies.
+Closing it is a client picker plus a field, or a classifier call on what the
+Craft sheet actually has; the same shape as the `artStyle` gap recorded below,
+which stayed open until the client started sending `imageStyle`. So a draft
+portrait today is drawn with no depiction rule applied at all: no
+`narrateOnly`, no positive substitute. The same
+figure reaching a *cover* is refused, by the safety ladder this entry spends a
+numbered trap defending. That is the image layer — the layer this round exists
+for — and the output is a rendered image, not a prompt string.
+
+`generate-character-image` is in this entry's deploy set of eight, listed there
+only as a bundle that drifted transitively. That is the same framing this entry
+demolishes for `edit-story`, and it is equally true of both: deployed into the
+faith layer carrying none of it. Recorded here, **not fixed**, the way the
+`artStyle` gap on this same endpoint was recorded when it had the same shape.
+
+**And on the edit path, a prompt fix alone would not be enough.**
+`edit-story/index.ts:111`
+routes a whole-chapter save to `saveWholeChapter` before any paragraph-edit
+validation, and that path involves no model at all — the client supplies
+`chapter_body` and it is persisted. No instruction added to
+`EDIT_SYSTEM_PROMPT` reaches it. Closing this properly means the prompt layer
+*and* a check on what is written.
+
+`edit-story` is in the eight deployed above because its bundle carries the
+changed `_shared` files, not because it uses them. It is deployed into the
+faith layer carrying none of it. **This is open work**, not done here.
+
+**No image was generated.** Every image test asserts a prompt string. Whether the
+model obeys "no face, no figure, no human form" is untested and untestable from
+this repo, as is whether *naming* the prophets inside a negative clause primes the
+model toward them rather than away, and whether the clauses trip a provider's own
+filter (which would walk all three rungs and drop the story to a concept card).
+Before this is depended on: generate covers across all four traditions, including
+deliberately hard ones, and have someone **from inside each tradition** look at
+them.
+
+**The Divine-depiction rule is unresolved** and defaults conservative for all four
+traditions. `DIVINE_DEPICTION_CONFLICT` records both of the founder's conflicting
+instructions verbatim; relaxing it is a one-line edit per tradition.
+
+**Canonical retelling is not supported.** Phase 1 ships `inspired` only — there is
+no verified source material, folklore figures are excluded from grounding, and the
+base prompt still instructs silent renaming of casts from existing works.
+
 ## 2026-09-27 UTC — The reader records reads, so two dead mechanics come alive
 
 **Session:** founder decision, taken after review of the credits round found that
@@ -431,6 +605,9 @@ is for what an OTA or a console toggle can deliver, and the ladder starts paying
 with the first build that carries this branch. The canonical rule is annotated too: a reader
 checking what a streak day costs opens `CREDITS_AND_PRICING.md` §5 or
 `AGENTS.md`, not a chronological log, and both now say what is enforced.
+
+---
+
 ## 2026-09-28 UTC — The five-a-month cap is live, and the rotor reaches the prices
 
 **Session:** the deploy of #156, the two items its last review raised after it

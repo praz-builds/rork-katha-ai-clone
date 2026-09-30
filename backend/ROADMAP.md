@@ -80,6 +80,47 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
+### Cultural/faith layer — shipped, with three paths uncovered
+
+Shipped 2026-09-29 (migration `00101`, eight functions). `_shared/traditions.ts`
+carries each tradition's depiction policy and `narrationRules`; the image layer
+honours them via `narrateOnly`, the story-prompt layer via `narrationRules` in
+`story-prompts.ts`.
+
+**Open: `edit-story` applies none of it, for any tradition.** All four
+supported traditions carry six `narrationRules` each, plus
+`UNIVERSAL_SCRIPTURE_RULES`, and none reach a paragraph edit — including the
+scripture-quotation prohibition that `muslim`, `jewish` and `hindu` each carry.
+The function reaches `story-prompts.ts` transitively (through
+`story-stream.ts`, which is why its bundle carried the changed `_shared` files)
+but contains no `tradition` at all, so it never reads the column off the row
+and never calls the builder. A writer can edit a paragraph into quoted
+scripture, or into prophet dialogue, that the generation path would have
+refused to write on the same story. `traditions.ts`'s own `notes` say both
+layers must honour the rule independently.
+
+Three routes need covering. **The image one is the sharpest**, because its
+output is a rendered picture: `generate-character-image/index.ts:329` calls
+`generateDraftCharacterPortrait` without the `tradition` argument the function
+accepts, so a draft portrait is drawn with no depiction rule applied — while
+the same figure on a cover is refused. Checklist below.
+
+On the edit path, two routes. The model route has **two call sites** —
+`editParagraph` at `edit-story/index.ts:374` and `streamChapterProse` at `:324`
+for the streamed transport — so scoping the work from the `EDIT_SYSTEM_PROMPT`
+constant misses one the moment the prompt has to be built per request. The
+second route is the whole-chapter save at `:111`, which persists
+client-supplied `chapter_body` with no model involved and which no prompt
+change reaches at all. See `backend/build-log.md`, the 2026-09-29 faith-round
+entry, *What is NOT verified, and matters most*.
+
+- [ ] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (`index.ts:329`).
+      **Blocked on an input:** that endpoint has no tradition field, no story row to read one from, and never
+      classifies. Needs a client picker plus a field, or a classifier call on the Craft sheet's own text —
+      the same shape as the `artStyle` gap, which stayed open until the client started sending `imageStyle`.
+- [ ] `edit-story` applies the tradition's `narrationRules` on the model route — both call sites, `index.ts:374` and `:324`
+- [ ] The whole-chapter save at `edit-story/index.ts:111` is covered by a check on what is written, not a prompt
+
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 
 Implementation exists in `_shared/image.ts` and `_shared/cover-prompts.ts`. Full reference: `COVER_IMAGES.md`.
@@ -609,7 +650,6 @@ wording is kept in the Item column so the two can be ticked together.
 | 7 | Wed 09-30 – Thu 10-01 | Walk the flow on a real Android device (background audio, lock screen, report, block, OTP; the intro must not scroll on a phone, since its page is `minHeight: window.height` and a non-edge-to-edge Android window can differ from the root view by the status bar; swipe the intro on the slowest phone). Report-queue owner named. RevenueCat products created so the key lands before production |
 
 ---
-
 
 ## Post-Launch (Phase I — Growth)
 
