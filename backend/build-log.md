@@ -2153,8 +2153,11 @@ CLAUDE_ACTION_ENABLED --body true` is all that stands between an unset
 `ANTHROPIC_API_KEY` and a failing job. Each still has its own conditions on top:
 the review job additionally requires a same-repository head, a non-draft pull
 request and a non-bot author, and starts no run at all when every changed file
-matches `paths-ignore`; the mention job requires an `@claude` string in one of
-its four events.
+matches `paths-ignore`; the mention job requires only an `@claude` string in
+one of its four events — **it has no author check**, and setting the variable is
+what makes that absence live on a job holding `contents: write`. Enabling is
+therefore two steps, not one: write that check, then set the variable (see the
+2026-09-30 entry at the top of this file).
 
 ### The mention workflow had a real bug, caught by the new reviewer
 
