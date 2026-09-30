@@ -2107,9 +2107,11 @@ Both Action workflows were also disabled with `gh workflow disable` at the time
 of this entry, not only gated. **That is no longer true:** since #170 (2026-09-29)
 both are `active` and the variable is the only switch — `gh variable set
 CLAUDE_ACTION_ENABLED --body true` is all that stands between an unset
-`ANTHROPIC_API_KEY` and a failing job. Each still has its own trigger on top:
-the review job runs on a pull request unless every changed file matches
-`paths-ignore`, and the mention job only when an `@claude` string appears.
+`ANTHROPIC_API_KEY` and a failing job. Each still has its own conditions on top:
+the review job additionally requires a same-repository head, a non-draft pull
+request and a non-bot author, and starts no run at all when every changed file
+matches `paths-ignore`; the mention job requires an `@claude` string in one of
+its four events.
 
 ### The mention workflow had a real bug, caught by the new reviewer
 
