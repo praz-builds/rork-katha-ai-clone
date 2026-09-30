@@ -2039,9 +2039,14 @@ credit rather than platform API credit. Three things learned the hard way:
   list`" survives only because the agent improvises with the GitHub MCP tools.
   Say MCP explicitly.
 - **The action refuses to run when a pull request's copy of a workflow file
-  differs from `main`.** That is its prompt-injection guard, and it means the
-  `Review the diff` check reports *pass* without reviewing anything on any PR
-  that edits these workflows. Do not read that check as approval there.
+  differs from `main`.** That is its prompt-injection guard: a change to the
+  reviewer's own instructions cannot be reviewed by the changed version. Such a
+  pull request shows the review as **skipped** and must be judged by hand
+  (`AGENTS.md`, *Pull request review*). **Unverified here:** with
+  `CLAUDE_ACTION_ENABLED` unset the job never starts, so the guard is
+  unreachable and nobody has observed it fire. Today a workflow-editing pull
+  request and an ordinary one both report `skipped`, for the gate's reason
+  rather than the guard's.
 - **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
   on the pull request.** Hence the variable gate.
 
@@ -2101,8 +2106,10 @@ Two findings from the reviewer's own second pass, both real:
 Both Action workflows were also disabled with `gh workflow disable` at the time
 of this entry, not only gated. **That is no longer true:** since #170 (2026-09-29)
 both are `active` and the variable is the only switch — `gh variable set
-CLAUDE_ACTION_ENABLED --body true` alone starts both jobs, and without an
-`ANTHROPIC_API_KEY` secret they fail on every pull request.
+CLAUDE_ACTION_ENABLED --body true` is all that stands between an unset
+`ANTHROPIC_API_KEY` and a failing job. Each still has its own trigger on top:
+the review job runs on a pull request unless every changed file matches
+`paths-ignore`, and the mention job only when an `@claude` string appears.
 
 ### The mention workflow had a real bug, caught by the new reviewer
 

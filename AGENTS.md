@@ -1563,8 +1563,9 @@ already stalled three pull requests:
 - **`Review the diff` reports `skipped` on every pull request and that is
   correct.** It is the gated-off Action (see *Pull request review*), it carries
   no review body, and it can never turn green while `CLAUDE_ACTION_ENABLED` is
-  unset. Waiting for it is the single most expensive mistake on this
-  repository: #149, #150 and one session in #169 all stalled on it. A pull
+  unset. Waiting for it has stalled #149 and #150. (#169 failed the other
+  way — an agent concluded from an empty workflow listing that no review
+  existed and merged past two that did; that is the bullet above.) A pull
   request opened before 2026-09-25 may instead carry a stale **red** one from
   when the Action ran unguarded; that is equally not a blocker.
 - CodeAnt's comment is advisory, not a gate.
