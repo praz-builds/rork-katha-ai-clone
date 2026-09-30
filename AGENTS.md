@@ -58,9 +58,12 @@ true on its own date, not superseded prose.
 
 **Re-audited 2026-09-29 after the faith round (#164-#167): migration `00101`
 applied, eight functions deployed, and 357 of 357 files identical, zero drift
-against `c4a034b`.** The audit named eight functions where only three folders had
-changed -- `generate-character-image` and `regenerate-cover` reached the changed
-`_shared` files transitively. `stories.tradition` exists and is null for every
+against `c4a034b`.** The audit named eight functions where only **five** folders had
+changed -- `edit-story`, `generate-character-image` and `regenerate-cover`
+reached the changed `_shared` files transitively, with nothing in their own
+folders touched. Five plus those three is the eight; an earlier version of this
+sentence said three folders and named two transitive functions, which adds to
+seven and would have left `edit-story` un-deployed on the old `story-prompts.ts`. `stories.tradition` exists and is null for every
 pre-existing story, which is byte-for-byte the product that existed before it.
 **The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
 says `00001`-`00100`, which was true on its date and is the range this one
