@@ -219,17 +219,26 @@ Migration `00101` applied first, then the eight functions the drift audit named.
 
 ### What is NOT verified, and matters most
 
-**The edit path carries NONE of the tradition's narration rules, and
-`edit-story` is in this entry's own deploy set.** Not just the dialogue rule:
-all **six** of the Muslim tradition's `narrationRules` (`traditions.ts:441-447`)
-are missing, because the edit path never reads the list. `narrationRules` is
-consumed by exactly one non-test file, `story-prompts.ts`, and
-`edit-story/index.ts` does not import it. The function contains no `tradition`
-at all — `grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
-`reimagine-chapter` and 10 in `generate-story` — and neither do its four
-non-trivial dependencies.
+**The edit path applies NO tradition rules at all, for any tradition, and
+`edit-story` is in this entry's own deploy set.** Not one rule and not one
+tradition: all four supported traditions (`christian`, `muslim`, `jewish`,
+`hindu`) carry six `narrationRules` each, plus `UNIVERSAL_SCRIPTURE_RULES`, and
+none of them reach a paragraph edit.
 
-Two of the missing five are sharper than the dialogue rule:
+The mechanism is **not** a missing import — `edit-story` does reach
+`story-prompts.ts` transitively through `story-stream.ts`, which is why its
+bundle carried the changed `_shared` files and why it is in the deploy set
+above. It simply never uses them: the function contains no `tradition` at all
+(`grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
+`reimagine-chapter` and 10 in `generate-story`), so it never reads the column
+off the row and never calls the builder that applies the rules. An earlier
+version of this paragraph said it did not import the module; that was a direct
+grep mistaken for a dependency check, and it contradicted the deploy-set
+sentence twenty lines up.
+
+Three of the four traditions carry their own scripture-quotation prohibition
+(`muslim`, `jewish`, `hindu`). Taking the Muslim set as the worked example, two
+of its rules are sharper than the dialogue one:
 
 - *"Never quote the Qur'an and never quote a hadith, in Arabic or in
   translation, however short and however sure you are of it."* A writer selects
@@ -239,9 +248,10 @@ Two of the missing five are sharper than the dialogue rule:
 - *"Do not resolve the story by divine intervention."* *"Make the rescue
   miraculous"* lands the same way.
 
-Scoping a later fix to the dialogue rule alone would close one of six and leave
-scripture quotation open — in the layer whose own `notes` field says both
-layers must honour the rule independently and neither may rely on the other.
+Scoping a later fix to the dialogue rule, or to the Muslim tradition alone,
+would leave scripture quotation open for three traditions — in the layer whose
+own `notes` field says both layers must honour the rule independently and
+neither may rely on the other.
 
 So: a writer opens a story whose family set `tradition: "muslim"`, selects the
 paragraph where the prophet appears, and types *"have him say this out loud"*.

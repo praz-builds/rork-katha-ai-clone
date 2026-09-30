@@ -78,29 +78,35 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 
 ## Phase B — Complete Generation Pipeline (IN PROGRESS)
 
-### Cultural/faith layer — shipped, with one path uncovered
+**Goal:** Every generated story gets a cover image + audio narration.
+
+### Cultural/faith layer — shipped, with two paths uncovered
 
 Shipped 2026-09-29 (migration `00101`, eight functions). `_shared/traditions.ts`
 carries each tradition's depiction policy and `narrationRules`; the image layer
 honours them via `narrateOnly`, the story-prompt layer via `narrationRules` in
 `story-prompts.ts`.
 
-**Open: `edit-story` carries none of it.** It does not import
-`story-prompts.ts`, contains no `tradition`, and so none of the Muslim
-tradition's six `narrationRules` reach a paragraph edit — including the
-prohibition on quoting the Qur'an or a hadith. A writer can edit a paragraph
-into quoted scripture or prophet dialogue that the generation path would have
-refused to write, on the same story. `traditions.ts`'s own `notes` say both
+**Open: `edit-story` applies none of it, for any tradition.** All four
+supported traditions carry six `narrationRules` each, plus
+`UNIVERSAL_SCRIPTURE_RULES`, and none reach a paragraph edit — including the
+scripture-quotation prohibition that `muslim`, `jewish` and `hindu` each carry.
+The function reaches `story-prompts.ts` transitively (through
+`story-stream.ts`, which is why its bundle carried the changed `_shared` files)
+but contains no `tradition` at all, so it never reads the column off the row
+and never calls the builder. A writer can edit a paragraph into quoted
+scripture, or into prophet dialogue, that the generation path would have
+refused to write on the same story. `traditions.ts`'s own `notes` say both
 layers must honour the rule independently.
 
-Two routes need covering, not one: the model path (`editParagraph`, which a
-prompt change reaches) and the whole-chapter save at `edit-story/index.ts:111`,
-which persists client-supplied `chapter_body` with no model involved and which
-no prompt change reaches. See `backend/build-log.md`, the 2026-09-29 faith-round
+Two routes need covering, not one. The model route has **two call sites** —
+`editParagraph` at `edit-story/index.ts:374` and `streamChapterProse` at `:324`
+for the streamed transport — so scoping the work from the `EDIT_SYSTEM_PROMPT`
+constant misses one the moment the prompt has to be built per request. The
+second route is the whole-chapter save at `:111`, which persists
+client-supplied `chapter_body` with no model involved and which no prompt
+change reaches at all. See `backend/build-log.md`, the 2026-09-29 faith-round
 entry, *What is NOT verified, and matters most*.
-
-
-**Goal:** Every generated story gets a cover image + audio narration.
 
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 
@@ -631,7 +637,6 @@ wording is kept in the Item column so the two can be ticked together.
 | 7 | Wed 09-30 – Thu 10-01 | Walk the flow on a real Android device (background audio, lock screen, report, block, OTP; the intro must not scroll on a phone, since its page is `minHeight: window.height` and a non-edge-to-edge Android window can differ from the root view by the status bar; swipe the intro on the slowest phone). Report-queue owner named. RevenueCat products created so the key lands before production |
 
 ---
-
 
 ## Post-Launch (Phase I — Growth)
 
