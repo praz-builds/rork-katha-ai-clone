@@ -39,9 +39,15 @@ jobs:
     #
     # Gated instead. With the variable unset this job is skipped, which
     # reads as "skipped" on the pull request rather than as a failure, and
-    # the workflow can stay ENABLED so its state is legible. Set the secret
-    # and `gh variable set CLAUDE_ACTION_ENABLED --body true` to turn it on;
-    # no workflow edit is needed.
+    # the workflow can stay ENABLED so its state is legible.
+    #
+    # DO NOT JUST SET THE VARIABLE ON THIS ONE. The `if:` below tests the
+    # variable and an `@claude` string and nothing else -- no author check --
+    # while this workflow holds `contents: write`. Setting the variable is
+    # what stands between that and anyone who can comment. Add an author check
+    # here first; AGENTS.md, *Pull request review*, lists the three traps that
+    # make writing one harder than it looks. (`claude-review.yml` needs no
+    # such edit: same gate, no `contents: write`, one event type.)
     #
     # THE PARENTHESES AROUND THE DISJUNCTION ARE LOAD-BEARING. `&&` binds
     # tighter than `||`, so writing the gate as a bare first clause parses as
