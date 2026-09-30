@@ -80,7 +80,7 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 
 **Goal:** Every generated story gets a cover image + audio narration.
 
-### Cultural/faith layer — shipped, with two paths uncovered
+### Cultural/faith layer — shipped, with three paths uncovered
 
 Shipped 2026-09-29 (migration `00101`, eight functions). `_shared/traditions.ts`
 carries each tradition's depiction policy and `narrationRules`; the image layer
@@ -99,7 +99,13 @@ scripture, or into prophet dialogue, that the generation path would have
 refused to write on the same story. `traditions.ts`'s own `notes` say both
 layers must honour the rule independently.
 
-Two routes need covering, not one. The model route has **two call sites** —
+Three routes need covering. **The image one is the sharpest**, because its
+output is a rendered picture: `generate-character-image/index.ts:329` calls
+`generateDraftCharacterPortrait` without the `tradition` argument the function
+accepts, so a draft portrait is drawn with no depiction rule applied — while
+the same figure on a cover is refused. Checklist below.
+
+On the edit path, two routes. The model route has **two call sites** —
 `editParagraph` at `edit-story/index.ts:374` and `streamChapterProse` at `:324`
 for the streamed transport — so scoping the work from the `EDIT_SYSTEM_PROMPT`
 constant misses one the moment the prompt has to be built per request. The
@@ -107,6 +113,10 @@ second route is the whole-chapter save at `:111`, which persists
 client-supplied `chapter_body` with no model involved and which no prompt
 change reaches at all. See `backend/build-log.md`, the 2026-09-29 faith-round
 entry, *What is NOT verified, and matters most*.
+
+- [ ] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (`index.ts:329`)
+- [ ] `edit-story` applies the tradition's `narrationRules` on the model route — both call sites, `index.ts:374` and `:324`
+- [ ] The whole-chapter save at `edit-story/index.ts:111` is covered by a check on what is written, not a prompt
 
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 

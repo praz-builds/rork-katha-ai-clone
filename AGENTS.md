@@ -51,7 +51,11 @@ the five. `stories.tradition` exists and is null for every
 pre-existing story, which is byte-for-byte the product that existed before it.
 **The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
 says `00001`-`00100`, which was true on its date and is the range this one
-supersedes.
+supersedes. **Zero drift is not full coverage:** three write paths enforce none
+of the tradition rules -- `generate-character-image` draws a draft portrait
+without them, and both of `edit-story`'s routes write prose without them. See
+the Phase B checklist in `backend/ROADMAP.md` before extending or relying on
+the tradition constraint.
 
 **The whole function surface was current with main at `e7222fb` on 2026-09-27,
 and nothing was deployed that day because nothing needed it.** All **34** functions were

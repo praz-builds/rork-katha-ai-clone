@@ -260,7 +260,28 @@ The edit complies, because the rule is not in the prompt it sends, and
 against what the text says. The chapter persists with attributed dialogue the
 cover path would refuse to draw.
 
-**And a prompt fix alone would not be enough.** `edit-story/index.ts:111`
+**A third path is uncovered, and it renders an image.**
+`generateDraftCharacterPortrait` (`_shared/image.ts:594`) takes a `tradition`
+parameter and its own docblock says the endpoint "does not yet pass this".
+It does not: `generate-character-image/index.ts:329` calls it with four
+arguments, ending at `artStyle`, and `grep -c tradition` on that function
+returns **0** — the same zero cited above for `edit-story`.
+
+So a writer whose Create brief is set to `muslim` can open the Craft sheet,
+draft a character named for a prophet, and get a portrait drawn with no
+depiction rule applied: no `narrateOnly`, no positive substitute. The same
+figure reaching a *cover* is refused, by the safety ladder this entry spends a
+numbered trap defending. That is the image layer — the layer this round exists
+for — and the output is a rendered image, not a prompt string.
+
+`generate-character-image` is in this entry's deploy set of eight, listed there
+only as a bundle that drifted transitively. That is the same framing this entry
+demolishes for `edit-story`, and it is equally true of both: deployed into the
+faith layer carrying none of it. Recorded here, **not fixed**, the way the
+`artStyle` gap on this same endpoint was recorded when it had the same shape.
+
+**And on the edit path, a prompt fix alone would not be enough.**
+`edit-story/index.ts:111`
 routes a whole-chapter save to `saveWholeChapter` before any paragraph-edit
 validation, and that path involves no model at all — the client supplies
 `chapter_body` and it is persisted. No instruction added to
