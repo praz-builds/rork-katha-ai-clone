@@ -1586,7 +1586,7 @@ CodeRabbit no longer reviews this repository and `.coderabbit.yaml` has been del
 
 ## Reference Material
 
-> The four canonical documents are in `source-of-truth/` (see the Repository Map). Everything below is secondary and yields to them.
+> The five canonical documents are in `source-of-truth/` (see the Repository Map). Everything below is secondary and yields to them.
 
 - **Strategic decisions:** `backend/references/strategic-decisions.md` -- overrides Blueprint where they conflict.
 - **Product blueprint:** `backend/references/story-generator-app.md` -- original architecture spec.
