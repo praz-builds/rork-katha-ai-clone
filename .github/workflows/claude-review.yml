@@ -51,7 +51,9 @@ jobs:
     # reads as "skipped" on the pull request rather than as a failure, and
     # the workflow can stay ENABLED so its state is legible. Set the secret
     # and `gh variable set CLAUDE_ACTION_ENABLED --body true` to turn it on;
-    # no workflow edit is needed.
+    # no edit to THIS workflow is needed. The same variable also enables
+    # `claude-mention.yml`, which has no author check and must get one first
+    # -- see its header and AGENTS.md, *Pull request review*.
     if: >-
       vars.CLAUDE_ACTION_ENABLED == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
