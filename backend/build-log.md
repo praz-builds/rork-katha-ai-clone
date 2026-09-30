@@ -1831,110 +1831,6 @@ redirects to `AGENTS.md`.
 
 ---
 
-## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
-
-**Session:** wiring an automatic reviewer onto every pull request, in the seat
-CodeAnt and CodeRabbit used to fill. Branches `codex/claude-pr-reviewer` (#146,
-merged) and `codex/mention-checkout-pr-head` (#148).
-
-### What shipped
-
-- `.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml`.
-  The Claude GitHub App is installed and scoped to this repository only; without
-  it the action fails at the OIDC token exchange.
-- `.coderabbit.yaml` deleted. Its per-area review instructions were not lost --
-  the expo, backend, iOS, Android and Markdown guidance moved into the review
-  prompt, which is the file that actually runs.
-- CodeAnt and CodeRabbit removed from every file that instructs someone: the
-  merge gate in `AGENTS.md`, the pull request template, `README.md`, and
-  `backend/originals/NEXT_SESSION_PROMPT.md`. Build logs and two test comments
-  still name CodeAnt; those are records of what happened, not instructions.
-
-### The reviewer actually runs in the cloud, not in Actions
-
-The two workflows are now a **fallback**, gated behind the repository variable
-`CLAUDE_ACTION_ENABLED`. The active reviewer is a cloud routine,
-`trig_01YEy4UFeLZxFSPvaN1p8jhm` ("Katha PR review"), which spends cloud session
-credit rather than platform API credit. Three things learned the hard way:
-
-- **The cloud environment has no `gh` CLI.** A prompt that says "run `gh pr
-  list`" survives only because the agent improvises with the GitHub MCP tools.
-  Say MCP explicitly.
-- **The action refuses to run when a pull request's copy of a workflow file
-  differs from `main`.** That is its prompt-injection guard, and it means the
-  `Review the diff` check reports *pass* without reviewing anything on any PR
-  that edits these workflows. Do not read that check as approval there.
-- **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
-  on the pull request.** Hence the variable gate.
-
-### Rounds 3-5: the docs were wrong in ways that would have misled an agent
-
-The reviewer kept going after the code was right, and the remaining findings
-were all documentation that contradicted the shipped state:
-
-- `README.md` told a contributor the disabled workflow was the reviewer and
-  that `@claude` works. Following it got **no reply at all**, because the job
-  never starts.
-- The contract named `.github/workflows/claude-review.yml` as where review
-  instructions are maintained. **The live prompt is in the cloud routine and
-  nothing in Git holds it** -- editing the workflow copy changes the
-  reviewer's behaviour not at all and reports no error.
-- The contract asserted CodeAnt no longer reviews this repository. **CodeAnt
-  reviewed the head on which that sentence sat.** It is still installed; its
-  findings are advisory and are not the merge gate. The entry above this one
-  is the record that got this wrong.
-- The mention prompt said "push" unconditionally, including on the fallback
-  default-branch checkout, in a job holding `contents: write`. It now receives
-  the resolved ref and is told an empty one means answer only.
-- A first attempt at the review-loop section granted itself an exception: "say
-  in the pull request that you proceeded without one" let an agent merge
-  unreviewed ten minutes after pushing, past the rule that exceptions need a
-  human. It now says stop and ask.
-- The same section called CI checks blocking. Nothing is mechanically blocking
-  here -- there is no branch protection -- and `Smoke - web bundle builds`
-  reports *skipped* on a pull request, which is not a pass.
-- The gate required "all actionable conversations resolved", but the reviewer
-  posts a plain comment, which has no **Resolve conversation** button. Answer
-  by replying with the commit that addressed each finding.
-
-`AGENTS.md` now carries **The review loop**: push, read every finding, fix it
-or say why it is wrong, push again, repeat until the newest comment covers the
-current head and raises nothing. This exists because #149 and #150 stalled --
-agents read "wait for Claude Review", waited for a check that a disabled
-workflow can never post, and reported themselves blocked. Both were merged by
-hand on 2026-09-26 once that was understood; the contract fix itself did not
-reach `main` until #148.
-
-### Round 2 and 3: the gate did not gate, and the contract went stale
-
-Two findings from the reviewer's own second pass, both real:
-
-- `vars.CLAUDE_ACTION_ENABLED == 'true' && (A) || (B) || (C) || (D)` gates
-  only `A`, because `&&` binds tighter than `||` in GitHub Actions
-  expressions. An `@claude` in a review comment -- the likeliest place to
-  write one -- still ran the job and still posted an error. The event
-  disjunction now has its own parentheses.
-- `AGENTS.md` still told every agent to wait for the `Review the diff`
-  check, which a gated-off job never posts. Agents following the contract
-  waited on nothing, and PRs #149 and #150 were reported blocked on exactly
-  that. The contract now says the reviewer's **comment** is the merge gate,
-  and that a stale red `Review the diff` is not a blocker.
-
-Both Action workflows are also disabled with `gh workflow disable`, not only
-gated, so no new red check appears on any pull request.
-
-### The mention workflow had a real bug, caught by the new reviewer
-
-`actions/checkout` with no `ref` lands on the default branch, so `@claude fix
-this` on a pull request read `main`. Resolving the head branch fixes the open
-same-repo case, but resolving it unconditionally breaks two others: a merged
-PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
-from a fork is a bare branch name that resolves against *this* repository. The
-shipped guard resolves a ref only when the pull request is open and its head
-repository is this one, and falls back to the default branch otherwise.
-
----
-
 ## 2026-09-26 UTC — Deploy country Story world backend contract
 
 - No migration was needed. Deployed the nine functions before any client build
@@ -2110,6 +2006,113 @@ repository is this one, and falls back to the default branch otherwise.
   cannot see.
 - No backend file changed in this round, so the deploy set recorded earlier
   on this branch is unaffected.
+
+---
+
+## 2026-09-25 UTC — Claude replaces CodeAnt as the reviewer, running as a cloud routine
+
+**Session:** wiring an automatic reviewer onto every pull request, in the seat
+CodeAnt and CodeRabbit used to fill. Branches `codex/claude-pr-reviewer` (#146,
+merged) and `codex/mention-checkout-pr-head` (#148).
+
+### What shipped
+
+- `.github/workflows/claude-review.yml` and `.github/workflows/claude-mention.yml`.
+  The Claude GitHub App is installed and scoped to this repository only; without
+  it the action fails at the OIDC token exchange.
+- `.coderabbit.yaml` deleted. Its per-area review instructions were not lost --
+  the expo, backend, iOS, Android and Markdown guidance moved into the review
+  prompt, which is the file that actually runs.
+- CodeAnt and CodeRabbit removed from every file that instructs someone: the
+  merge gate in `AGENTS.md`, the pull request template, `README.md`, and
+  `backend/originals/NEXT_SESSION_PROMPT.md`. Build logs and two test comments
+  still name CodeAnt; those are records of what happened, not instructions.
+
+### The reviewer actually runs in the cloud, not in Actions
+
+The two workflows are now a **fallback**, gated behind the repository variable
+`CLAUDE_ACTION_ENABLED`. The active reviewer is a cloud routine,
+`trig_01YEy4UFeLZxFSPvaN1p8jhm` ("Katha PR review"), which spends cloud session
+credit rather than platform API credit. Three things learned the hard way:
+
+- **The cloud environment has no `gh` CLI.** A prompt that says "run `gh pr
+  list`" survives only because the agent improvises with the GitHub MCP tools.
+  Say MCP explicitly.
+- **The action refuses to run when a pull request's copy of a workflow file
+  differs from `main`.** That is its prompt-injection guard, and it means the
+  `Review the diff` check reports *pass* without reviewing anything on any PR
+  that edits these workflows. Do not read that check as approval there.
+- **Without `ANTHROPIC_API_KEY` the action posts "Claude encountered an error"
+  on the pull request.** Hence the variable gate.
+
+### Rounds 3-5: the docs were wrong in ways that would have misled an agent
+
+The reviewer kept going after the code was right, and the remaining findings
+were all documentation that contradicted the shipped state:
+
+- `README.md` told a contributor the disabled workflow was the reviewer and
+  that `@claude` works. Following it got **no reply at all**, because the job
+  never starts.
+- The contract named `.github/workflows/claude-review.yml` as where review
+  instructions are maintained. **The live prompt is in the cloud routine and
+  nothing in Git holds it** -- editing the workflow copy changes the
+  reviewer's behaviour not at all and reports no error.
+- The contract asserted CodeAnt no longer reviews this repository. **CodeAnt
+  reviewed the head on which that sentence sat.** It is still installed; its
+  findings are advisory and are not the merge gate. The entry above this one
+  is the record that got this wrong.
+- The mention prompt said "push" unconditionally, including on the fallback
+  default-branch checkout, in a job holding `contents: write`. It now receives
+  the resolved ref and is told an empty one means answer only.
+- A first attempt at the review-loop section granted itself an exception: "say
+  in the pull request that you proceeded without one" let an agent merge
+  unreviewed ten minutes after pushing, past the rule that exceptions need a
+  human. It now says stop and ask.
+- The same section called CI checks blocking. Nothing is mechanically blocking
+  here -- there is no branch protection -- and `Smoke - web bundle builds`
+  reports *skipped* on a pull request, which is not a pass.
+- The gate required "all actionable conversations resolved", but the reviewer
+  posts a plain comment, which has no **Resolve conversation** button. Answer
+  by replying with the commit that addressed each finding.
+
+`AGENTS.md` now carries **The review loop**: push, read every finding, fix it
+or say why it is wrong, push again, repeat until the newest comment covers the
+current head and raises nothing. This exists because #149 and #150 stalled --
+agents read "wait for Claude Review", waited for a check that a disabled
+workflow can never post, and reported themselves blocked. Both were merged by
+hand on 2026-09-26 once that was understood; the contract fix itself did not
+reach `main` until #148.
+
+### Round 2 and 3: the gate did not gate, and the contract went stale
+
+Two findings from the reviewer's own second pass, both real:
+
+- `vars.CLAUDE_ACTION_ENABLED == 'true' && (A) || (B) || (C) || (D)` gates
+  only `A`, because `&&` binds tighter than `||` in GitHub Actions
+  expressions. An `@claude` in a review comment -- the likeliest place to
+  write one -- still ran the job and still posted an error. The event
+  disjunction now has its own parentheses.
+- `AGENTS.md` still told every agent to wait for the `Review the diff`
+  check, which a gated-off job never posts. Agents following the contract
+  waited on nothing, and PRs #149 and #150 were reported blocked on exactly
+  that. The contract now says the reviewer's **comment** is the merge gate,
+  and that a stale red `Review the diff` is not a blocker.
+
+Both Action workflows were also disabled with `gh workflow disable` at the time
+of this entry, not only gated. **That is no longer true:** since #170 (2026-09-29)
+both are `active` and the variable is the only switch — `gh variable set
+CLAUDE_ACTION_ENABLED --body true` alone starts both jobs, and without an
+`ANTHROPIC_API_KEY` secret they fail on every pull request.
+
+### The mention workflow had a real bug, caught by the new reviewer
+
+`actions/checkout` with no `ref` lands on the default branch, so `@claude fix
+this` on a pull request read `main`. Resolving the head branch fixes the open
+same-repo case, but resolving it unconditionally breaks two others: a merged
+PR's branch is deleted, so checkout fails on a missing ref; and `headRefName`
+from a fork is a bare branch name that resolves against *this* repository. The
+shipped guard resolves a ref only when the pull request is open and its head
+repository is this one, and falls back to the default branch otherwise.
 
 ---
 
