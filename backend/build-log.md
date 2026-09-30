@@ -1786,7 +1786,7 @@ carried through to the place an agent actually reads:
   work to it and separately forbade "parallel design-system documents". The
   contract now says which wins where they overlap (onboarding and the
   neutral ramp — the paywalls are out of `DESIGN_SYSTEM.md`'s scope by its own
-  §4.1, and an earlier version of this line and of `AGENTS.md` included them), that `expo/DESIGN.md` still describes the unmigrated
+  §2 (*Migration boundary*), and an earlier version of this line and of `AGENTS.md` included them), that `expo/DESIGN.md` still describes the unmigrated
   surfaces, and that the two are one system at two stages rather than a
   violation of the no-parallel rule.
 
