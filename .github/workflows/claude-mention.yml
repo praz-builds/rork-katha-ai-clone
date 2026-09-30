@@ -49,7 +49,7 @@ jobs:
     # check here first. AGENTS.md, *Pull request review*, lists the three
     # traps that make writing one harder than it looks.
     # (`claude-review.yml` has no author check either, and anyone who can
-    # open a same-repo pull request passes its `if:`. It is the lower-risk
+    # open a non-draft, non-bot, same-repo pull request passes its `if:`. It is the lower-risk
     # one because it cannot push -- `contents: read` -- and because it fires
     # on `pull_request`, not on anything a commenter can send. It still
     # holds `pull-requests: write` and `issues: write`; it is not safe, it is
