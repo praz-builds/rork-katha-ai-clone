@@ -243,8 +243,8 @@ of its rules are sharper than the dialogue one:
 - *"Never quote the Qur'an and never quote a hadith, in Arabic or in
   translation, however short and however sure you are of it."* A writer selects
   a paragraph and types *"add the verse he recited here"*. The chapter persists
-  with quoted scripture the generation path would have refused to write, on the
-  same story, for the same family.
+  on the
+  same story, under the same classified tradition.
 - *"Do not resolve the story by divine intervention."* *"Make the rescue
   miraculous"* lands the same way.
 
@@ -257,8 +257,10 @@ neither may rely on the other.
 exactly one setter in the shipped product — `classifyTraditionForGeneration`
 over the writer's own idea text (`generate-story`, `generate-story-stream`,
 `shape-story`). Each has an explicit-request branch no client fills; the source
-says why in its own words: *"No picker ships yet."* `grep -rn tradition
-expo/src` finds it in no client file.
+says why in its own words: *"No picker ships yet."* No client file sends a
+`tradition` field; the three explicit-request branches exist for a picker that
+does not ship. (`grep -rn tradition expo/src` is not the check -- it matches the
+English word inside a seeded story excerpt.)
 
 That makes the exposure sharper, not softer. A writer whose idea text happened
 to classify as `muslim` selects the paragraph where the prophet appears and
