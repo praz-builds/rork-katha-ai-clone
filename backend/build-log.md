@@ -219,13 +219,29 @@ Migration `00101` applied first, then the eight functions the drift audit named.
 
 ### What is NOT verified, and matters most
 
-**The narrate-only rule does not reach the paragraph editor, and `edit-story` is
-in this entry's own deploy set.** "No character voices them" is enforced in two
-places — the image layer via `narrateOnly` and the story-prompt layer via
-`narrationRules` — and neither is the edit path. `edit-story/index.ts` sends a
-fixed four-line `EDIT_SYSTEM_PROMPT` and contains no `tradition` at all
-(`grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
-`reimagine-chapter` and 10 in `generate-story`).
+**The edit path carries NONE of the tradition's narration rules, and
+`edit-story` is in this entry's own deploy set.** Not just the dialogue rule:
+all **six** of the Muslim tradition's `narrationRules` (`traditions.ts:441-447`)
+are missing, because the edit path never reads the list. `narrationRules` is
+consumed by exactly one non-test file, `story-prompts.ts`, and
+`edit-story/index.ts` does not import it. The function contains no `tradition`
+at all — `grep -c tradition` returns **0**, against 4 in `continue-story`, 4 in
+`reimagine-chapter` and 10 in `generate-story` — and neither do its four
+non-trivial dependencies.
+
+Two of the missing five are sharper than the dialogue rule:
+
+- *"Never quote the Qur'an and never quote a hadith, in Arabic or in
+  translation, however short and however sure you are of it."* A writer selects
+  a paragraph and types *"add the verse he recited here"*. The chapter persists
+  with quoted scripture the generation path would have refused to write, on the
+  same story, for the same family.
+- *"Do not resolve the story by divine intervention."* *"Make the rescue
+  miraculous"* lands the same way.
+
+Scoping a later fix to the dialogue rule alone would close one of six and leave
+scripture quotation open — in the layer whose own `notes` field says both
+layers must honour the rule independently and neither may rely on the other.
 
 So: a writer opens a story whose family set `tradition: "muslim"`, selects the
 paragraph where the prophet appears, and types *"have him say this out loud"*.
@@ -234,10 +250,16 @@ The edit complies, because the rule is not in the prompt it sends, and
 against what the text says. The chapter persists with attributed dialogue the
 cover path would refuse to draw.
 
+**And a prompt fix alone would not be enough.** `edit-story/index.ts:111`
+routes a whole-chapter save to `saveWholeChapter` before any paragraph-edit
+validation, and that path involves no model at all — the client supplies
+`chapter_body` and it is persisted. No instruction added to
+`EDIT_SYSTEM_PROMPT` reaches it. Closing this properly means the prompt layer
+*and* a check on what is written.
+
 `edit-story` is in the eight deployed above because its bundle carries the
 changed `_shared` files, not because it uses them. It is deployed into the
-faith layer carrying none of it. **Threading `tradition` through the edit path
-is open work**, not done here.
+faith layer carrying none of it. **This is open work**, not done here.
 
 **No image was generated.** Every image test asserts a prompt string. Whether the
 model obeys "no face, no figure, no human form" is untested and untestable from

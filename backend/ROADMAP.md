@@ -78,6 +78,28 @@ All bug fixes applied, migrations `00001`-`00015`, `00017`-`00023` and `00025` a
 
 ## Phase B — Complete Generation Pipeline (IN PROGRESS)
 
+### Cultural/faith layer — shipped, with one path uncovered
+
+Shipped 2026-09-29 (migration `00101`, eight functions). `_shared/traditions.ts`
+carries each tradition's depiction policy and `narrationRules`; the image layer
+honours them via `narrateOnly`, the story-prompt layer via `narrationRules` in
+`story-prompts.ts`.
+
+**Open: `edit-story` carries none of it.** It does not import
+`story-prompts.ts`, contains no `tradition`, and so none of the Muslim
+tradition's six `narrationRules` reach a paragraph edit — including the
+prohibition on quoting the Qur'an or a hadith. A writer can edit a paragraph
+into quoted scripture or prophet dialogue that the generation path would have
+refused to write, on the same story. `traditions.ts`'s own `notes` say both
+layers must honour the rule independently.
+
+Two routes need covering, not one: the model path (`editParagraph`, which a
+prompt change reaches) and the whole-chapter save at `edit-story/index.ts:111`,
+which persists client-supplied `chapter_body` with no model involved and which
+no prompt change reaches. See `backend/build-log.md`, the 2026-09-29 faith-round
+entry, *What is NOT verified, and matters most*.
+
+
 **Goal:** Every generated story gets a cover image + audio narration.
 
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
