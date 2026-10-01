@@ -1,5 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { handleRecordRead, handleToggle } from "./engagement.ts";
+import {
+  handleRecordRead,
+  handleToggle,
+  readEarnsStreak,
+} from "./engagement.ts";
 
 Deno.test("handleToggle answers CORS preflight without auth", async () => {
   const response = await handleToggle(
@@ -40,4 +44,12 @@ Deno.test("handleRecordRead rejects non-POST methods", async () => {
 
   assertEquals(response.status, 405);
   assertEquals(await response.json(), { error: "Method not allowed" });
+});
+
+Deno.test("a streak day needs someone else's story and 60 seconds", () => {
+  assertEquals(readEarnsStreak(false, 60), true);
+  assertEquals(readEarnsStreak(false, 59), false);
+  assertEquals(readEarnsStreak(false, undefined), false);
+  // The author's own chapter, mounted while it is generated, never counts.
+  assertEquals(readEarnsStreak(true, 600), false);
 });

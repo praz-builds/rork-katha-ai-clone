@@ -230,11 +230,16 @@ it("reorders the list when the sort changes", async () => {
   const mostLoved = [...stories].sort((a, b) => b.likes - a.likes)[0];
   await waitFor(() => expect(titlesInOrder(view)[0]).toBe(mostLoved.title));
 
+  // Several seed stories can share the newest offset, and the screen shuffles
+  // before it sorts, so any of them may lead. Assert the tie, not one title.
   await fireEvent.press(view.getByTestId("explore-sort-newest"));
-  const newest = [...stories].sort((a, b) =>
-    a.publishedOffset - b.publishedOffset
-  )[0];
-  await waitFor(() => expect(titlesInOrder(view)[0]).toBe(newest.title));
+  const newestOffset = Math.min(...stories.map((s) => s.publishedOffset));
+  const newestTitles = stories
+    .filter((s) => s.publishedOffset === newestOffset)
+    .map((s) => s.title);
+  await waitFor(() =>
+    expect(newestTitles).toContain(titlesInOrder(view)[0])
+  );
 });
 
 it("counts active filters and clears them", async () => {

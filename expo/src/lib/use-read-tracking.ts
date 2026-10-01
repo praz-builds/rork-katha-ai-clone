@@ -34,7 +34,7 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * foreground dwell crosses it records precisely what the gate tests for.
  *
  * The cleanup flush stays for chapters that never get that far: it is what
- * feeds `read_count` and the streak for a short read.
+ * feeds `read_count` for a short read (the streak needs 60s; see `readEarnsStreak`).
  *
  * ── AND A FLUSH WHEN THE COMPOSER IS TOUCHED ──────────────────────────────
  *
@@ -82,9 +82,10 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  *  - **A short first sitting locks the duration low for the rest of the day.**
  *    Read 30 seconds, leave, come back and read ten minutes: the second post
  *    is deduped and the sum stays 30. Recording the 30 is still right — it
- *    feeds the streak and `read_count`, and 30 fails the gate exactly as 0
- *    does — but raising it would need the server to update the row, which it
- *    deliberately does not do. Out of scope here, and worth knowing.
+ *    feeds `read_count`, and 30 fails the gate exactly as 0 does — but
+ *    raising it would need the server to update the row, which it
+ *    deliberately does not do. Out of scope here, and worth knowing. The
+ *    streak is unaffected: the server reads the deduped post's own duration.
  *
  * FOREGROUND TIME ONLY. A phone in a pocket with the reader open is not
  * reading. `AppState` banks the elapsed time on the way to background and
