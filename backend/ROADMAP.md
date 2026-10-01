@@ -87,39 +87,42 @@ carries each tradition's depiction policy and `narrationRules`; the image layer
 honours them via `narrateOnly`, the story-prompt layer via `narrationRules` in
 `story-prompts.ts`.
 
-**Open: `edit-story` applies none of it, for any tradition.** All four
-supported traditions carry six `narrationRules` each, plus
-`UNIVERSAL_SCRIPTURE_RULES`, and none reach a paragraph edit — including the
-scripture-quotation prohibition that `muslim`, `jewish` and `hindu` each carry.
-The function reaches `story-prompts.ts` transitively (through
-`story-stream.ts`, which is why its bundle carried the changed `_shared` files)
-but contains no `tradition` at all, so it never reads the column off the row
-and never calls the builder. A writer can edit a paragraph into quoted
-scripture, or into prophet dialogue, that the generation path would have
-refused to write on the same story. `traditions.ts`'s own `notes` say both
-layers must honour the rule independently.
+**Closed in code 2026-10-01: all three write paths** (the portrait path awaits one live render). Until then the four supported
+traditions' `narrationRules` and `UNIVERSAL_SCRIPTURE_RULES` never reached a
+paragraph edit or a draft portrait, so a writer could edit a paragraph into
+quoted scripture or prophet dialogue that generation would have refused, and a
+draft portrait was drawn with no depiction rule.
 
-Three routes need covering. **The image one is the sharpest**, because its
-output is a rendered picture: `generate-character-image/index.ts:329` calls
-`generateDraftCharacterPortrait` without the `tradition` argument the function
-accepts, so a draft portrait is drawn with no depiction rule applied — while
-the same figure on a cover is refused. Checklist below.
-
-On the edit path, two routes. The model route has **two call sites** —
-`editParagraph` at `edit-story/index.ts:374` and `streamChapterProse` at `:324`
-for the streamed transport — so scoping the work from the `EDIT_SYSTEM_PROMPT`
-constant misses one the moment the prompt has to be built per request. The
-second route is the whole-chapter save at `:111`, which persists
-client-supplied `chapter_body` with no model involved and which no prompt
-change reaches at all. See `backend/build-log.md`, the 2026-09-29 faith-round
-entry, *What is NOT verified, and matters most*.
-
-- [ ] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (`index.ts:329`).
-      **Blocked on an input:** that endpoint has no tradition field, no story row to read one from, and never
-      classifies. Needs a client picker plus a field, or a classifier call on the Craft sheet's own text —
-      the same shape as the `artStyle` gap, which stayed open until the client started sending `imageStyle`.
-- [ ] `edit-story` applies the tradition's `narrationRules` on the model route — both call sites, `index.ts:374` and `:324`
-- [ ] The whole-chapter save at `edit-story/index.ts:111` is covered by a check on what is written, not a prompt
+- [~] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (closed in code; not yet seen rendered, see below).
+      The tradition is classified the way generation classifies it
+      (`classifyTraditionForGeneration`: pure and free), from the brief's idea
+      only, which `CreateBriefFlow` now sends as `idea` (≤1000 chars, refused
+      otherwise). The character's own name is masked out of the idea first
+      (`portraitTradition`, tested): a character called Krishna or Maryam
+      would otherwise read as a sacred figure and be drawn as no person at all. Onboarding,
+      the saved-character picker and the Characters tab send no idea, so they
+      draw exactly as before. A picker would make this explicit.
+      **Not yet seen rendered:** tested at the prompt level only; render one Create-flow portrait for a
+      tradition-classified idea after deploy, and check it against that story's cover.
+- [x] `edit-story` applies the tradition's rules on the model route, at both
+      call sites (`editParagraph` and `streamChapterProse`), through one
+      per-request system prompt: `withTraditionRules(EDIT_SYSTEM_PROMPT,
+      story.tradition)`. It carries the hard rules only (`traditionRuleLines`),
+      not generation's guidance to let the tradition shape the family, which
+      would invite devotional content into an edit. The rules sit in the system turn so a custom edit
+      request cannot talk them away. With no tradition, the prompt is
+      byte-identical (tested).
+- [x] **The whole-chapter save is by design not policed (decision 2026-10-01).**
+      It persists text the writer typed, with no model involved. The tradition
+      rules govern what the AI writes in a writer's story, not what a writer
+      may write in their own. Public stories still go through the report queue.
+- [ ] **The idea classifier reads names as intent and misses festivals** (found 2026-10-01, pre-existing).
+      `classifyTraditionForGeneration` returns `hindu` for "A boy named Krishna who loves cricket…" and
+      `muslim` for "Maryam, a nurse in Lagos…": `DISTINCTIVE_FIGURES` has no name guard, so an ordinary
+      character's given name applies the tradition's rules, including covers and portraits that may
+      decline to draw that character. It returns no tradition for a Diwali rangoli idea or an Eid-morning
+      idea. This affects generation and covers today; the draft portrait inherits it through `idea`.
+      Retuning needs a labelled set of ideas, not a guess.
 
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 

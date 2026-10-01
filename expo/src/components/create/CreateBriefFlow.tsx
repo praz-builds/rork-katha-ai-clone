@@ -777,6 +777,9 @@ export default function CreateBriefFlow({
         // very screen comes back in the house style, next to a cover the
         // writer asked to be something else.
         imageStyle: draft.imageStyle,
+        // So the portrait follows the faith rules the story will be written
+        // under; the server classifies the tradition from it.
+        idea: draft.seed,
       });
       setCharacterBuffer((previous) => ({
         ...previous,
@@ -795,7 +798,7 @@ export default function CreateBriefFlow({
         portraitStatus: "failed",
       }));
     }
-  }, [characterBuffer, confirm, draft.imageStyle]);
+  }, [characterBuffer, confirm, draft.imageStyle, draft.seed]);
 
   /**
    * Back out of Craft character, with friction when there is something to lose.

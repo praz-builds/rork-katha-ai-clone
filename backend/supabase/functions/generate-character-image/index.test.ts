@@ -8,7 +8,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parseReferenceImage } from "./index.ts";
+import { parseReferenceImage, portraitTradition } from "./index.ts";
 
 const PIXEL = "iVBORw0KGgoAAAANSUhEUg==";
 
@@ -443,4 +443,42 @@ Deno.test("a gender nobody would have accepted is ignored too", async () => {
   });
 
   assertEquals(run.status, 200);
+});
+
+// ---------------------------------------------------------------------------
+// The faith axis of a draft portrait
+// ---------------------------------------------------------------------------
+
+Deno.test("no idea means no tradition: the portrait is drawn as before", () => {
+  assertEquals(portraitTradition("", "Krishna"), undefined);
+  assertEquals(portraitTradition("   ", "Maryam"), undefined);
+});
+
+Deno.test("a character's own name is never read as faith", () => {
+  // Common given names that the sacred-figure list would otherwise read as
+  // intent -- and then draw the portrait with no person in it.
+  assertEquals(
+    portraitTradition(
+      "A boy named Krishna who loves cricket and wants to make the Mumbai under-14 team.",
+      "Krishna",
+    ),
+    undefined,
+  );
+  assertEquals(
+    portraitTradition(
+      "Maryam, a nurse in Lagos, falls for the new doctor on her night shift.",
+      "Maryam Okafor",
+    ),
+    undefined,
+  );
+});
+
+Deno.test("an idea that is about the faith still carries it", () => {
+  assertEquals(
+    portraitTradition(
+      "An Islamic bedtime story about a girl learning patience from her grandmother.",
+      "Amina",
+    ),
+    "muslim",
+  );
 });

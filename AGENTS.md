@@ -51,11 +51,14 @@ the five. `stories.tradition` exists and is null for every
 pre-existing story, which is byte-for-byte the product that existed before it.
 **The ledger is now aligned `00001`-`00101`**; the 09-28 paragraph below still
 says `00001`-`00100`, which was true on its date and is the range this one
-supersedes. **Zero drift is not full coverage:** three write paths enforce none
-of the tradition rules -- `generate-character-image` draws a draft portrait
-without them, and both of `edit-story`'s routes write prose without them. See
-the Phase B checklist in `backend/ROADMAP.md` before extending or relying on
-the tradition constraint.
+supersedes. **Every AI write path now carries the tradition rules (2026-10-01):**
+`edit-story`'s two model routes take the hard rules in their system prompt,
+and `generate-character-image` classifies the brief's idea (never the
+character's name). The writer's own whole-chapter save is deliberately not
+policed. **The idea classifier itself is the weak point**: it reads ordinary
+given names as intent and misses some festival ideas. See the Phase B
+checklist in `backend/ROADMAP.md` before extending or relying on the tradition
+constraint.
 
 **The whole function surface was current with main at `e7222fb` on 2026-09-27,
 and nothing was deployed that day because nothing needed it.** All **34** functions were

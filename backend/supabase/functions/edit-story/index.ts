@@ -13,6 +13,8 @@ import {
   StreamCommittedError,
 } from "../_shared/story-stream.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
+import { withTraditionRules } from "../_shared/story-prompts.ts";
+import { normalizeTradition } from "../_shared/traditions.ts";
 import { enforceProseIntegrity } from "../_shared/prose-integrity.ts";
 
 const EDIT_SYSTEM_PROMPT =
@@ -201,10 +203,11 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Verify story ownership
+    // Verify story ownership. `tradition` rides along: the rewrite must keep
+    // the rules the story was written under (see `withTraditionRules`).
     const { data: story, error: storyError } = await serviceClient
       .from("stories")
-      .select("id, author_id")
+      .select("id, author_id, tradition")
       .eq("id", storyId)
       .single();
 
@@ -246,6 +249,11 @@ serve(async (req) => {
     }
 
     const targetParagraph = paragraphs[paragraphIndex];
+
+    const systemPrompt = withTraditionRules(
+      EDIT_SYSTEM_PROMPT,
+      normalizeTradition(story.tradition),
+    );
 
     // Build user prompt based on instruction type
     const userPrompt = buildEditPrompt(
@@ -322,7 +330,7 @@ serve(async (req) => {
         try {
           send("meta", { paragraph_index: paragraphIndex });
           const rewrite = await streamChapterProse({
-            systemPrompt: EDIT_SYSTEM_PROMPT,
+            systemPrompt,
             userPrompt,
             // A paragraph has no word band, and the bandless default is a
             // whole chapter's budget. This is the edit path's own ceiling.
@@ -371,7 +379,7 @@ serve(async (req) => {
     }
 
     // Call the LLM
-    const result = await editParagraph(EDIT_SYSTEM_PROMPT, userPrompt);
+    const result = await editParagraph(systemPrompt, userPrompt);
 
     const { updated } = await persistRewrite(result.text);
 

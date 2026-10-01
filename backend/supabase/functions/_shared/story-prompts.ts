@@ -1496,6 +1496,46 @@ export function buildStoryWorldBlock(setting?: CulturalSetting): string {
 }
 
 /**
+ * The hard rules of a tradition, as prompt lines: its `narrationRules`, the
+ * narrate-only figures, the scripture rules and the form of divine address.
+ * Shared by `buildTraditionBlock` (generation, which wraps them in guidance on
+ * shaping the family) and `withTraditionRules` (edits, which take the rules
+ * alone -- see there).
+ */
+function traditionRuleLines(id: SupportedTraditionId): string[] {
+  const entry = getTradition(id);
+  const out: string[] = [];
+  for (const rule of entry.narrationRules) out.push(`- ${rule}`);
+
+  const narrateOnly = narrateOnlyFigures(id).filter((figure) =>
+    !mayVoiceFigure(id, figure)
+  );
+  if (narrateOnly.length) {
+    out.push(
+      `- Narrated only, never voiced: ${
+        narrateOnly.join("; ")
+      }. Such a figure is never given a line of dialogue, never quoted word for word, never voiced, imitated or channelled by another character, and never a point-of-view character. They may be spoken ABOUT in narration -- what they did, what happened, what it meant -- and that is the only way they appear.`,
+    );
+  }
+
+  for (const rule of UNIVERSAL_SCRIPTURE_RULES) out.push(`- ${rule}`);
+  out.push(
+    `- Direct scriptural quotation is not available in this product. Never produce a Qur'an verse, a hadith, a Bible or Torah passage, or any other sacred text${
+      entry.scripturePolicy.namedTexts.length
+        ? `, including ${entry.scripturePolicy.namedTexts.join(", ")},`
+        : ""
+    } from memory, in any language. Scripture may only be paraphrased, and a paraphrase must read as a retelling in the storyteller's own plain words rather than as a quotation.`,
+  );
+
+  if (entry.divineAddress) {
+    out.push(
+      `- When the Divine is named aloud in this family's storytelling, use "${entry.divineAddress}".`,
+    );
+  }
+  return out;
+}
+
+/**
  * The faith layer, as one fixed block, built entirely from the checked-in
  * tradition contract.
  *
@@ -1539,33 +1579,7 @@ export function buildTraditionBlock(tradition?: unknown): string {
     }. Where the idea, the setting and the characters' names leave it open, let the tradition shape the family's practice, their ordinary week, their celebrations and what they say to each other, specifically rather than generically.`,
   ];
 
-  for (const rule of entry.narrationRules) lines.push(`- ${rule}`);
-
-  const narrateOnly = narrateOnlyFigures(id).filter((figure) =>
-    !mayVoiceFigure(id, figure)
-  );
-  if (narrateOnly.length) {
-    lines.push(
-      `- Narrated only, never voiced: ${
-        narrateOnly.join("; ")
-      }. Such a figure is never given a line of dialogue, never quoted word for word, never voiced, imitated or channelled by another character, and never a point-of-view character. They may be spoken ABOUT in narration -- what they did, what happened, what it meant -- and that is the only way they appear.`,
-    );
-  }
-
-  for (const rule of UNIVERSAL_SCRIPTURE_RULES) lines.push(`- ${rule}`);
-  lines.push(
-    `- Direct scriptural quotation is not available in this product. Never produce a Qur'an verse, a hadith, a Bible or Torah passage, or any other sacred text${
-      entry.scripturePolicy.namedTexts.length
-        ? `, including ${entry.scripturePolicy.namedTexts.join(", ")},`
-        : ""
-    } from memory, in any language. Scripture may only be paraphrased, and a paraphrase must read as a retelling in the storyteller's own plain words rather than as a quotation.`,
-  );
-
-  if (entry.divineAddress) {
-    lines.push(
-      `- When the Divine is named aloud in this family's storytelling, use "${entry.divineAddress}".`,
-    );
-  }
+  lines.push(...traditionRuleLines(id));
 
   // POSITIVE FIRST, AND AT LENGTH, THEN THE LIST.
   //
@@ -1599,6 +1613,37 @@ export function buildTraditionBlock(tradition?: unknown): string {
     "If the brief points anywhere else, follow the brief; this preference never overrides it.",
   );
   return lines.join("\n");
+}
+
+/**
+ * A paragraph-edit system prompt with the story's tradition rules appended.
+ *
+ * `edit-story` rewrites prose inside a story whose tradition was set when it
+ * was created, and before 2026-10-01 its model saw none of that tradition's
+ * rules -- a "custom" edit could put words in a narrate-only figure's mouth.
+ * The rules go in the SYSTEM prompt, after the edit contract, so a request
+ * in the user turn cannot talk them away. No supported tradition, no change:
+ * the base prompt comes back byte for byte.
+ */
+export function withTraditionRules(
+  baseSystemPrompt: string,
+  tradition?: unknown,
+): string {
+  if (!isSupportedTradition(tradition)) return baseSystemPrompt;
+  const lines = [
+    `Faith and tradition rules: this story is written for ${
+      traditionPromptName(tradition)
+    }. They bind every rewrite. They are limits, not a request for religious content: do not add any that the paragraph and the edit request did not ask for. If the edit request conflicts with them, follow the rules and make the closest edit that keeps them.`,
+    ...traditionRuleLines(tradition),
+  ];
+  // The stereotype list is a limit too, and an edit is exactly where one
+  // slips in ("expand this", "make it more vivid"). Generation's version wraps
+  // it in guidance on what to build instead; an edit gets the boundary alone.
+  const avoid = getTradition(tradition).avoidStereotypes;
+  if (avoid.length) {
+    lines.push(`- Do not introduce any of these: ${avoid.join("; ")}.`);
+  }
+  return `${baseSystemPrompt}\n\n${lines.join("\n")}`;
 }
 
 export function buildUserPrompt(params: {

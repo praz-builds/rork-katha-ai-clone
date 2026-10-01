@@ -4,9 +4,12 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { normalizeCoverArtStyle } from "../_shared/cover-prompts.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { generateDraftCharacterPortrait } from "../_shared/image.ts";
+import { classifyTraditionForGeneration } from "../_shared/tradition-classify.ts";
 import { parseRequestId, readJsonObject } from "../_shared/operations.ts";
 
 const MAX_CHARACTER_FIELD_LENGTH = 500;
+/** The story seed's ceiling (`_shared/validation.ts`), reused for `idea`. */
+const MAX_IDEA_LENGTH = 1000;
 
 /**
  * Largest style-reference photo accepted, measured on the base64 text.
@@ -288,7 +291,13 @@ export async function handleRequest(req: Request): Promise<Response> {
     const legacyDescription = stringField(body.description);
 
     if (!name) return await refuse({ error: "name is required" }, 400);
+    // The brief's idea, sent by the Create flow so the portrait can follow
+    // the story's tradition. Optional; held to the seed's own 1000-character
+    // ceiling (`validation.ts`), and refused like the other fields when wrong.
+    const idea = stringField(body.idea);
     if (
+      (body.idea !== undefined && typeof body.idea !== "string") ||
+      idea.length > MAX_IDEA_LENGTH ||
       name.length > 100 ||
       appearance.length > MAX_CHARACTER_FIELD_LENGTH ||
       legacyDescription.length > MAX_CHARACTER_FIELD_LENGTH
@@ -326,12 +335,21 @@ export async function handleRequest(req: Request): Promise<Response> {
     // -- exactly what an absent field should mean.
     const artStyle = normalizeCoverArtStyle(body.image_style);
 
-    const image = await generateDraftCharacterPortrait(user.id, requestId, {
-      name,
-      appearance,
-      description: legacyDescription,
-      referenceImage: reference.value,
-    }, artStyle);
+    // The faith axis: see `portraitTradition`.
+    const tradition = portraitTradition(idea, name);
+
+    const image = await generateDraftCharacterPortrait(
+      user.id,
+      requestId,
+      {
+        name,
+        appearance,
+        description: legacyDescription,
+        referenceImage: reference.value,
+      },
+      artStyle,
+      tradition,
+    );
     if (!image) {
       // The chain exhausted both models across all three safety rungs. The
       // reveal screen offers a free "Try again" on exactly this response, so
@@ -412,4 +430,36 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+/**
+ * The tradition a draft portrait is drawn under. There is no story row yet,
+ * so no `stories.tradition` to read, and this classifies the brief's IDEA the
+ * way generation will (`classifyTraditionForGeneration`: pure, free).
+ *
+ * NEVER FROM THE CHARACTER'S NAME. Krishna, Sita, Maryam and Yusuf are common
+ * given names, but the classifier's sacred-figure list reads a bare name as
+ * intent, and the portrait clause then draws no person at all. So the
+ * character's own name is masked out of the idea before classifying: "a boy
+ * named Krishna who loves cricket" classifies as nothing, while an idea that
+ * is about the faith ("an Islamic bedtime story about…") keeps its signal
+ * (tested). No idea (onboarding, the saved-character picker, the
+ * Characters tab) means no tradition: the portrait is drawn as before.
+ */
+export function portraitTradition(
+  idea: string,
+  characterName: string,
+): string | undefined {
+  if (!idea.trim()) return undefined;
+  let masked = idea;
+  for (const token of characterName.split(/\s+/)) {
+    const word = token.replace(/[^\p{L}\p{M}'-]/gu, "");
+    if (word.length < 3) continue;
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    masked = masked.replace(
+      new RegExp(`(?<![\\p{L}\\p{M}])${escaped}(?![\\p{L}\\p{M}])`, "giu"),
+      "the character",
+    );
+  }
+  return classifyTraditionForGeneration(masked).tradition;
 }
