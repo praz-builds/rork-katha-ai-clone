@@ -31,6 +31,37 @@
   functions: `publish-story`, `library`, `follow-story`, `follow-user`,
   `like`, `record-read`, `feed`, `bookmark`. All eight redeploy from merged
   `main`, then rerun `scripts/audit-function-drift.sh`.
+
+## 2026-10-01 UTC — The streak counts writing, and reading adds up across the day
+
+Founder decision: a streak day is reading **or** writing.
+
+- **Writing:** `countWritingDay` (`_shared/engagement.ts`) is called right
+  after a generated chapter is persisted in `generate-story`,
+  `generate-story-stream`, `continue-story` and `reimagine-chapter`. Before
+  this, generating a private story earned nothing. It is best-effort and
+  never throws.
+- **`publish-story` no longer touches the streak.** Saving and publishing are
+  free and repeatable, so a daily visibility flip or an unchanged save paid
+  the whole 2+4+6+8+10 ladder for nothing. The tests now assert that neither
+  counts.
+- **Reading is summed:** `readEarnsStreak` takes the day's dwell. When the
+  request alone is under 60s, `handleRecordRead` sums the user's
+  other-people's-story `story_reads.duration_seconds` since UTC midnight
+  (`idx_story_reads_user`), plus this request if it was deduped. Five
+  40-second chapters now count. Own story is still never reading.
+- The Home header's accessibility label "Reading streak: N days" is now
+  "Streak: N days".
+- Tests: the full backend suite passes (1201). Pricing doc §5, AGENTS.md and
+  the ROADMAP row (now `[x]`) are rewritten to match.
+- **Deploy obligation:** twelve functions. Eleven import
+  `_shared/engagement.ts`: `library`, `follow-story`, `follow-user`, `like`,
+  `record-read`, `feed`, `bookmark`, `generate-story`,
+  `generate-story-stream`, `continue-story` and `reimagine-chapter`. The
+  twelfth is `publish-story`, whose own code changed (it no longer imports
+  the module). Redeploy all twelve, then run
+  `scripts/audit-function-drift.sh`.
+
 ## 2026-10-01 UTC — The cloud build had no Supabase key
 
 - `expo/.env` is gitignored and EAS uploads respect `.gitignore`, so a

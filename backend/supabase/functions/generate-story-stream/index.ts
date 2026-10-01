@@ -48,6 +48,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { countWritingDay } from "../_shared/engagement.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
 import { sseStream } from "../_shared/sse.ts";
@@ -798,6 +799,8 @@ serve(async (req) => {
         if (completionError || !chapter) {
           throw completionError ?? new Error("Story persistence failed");
         }
+        // A chapter the author got is a writing day (§5). Never throws.
+        await countWritingDay(serviceClient, user.id, story.id);
 
         /*
           THE STORY BIBLE IS OPENED HERE, WITH CHAPTER ONE ON DISK.

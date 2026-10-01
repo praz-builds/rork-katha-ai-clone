@@ -58,23 +58,23 @@ describe("the streak", () => {
     // Null is what `fetchReadingStreak` returns for no session, no row, a
     // lapsed streak, and any failure. All four must render as nothing.
     const view = await renderHome({ streakDays: null });
-    expect(view.queryByLabelText(/Reading streak/)).toBeNull();
+    expect(view.queryByLabelText(/Streak/)).toBeNull();
   });
 
   it("is absent for a zero, rather than drawing a flame reading 0", async () => {
     const view = await renderHome({ streakDays: 0 });
-    expect(view.queryByLabelText(/Reading streak/)).toBeNull();
+    expect(view.queryByLabelText(/Streak/)).toBeNull();
   });
 
   it("is shown, with the day count, when the database has one", async () => {
     const view = await renderHome({ streakDays: 6 });
-    expect(view.getByLabelText("Reading streak: 6 days")).toBeTruthy();
+    expect(view.getByLabelText("Streak: 6 days")).toBeTruthy();
     expect(view.getByText("6")).toBeTruthy();
   });
 
   it("says day, not days, at one", async () => {
     const view = await renderHome({ streakDays: 1 });
-    expect(view.getByLabelText("Reading streak: 1 day")).toBeTruthy();
+    expect(view.getByLabelText("Streak: 1 day")).toBeTruthy();
   });
 });
 
@@ -110,7 +110,7 @@ describe("where the header items go", () => {
 
     await fireEvent.press(view.getByLabelText("12 credits"));
     await fireEvent.press(view.getByLabelText("Notifications"));
-    await fireEvent.press(view.getByLabelText("Reading streak: 4 days"));
+    await fireEvent.press(view.getByLabelText("Streak: 4 days"));
     expect(onProfile).toHaveBeenCalledTimes(3);
   });
 });
@@ -118,7 +118,7 @@ describe("where the header items go", () => {
 it("keeps every header item at a 44pt touch target", async () => {
   const view = await renderHome({ streakDays: 9 });
   for (
-    const label of ["Reading streak: 9 days", "12 credits", "Notifications"]
+    const label of ["Streak: 9 days", "12 credits", "Notifications"]
   ) {
     const style = view.getByLabelText(label).props.style;
     const flat = (Array.isArray(style) ? style : [style])

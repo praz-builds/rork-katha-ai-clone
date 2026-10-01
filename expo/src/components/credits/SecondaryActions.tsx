@@ -81,8 +81,9 @@ export default function SecondaryActions({
  * and two of those three pay nobody today, for the one reason recorded in
  * `source-of-truth/CREDITS_AND_PRICING.md`: no client records a read, so
  * `story_reads` is empty. Every feedback claim answers `not_read`, and
- * `touch_streak` has two callers -- `publish-story` and the same dead
- * `record-read` -- so a streak advances when you PUBLISH, never when you read.
+ * at the time `touch_streak` had two callers -- `publish-story` and the same
+ * dead `record-read` -- so a streak advanced when you published, never when
+ * you read. (Since 2026-10-01 it is a generated chapter or 60s of reading.)
  * A reader following either suggestion gets nothing and no explanation.
  *
  * It also keeps the line to one row at 390pt, where the button's text column

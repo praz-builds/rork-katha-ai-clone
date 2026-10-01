@@ -40,6 +40,7 @@ import {
 } from "../_shared/continuity.ts";
 import { updateChapterContentIfUnchanged } from "../_shared/chapters.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { countWritingDay } from "../_shared/engagement.ts";
 import {
   AllProvidersFailedError,
   generateFastStructuredText,
@@ -790,6 +791,8 @@ serve(async (req) => {
       if (chapterError || !chapter) {
         throw chapterError ?? new Error("Chapter persistence failed");
       }
+      // A chapter the author got is a writing day (§5). Never throws.
+      await countWritingDay(serviceClient, user.id, story_id);
 
       /*
         The directions this chapter was offered, and the one it took.

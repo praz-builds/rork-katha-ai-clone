@@ -515,7 +515,7 @@ export default function HomeScreen({
                 tint={colors.accent}
                 fill={colors.accent}
                 value={String(streakDays)}
-                label={`Reading streak: ${streakDays} ${
+                label={`Streak: ${streakDays} ${
                   streakDays === 1 ? "day" : "days"
                 }`}
                 onPress={onProfile}
