@@ -46,9 +46,13 @@
   only appeared to save.
 - `eas update` does not read `build.*.env`, so an OTA has to be published
   from a checkout with a filled-in `expo/.env`.
-- The `preview` and `production` profiles in `eas.json` now carry the URL,
-  the legacy anon key (the same value as local `.env`, public by design) and
-  the flag. `release-config.test.ts` pins them.
+- All three profiles in `eas.json` now carry the URL, the legacy anon key
+  (the same value as local `.env`, public by design) and the flag.
+  `release-config.test.ts` pins them, including the key's `ref` claim.
+- **The legacy anon key survived the 2026-09-26 rotation**, checked live on
+  2026-10-01. With it, REST and `auth/v1/settings` answer 200, anonymous
+  sign-up returns a session, and `feed` with that session answers 200 with
+  real stories. Only the service-role JWT was invalidated.
 
 ## 2026-09-30 UTC — `@claude` has no author gate, and the contract said it did
 

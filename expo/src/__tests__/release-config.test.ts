@@ -51,14 +51,21 @@ describe("eas.json", () => {
   // `.env` is gitignored, so an EAS cloud build never sees it. Without these
   // the anon key falls back to "" and the app silently runs offline, and
   // bookmarks and follows answer optimistically without ever being saved.
-  it.each(["preview", "production"] as const)(
+  it.each(["development", "preview", "production"] as const)(
     "gives the %s build the public Supabase config and real engagement",
     (profile) => {
       const env = easJson.build[profile].env as Record<string, string>;
       expect(env.EXPO_PUBLIC_SUPABASE_URL).toBe(
         "https://iafeuxgoiknncgyjmugd.supabase.co"
       );
-      expect(env.EXPO_PUBLIC_SUPABASE_ANON_KEY).toMatch(/^eyJ/);
+      const segment = env.EXPO_PUBLIC_SUPABASE_ANON_KEY.split(".")[1];
+      const payload = JSON.parse(
+        atob(segment.replace(/-/g, "+").replace(/_/g, "/"))
+      );
+      expect(payload).toMatchObject({
+        ref: "iafeuxgoiknncgyjmugd",
+        role: "anon",
+      });
       expect(env.EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS).toBe("true");
     }
   );

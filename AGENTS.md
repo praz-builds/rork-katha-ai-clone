@@ -1489,8 +1489,10 @@ What the store binary bakes in, and so cannot be changed by an OTA update.
   `channel` comes from the build profile in `eas.json` (`production`, `preview`,
   `development`), and `eas update --channel production` targets it.
 - **The public client config is in `eas.json`, because `.env` never reaches
-  EAS.** `expo/.env` is gitignored, so the `preview` and `production` profiles
-  carry `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (public by
+  EAS.** Unlike the rest of this section, these are bundle-time values: Metro
+  inlines `EXPO_PUBLIC_*` into the JS, so an OTA can fix them, and an OTA can
+  also break them. `expo/.env` is gitignored, so all three profiles carry
+  `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (public by
   design; RLS protects the data) and `EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS=true`.
   Without the key, the anon key is `""`, `isSupabaseConfigured` is false and
   the app silently runs on seed/offline paths. Without the flag, bookmarks and

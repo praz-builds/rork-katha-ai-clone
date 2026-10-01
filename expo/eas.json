@@ -13,7 +13,10 @@
       },
       "env": {
         "APP_ENV": "development",
-        "EXPO_PUBLIC_APP_ENV": "development"
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://iafeuxgoiknncgyjmugd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZmV1eGdvaWtubmNneWptdWdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU0NDUsImV4cCI6MjEwMjUyMTQ0NX0.XbTGnMocIOwDq22hZyVRkBMqiVxG7MQT7_EYuxIzxjc",
+        "EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS": "true"
       }
     },
     "preview": {
