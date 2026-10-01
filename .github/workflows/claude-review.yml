@@ -53,10 +53,11 @@ jobs:
     # and `gh variable set CLAUDE_ACTION_ENABLED --body true` to turn it on;
     # no edit to THIS workflow is needed. The same variable also enables
     # `claude-mention.yml`, whose author check is its first step (2026-10-01).
-    # This job has none. The same step would work here in principle (the
-    # endpoint needs only Metadata read), but it has never run on GitHub in
-    # either workflow, and a fail-closed lookup that misbehaves here would
-    # silently stop every review. Add it once the mention gate has run live.
+    # This job has none. The lookup itself works with any workflow token --
+    # verified on GitHub on 2026-10-01 at `permissions: {}` -- so the same
+    # `authorize` job could be copied here. It has not been, because a gate
+    # that misbehaves here fails closed and silently stops every review; do it
+    # together with turning review on, and watch the first run.
     if: >-
       vars.CLAUDE_ACTION_ENABLED == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
