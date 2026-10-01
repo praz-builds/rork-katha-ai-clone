@@ -12,20 +12,17 @@ on:
   issues:
     types: [opened, assigned]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: read
-  id-token: write
+# Nothing by default. Only `respond` gets write scopes, and it starts only after
+# `authorize` has said yes.
+permissions: {}
 
 concurrency:
   group: claude-mention-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  respond:
-    name: Respond to @claude
+  authorize:
+    name: Authorise @claude
     runs-on: ubuntu-latest
     # THE GATE THAT AGENTS.md ALREADY CLAIMED WAS HERE.
     #
@@ -41,11 +38,10 @@ jobs:
     # reads as "skipped" on the pull request rather than as a failure, and
     # the workflow can stay ENABLED so its state is legible.
     #
-    # WHO MAY ASK is decided by the first step, *Authorise the requester*,
-    # not by this `if:` -- see that step for why. This `if:` only decides
-    # whether the job starts at all. Every step after it is gated on the
-    # step's output, so a requester without push access gets nothing but that
-    # one API lookup, which runs no text from the event.
+    # WHO MAY ASK is decided by this job's one step, *Authorise the
+    # requester*, not by this `if:` -- see that step for why. This `if:` only
+    # decides whether the lookup runs at all. `respond`, the job with write
+    # scopes, needs this one and starts only on its yes.
     # (`claude-review.yml` has no author check. It is the lower-risk one
     # because it cannot push -- `contents: read` -- and because it fires on
     # `pull_request`, not on anything a commenter can send. It still holds
@@ -66,6 +62,14 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
       )
+    # A job with no scopes at all: the permission lookup needs only Metadata
+    # read, which every token carries. Verified on GitHub on 2026-10-01 with
+    # `permissions: {}` (owner -> admin, a stranger -> read). So a stranger's
+    # @claude starts this job and nothing else -- no write scopes, no
+    # id-token, no checkout.
+    permissions: {}
+    outputs:
+      allowed: ${{ steps.auth.outputs.allowed }}
     steps:
       # THE AUTHOR GATE. Both people behind this run must be able to push:
       #   - the WRITER of the @claude text, read per event, because each
@@ -83,8 +87,9 @@ jobs:
       # public repository COLLABORATOR says nothing about the level, and
       # the payload has no association for the sender at all. Only admin,
       # maintain and write pass. Bots answer `none`, a stranger on this
-      # public repo answers `read`, and any API failure fails closed. (The
-      # API folds `maintain` into `write` in this field; listed for clarity.)
+      # public repo answers `read`, and any API failure fails closed. (This
+      # field reports maintain as `write` and triage as `read`; `maintain` is
+      # listed below only so the intent reads plainly.)
       # Logins reach the script through `env`, never interpolated into it.
       - name: Authorise the requester
         id: auth
@@ -96,7 +101,11 @@ jobs:
           set -uo pipefail
           allowed=true
           for login in "${WRITER:-}" "${SENDER:-}"; do
-            if [ -z "$login" ]; then allowed=false; break; fi
+            if [ -z "$login" ]; then
+              # An event shape nobody predicted; the one denial worth seeing.
+              echo "::warning::Could not tell who wrote this @claude (empty login); skipping."
+              allowed=false; break
+            fi
             # A 404 prints its JSON body to stdout, so the value is
             # discarded on failure rather than concatenated with "none".
             perm=$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${login}/permission" \
@@ -122,9 +131,21 @@ jobs:
       #     fork PR from its own main would check out our main -- and the job
       #     holds contents: write and reads AGENTS.md from whatever it checks
       #     out.
+
+  respond:
+    name: Respond to @claude
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    steps:
       - name: Resolve the branch to check out
         id: target
-        if: steps.auth.outputs.allowed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.pull_request && github.event.issue.number || github.event.pull_request.number }}
@@ -149,7 +170,6 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: steps.auth.outputs.allowed == 'true'
         with:
           fetch-depth: 0
           # Empty means the default branch, which is the safe fallback for a
@@ -157,7 +177,6 @@ jobs:
           ref: ${{ steps.target.outputs.ref }}
 
       - uses: anthropics/claude-code-action@d9fa72aedd427e79c6dcec0388f2656619eb3c6a # v1
-        if: steps.auth.outputs.allowed == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: |

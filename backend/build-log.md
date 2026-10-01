@@ -7,21 +7,22 @@
 
 ## 2026-10-01 UTC — `@claude` gets its author check
 
-- `claude-mention.yml`'s first step, *Authorise the requester*, resolves the
-  writer of the `@claude` text (comment, review or issue author, per event)
-  and `github.event.sender` through
-  `repos/{repo}/collaborators/{login}/permission`. Every later step requires
-  both to be `admin`, `maintain` or `write`. Logins reach the script through
-  `env`; an API failure fails closed.
-- Tested locally by running the step's script with real logins:
-  praz-builds/praz-builds passes; octocat as writer or as sender, and an
-  empty login, are refused. A stranger on this public repo resolves to
-  `read` and bots to `none`. It has not run on GitHub, because
-  `CLAUDE_ACTION_ENABLED` is unset. The first live `@claude` is its first real
-  test.
-- `claude-review.yml` deliberately gets no copy yet. The lookup has never run
-  on GitHub, and a fail-closed lookup that misbehaved there would silently
-  stop every review.
+- `claude-mention.yml` is now two jobs. `authorize` (`permissions: {}`)
+  resolves the writer of the `@claude` text (comment, review or issue author,
+  per event) and `github.event.sender` through
+  `repos/{repo}/collaborators/{login}/permission`. `respond`, the only job
+  with write scopes, has `needs: authorize` and runs only when both are
+  `admin` or `write`. Logins reach the script through `env`; empty logins and
+  API failures fail closed with a `::warning::`.
+- **Verified on GitHub** with a throwaway push-triggered probe (branch
+  deleted after): the workflow token, at both `permissions: {}` and this
+  job's write scopes, answers `admin` for praz-builds and `read` for
+  octocat. The full workflow has not run end to end; `CLAUDE_ACTION_ENABLED`
+  is unset.
+- Remaining by nature: the gate bounds who asks, not whose text Claude reads
+  (a maintainer's `@claude` on a stranger's issue), and any commenter still
+  starts the billed `authorize` runner.
+- `claude-review.yml` gets no copy yet; its comment says why.
 
 ## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
 
