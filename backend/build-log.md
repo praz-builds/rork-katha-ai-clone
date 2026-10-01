@@ -31,6 +31,28 @@
   functions: `publish-story`, `library`, `follow-story`, `follow-user`,
   `like`, `record-read`, `feed`, `bookmark`. All eight redeploy from merged
   `main`, then rerun `scripts/audit-function-drift.sh`.
+## 2026-10-01 UTC — The cloud build had no Supabase key
+
+- `expo/.env` is gitignored and EAS uploads respect `.gitignore`, so a
+  `eas build` would have shipped `EXPO_PUBLIC_SUPABASE_ANON_KEY` as `""`
+  (`src/lib/supabase.ts:7`), and the app would have silently run on its
+  seed/offline paths instead of the backend. Every earlier
+  build was local, where `.env` exists, which is why this never showed up.
+- `EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS` had never been set anywhere.
+  `setEngagementState` (`api.ts:352`) therefore answered bookmarks and author
+  follows optimistically and never called the deployed functions. (Story
+  likes and story follows have no UI caller.) With the flag on, bookmarking a
+  seed story whose id is not a UUID gets a 400 and rolls back. Before, it
+  only appeared to save.
+- `eas update` does not read `build.*.env`, so an OTA has to be published
+  from a checkout with a filled-in `expo/.env`.
+- All three profiles in `eas.json` now carry the URL, the legacy anon key
+  (the same value as local `.env`, public by design) and the flag.
+  `release-config.test.ts` pins them, including the key's `ref` claim.
+- **The legacy anon key survived the 2026-09-26 rotation**, checked live on
+  2026-10-01. With it, REST and `auth/v1/settings` answer 200, anonymous
+  sign-up returns a session, and `feed` with that session answers 200 with
+  real stories. Only the service-role JWT was invalidated.
 
 ## 2026-09-30 UTC — `@claude` has no author gate, and the contract said it did
 

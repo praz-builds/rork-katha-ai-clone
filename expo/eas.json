@@ -1,21 +1,37 @@
 {
-  "cli": { "version": ">= 15.0.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 15.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
-      "android": { "buildType": "apk" },
-      "env": { "APP_ENV": "development", "EXPO_PUBLIC_APP_ENV": "development" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://iafeuxgoiknncgyjmugd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZmV1eGdvaWtubmNneWptdWdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU0NDUsImV4cCI6MjEwMjUyMTQ0NX0.XbTGnMocIOwDq22hZyVRkBMqiVxG7MQT7_EYuxIzxjc",
+        "EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS": "true"
+      }
     },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "APP_ENV": "preview",
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://iafeuxgoiknncgyjmugd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZmV1eGdvaWtubmNneWptdWdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU0NDUsImV4cCI6MjEwMjUyMTQ0NX0.XbTGnMocIOwDq22hZyVRkBMqiVxG7MQT7_EYuxIzxjc",
+        "EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS": "true"
       }
     },
     "production": {
@@ -24,13 +40,19 @@
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_APP_ENV": "production",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://iafeuxgoiknncgyjmugd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZmV1eGdvaWtubmNneWptdWdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NDU0NDUsImV4cCI6MjEwMjUyMTQ0NX0.XbTGnMocIOwDq22hZyVRkBMqiVxG7MQT7_EYuxIzxjc",
+        "EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS": "true"
       }
     }
   },
   "submit": {
     "production": {
-      "android": { "serviceAccountKeyPath": "./google-service-account.json", "track": "internal" }
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "internal"
+      }
     }
   }
 }
