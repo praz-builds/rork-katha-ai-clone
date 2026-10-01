@@ -5,6 +5,23 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — `@claude` gets its author check
+
+- `claude-mention.yml`'s first step, *Authorise the requester*, resolves the
+  writer of the `@claude` text (comment, review or issue author, per event)
+  and `github.event.sender` through
+  `repos/{repo}/collaborators/{login}/permission`. Every later step requires
+  both to be `admin`, `maintain` or `write`. Logins reach the script through
+  `env`; an API failure fails closed.
+- Tested locally by running the step's script with real logins:
+  praz-builds/praz-builds passes; octocat as writer or as sender, and an
+  empty login, are refused. A stranger on this public repo resolves to
+  `read` and bots to `none`. It has not run on GitHub, because
+  `CLAUDE_ACTION_ENABLED` is unset. The first live `@claude` is its first real
+  test.
+- `claude-review.yml` deliberately gets no copy: under `contents: read` the
+  lookup is unverified, and a fail-closed lookup would silently stop review.
+
 ## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
 
 - **Pre-build preflight on `main` 02d837d:** typecheck, lint, `expo export
