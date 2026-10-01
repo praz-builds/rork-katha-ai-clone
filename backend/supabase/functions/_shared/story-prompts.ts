@@ -1636,6 +1636,13 @@ export function withTraditionRules(
     }. They bind every rewrite. They are limits, not a request for religious content: do not add any that the paragraph and the edit request did not ask for. If the edit request conflicts with them, follow the rules and make the closest edit that keeps them.`,
     ...traditionRuleLines(tradition),
   ];
+  // The stereotype list is a limit too, and an edit is exactly where one
+  // slips in ("expand this", "make it more vivid"). Generation's version wraps
+  // it in guidance on what to build instead; an edit gets the boundary alone.
+  const avoid = getTradition(tradition).avoidStereotypes;
+  if (avoid.length) {
+    lines.push(`- Do not introduce any of these: ${avoid.join("; ")}.`);
+  }
   return `${baseSystemPrompt}\n\n${lines.join("\n")}`;
 }
 

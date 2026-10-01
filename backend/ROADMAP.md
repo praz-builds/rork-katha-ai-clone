@@ -87,13 +87,13 @@ carries each tradition's depiction policy and `narrationRules`; the image layer
 honours them via `narrateOnly`, the story-prompt layer via `narrationRules` in
 `story-prompts.ts`.
 
-**Closed 2026-10-01: all three write paths.** Until then the four supported
+**Closed in code 2026-10-01: all three write paths** (the portrait path awaits one live render). Until then the four supported
 traditions' `narrationRules` and `UNIVERSAL_SCRIPTURE_RULES` never reached a
 paragraph edit or a draft portrait, so a writer could edit a paragraph into
 quoted scripture or prophet dialogue that generation would have refused, and a
 draft portrait was drawn with no depiction rule.
 
-- [x] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait`.
+- [~] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait` (closed in code; not yet seen rendered, see below).
       The tradition is classified the way generation classifies it
       (`classifyTraditionForGeneration`: pure and free), from the brief's idea
       only, which `CreateBriefFlow` now sends as `idea` (≤1000 chars, refused

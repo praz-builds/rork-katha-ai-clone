@@ -470,4 +470,5 @@ Deno.test("withTraditionRules binds an edit to the story's tradition rules", () 
   assert(prompt.includes("Direct scriptural quotation is not available"));
   assert(!prompt.includes("let the tradition shape"));
   assert(!prompt.includes("If the brief points anywhere else"));
+  assert(prompt.includes("- Do not introduce any of these: "));
 });
