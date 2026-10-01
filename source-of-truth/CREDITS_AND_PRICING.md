@@ -1421,18 +1421,17 @@ day 10, to a user the old ladder had already stopped paying.
 chapter finished, or ≥60s of dwell. Miss a day and it resets to zero, and the
 rewards restart at day 2.
 
-> **What is actually enforced, as of 2026-09-28: five seconds, measured on the
-> client, and your own story counts.** The 60 above is the rule, not the code.
-> `touch_streak(p_user_id)` takes no duration and no story id, so it cannot
-> apply either half; the client posts any dwell over its own five-second floor,
-> and `handleRecordRead` calls `touchStreak` on every non-throwing RPC. The
-> own-story exclusion the schema intends (`counts_for_earnings`) gates the read
-> count and not the streak. **The entry point is the creation flow**, not a
-> deliberate short visit: an author sits on their own chapter while it is being
-> written to them, so generating on twenty-one consecutive days pays the whole
-> ladder with no reading. Dead until the client began calling `record-read`
-> (#162) and live from that build. Tracked in `backend/ROADMAP.md`; this note
-> comes out when the threshold is enforced server-side.
+> **What is actually enforced, as of 2026-10-01.** The read path matches the
+> rule: `handleRecordRead` calls `touchStreak` only for someone else's story
+> and only when the request carries ≥60s (`readEarnsStreak`, PR #172). Two
+> differences remain. **"One chapter finished" is not enforced** — the server
+> is never told a chapter finished, so a chapter read in under 60s, or several
+> short ones that only add up to 60, earn nothing. **Writing also counts:**
+> `publish-story` calls `touchStreak` on every successful save or publish (its
+> "writing day"), so generating a story each day still climbs the ladder
+> without reading. That is deliberate in the code and contradicts the first
+> sentence above; which one is right is an open founder decision, tracked in
+> `backend/ROADMAP.md`.
 
 **Why day 2 is the right first rung.** Median mobile retention falls from **D1
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))
