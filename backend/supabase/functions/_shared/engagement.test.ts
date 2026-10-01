@@ -91,7 +91,7 @@ Deno.test("a reading day needs someone else's story and 60 seconds today", async
 function fakeStoryReads(result: { data: unknown; error: unknown }) {
   const calls: unknown[][] = [];
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "gte", "limit"]) {
+  for (const method of ["select", "eq", "not", "gte", "order", "limit"]) {
     builder[method] = (...args: unknown[]) => {
       calls.push([method, ...args]);
       return method === "limit" ? Promise.resolve(result) : builder;
@@ -123,8 +123,9 @@ Deno.test("the day's dwell sums other people's stories since UTC midnight", asyn
     ["from", "story_reads"],
     ["select", "duration_seconds"],
     ["eq", "user_id", "user-1"],
-    ["eq", "is_own_story", false],
+    ["not", "is_own_story", "is", true],
     ["gte", "read_at", "2026-10-01T00:00:00.000Z"],
+    ["order", "read_at", { ascending: false }],
     ["limit", 200],
   ]);
 });

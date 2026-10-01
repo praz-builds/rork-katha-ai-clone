@@ -52,7 +52,7 @@ Founder decision: a streak day is reading **or** writing.
   40-second chapters now count. Own story is still never reading.
 - The Home header's accessibility label "Reading streak: N days" is now
   "Streak: N days".
-- Tests: the full backend suite passes (1199). Pricing doc §5, AGENTS.md and
+- Tests: the full backend suite passes (1201). Pricing doc §5, AGENTS.md and
   the ROADMAP row (now `[x]`) are rewritten to match.
 - **Deploy obligation:** twelve functions. Eleven import
   `_shared/engagement.ts`: `library`, `follow-story`, `follow-user`, `like`,

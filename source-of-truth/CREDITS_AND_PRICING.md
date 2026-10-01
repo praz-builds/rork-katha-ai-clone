@@ -1425,7 +1425,10 @@ zero, and the rewards restart at day 2. A day counts when either half lands:
 - **Reading:** at least 60 seconds of other people's stories that UTC day,
   summed across chapters and stories. Your own story never counts as reading.
   This is `readEarnsStreak` in `handleRecordRead`, with the day's
-  `story_reads` dwell, so five 40-second chapters count.
+  `story_reads` dwell, so five 40-second chapters count. One exception:
+  re-reading the **same** chapter within 24 hours adds only the latest
+  sitting, because `record_story_read` keeps the first sitting's row and
+  duration. Three 20-second visits to one chapter count as 40, not 60.
 - **Writing:** an AI chapter you got: a new story, a continuation or a
   reimagined chapter. It is counted when the chapter is persisted
   (`countWritingDay` in `generate-story`, `generate-story-stream`,
@@ -1437,10 +1440,12 @@ zero, and the rewards restart at day 2. A day counts when either half lands:
 > **Limits worth knowing.** Dwell is client-measured: the server applies the
 > 60-second floor and the sum, but it cannot clock the reading itself. "A
 > chapter finished" is not a separate signal, because the server is never told
-> a chapter finished. A short chapter counts through the daily sum. Every
-> writing day costs a credit: each counting endpoint charges from the first
-> call, `reimagine-chapter` included. The paragraph editor (`edit-story`) is
-> free and does not count.
+> a chapter finished. A short chapter counts through the daily sum, subject to
+> the same-chapter exception above. Every writing day is paid for: each
+> counting endpoint charges from the first call, `reimagine-chapter`
+> included, and an auto run's chapters are bought up front when the run
+> starts (`prepaid`). The paragraph editor (`edit-story`) is free and does
+> not count.
 
 **Why day 2 is the right first rung.** Median mobile retention falls from **D1
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))

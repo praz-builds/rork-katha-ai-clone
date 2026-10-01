@@ -254,8 +254,12 @@ export async function dwellTodaySeconds(
     .from("story_reads")
     .select("duration_seconds")
     .eq("user_id", userId)
-    .eq("is_own_story", false)
+    // NOT own, rather than `= false`: the column is nullable, and a story
+    // with a null author records NULL, which the predicate treats as someone
+    // else's story. `= false` would drop exactly those rows.
+    .not("is_own_story", "is", true)
     .gte("read_at", dayStart.toISOString())
+    .order("read_at", { ascending: false })
     // Bounded: the question is only "has today reached 60s", and the client
     // never posts under 5s, so far fewer rows than this already answer it.
     .limit(200);
