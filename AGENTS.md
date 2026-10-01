@@ -1488,6 +1488,13 @@ What the store binary bakes in, and so cannot be changed by an OTA update.
   first; a real URL written there by `eas update:configure` is left alone. The
   `channel` comes from the build profile in `eas.json` (`production`, `preview`,
   `development`), and `eas update --channel production` targets it.
+- **The public client config is in `eas.json`, because `.env` never reaches
+  EAS.** `expo/.env` is gitignored, so the `preview` and `production` profiles
+  carry `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (public by
+  design; RLS protects the data) and `EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS=true`.
+  Without the key, the anon key is `""` and every call fails. Without the flag,
+  likes, bookmarks and follows only update the UI and never save.
+  `release-config.test.ts` pins all three.
 - **Sentry is environment, not files.** Set as EAS environment variables:
   `SENTRY_DSN` (read into `extra.sentryDsn`), `SENTRY_ORG` and `SENTRY_PROJECT`
   (written into the `@sentry/react-native/expo` plugin), and the secret

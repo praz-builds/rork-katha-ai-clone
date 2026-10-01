@@ -47,6 +47,21 @@ describe("eas.json", () => {
     expect(easJson.build.preview.channel).toBe("preview");
     expect(easJson.build.development.channel).toBe("development");
   });
+
+  // `.env` is gitignored, so an EAS cloud build never sees it. Without these
+  // the anon key falls back to "" and every backend call fails, and likes,
+  // bookmarks and follows answer optimistically without ever being saved.
+  it.each(["preview", "production"] as const)(
+    "gives the %s build the public Supabase config and real engagement",
+    (profile) => {
+      const env = easJson.build[profile].env as Record<string, string>;
+      expect(env.EXPO_PUBLIC_SUPABASE_URL).toBe(
+        "https://iafeuxgoiknncgyjmugd.supabase.co"
+      );
+      expect(env.EXPO_PUBLIC_SUPABASE_ANON_KEY).toMatch(/^eyJ/);
+      expect(env.EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS).toBe("true");
+    }
+  );
 });
 
 describe("Firebase", () => {

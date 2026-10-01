@@ -31,6 +31,18 @@
   functions: `publish-story`, `library`, `follow-story`, `follow-user`,
   `like`, `record-read`, `feed`, `bookmark`. All eight redeploy from merged
   `main`, then rerun `scripts/audit-function-drift.sh`.
+## 2026-10-01 UTC — The cloud build had no Supabase key
+
+- `expo/.env` is gitignored and EAS uploads respect `.gitignore`, so a
+  `eas build` would have shipped `EXPO_PUBLIC_SUPABASE_ANON_KEY` as `""`
+  (`src/lib/supabase.ts:7`), and every call would have failed. Every earlier
+  build was local, where `.env` exists, which is why this never showed up.
+- `EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS` had never been set anywhere.
+  `setEngagementState` (`api.ts:352`) therefore answered likes, bookmarks and
+  follows optimistically and never called the deployed functions.
+- The `preview` and `production` profiles in `eas.json` now carry the URL,
+  the legacy anon key (the same value as local `.env`, public by design) and
+  the flag. `release-config.test.ts` pins them.
 
 ## 2026-09-30 UTC — `@claude` has no author gate, and the contract said it did
 
