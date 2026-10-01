@@ -96,9 +96,10 @@ draft portrait was drawn with no depiction rule.
 - [x] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait`.
       The tradition is classified the way generation classifies it
       (`classifyTraditionForGeneration`: pure and free), from the brief's idea
-      only, which `CreateBriefFlow` now sends as `idea`. Never from the
-      character's name: a character called Krishna or Maryam would otherwise
-      read as a sacred figure and be drawn as no person at all. Onboarding,
+      only, which `CreateBriefFlow` now sends as `idea` (≤1000 chars, refused
+      otherwise). The character's own name is masked out of the idea first
+      (`portraitTradition`, tested): a character called Krishna or Maryam
+      would otherwise read as a sacred figure and be drawn as no person at all. Onboarding,
       the saved-character picker and the Characters tab send no idea, so they
       draw exactly as before. A picker would make this explicit.
       **Not yet seen rendered:** tested at the prompt level only; render one Create-flow portrait for a

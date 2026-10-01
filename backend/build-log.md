@@ -35,16 +35,18 @@
   prompt, with a sentence saying they are limits, not a request for
   religious content. The untraditioned prompt is
   byte-identical (`tradition-prompt.test.ts`).
-- `generate-character-image`: it classifies the tradition with
-  `classifyTraditionForGeneration` over the optional new `idea` field only.
-  Names are excluded because Krishna, Maryam and Yusuf are ordinary given
-  names that the sacred-figure list would read as intent. It passes the result to `generateDraftCharacterPortrait`,
+- `generate-character-image`: `portraitTradition(idea, name)` classifies the
+  optional new `idea` field (≤1000 chars, 400 otherwise) with the
+  character's own name masked out. Krishna, Maryam and Yusuf are ordinary
+  given names that the sacred-figure list would read as intent. It passes the
+  result to `generateDraftCharacterPortrait`,
   whose parameter existed but went unused. `CreateBriefFlow` sends
   `draft.seed` as `idea`; the other three portrait surfaces send nothing.
 - The whole-chapter save stays unpoliced by decision: the rules govern AI
   output, not the writer's own text.
 - Not verified live: no paid generation was run. Tests only (tradition-prompt
-  and story-prompts 153, generate-character-image 18).
+  and story-prompts 153, generate-character-image 21, including three
+  `portraitTradition` cases).
 - **Deploy obligation:** eight functions, transitively importing the changed
   `story-prompts.ts` or `image.ts`: `edit-story`, `generate-character-image`,
   `continue-story`, `generate-story`, `generate-story-stream`,

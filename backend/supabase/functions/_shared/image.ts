@@ -616,9 +616,9 @@ export async function generateDraftCharacterPortrait(
   /**
    * The tradition the Create brief is currently set to, when the caller knows
    * it. A draft portrait is drawn before any story row exists, so there is no
-   * `stories.tradition` to read. `generate-character-image` classifies it
-   * from the brief's idea (when sent) and the character's own text, since
-   * 2026-10-01. Undefined draws exactly as before.
+   * `stories.tradition` to read. Since 2026-10-01 `generate-character-image`
+   * classifies it from the brief's idea alone, with the character's own name
+   * masked out (`portraitTradition`). Undefined draws exactly as before.
    */
   tradition?: string,
 ): Promise<ImageResult | null> {

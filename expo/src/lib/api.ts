@@ -431,8 +431,9 @@ export type CharacterImageInput = {
   imageStyle?: ImageStyle;
   /**
    * The brief's idea, when the portrait is drawn inside a brief. The server
-   * classifies the story's tradition from it (and from the character text) so
-   * a draft portrait honours the same depiction rules its cover will.
+   * classifies the story's tradition from the idea alone (never from the
+   * character's name) so a draft portrait honours the depiction rules its
+   * cover will. At most 1000 characters, the seed's own ceiling.
    */
   idea?: string;
 };
@@ -574,7 +575,7 @@ export async function generateCharacterImage(
         // same value, so this is the explicit spelling of the server default
         // rather than a second one.
         image_style: input.imageStyle ?? "auto",
-        ...(input.idea?.trim() ? { idea: input.idea.trim().slice(0, 2000) } : {}),
+        ...(input.idea?.trim() ? { idea: input.idea.trim().slice(0, 1000) } : {}),
         // Omitted rather than sent as null when absent: the endpoint treats a
         // present-but-unusable field as an error, which is right, and an
         // explicit null is present.
