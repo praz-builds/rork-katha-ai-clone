@@ -207,6 +207,16 @@ export async function touchStreak(
   };
 }
 
+/** Dwell a single read must carry to count as a streak day (pricing doc §5). */
+export const STREAK_MIN_READ_SECONDS = 60;
+
+export function readEarnsStreak(
+  isOwnStory: boolean,
+  durationSeconds: number | undefined,
+): boolean {
+  return !isOwnStory && (durationSeconds ?? 0) >= STREAK_MIN_READ_SECONDS;
+}
+
 export async function handleRecordRead(req: Request): Promise<Response> {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -267,9 +277,18 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     // succeeded, and the client would be told its read was lost when it was
     // recorded. These are two RPCs and cannot be one transaction from here, so
     // the honest shape is to report the read and degrade the streak to null.
-    const streak = await touchStreak(auth.service, userId, {
-      story_id: storyId,
-    });
+    //
+    // A streak day is a real read of someone else's story (CREDITS_AND_PRICING
+    // §5), and `touch_streak` takes neither a story nor a duration, so both
+    // rules live here. Own story: the reader mounts on the author's chapter
+    // while it is being generated, so without this, creating on consecutive
+    // days paid the whole ladder with no reading. Duration: the client posts
+    // from 5 seconds up, so the floor has to be applied server-side. The number
+    // is this request's, not the stored row's -- a deduped second call keeps
+    // the first sitting's duration, and the client is the source of both.
+    const streak = readEarnsStreak(row.is_own_story, durationSeconds)
+      ? await touchStreak(auth.service, userId, { story_id: storyId })
+      : null;
 
     return respond({
       recorded: row.recorded,
