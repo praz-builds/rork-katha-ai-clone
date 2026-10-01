@@ -12,20 +12,17 @@ on:
   issues:
     types: [opened, assigned]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: read
-  id-token: write
+# Nothing by default. Only `respond` gets write scopes, and it starts only after
+# `authorize` has said yes.
+permissions: {}
 
 concurrency:
   group: claude-mention-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  respond:
-    name: Respond to @claude
+  authorize:
+    name: Authorise @claude
     runs-on: ubuntu-latest
     # THE GATE THAT AGENTS.md ALREADY CLAIMED WAS HERE.
     #
@@ -41,19 +38,22 @@ jobs:
     # reads as "skipped" on the pull request rather than as a failure, and
     # the workflow can stay ENABLED so its state is legible.
     #
-    # DO NOT JUST SET THE VARIABLE ON THIS ONE. The `if:` below tests the
-    # variable and an `@claude` string and nothing else -- no author check --
-    # while this workflow holds `contents: write`. So while the variable is
-    # unset, nothing can reach the action; SETTING IT IS WHAT REMOVES THAT,
-    # and hands anyone who can comment a job with write access. Add an author
-    # check here first. AGENTS.md, *Pull request review*, lists the three
-    # traps that make writing one harder than it looks.
-    # (`claude-review.yml` has no author check either, and anyone who can
-    # open a non-draft, non-bot, same-repo pull request passes its `if:`. It is the lower-risk
-    # one because it cannot push -- `contents: read` -- and because it fires
-    # on `pull_request`, not on anything a commenter can send. It still
-    # holds `pull-requests: write` and `issues: write`; it is not safe, it is
+    # WHO MAY ASK is decided by this job's one step, *Authorise the
+    # requester*, not by this `if:` -- see that step for why. This `if:` only
+    # decides whether the lookup runs at all. `respond`, the job with write
+    # scopes, needs this one and starts only on its yes.
+    # (`claude-review.yml` has no author check. It is the lower-risk one
+    # because it cannot push -- `contents: read` -- and because it fires on
+    # `pull_request`, not on anything a commenter can send. It still holds
+    # `pull-requests: write` and `issues: write`; it is not safe, it is
     # smaller.)
+    #
+    # `@claude` MUST OPEN THE TEXT, not merely appear in it. The standing
+    # review routine posts as the repository owner -- an admin, who passes
+    # the author check -- and its reviews quote and discuss `@claude` by
+    # name. With `contains`, the first review that mentions this workflow
+    # would have invoked it with push rights. An invocation is a message
+    # that starts with `@claude`; a discussion of one is not.
     #
     # THE PARENTHESES AROUND THE DISJUNCTION ARE LOAD-BEARING. `&&` binds
     # tighter than `||`, so writing the gate as a bare first clause parses as
@@ -64,11 +64,89 @@ jobs:
     # because all of its clauses are `&&`; this one cannot.
     if: >-
       vars.CLAUDE_ACTION_ENABLED == 'true' && (
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && startsWith(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (startsWith(github.event.issue.body, '@claude') || startsWith(github.event.issue.title, '@claude')))
       )
+    # A job with no scopes at all: the permission lookup needs only Metadata
+    # read, which every token carries. Verified on GitHub on 2026-10-01 with
+    # `permissions: {}` (owner -> admin, a stranger -> read). So a stranger's
+    # @claude starts this job and nothing else -- no write scopes, no
+    # id-token, no checkout.
+    permissions: {}
+    outputs:
+      allowed: ${{ steps.auth.outputs.allowed }}
+    steps:
+      # THE AUTHOR GATE. Both people behind this run must be able to push:
+      #   - the WRITER of the @claude text, read per event, because each
+      #     trigger carries it in a different place (comment / review /
+      #     issue); and
+      #   - the SENDER, who caused this event. On `issues: [assigned]` that
+      #     is the assigner, not the author, so checking only the writer
+      #     would let anyone's issue run once a maintainer assigns it, and
+      #     checking only the sender would gate the wrong person.
+      # `github.event.sender` is fixed in the payload, so a Re-run checks
+      # the same two people. The re-runner already needed write access to
+      # press the button.
+      #
+      # Resolved through the API, not through `author_association`: on a
+      # public repository COLLABORATOR says nothing about the level, and
+      # the payload has no association for the sender at all. Only admin,
+      # maintain and write pass. Bots answer `none`, a stranger on this
+      # public repo answers `read`, an unknown login 404s to `none`, and any
+      # other API failure fails the job red, which is still closed. (This
+      # field reports maintain as `write` and triage as `read`; `maintain` is
+      # listed below only so the intent reads plainly.)
+      # Logins reach the script through `env`, never interpolated into it.
+      - name: Authorise the requester
+        id: auth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WRITER: ${{ github.event.comment.user.login || github.event.review.user.login || github.event.issue.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -uo pipefail
+          allowed=true
+          for login in "${WRITER:-}" "${SENDER:-}"; do
+            if [ -z "$login" ]; then
+              # An event shape nobody predicted; the one denial worth seeing.
+              echo "::warning::Could not tell who wrote this @claude (empty login); skipping."
+              allowed=false; break
+            fi
+            # A refusal and a broken lookup must not look alike. A 404 (no
+            # such user) is a plain refusal; any other failure is the gate
+            # itself breaking, so the job goes RED -- still closed, since
+            # `respond` needs a yes -- instead of a green that reads as "denied".
+            if ! out=$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${login}/permission" \
+                         --jq .permission 2>&1); then
+              if printf '%s' "$out" | grep -q "HTTP 404"; then
+                perm=none
+              else
+                echo "::error::Permission lookup failed for $login: $out"
+                exit 1
+              fi
+            else
+              perm=$out
+            fi
+            case "$perm" in
+              admin|maintain|write) echo "$login: $perm" ;;
+              *) echo "::warning::$login ($perm) may not invoke @claude; skipping."; allowed=false ;;
+            esac
+          done
+          echo "allowed=${allowed}" >> "$GITHUB_OUTPUT"
+
+  respond:
+    name: Respond to @claude
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
     steps:
       # An issue_comment payload carries no head ref, so a bare checkout lands
       # on the default branch: asking @claude to fix something on a pull

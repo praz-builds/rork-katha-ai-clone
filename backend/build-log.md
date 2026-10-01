@@ -5,6 +5,28 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — `@claude` gets its author check
+
+- `claude-mention.yml` is now two jobs. `authorize` (`permissions: {}`)
+  resolves the writer of the `@claude` text (comment, review or issue author,
+  per event) and `github.event.sender` through
+  `repos/{repo}/collaborators/{login}/permission`. `respond`, the only job
+  with write scopes, has `needs: authorize` and runs only when both are
+  `admin` or `write`. Logins reach the script through `env`. Empty logins
+  and unknown users (404) refuse with a `::warning::`; any other lookup
+  failure fails the job red. The trigger is now `startsWith('@claude')`,
+  not `contains`, because the review routine posts as the admin owner and
+  its reviews mention `@claude`.
+- **Verified on GitHub** with a throwaway push-triggered probe (branch
+  deleted after): the workflow token, at both `permissions: {}` and this
+  job's write scopes, answers `admin` for praz-builds and `read` for
+  octocat. The full workflow has not run end to end; `CLAUDE_ACTION_ENABLED`
+  is unset.
+- Remaining by nature: the gate bounds who asks, not whose text Claude reads
+  (a maintainer's `@claude` on a stranger's issue), and any commenter still
+  starts the billed `authorize` runner.
+- `claude-review.yml` gets no copy yet; its comment says why.
+
 ## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
 
 - **Pre-build preflight on `main` 02d837d:** typecheck, lint, `expo export

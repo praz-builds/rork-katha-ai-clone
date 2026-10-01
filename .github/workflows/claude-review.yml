@@ -52,8 +52,12 @@ jobs:
     # the workflow can stay ENABLED so its state is legible. Set the secret
     # and `gh variable set CLAUDE_ACTION_ENABLED --body true` to turn it on;
     # no edit to THIS workflow is needed. The same variable also enables
-    # `claude-mention.yml`, which has no author check and must get one first
-    # -- see its header and AGENTS.md, *Pull request review*.
+    # `claude-mention.yml`, whose author check is a separate `authorize` job (2026-10-01).
+    # This job has none. The lookup itself works with any workflow token --
+    # verified on GitHub on 2026-10-01 at `permissions: {}` -- so the same
+    # `authorize` job could be copied here. It has not been, because a gate
+    # that misbehaves here fails closed and silently stops every review; do it
+    # together with turning review on, and watch the first run.
     if: >-
       vars.CLAUDE_ACTION_ENABLED == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
