@@ -6,8 +6,6 @@
  * build. A slip in any of them is only fixable by a new store submission, so
  * they are pinned here rather than trusted to review.
  */
-import { readFileSync } from "fs";
-import { join } from "path";
 import appJson from "../../app.json";
 import easJson from "../../eas.json";
 import packageJson from "../../package.json";
@@ -62,8 +60,11 @@ describe("eas.json", () => {
 
   it("pins CI to the same Node as the EAS builds", () => {
     // Read as text: the workflow is YAML.
-    const ci = readFileSync(
-      join(__dirname, "../../../.github/workflows/ci.yml"),
+    const fs = jest.requireActual("fs") as {
+      readFileSync(path: string, encoding: "utf8"): string;
+    };
+    const ci = fs.readFileSync(
+      `${__dirname}/../../../.github/workflows/ci.yml`,
       "utf8"
     );
     const versions = [...ci.matchAll(/node-version:\s*([\d.]+)/g)].map(
