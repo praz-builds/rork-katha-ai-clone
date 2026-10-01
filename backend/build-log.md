@@ -16,8 +16,12 @@
 - The first production build (versionCode 2) failed at install with
   `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. EAS's default pnpm does not read
   `patchedDependencies` from `pnpm-workspace.yaml`. All three profiles now
-  pin `node: 22.23.0` and `pnpm: 11.22.0`, matching CI and the lockfile, and
-  `release-config.test.ts` pins that too. EAS created the Android upload
+  pin `node: 22.23.0` and `pnpm: 11.22.0`. `expo/package.json` gains
+  `packageManager: pnpm@11.22.0`, which CI's `pnpm/action-setup` now reads,
+  and CI's Node is pinned to 22.23.0. `release-config.test.ts` fails if
+  eas.json, `packageManager` or CI disagree.
+- **The second build (versionCode 3) succeeded**, 2026-10-01 10:04 UTC:
+  build `37c36890-2002-4599-be8c-bb5db52a4551`, a production AAB. EAS created the Android upload
   keystore on its servers ("remote credentials").
 
 ## 2026-10-01 UTC — `@claude` gets its author check

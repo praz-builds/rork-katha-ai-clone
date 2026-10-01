@@ -6,6 +6,8 @@
  * build. A slip in any of them is only fixable by a new store submission, so
  * they are pinned here rather than trusted to review.
  */
+import { readFileSync } from "fs";
+import { join } from "path";
 import appJson from "../../app.json";
 import easJson from "../../eas.json";
 import packageJson from "../../package.json";
@@ -44,17 +46,32 @@ describe("app.json", () => {
 describe("eas.json", () => {
   // EAS's default pnpm predates `patchedDependencies` in pnpm-workspace.yaml,
   // so a frozen install there fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH
-  // (first production build, 2026-10-01). Pinned to what CI and the lockfile
-  // use.
+  // (first production build, 2026-10-01). `packageManager` is the one
+  // pnpm version: CI reads it (`package_json_file`), EAS is pinned to it.
   it.each(["development", "preview", "production"] as const)(
-    "pins the %s build to the toolchain the lockfile was written with",
+    "pins the %s build to the repository's pnpm and Node",
     (profile) => {
+      const pnpm = (packageJson as { packageManager?: string }).packageManager;
+      expect(pnpm).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
       expect(easJson.build[profile]).toMatchObject({
         node: "22.23.0",
-        pnpm: "11.22.0",
+        pnpm: pnpm!.replace("pnpm@", ""),
       });
     }
   );
+
+  it("pins CI to the same Node as the EAS builds", () => {
+    // Read as text: the workflow is YAML.
+    const ci = readFileSync(
+      join(__dirname, "../../../.github/workflows/ci.yml"),
+      "utf8"
+    );
+    const versions = [...ci.matchAll(/node-version:\s*([\d.]+)/g)].map(
+      (m) => m[1]
+    );
+    expect(versions.length).toBeGreaterThan(0);
+    for (const v of versions) expect(v).toBe(easJson.build.production.node);
+  });
 
   it("gives every build profile the OTA channel it will listen on", () => {
     expect(easJson.build.production.channel).toBe("production");
