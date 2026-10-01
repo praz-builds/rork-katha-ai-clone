@@ -42,6 +42,20 @@ describe("app.json", () => {
 });
 
 describe("eas.json", () => {
+  // EAS's default pnpm predates `patchedDependencies` in pnpm-workspace.yaml,
+  // so a frozen install there fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH
+  // (first production build, 2026-10-01). Pinned to what CI and the lockfile
+  // use.
+  it.each(["development", "preview", "production"] as const)(
+    "pins the %s build to the toolchain the lockfile was written with",
+    (profile) => {
+      expect(easJson.build[profile]).toMatchObject({
+        node: "22.23.0",
+        pnpm: "11.22.0",
+      });
+    }
+  );
+
   it("gives every build profile the OTA channel it will listen on", () => {
     expect(easJson.build.production.channel).toBe("production");
     expect(easJson.build.preview.channel).toBe("preview");
