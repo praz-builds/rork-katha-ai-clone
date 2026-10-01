@@ -30,7 +30,8 @@ type ReadRow = {
   counted: boolean;
   count: number;
   read_id: string;
-  is_own_story: boolean;
+  /** Null when the story has no author; treated as someone else's story. */
+  is_own_story: boolean | null;
   counts_for_earnings: boolean;
 };
 
