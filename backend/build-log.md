@@ -5,6 +5,18 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — The upload keystore is backed up
+
+- The EAS-generated Android upload keystore (JKS, created 2026-10-01 09:27
+  UTC) was downloaded through the Expo GraphQL API with the founder's own EAS
+  session, to `~/Katha-Secrets/android-upload-keystore/` (mode 700/600,
+  outside the repo, included in Time Machine): `katha-upload-keystore.jks`,
+  `credentials.json` and `README.md`. Verified: `keytool` opens it with the
+  stored password, and SHA1 `36:FA:CF:41:…:46:4A` / SHA256 `E0:A4:C5:C1:…`
+  match EAS. No secret is in the repository, `.env` or this log.
+- Status corrections in the ROADMAP: OTP length is 6 (set earlier today); the
+  paid generation provider is funded at $19.81.
+
 ## 2026-10-01 UTC — The app is linked to its EAS project
 
 - `eas init --id 22595b84-dff7-407a-b37a-66d409528369` (account
