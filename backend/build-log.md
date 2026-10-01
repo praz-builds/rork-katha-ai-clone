@@ -13,6 +13,12 @@
   `updates.url = https://u.expo.dev/<id>`. `release-config.test.ts` pins the
   link. The founder logged in through the EAS browser flow; no credentials
   passed through the agent.
+- The first production build (versionCode 2) failed at install with
+  `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. EAS's default pnpm does not read
+  `patchedDependencies` from `pnpm-workspace.yaml`. All three profiles now
+  pin `node: 22.23.0` and `pnpm: 11.22.0`, matching CI and the lockfile, and
+  `release-config.test.ts` pins that too. EAS created the Android upload
+  keystore on its servers ("remote credentials").
 
 ## 2026-10-01 UTC — `@claude` gets its author check
 
