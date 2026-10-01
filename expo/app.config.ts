@@ -73,9 +73,21 @@ export function resolveAppConfig(config: ExpoConfig, env: Env): ExpoConfig {
     present(env.SENTRY_DSN) ?? present(env.EXPO_PUBLIC_SENTRY_DSN) ?? extra.sentryDsn ?? "";
   const appEnv = present(env.APP_ENV) ?? extra.APP_ENV;
 
+  // FCM. `google-services.json` is gitignored (the repository is public), so
+  // EAS supplies it as the file-type environment variable
+  // `GOOGLE_SERVICES_JSON`, whose value at build time is the path of the
+  // file. Without it the build still works and push tokens never register.
+  // This is the Firebase *config* only: no Firebase SDK is installed, so the
+  // AD_ID permission that came with firebase-analytics stays out (#138).
+  const googleServicesFile = present(env.GOOGLE_SERVICES_JSON);
+  const android = googleServicesFile
+    ? { ...config.android, googleServicesFile }
+    : config.android;
+
   return {
     ...config,
     ...(updates ? { updates } : {}),
+    ...(android ? { android } : {}),
     plugins: withSentryPlugin(config.plugins ?? [], env),
     extra: {
       ...extra,
