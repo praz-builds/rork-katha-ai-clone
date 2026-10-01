@@ -49,7 +49,7 @@ describe("eas.json", () => {
   });
 
   // `.env` is gitignored, so an EAS cloud build never sees it. Without these
-  // the anon key falls back to "" and every backend call fails, and likes,
+  // the anon key falls back to "" and the app silently runs offline, and
   // bookmarks and follows answer optimistically without ever being saved.
   it.each(["preview", "production"] as const)(
     "gives the %s build the public Supabase config and real engagement",

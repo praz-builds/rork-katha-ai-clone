@@ -35,11 +35,17 @@
 
 - `expo/.env` is gitignored and EAS uploads respect `.gitignore`, so a
   `eas build` would have shipped `EXPO_PUBLIC_SUPABASE_ANON_KEY` as `""`
-  (`src/lib/supabase.ts:7`), and every call would have failed. Every earlier
+  (`src/lib/supabase.ts:7`), and the app would have silently run on its
+  seed/offline paths instead of the backend. Every earlier
   build was local, where `.env` exists, which is why this never showed up.
 - `EXPO_PUBLIC_ENABLE_ENGAGEMENT_ENDPOINTS` had never been set anywhere.
-  `setEngagementState` (`api.ts:352`) therefore answered likes, bookmarks and
-  follows optimistically and never called the deployed functions.
+  `setEngagementState` (`api.ts:352`) therefore answered bookmarks and author
+  follows optimistically and never called the deployed functions. (Story
+  likes and story follows have no UI caller.) With the flag on, bookmarking a
+  seed story whose id is not a UUID gets a 400 and rolls back. Before, it
+  only appeared to save.
+- `eas update` does not read `build.*.env`, so an OTA has to be published
+  from a checkout with a filled-in `expo/.env`.
 - The `preview` and `production` profiles in `eas.json` now carry the URL,
   the legacy anon key (the same value as local `.env`, public by design) and
   the flag. `release-config.test.ts` pins them.
