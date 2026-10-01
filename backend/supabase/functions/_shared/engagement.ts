@@ -247,7 +247,10 @@ async function dwellTodaySeconds(
     .select("duration_seconds")
     .eq("user_id", userId)
     .eq("is_own_story", false)
-    .gte("read_at", dayStart.toISOString());
+    .gte("read_at", dayStart.toISOString())
+    // Bounded: the question is only "has today reached 60s", and the client
+    // never posts under 5s, so far fewer rows than this already answer it.
+    .limit(200);
   if (error || !data) {
     if (error) console.error("story_reads dwell sum failed", error);
     return 0;
