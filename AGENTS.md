@@ -253,9 +253,14 @@ Re-run `backend/originals/verify-narration-deploy.ts` to check again.
 `traction-labs/katha-ai` (`22595b84-…`), and the first production AAB built on
 2026-10-01 (versionCode 3), but nothing is in users' hands. Until a build is
 installed, client changes merged to main are live on nothing, and
-`scripts/preview.sh` is the only way to see them. The Play upload keystore
-exists only in that EAS account; back it up with `eas credentials` before the
-first submission.
+`scripts/preview.sh` is the only way to see them. **The Play upload keystore**
+is held by EAS (Credentials > Android > `ai.katha.createstories`) and was
+backed up on 2026-10-01 to the founder's Mac at
+`~/Katha-Secrets/android-upload-keystore/` (the `.jks`, a `credentials.json`
+with the passwords and alias, and a README with the fingerprints and restore
+steps). That folder is outside the repository and is never committed or put
+in `.env`; agents must not print its contents. SHA1
+`36:FA:CF:41:37:45:56:97:E6:12:2A:71:FA:0A:07:3E:9B:13:46:4A`.
 
 `ACTIVE` in `supabase functions list` only means a deployment exists. It does
 not mean the code matches main. Check the bundle contents, not the status.
