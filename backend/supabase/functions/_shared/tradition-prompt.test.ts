@@ -463,6 +463,11 @@ Deno.test("withTraditionRules binds an edit to the story's tradition rules", () 
   const base = "You are an editor.";
   const prompt = withTraditionRules(base, "muslim");
   assert(prompt.startsWith(base));
-  assert(prompt.includes(buildTraditionBlock("muslim")));
   assert(prompt.includes("If the edit request conflicts with them"));
+  // The hard rules, without generation's "let the tradition shape the
+  // family" guidance, which would invite devotional content into an edit.
+  assert(prompt.includes("Narrated only, never voiced"));
+  assert(prompt.includes("Direct scriptural quotation is not available"));
+  assert(!prompt.includes("let the tradition shape"));
+  assert(!prompt.includes("If the brief points anywhere else"));
 });

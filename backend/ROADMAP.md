@@ -95,21 +95,31 @@ draft portrait was drawn with no depiction rule.
 
 - [x] `generate-character-image` passes `tradition` to `generateDraftCharacterPortrait`.
       The tradition is classified the way generation classifies it
-      (`classifyTraditionForGeneration`: pure and free), from the brief's idea,
-      which `CreateBriefFlow` now sends as `idea`, plus the character's own
-      text. Onboarding, the saved-character picker and the Characters tab send
-      no idea, so they classify from the character text alone; absent stays
-      absent. A picker would make this explicit.
+      (`classifyTraditionForGeneration`: pure and free), from the brief's idea
+      only, which `CreateBriefFlow` now sends as `idea`. Never from the
+      character's name: a character called Krishna or Maryam would otherwise
+      read as a sacred figure and be drawn as no person at all. Onboarding,
+      the saved-character picker and the Characters tab send no idea, so they
+      draw exactly as before. A picker would make this explicit.
 - [x] `edit-story` applies the tradition's rules on the model route, at both
       call sites (`editParagraph` and `streamChapterProse`), through one
       per-request system prompt: `withTraditionRules(EDIT_SYSTEM_PROMPT,
-      story.tradition)`. The rules sit in the system turn so a custom edit
+      story.tradition)`. It carries the hard rules only (`traditionRuleLines`),
+      not generation's guidance to let the tradition shape the family, which
+      would invite devotional content into an edit. The rules sit in the system turn so a custom edit
       request cannot talk them away. With no tradition, the prompt is
       byte-identical (tested).
 - [x] **The whole-chapter save is by design not policed (decision 2026-10-01).**
       It persists text the writer typed, with no model involved. The tradition
       rules govern what the AI writes in a writer's story, not what a writer
       may write in their own. Public stories still go through the report queue.
+- [ ] **The idea classifier reads names as intent and misses festivals** (found 2026-10-01, pre-existing).
+      `classifyTraditionForGeneration` returns `hindu` for "A boy named Krishna who loves cricket…" and
+      `muslim` for "Maryam, a nurse in Lagos…": `DISTINCTIVE_FIGURES` has no name guard, so an ordinary
+      character's given name applies the tradition's rules, including covers and portraits that may
+      decline to draw that character. It returns no tradition for a Diwali rangoli idea or an Eid-morning
+      idea. This affects generation and covers today; the draft portrait inherits it through `idea`.
+      Retuning needs a labelled set of ideas, not a guess.
 
 ### Cover Image Generation (shipped and deployed; `publish-story` live since 2026-09)
 

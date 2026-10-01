@@ -329,19 +329,22 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     // The faith axis, which a draft portrait never had: there is no story row
     // yet, so no `stories.tradition` to read. Classified the way generation
-    // classifies it -- pure, deterministic, free -- from the brief's idea when
-    // the Create flow sends it, plus this character's own text. Absent stays
-    // absent: no signal means `undefined` and the portrait is drawn exactly
-    // as before. A present signal applies the same depiction rules a cover
-    // for that story would (`traditionDepictionClauses`).
+    // classifies it -- pure, deterministic, free -- from the brief's IDEA
+    // only, which is the input the classifier was built for and the one
+    // generation will classify for the story itself.
+    //
+    // NEVER FROM THE CHARACTER'S NAME. A character called Krishna, Sita,
+    // Maryam or Yusuf is an ordinary person with a common given name, but the
+    // classifier's sacred-figure list reads the bare name as intent, and the
+    // depiction clauses then ask for no person at all -- a landscape where a
+    // portrait should be. Absent stays absent: no idea (onboarding, the
+    // saved-character picker, the Characters tab) draws exactly as before.
     const ideaText = typeof body.idea === "string"
       ? body.idea.slice(0, 2000)
       : "";
-    const tradition = classifyTraditionForGeneration(
-      [ideaText, name, appearance, legacyDescription].filter(Boolean).join(
-        "\n",
-      ),
-    ).tradition;
+    const tradition = ideaText
+      ? classifyTraditionForGeneration(ideaText).tradition
+      : undefined;
 
     const image = await generateDraftCharacterPortrait(
       user.id,
