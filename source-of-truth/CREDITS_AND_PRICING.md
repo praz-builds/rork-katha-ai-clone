@@ -1642,8 +1642,8 @@ and it is left as designed.
 >
 > **The client half is now merged** (`ReaderScreen` mounts `useReadTracking`,
 > which calls `recordRead`), so that grep returns a call site. It changes
-> nothing for anybody yet: there is no OTA channel and `expo/app.json` still
-> carries the literal `UPDATE_PROJECT_ID`, so no installed app calls it. The
+> nothing for anybody yet: no build carrying it has shipped, so no installed
+> app calls it. The
 > faucet opens with the **first build** that carries it, not with the merge,
 > and everything below stays a projection until then.
 >

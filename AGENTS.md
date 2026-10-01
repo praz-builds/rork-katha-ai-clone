@@ -249,10 +249,13 @@ first playable chunk came at 45.8s and the whole chapter at 67.3s, and
 `purpose: "prefetch"` answers 503 while `NARRATION_PREFETCH_ENABLED` is unset.
 Re-run `backend/originals/verify-narration-deploy.ts` to check again.
 
-**The client is not deployed and cannot be.** `expo/app.json` still carries the
-literal `u.expo.dev/UPDATE_PROJECT_ID` and an empty EAS `projectId`, so there is
-no OTA channel and no build to update. Client changes merged to main are live
-on nothing; `scripts/preview.sh` is the only way to see them.
+**No client build has shipped yet.** The app is linked to EAS project
+`traction-labs/katha-ai` (`22595b84-…`), and the first production AAB built on
+2026-10-01 (versionCode 3), but nothing is in users' hands. Until a build is
+installed, client changes merged to main are live on nothing, and
+`scripts/preview.sh` is the only way to see them. The Play upload keystore
+exists only in that EAS account; back it up with `eas credentials` before the
+first submission.
 
 `ACTIVE` in `supabase functions list` only means a deployment exists. It does
 not mean the code matches main. Check the bundle contents, not the status.

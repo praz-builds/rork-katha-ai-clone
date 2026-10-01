@@ -5,6 +5,25 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — The app is linked to its EAS project
+
+- `eas init --id 22595b84-dff7-407a-b37a-66d409528369` (account
+  `traction-labs`, slug `katha-ai`) wrote `extra.eas.projectId` and `owner`
+  into `expo/app.json`, so `app.config.ts` now derives
+  `updates.url = https://u.expo.dev/<id>`. `release-config.test.ts` pins the
+  link. The founder logged in through the EAS browser flow; no credentials
+  passed through the agent.
+- The first production build (versionCode 2) failed at install with
+  `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. EAS's default pnpm does not read
+  `patchedDependencies` from `pnpm-workspace.yaml`. All three profiles now
+  pin `node: 22.23.0` and `pnpm: 11.22.0`. `expo/package.json` gains
+  `packageManager: pnpm@11.22.0`, which CI's `pnpm/action-setup` now reads,
+  and CI's Node is pinned to 22.23.0. `release-config.test.ts` fails if
+  eas.json, `packageManager` or CI disagree.
+- **The second build (versionCode 3) succeeded**, 2026-10-01 10:04 UTC:
+  build `37c36890-2002-4599-be8c-bb5db52a4551`, a production AAB. EAS created the Android upload
+  keystore on its servers ("remote credentials").
+
 ## 2026-10-01 UTC — `@claude` gets its author check
 
 - `claude-mention.yml` is now two jobs. `authorize` (`permissions: {}`)

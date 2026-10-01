@@ -73,8 +73,9 @@
     "extra": {
       "sentryDsn": "",
       "eas": {
-        "projectId": ""
+        "projectId": "22595b84-dff7-407a-b37a-66d409528369"
       }
-    }
+    },
+    "owner": "traction-labs"
   }
 }

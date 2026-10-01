@@ -42,6 +42,38 @@ describe("app.json", () => {
 });
 
 describe("eas.json", () => {
+  // EAS's default pnpm predates `patchedDependencies` in pnpm-workspace.yaml,
+  // so a frozen install there fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH
+  // (first production build, 2026-10-01). `packageManager` is the one
+  // pnpm version: CI reads it (`package_json_file`), EAS is pinned to it.
+  it.each(["development", "preview", "production"] as const)(
+    "pins the %s build to the repository's pnpm and Node",
+    (profile) => {
+      const pnpm = (packageJson as { packageManager?: string }).packageManager;
+      expect(pnpm).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+      expect(easJson.build[profile]).toMatchObject({
+        node: "22.23.0",
+        pnpm: pnpm!.replace("pnpm@", ""),
+      });
+    }
+  );
+
+  it("pins CI to the same Node as the EAS builds", () => {
+    // Read as text: the workflow is YAML.
+    const fs = jest.requireActual("fs") as {
+      readFileSync(path: string, encoding: "utf8"): string;
+    };
+    const ci = fs.readFileSync(
+      `${__dirname}/../../../.github/workflows/ci.yml`,
+      "utf8"
+    );
+    const versions = [...ci.matchAll(/node-version:\s*([\d.]+)/g)].map(
+      (m) => m[1]
+    );
+    expect(versions.length).toBeGreaterThan(0);
+    for (const v of versions) expect(v).toBe(easJson.build.production.node);
+  });
+
   it("gives every build profile the OTA channel it will listen on", () => {
     expect(easJson.build.production.channel).toBe("production");
     expect(easJson.build.preview.channel).toBe("preview");
@@ -90,7 +122,19 @@ describe("app.config.ts", () => {
   });
 
   it("leaves the placeholder until there is a project id", () => {
-    expect(resolveAppConfig(expo, {}).updates?.url).toBe(UPDATE_URL_PLACEHOLDER);
+    expect(resolveAppConfig(withProjectId(""), {}).updates?.url).toBe(
+      UPDATE_URL_PLACEHOLDER
+    );
+  });
+
+  it("is linked to the katha-ai EAS project (eas init, 2026-10-01)", () => {
+    expect(expo.extra?.eas?.projectId).toBe(
+      "22595b84-dff7-407a-b37a-66d409528369"
+    );
+    expect(expo.owner).toBe("traction-labs");
+    expect(resolveAppConfig(expo, {}).updates?.url).toBe(
+      "https://u.expo.dev/22595b84-dff7-407a-b37a-66d409528369"
+    );
   });
 
   it("never overwrites a real update URL", () => {
