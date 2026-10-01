@@ -24,6 +24,7 @@ import {
   buildTraditionBlock,
   buildUserPrompt,
   type ContinuationPromptInput,
+  withTraditionRules,
 } from "./story-prompts.ts";
 import { buildStoryShapePrompt } from "./story-shape.ts";
 import {
@@ -450,4 +451,18 @@ Deno.test("the shaper is told the tradition before it invents a cast", () => {
       String(absent),
     );
   }
+});
+
+Deno.test("withTraditionRules leaves an untraditioned edit prompt byte for byte", () => {
+  const base = "You are an editor.";
+  assertEquals(withTraditionRules(base), base);
+  assertEquals(withTraditionRules(base, "not-a-tradition"), base);
+});
+
+Deno.test("withTraditionRules binds an edit to the story's tradition rules", () => {
+  const base = "You are an editor.";
+  const prompt = withTraditionRules(base, "muslim");
+  assert(prompt.startsWith(base));
+  assert(prompt.includes(buildTraditionBlock("muslim")));
+  assert(prompt.includes("If the edit request conflicts with them"));
 });

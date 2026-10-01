@@ -26,6 +26,28 @@
   (a maintainer's `@claude` on a stranger's issue), and any commenter still
   starts the billed `authorize` runner.
 - `claude-review.yml` gets no copy yet; its comment says why.
+## 2026-10-01 UTC — The faith layer reaches edits and draft portraits
+
+- `edit-story`: the story row now carries `tradition`, and both model call
+  sites use `withTraditionRules(EDIT_SYSTEM_PROMPT, tradition)`
+  (`_shared/story-prompts.ts`). That appends `buildTraditionBlock` plus one
+  binding sentence to the system prompt. The untraditioned prompt is
+  byte-identical (`tradition-prompt.test.ts`).
+- `generate-character-image`: it classifies the tradition with
+  `classifyTraditionForGeneration` over the optional new `idea` field plus
+  name and appearance, and passes it to `generateDraftCharacterPortrait`,
+  whose parameter existed but went unused. `CreateBriefFlow` sends
+  `draft.seed` as `idea`; the other three portrait surfaces send nothing.
+- The whole-chapter save stays unpoliced by decision: the rules govern AI
+  output, not the writer's own text.
+- Not verified live: no paid generation was run. Tests only (tradition-prompt
+  and story-prompts 153, generate-character-image 18).
+- **Deploy obligation:** `edit-story` and `generate-character-image`, plus
+  every importer of `_shared/story-prompts.ts` and `_shared/image.ts`, which
+  both changed. Find them with
+  `grep -l "story-prompts.ts\|image.ts" backend/supabase/functions/*/index.ts`
+  plus transitive `_shared` importers, then run
+  `scripts/audit-function-drift.sh`.
 
 ## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
 

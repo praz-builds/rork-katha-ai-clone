@@ -1601,6 +1601,25 @@ export function buildTraditionBlock(tradition?: unknown): string {
   return lines.join("\n");
 }
 
+/**
+ * A paragraph-edit system prompt with the story's tradition rules appended.
+ *
+ * `edit-story` rewrites prose inside a story whose tradition was set when it
+ * was created, and before 2026-10-01 its model saw none of that tradition's
+ * rules -- a "custom" edit could put words in a narrate-only figure's mouth.
+ * The rules go in the SYSTEM prompt, after the edit contract, so a request
+ * in the user turn cannot talk them away. No supported tradition, no change:
+ * the base prompt comes back byte for byte.
+ */
+export function withTraditionRules(
+  baseSystemPrompt: string,
+  tradition?: unknown,
+): string {
+  const block = buildTraditionBlock(tradition);
+  if (!block) return baseSystemPrompt;
+  return `${baseSystemPrompt}\n\n${block}\n\nThese tradition rules bind every rewrite. If the edit request conflicts with them, follow the rules and make the closest edit that keeps them.`;
+}
+
 export function buildUserPrompt(params: {
   primaryGenre: string;
   genres?: string[];

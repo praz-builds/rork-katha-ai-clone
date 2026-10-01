@@ -429,6 +429,12 @@ export type CharacterImageInput = {
    * absent value is normalised server-side to `auto`, the genre's own look.
    */
   imageStyle?: ImageStyle;
+  /**
+   * The brief's idea, when the portrait is drawn inside a brief. The server
+   * classifies the story's tradition from it (and from the character text) so
+   * a draft portrait honours the same depiction rules its cover will.
+   */
+  idea?: string;
 };
 
 /** What one character image cost, and what the account has left. */
@@ -568,6 +574,7 @@ export async function generateCharacterImage(
         // same value, so this is the explicit spelling of the server default
         // rather than a second one.
         image_style: input.imageStyle ?? "auto",
+        ...(input.idea?.trim() ? { idea: input.idea.trim().slice(0, 2000) } : {}),
         // Omitted rather than sent as null when absent: the endpoint treats a
         // present-but-unusable field as an error, which is right, and an
         // explicit null is present.

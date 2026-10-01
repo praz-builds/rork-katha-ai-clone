@@ -4,6 +4,7 @@ import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { normalizeCoverArtStyle } from "../_shared/cover-prompts.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
 import { generateDraftCharacterPortrait } from "../_shared/image.ts";
+import { classifyTraditionForGeneration } from "../_shared/tradition-classify.ts";
 import { parseRequestId, readJsonObject } from "../_shared/operations.ts";
 
 const MAX_CHARACTER_FIELD_LENGTH = 500;
@@ -326,12 +327,34 @@ export async function handleRequest(req: Request): Promise<Response> {
     // -- exactly what an absent field should mean.
     const artStyle = normalizeCoverArtStyle(body.image_style);
 
-    const image = await generateDraftCharacterPortrait(user.id, requestId, {
-      name,
-      appearance,
-      description: legacyDescription,
-      referenceImage: reference.value,
-    }, artStyle);
+    // The faith axis, which a draft portrait never had: there is no story row
+    // yet, so no `stories.tradition` to read. Classified the way generation
+    // classifies it -- pure, deterministic, free -- from the brief's idea when
+    // the Create flow sends it, plus this character's own text. Absent stays
+    // absent: no signal means `undefined` and the portrait is drawn exactly
+    // as before. A present signal applies the same depiction rules a cover
+    // for that story would (`traditionDepictionClauses`).
+    const ideaText = typeof body.idea === "string"
+      ? body.idea.slice(0, 2000)
+      : "";
+    const tradition = classifyTraditionForGeneration(
+      [ideaText, name, appearance, legacyDescription].filter(Boolean).join(
+        "\n",
+      ),
+    ).tradition;
+
+    const image = await generateDraftCharacterPortrait(
+      user.id,
+      requestId,
+      {
+        name,
+        appearance,
+        description: legacyDescription,
+        referenceImage: reference.value,
+      },
+      artStyle,
+      tradition,
+    );
     if (!image) {
       // The chain exhausted both models across all three safety rungs. The
       // reveal screen offers a free "Try again" on exactly this response, so

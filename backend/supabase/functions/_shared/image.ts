@@ -616,10 +616,9 @@ export async function generateDraftCharacterPortrait(
   /**
    * The tradition the Create brief is currently set to, when the caller knows
    * it. A draft portrait is drawn before any story row exists, so there is no
-   * `stories.tradition` to read; the endpoint (`generate-character-image`)
-   * does not yet pass this, and until it does a draft portrait behaves exactly
-   * as it does today. The parameter is here so the policy has one door into
-   * this path rather than a second implementation later.
+   * `stories.tradition` to read. `generate-character-image` classifies it
+   * from the brief's idea (when sent) and the character's own text, since
+   * 2026-10-01. Undefined draws exactly as before.
    */
   tradition?: string,
 ): Promise<ImageResult | null> {
