@@ -101,6 +101,8 @@ draft portrait was drawn with no depiction rule.
       read as a sacred figure and be drawn as no person at all. Onboarding,
       the saved-character picker and the Characters tab send no idea, so they
       draw exactly as before. A picker would make this explicit.
+      **Not yet seen rendered:** tested at the prompt level only; render one Create-flow portrait for a
+      tradition-classified idea after deploy, and check it against that story's cover.
 - [x] `edit-story` applies the tradition's rules on the model route, at both
       call sites (`editParagraph` and `streamChapterProse`), through one
       per-request system prompt: `withTraditionRules(EDIT_SYSTEM_PROMPT,
