@@ -34,7 +34,7 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * foreground dwell crosses it records precisely what the gate tests for.
  *
  * The cleanup flush stays for chapters that never get that far: it is what
- * feeds `read_count` for a short read (the streak needs 60s; see `readEarnsStreak`).
+ * feeds `read_count`, and the day's streak sum, for a short read.
  *
  * ── AND A FLUSH WHEN THE COMPOSER IS TOUCHED ──────────────────────────────
  *

@@ -535,7 +535,10 @@ Deno.test("a refused publish does not count as a day's writing", async () => {
   }
 });
 
-Deno.test("a publish that actually goes through counts the day", async () => {
+Deno.test("a publish does not count a day - only a written chapter does", async () => {
+  // Since 2026-10-01 the writing half of the streak is a generated chapter
+  // (countWritingDay at chapter persistence). Publishing is free and
+  // repeatable, so flipping visibility daily would otherwise farm the ladder.
   const beforeEnv = setTestEnv();
   try {
     const { status, requests } = await publish(
@@ -544,18 +547,13 @@ Deno.test("a publish that actually goes through counts the day", async () => {
 
     assertEquals(status, 200);
     assert(wentPublic(requests));
-    assert(
-      countedAWritingDay(requests),
-      "publishing is writing, and the streak is what says so",
-    );
+    assertFalse(countedAWritingDay(requests));
   } finally {
     restoreEnv(beforeEnv);
   }
 });
 
-Deno.test("a private save counts too - the edits are the work", async () => {
-  // A story saved privately has real, committed edits behind it, and that is
-  // a writing day.
+Deno.test("a private save does not count a day either", async () => {
   const beforeEnv = setTestEnv();
   try {
     const { status, requests } = await publish(
@@ -563,7 +561,7 @@ Deno.test("a private save counts too - the edits are the work", async () => {
     );
 
     assertEquals(status, 200);
-    assert(countedAWritingDay(requests));
+    assertFalse(countedAWritingDay(requests));
   } finally {
     restoreEnv(beforeEnv);
   }

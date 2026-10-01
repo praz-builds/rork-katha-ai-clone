@@ -46,10 +46,28 @@ Deno.test("handleRecordRead rejects non-POST methods", async () => {
   assertEquals(await response.json(), { error: "Method not allowed" });
 });
 
-Deno.test("a streak day needs someone else's story and 60 seconds", () => {
-  assertEquals(readEarnsStreak(false, 60), true);
-  assertEquals(readEarnsStreak(false, 59), false);
-  assertEquals(readEarnsStreak(false, undefined), false);
-  // The author's own chapter, mounted while it is generated, never counts.
-  assertEquals(readEarnsStreak(true, 600), false);
+Deno.test("a reading day needs someone else's story and 60 seconds today", () => {
+  const read = (over: Partial<Parameters<typeof readEarnsStreak>[0]>) =>
+    readEarnsStreak({
+      isOwnStory: false,
+      durationSeconds: 0,
+      recorded: true,
+      dwellTodaySeconds: 0,
+      ...over,
+    });
+  assertEquals(read({ durationSeconds: 60 }), true);
+  assertEquals(read({ durationSeconds: 59, dwellTodaySeconds: 59 }), false);
+  assertEquals(read({ durationSeconds: undefined }), false);
+  // Five 40-second chapters: the fifth row is already in the day's sum.
+  assertEquals(read({ durationSeconds: 40, dwellTodaySeconds: 200 }), true);
+  // A deduped request is not among the rows, so it is added on top.
+  assertEquals(
+    read({ durationSeconds: 30, recorded: false, dwellTodaySeconds: 30 }),
+    true,
+  );
+  // The author's own chapter never counts as reading, however long.
+  assertEquals(
+    read({ isOwnStory: true, durationSeconds: 600, dwellTodaySeconds: 600 }),
+    false,
+  );
 });

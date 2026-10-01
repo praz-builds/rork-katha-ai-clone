@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
-import { touchStreak } from "../_shared/engagement.ts";
 import { parseUuid, readJsonObject } from "../_shared/operations.ts";
 
 /**
@@ -214,28 +213,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       if (storyWordError) throw storyWordError;
     }
 
-    // The writing half of the streak.
-    //
-    // `record-read` has kept `streaks` for the reading half since 00046, and
-    // nothing kept it for writing -- so a person who spent an evening editing
-    // and publishing a chapter and never opened somebody else's story lost the
-    // day. That is the wrong lesson for the surface to teach, and it is exactly
-    // the person a writing app should be counting.
-    //
-    // CALLED AT EACH SUCCESSFUL EXIT, NOT ONCE HERE. An earlier version ran it
-    // at this point, above two refusals that then sat below it, so a publish
-    // the server turned down still recorded a writing day. A day credited for
-    // work the server refused to do is the counter lying, and a streak is only
-    // worth anything if it is true. Those refusals are gone (migration 00091),
-    // but a call per exit keeps the counter honest if one is ever added back.
-    //
-    // The private branch below is a success and does count: the edits are
-    // committed, which is the work.
-    //
-    // Best effort by construction (`touchStreak` never throws) -- a counter
-    // must not be able to fail a publish that succeeded.
-    const countWritingDay = () =>
-      touchStreak(serviceClient, user.id, { story_id: storyId });
+    // NO STREAK HERE. The writing half of the streak is counted where a
+    // generated chapter is persisted (`countWritingDay` in generate-story,
+    // generate-story-stream, continue-story and reimagine-chapter). A save or
+    // a publish is free and repeatable -- flipping visibility or saving an
+    // unchanged chapter every day would pay the whole ladder for nothing --
+    // so since 2026-10-01 it no longer counts (CREDITS_AND_PRICING §5).
 
     // Private is a save operation. Edits are durable, but neither chapters nor
     // the story enter public feeds - and this is the branch a request that
@@ -245,7 +228,6 @@ export async function handleRequest(req: Request): Promise<Response> {
       // story that is already public keeps its edits and keeps its visibility:
       // a client that omits `visibility` is saving, not asking to unpublish.
       // Taking a live story out of the feed has to be an explicit act.
-      await countWritingDay();
       if (alreadyPublic) {
         return respond({ saved: true, published: true, story_id: storyId });
       }
@@ -287,7 +269,6 @@ export async function handleRequest(req: Request): Promise<Response> {
 
     if (updateError) throw updateError;
 
-    await countWritingDay();
     return respond({ published: true, story_id: storyId });
   } catch (error) {
     console.error("publish-story error:", error);

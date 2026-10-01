@@ -315,7 +315,8 @@ and not a free allowance by default.
 | Invite a friend who creates something | **10** to you, **5** to them |
 | Welcome bonus | **3**, once |
 
-A streak is consecutive days with reading activity. Miss a day and it resets to
+A streak is consecutive days on which you read or write: a minute of reading
+other people's stories, or a chapter of your own. Miss a day and it resets to
 zero — the rewards start again from day 2. **Missed one?** Read for 30 minutes
 the next day and the streak carries on as if you hadn't (twice a month).
 
@@ -1417,21 +1418,29 @@ stories** (30 × $0.043; 30 × $0.178) — one-time, per free user who reaches d
 21. That is $0.69 and $2.85 more than the ladder it replaces, paid only past
 day 10, to a user the old ladder had already stopped paying.
 
-**A streak is consecutive days with reading activity**, server-recorded: one
-chapter finished, or ≥60s of dwell. Miss a day and it resets to zero, and the
-rewards restart at day 2.
+**A streak is consecutive days with reading or writing activity**,
+server-recorded (founder decision, 2026-10-01). Miss a day and it resets to
+zero, and the rewards restart at day 2. A day counts when either half lands:
 
-> **What is actually enforced, as of 2026-10-01.** The read path matches the
-> rule: `handleRecordRead` calls `touchStreak` only for someone else's story
-> and only when the request carries ≥60s (`readEarnsStreak`, PR #172). Two
-> differences remain. **"One chapter finished" is not enforced** — the server
-> is never told a chapter finished, so a chapter read in under 60s, or several
-> short ones that only add up to 60, earn nothing. **Writing also counts:**
-> `publish-story` calls `touchStreak` on every successful save or publish (its
-> "writing day"), so generating a public story each day (or saving an edit) still climbs the ladder
-> without reading. That is deliberate in the code and contradicts the first
-> sentence above; which one is right is an open founder decision, tracked in
-> `backend/ROADMAP.md`.
+- **Reading:** at least 60 seconds of other people's stories that UTC day,
+  summed across chapters and stories. Your own story never counts as reading.
+  This is `readEarnsStreak` in `handleRecordRead`, with the day's
+  `story_reads` dwell, so five 40-second chapters count.
+- **Writing:** an AI chapter you got: a new story, a continuation or a
+  reimagined chapter. It is counted when the chapter is persisted
+  (`countWritingDay` in `generate-story`, `generate-story-stream`,
+  `continue-story` and `reimagine-chapter`). Saving an edit and publishing do
+  **not** count. Both are free and repeatable, so flipping a story's
+  visibility once a day would have paid the whole ladder for nothing. Before
+  2026-10-01, `publish-story` counted them.
+
+> **Limits worth knowing.** Dwell is client-measured: the server applies the
+> 60-second floor and the sum, but it cannot clock the reading itself. "A
+> chapter finished" is not a separate signal, because the server is never told
+> a chapter finished. A short chapter counts through the daily sum. A writing
+> day costs a generation, with one exception. The first re-prompt of a
+> chapter you created is free, so each paid chapter can buy at most one extra
+> free writing day. That is bounded by chapters already paid for.
 
 **Why day 2 is the right first rung.** Median mobile retention falls from **D1
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))
@@ -1481,8 +1490,8 @@ thirty minutes every week."
 | **Two missed days** | No repair. That is a lapse, not a slip |
 | **Idempotency** | `streak_repair:{user_id}:{missed_date}` |
 
-**Reading time is the same signal the streak already uses** — a chapter finished,
-or ≥60s of dwell — accumulated to 30 minutes and recorded server-side. Client
+**Reading time is the same signal the streak's reading half uses** — recorded
+dwell on other people's stories — accumulated to 30 minutes and recorded server-side. Client
 reported dwell is not trusted for this any more than it is anywhere else (§9).
 
 **Repair restores the streak but does not pay any rung the missed day would
@@ -2650,8 +2659,8 @@ economy is tuned on evidence rather than argued about.
     previously paid 1 at day 2, day 5, day 7 and every 7 days after.)* The
     rungs match the milestones on the *Your journey* screen, because a rung
     the user cannot see cannot motivate. A streak is consecutive days with
-    reading activity — one chapter finished or ≥60s dwell, recorded
-    server-side. Missing a day resets it to zero and the rewards restart at
+    reading or writing activity — ≥60s of reading other people's stories
+    that day, or a chapter of your own — recorded server-side (2026-10-01). Missing a day resets it to zero and the rewards restart at
     day 2, unless repaired (22a).
 22a. **A missed day can be repaired by reading 30 minutes the next day**, capped
     at 2/month, offered only after a *single* missed day. Repair restores the

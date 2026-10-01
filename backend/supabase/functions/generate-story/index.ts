@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reportCrudeLexicon } from "../_shared/content-scan.ts";
 import { corsHeadersFor, handleCors } from "../_shared/cors.ts";
 import { logError, safeErrorMessage } from "../_shared/errors.ts";
+import { countWritingDay } from "../_shared/engagement.ts";
 import { withoutStoryBible } from "../_shared/story-bible.ts";
 import { reserveAutoChapterRun } from "../_shared/auto-run.ts";
 import { buildStoryDonePayload } from "../_shared/generation-done.ts";
@@ -540,6 +541,8 @@ serve(async (req) => {
         throw completionError ?? new Error("Story persistence failed");
       }
       mark("persist");
+      // A chapter the author got is a writing day (§5). Never throws.
+      await countWritingDay(serviceClient, user.id, story.id);
 
       // The classification, read at the one moment waiting for it is free.
       //

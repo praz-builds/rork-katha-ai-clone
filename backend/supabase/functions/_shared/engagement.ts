@@ -207,14 +207,70 @@ export async function touchStreak(
   };
 }
 
-/** Dwell a single read must carry to count as a streak day (pricing doc §5). */
+/** Reading a day must add up to before it counts as a streak day (§5). */
 export const STREAK_MIN_READ_SECONDS = 60;
 
-export function readEarnsStreak(
-  isOwnStory: boolean,
-  durationSeconds: number | undefined,
-): boolean {
-  return !isOwnStory && (durationSeconds ?? 0) >= STREAK_MIN_READ_SECONDS;
+/**
+ * Whether a read earns today's streak day. Someone else's story only, and 60
+ * seconds of dwell in total today -- this request's number, or the day's
+ * recorded rows plus this request when this request was deduped and so is not
+ * among them. Summing is what lets five 40-second chapters count, which a
+ * per-request floor refused.
+ */
+export function readEarnsStreak(input: {
+  isOwnStory: boolean;
+  durationSeconds: number | undefined;
+  recorded: boolean;
+  dwellTodaySeconds: number;
+}): boolean {
+  if (input.isOwnStory) return false;
+  const thisRead = input.durationSeconds ?? 0;
+  if (thisRead >= STREAK_MIN_READ_SECONDS) return true;
+  const total = input.dwellTodaySeconds + (input.recorded ? 0 : thisRead);
+  return total >= STREAK_MIN_READ_SECONDS;
+}
+
+/**
+ * Seconds of other people's stories this user has recorded since UTC
+ * midnight -- the same day boundary `touch_streak` uses. Served by
+ * `idx_story_reads_user (user_id, read_at desc)`. Best-effort: a failure
+ * reads as zero, which can only withhold a day, never grant one.
+ */
+async function dwellTodaySeconds(
+  service: RpcClient,
+  userId: string,
+): Promise<number> {
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await service
+    .from("story_reads")
+    .select("duration_seconds")
+    .eq("user_id", userId)
+    .eq("is_own_story", false)
+    .gte("read_at", dayStart.toISOString());
+  if (error || !data) {
+    if (error) console.error("story_reads dwell sum failed", error);
+    return 0;
+  }
+  return (data as { duration_seconds: number | null }[]).reduce(
+    (sum, row) => sum + (row.duration_seconds ?? 0),
+    0,
+  );
+}
+
+/**
+ * The writing half of the streak: a chapter the author actually got. Called
+ * by every endpoint that persists a generated chapter (generate-story,
+ * generate-story-stream, continue-story, reimagine-chapter). Not by
+ * publish-story: a save or publish is free and repeatable. Best-effort like
+ * every touch -- it never throws.
+ */
+export function countWritingDay(
+  service: RpcClient,
+  userId: string,
+  storyId: string,
+): Promise<StreakSummary | null> {
+  return touchStreak(service, userId, { story_id: storyId, kind: "writing" });
 }
 
 export async function handleRecordRead(req: Request): Promise<Response> {
@@ -278,15 +334,23 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     // recorded. These are two RPCs and cannot be one transaction from here, so
     // the honest shape is to report the read and degrade the streak to null.
     //
-    // A streak day is a real read of someone else's story (CREDITS_AND_PRICING
-    // §5), and `touch_streak` takes neither a story nor a duration, so both
-    // rules live here. Own story: the reader mounts on the author's chapter
-    // while it is being generated, so without this, creating on consecutive
-    // days paid the whole ladder with no reading. Duration: the client posts
-    // from 5 seconds up, so the floor has to be applied server-side. The number
-    // is this request's, not the stored row's -- a deduped second call keeps
-    // the first sitting's duration, and the client is the source of both.
-    const streak = readEarnsStreak(row.is_own_story, durationSeconds)
+    // A reading day is someone else's story and 60 seconds today
+    // (CREDITS_AND_PRICING §5). `touch_streak` takes neither a story nor a
+    // duration, so both rules live here. Own story: the reader mounts on the
+    // author's chapter while it is generated -- writing is counted where the
+    // chapter is persisted (`countWritingDay`), not by reading it back. The
+    // day's sum is only fetched when this request alone falls short.
+    const ownOrLong = row.is_own_story ||
+      (durationSeconds ?? 0) >= STREAK_MIN_READ_SECONDS;
+    const earns = readEarnsStreak({
+      isOwnStory: row.is_own_story,
+      durationSeconds,
+      recorded: row.recorded,
+      dwellTodaySeconds: ownOrLong
+        ? 0
+        : await dwellTodaySeconds(auth.service, userId),
+    });
+    const streak = earns
       ? await touchStreak(auth.service, userId, { story_id: storyId })
       : null;
 
