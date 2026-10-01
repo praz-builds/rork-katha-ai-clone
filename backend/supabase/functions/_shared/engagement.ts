@@ -366,7 +366,7 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     // day's sum is only fetched when this request alone falls short.
     const reader = userId;
     const earns = await readEarnsStreak({
-      isOwnStory: row.is_own_story,
+      isOwnStory: row.is_own_story === true,
       durationSeconds,
       recorded: row.recorded,
       dwellTodaySeconds: () => dwellTodaySeconds(auth.service, reader),
