@@ -1428,7 +1428,7 @@ rewards restart at day 2.
 > is never told a chapter finished, so a chapter read in under 60s, or several
 > short ones that only add up to 60, earn nothing. **Writing also counts:**
 > `publish-story` calls `touchStreak` on every successful save or publish (its
-> "writing day"), so generating a story each day still climbs the ladder
+> "writing day"), so generating a public story each day (or saving an edit) still climbs the ladder
 > without reading. That is deliberate in the code and contradicts the first
 > sentence above; which one is right is an open founder decision, tracked in
 > `backend/ROADMAP.md`.

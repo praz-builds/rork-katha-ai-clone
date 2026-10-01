@@ -82,9 +82,10 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  *  - **A short first sitting locks the duration low for the rest of the day.**
  *    Read 30 seconds, leave, come back and read ten minutes: the second post
  *    is deduped and the sum stays 30. Recording the 30 is still right — it
- *    feeds `read_count`, and 30 fails the gate exactly as 0 does (the streak
- *    is still earned: the server reads the deduped post's own duration) — but raising it would need the server to update the row, which it
- *    deliberately does not do. Out of scope here, and worth knowing.
+ *    feeds `read_count`, and 30 fails the gate exactly as 0 does — but
+ *    raising it would need the server to update the row, which it
+ *    deliberately does not do. Out of scope here, and worth knowing. The
+ *    streak is unaffected: the server reads the deduped post's own duration.
  *
  * FOREGROUND TIME ONLY. A phone in a pocket with the reader open is not
  * reading. `AppState` banks the elapsed time on the way to background and
