@@ -137,6 +137,20 @@ describe("app.config.ts", () => {
     );
   });
 
+  it("takes google-services.json from the EAS file variable, and only from it", () => {
+    expect(resolveAppConfig(expo, {}).android?.googleServicesFile).toBeUndefined();
+    const resolved = resolveAppConfig(expo, {
+      GOOGLE_SERVICES_JSON: "/home/expo/env/GOOGLE_SERVICES_JSON",
+    });
+    expect(resolved.android?.googleServicesFile).toBe(
+      "/home/expo/env/GOOGLE_SERVICES_JSON"
+    );
+    // Adding FCM config must not bring the advertising-ID permission back.
+    expect(resolved.android?.blockedPermissions).toContain(
+      "com.google.android.gms.permission.AD_ID"
+    );
+  });
+
   it("never overwrites a real update URL", () => {
     const config = {
       ...withProjectId("abc-123"),

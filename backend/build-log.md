@@ -16,6 +16,18 @@
   match EAS. No secret is in the repository, `.env` or this log.
 - Status corrections in the ROADMAP: OTP length is 6 (set earlier today); the
   paid generation provider is funded at $19.81.
+## 2026-10-01 UTC — FCM config reaches the build without entering the repo
+
+- The founder created Firebase project `katha-ai-7d3ca` with an Android app
+  for `ai.katha.createstories`. Its `google-services.json` was uploaded as a
+  sensitive, file-type EAS environment variable, `GOOGLE_SERVICES_JSON`
+  (production, preview and development). `expo/app.config.ts` sets
+  `android.googleServicesFile` from it, so Expo's prebuild applies the
+  google-services Gradle plugin itself; the manual Gradle steps on Firebase's
+  setup page do not apply. No Firebase SDK was added, so AD_ID stays
+  blocked (`release-config.test.ts`).
+- Effective from the next build. Sending push still needs the FCM V1
+  service-account key in EAS credentials.
 
 ## 2026-10-01 UTC — The app is linked to its EAS project
 
