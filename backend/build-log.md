@@ -5,6 +5,15 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — The app is linked to its EAS project
+
+- `eas init --id 22595b84-dff7-407a-b37a-66d409528369` (account
+  `traction-labs`, slug `katha-ai`) wrote `extra.eas.projectId` and `owner`
+  into `expo/app.json`, so `app.config.ts` now derives
+  `updates.url = https://u.expo.dev/<id>`. `release-config.test.ts` pins the
+  link. The founder logged in through the EAS browser flow; no credentials
+  passed through the agent.
+
 ## 2026-10-01 UTC — `@claude` gets its author check
 
 - `claude-mention.yml` is now two jobs. `authorize` (`permissions: {}`)

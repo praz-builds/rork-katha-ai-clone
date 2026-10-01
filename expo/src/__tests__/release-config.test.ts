@@ -90,7 +90,19 @@ describe("app.config.ts", () => {
   });
 
   it("leaves the placeholder until there is a project id", () => {
-    expect(resolveAppConfig(expo, {}).updates?.url).toBe(UPDATE_URL_PLACEHOLDER);
+    expect(resolveAppConfig(withProjectId(""), {}).updates?.url).toBe(
+      UPDATE_URL_PLACEHOLDER
+    );
+  });
+
+  it("is linked to the katha-ai EAS project (eas init, 2026-10-01)", () => {
+    expect(expo.extra?.eas?.projectId).toBe(
+      "22595b84-dff7-407a-b37a-66d409528369"
+    );
+    expect(expo.owner).toBe("traction-labs");
+    expect(resolveAppConfig(expo, {}).updates?.url).toBe(
+      "https://u.expo.dev/22595b84-dff7-407a-b37a-66d409528369"
+    );
   });
 
   it("never overwrites a real update URL", () => {
