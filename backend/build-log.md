@@ -19,8 +19,9 @@
   `read` and bots to `none`. It has not run on GitHub, because
   `CLAUDE_ACTION_ENABLED` is unset. The first live `@claude` is its first real
   test.
-- `claude-review.yml` deliberately gets no copy: under `contents: read` the
-  lookup is unverified, and a fail-closed lookup would silently stop review.
+- `claude-review.yml` deliberately gets no copy yet. The lookup has never run
+  on GitHub, and a fail-closed lookup that misbehaved there would silently
+  stop every review.
 
 ## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
 

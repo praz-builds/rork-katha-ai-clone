@@ -83,27 +83,27 @@ jobs:
       # public repository COLLABORATOR says nothing about the level, and
       # the payload has no association for the sender at all. Only admin,
       # maintain and write pass. Bots answer `none`, a stranger on this
-      # public repo answers `read`, and any API failure fails closed.
+      # public repo answers `read`, and any API failure fails closed. (The
+      # API folds `maintain` into `write` in this field; listed for clarity.)
       # Logins reach the script through `env`, never interpolated into it.
       - name: Authorise the requester
         id: auth
         env:
           GH_TOKEN: ${{ github.token }}
-          WRITER: >-
-            ${{ github.event.comment.user.login
-              || github.event.review.user.login
-              || github.event.issue.user.login }}
+          WRITER: ${{ github.event.comment.user.login || github.event.review.user.login || github.event.issue.user.login }}
           SENDER: ${{ github.event.sender.login }}
         run: |
           set -uo pipefail
           allowed=true
           for login in "${WRITER:-}" "${SENDER:-}"; do
             if [ -z "$login" ]; then allowed=false; break; fi
+            # A 404 prints its JSON body to stdout, so the value is
+            # discarded on failure rather than concatenated with "none".
             perm=$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${login}/permission" \
-                     --jq .permission 2>/dev/null || echo none)
+                     --jq .permission 2>/dev/null) || perm=none
             case "$perm" in
               admin|maintain|write) echo "$login: $perm" ;;
-              *) echo "$login: $perm -- not allowed to invoke @claude"; allowed=false ;;
+              *) echo "::warning::$login ($perm) may not invoke @claude; skipping."; allowed=false ;;
             esac
           done
           echo "allowed=${allowed}" >> "$GITHUB_OUTPUT"
