@@ -430,7 +430,7 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
 | **PostHog** | Analytics (EU Cloud) | `phc_onpzv6Zkxv7SATYPHRM2oWQ7JTPmpETXV9ZHNV4b8cpm` | Set |
 | **RevenueCat** | Subscriptions + credit packs + paywalls | Public SDK key in `expo/src/lib/revenuecat.ts`; webhook secret in Supabase secrets | Pending dashboard setup |
-| **Firebase/FCM** | Push notifications (iOS + Android) | Requires `google-services.json` in `expo/`; `FIREBASE_SERVICE_ACCOUNT_KEY` in Supabase secrets. The RNFB packages were removed from the app on 2026-09-25 and come back with push | Not yet wired |
+| **Firebase/FCM** | Push notifications (Android; iOS needs an APNs key) | Firebase project `katha-ai-7d3ca`. `google-services.json` reaches builds as the sensitive EAS file variable `GOOGLE_SERVICES_JSON` (never in `expo/`, never committed). Sends go through Expo's push service (`_shared/push.ts` → `exp.host`), so the **FCM V1 service-account key belongs in EAS credentials**, not Supabase secrets. No Firebase SDK is installed. | Config wired 2026-10-01 (from the next build); FCM V1 key not yet uploaded |
 | **Sentry** | Error tracking, incl. narration alerting (see Observability Gate above) | `SENTRY_DSN` in Supabase secrets (backend); client DSN, org and project from EAS env vars through `expo/app.config.ts` (see *Release build config*) | Not yet set |
 | **AdMob** | Rewarded video for free credits | Needs server-side verification (SSV) | Not yet wired |
 
@@ -536,7 +536,6 @@ GEMINI_API_KEY=xxx
 OPENROUTER_API_KEY=xxx
 REVENUECAT_WEBHOOK_SECRET=xxx
 SUBSCRIPTION_GRANT_CRON_SECRET=xxx
-FIREBASE_SERVICE_ACCOUNT_KEY=xxx
 RUNPOD_API_KEY=xxx
 ALLOWED_ORIGINS=https://REPLACE_WITH_EXPO_WEB_ORIGIN,http://localhost:8090
 ```
@@ -1468,7 +1467,7 @@ supabase secrets set GEMINI_API_KEY=xxx OPENROUTER_API_KEY=xxx  # Set story-gene
 
 ### Required Supabase Secrets
 
-`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `SUBSCRIPTION_GRANT_CRON_SECRET`, `FIREBASE_SERVICE_ACCOUNT_KEY`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `SUBSCRIPTION_GRANT_CRON_SECRET`, `RUNPOD_API_KEY`, `ALLOWED_ORIGINS`.
 
 ### Expo
 
@@ -1511,6 +1510,15 @@ What the store binary bakes in, and so cannot be changed by an OTA update.
   pins all three. **`eas update` does not read these `build.*.env` blocks**:
   publish an OTA only from a checkout whose `expo/.env` has the same values,
   or it ships an empty key.
+- **FCM config is an EAS file variable, not a file.** `GOOGLE_SERVICES_JSON`
+  (sensitive, file type, all three environments) holds `google-services.json`;
+  `app.config.ts` maps it to `android.googleServicesFile`, which makes prebuild
+  apply the google-services Gradle plugin, a native change. Without it a
+  build still succeeds and push tokens never register. The repository cannot
+  assert that the variable exists (`eas env:list production` does);
+  `release-config.test.ts` pins the mapping, and that adding it keeps
+  `blockedPermissions`. Confirm AD_ID stays out of a build by reading the
+  merged manifest after `expo prebuild --platform android`.
 - **Sentry is environment, not files.** Set as EAS environment variables:
   `SENTRY_DSN` (read into `extra.sentryDsn`), `SENTRY_ORG` and `SENTRY_PROJECT`
   (written into the `@sentry/react-native/expo` plugin), and the secret

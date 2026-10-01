@@ -406,11 +406,10 @@ Each is a simple POST with auth + upsert/delete + count update:
 
 ### User Setup
 
-- [ ] Create Firebase project
-- [ ] Create a Firebase service account for FCM HTTP v1 authentication
-- [ ] Set `FIREBASE_SERVICE_ACCOUNT_KEY` as Supabase secret
-- [ ] iOS: upload APNs key to Firebase
-- [ ] Expo: configure `google-services.json` and `GoogleService-Info.plist` through `../expo/app.json`
+- [x] Create Firebase project (`katha-ai-7d3ca`, 2026-10-01)
+- [ ] Create a Firebase service account key for FCM HTTP v1 and upload it to **EAS credentials** (Android > FCM V1). Not a Supabase secret: sends go through Expo's push service (`_shared/push.ts`).
+- [ ] iOS: upload APNs key to EAS credentials
+- [~] Expo: `google-services.json` via the EAS file variable `GOOGLE_SERVICES_JSON` → `app.config.ts` (done 2026-10-01); `GoogleService-Info.plist` for iOS still to do
 
 ### Database
 
@@ -633,7 +632,7 @@ wording is kept in the Item column so the two can be ticked together.
 | Seed story library (30 stories) | Post-push, **start now** | [ ] | Thirty stories take longer to write than the review takes; the store does not need them, the first users do |
 | In-app feedback form | Post-push, via OTA | [~] | Built 2026-09-25: "Send feedback" on You opens a sheet posting to the new `app-feedback` function and `app_feedback` table (00098). **Not** the old `feedback` function, which posts story comments. 5 per hour / 20 per day per user; retries replay rather than duplicate; rows are erased with the account. Ticks when the client ships: 00098 is applied and the `app-feedback` function is deployed and current with main (verified 2026-09-27), so the server half is done and only a client build is missing. Still needs an owner who reads the table |
 | RevenueCat production key | Post-push, but **before production** | [~] | **Code done (PR #142)**: the key is read from the EAS env var `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (no source edit; OTA-deliverable), Android `sub:baseplan` ids are accepted by client and webhook, the paywall carries the Subscriptions-policy copy (price/period, renews automatically, cancel in Google Play, Restore, Manage, Terms, Privacy — EN/PT/ES), and a shipped build with no key disables purchase and says why. **Founder steps remain**: follow [`PLAY_BILLING_SETUP.md`](PLAY_BILLING_SETUP.md) — 8 products, service account (up to 36h to activate), RevenueCat app/entitlement `katha`/offerings `default` + `credit_packs`, RTDN, webhook, the `goog_` key into EAS. Deploy `revenuecat-webhook` and `refresh-subscription-grants` first |
-| Push notifications | Post-launch | [~] | **2026-10-01: the client half is wired.** Firebase project `katha-ai-7d3ca` (package `ai.katha.createstories`). Its `google-services.json` is the sensitive EAS file variable `GOOGLE_SERVICES_JSON` (all three environments), which `app.config.ts` maps to `android.googleServicesFile`. It is never committed (repo is public); a copy is in `~/Katha-Secrets/` on the founder's Mac. No Firebase SDK is installed, so AD_ID stays blocked (tested). It takes effect from the **next** build (versionCode 3 predates it). **Still needed to actually send:** the FCM V1 service-account key (Firebase console > Project settings > Service accounts > Generate new private key), uploaded to EAS under Credentials > Android > FCM V1. |
+| Push notifications | Post-launch | [~] | **2026-10-01: the client half is wired.** Firebase project `katha-ai-7d3ca` (package `ai.katha.createstories`). Its `google-services.json` is the sensitive EAS file variable `GOOGLE_SERVICES_JSON` (all three environments), which `app.config.ts` maps to `android.googleServicesFile`. It is never committed (repo is public); a copy is in `~/Katha-Secrets/` on the founder's Mac. No Firebase SDK is installed (`expo/package.json`), and the config change keeps `blockedPermissions`, which is tested. It takes effect from the **next** build (versionCode 3 predates it). No `version` bump: 1.0.0 / versionCode 3 is on nobody's phone, and the first build testers install will include it. **Still needed to actually send:** the FCM V1 service-account key (Firebase console > Project settings > Service accounts > Generate new private key), uploaded to EAS under Credentials > Android > FCM V1. |
 | Sentry DSN / PostHog tweaks (OTA) | Post-push, via OTA | [ ] | Rotate the DSN after the first public build so the value in the reviewed binary is not the one that stays live |
 | "Add Language" button at the bottom of language selection in More options, stored in Supabase | Post-push | [ ] | Needs a column or table for requested languages |
 | Feed inspired by Dungeon AI: once a user creates stories, "Your stories" comes first on Home | Post-push | [x] | Already true in code: `buildFeedRows` in `HomeScreen.tsx` puts `yours` first whenever the reader owns a story with a chapter, and `home-feed-rows.test.ts` pins it ("leads with 'Your stories'"). Checked 2026-09-25; nothing to build |

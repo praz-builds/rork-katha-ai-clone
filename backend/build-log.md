@@ -24,8 +24,12 @@
   (production, preview and development). `expo/app.config.ts` sets
   `android.googleServicesFile` from it, so Expo's prebuild applies the
   google-services Gradle plugin itself; the manual Gradle steps on Firebase's
-  setup page do not apply. No Firebase SDK was added, so AD_ID stays
-  blocked (`release-config.test.ts`).
+  setup page do not apply. No Firebase SDK was added (`package.json`), and
+  `release-config.test.ts` pins that the change keeps `blockedPermissions`.
+  No `version` bump, because versionCode 3 was never installed by anyone.
+- AGENTS.md is corrected: the FCM V1 key goes in EAS credentials, not a
+  Supabase `FIREBASE_SERVICE_ACCOUNT_KEY`. Nothing reads that secret, because
+  sends go through Expo's push service.
 - Effective from the next build. Sending push still needs the FCM V1
   service-account key in EAS credentials.
 
