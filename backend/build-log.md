@@ -5,6 +5,33 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-01 UTC — A streak day needs someone else's story and 60 seconds (PR #172)
+
+- **Pre-build preflight on `main` 02d837d:** typecheck, lint, `expo export
+  --platform web` and `expo-doctor` (18/18) clean; tests 1740/1741. The one
+  failure was `explore-screen.test.tsx` "Newest": two seed stories tie at
+  `publishedOffset: 0` and the screen shuffles before it sorts, so either can
+  lead. The test now asserts the tie set. No app change.
+- **Edge drift audit before the change:** 34 functions, 357 files, 0 drifted
+  against 02d837d.
+- `_shared/engagement.ts`: `handleRecordRead` calls `touchStreak` only when
+  `readEarnsStreak(row.is_own_story, durationSeconds)` holds. That means
+  someone else's story, with at least 60 seconds on this request. No migration.
+  `is_own_story` is equivalent to `not counts_for_earnings` in 00052,
+  including on deduped repeats.
+- `streak: null` in the record-read response now also means "did not
+  qualify", not only "touch_streak degraded". The client never reads the
+  field (`api.ts` `RecordedRead`).
+- **Still open (ROADMAP row `[~]`):** `publish-story` counts a writing day on
+  every save or publish. That is deliberate in the code but contradicts §5
+  ("reading activity"), and it is a founder decision. Separately, the 60s
+  floor applies per request, which means per chapter. Short chapters read
+  under 60s each earn nothing even when they add up to more.
+- **Deploy obligation:** `_shared/engagement.ts` is imported by eight
+  functions: `publish-story`, `library`, `follow-story`, `follow-user`,
+  `like`, `record-read`, `feed`, `bookmark`. All eight redeploy from merged
+  `main`, then rerun `scripts/audit-function-drift.sh`.
+
 ## 2026-09-30 UTC — `@claude` has no author gate, and the contract said it did
 
 `AGENTS.md` claimed `@claude` "can only be invoked by users with write access".
