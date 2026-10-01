@@ -12,8 +12,11 @@
   per event) and `github.event.sender` through
   `repos/{repo}/collaborators/{login}/permission`. `respond`, the only job
   with write scopes, has `needs: authorize` and runs only when both are
-  `admin` or `write`. Logins reach the script through `env`; empty logins and
-  API failures fail closed with a `::warning::`.
+  `admin` or `write`. Logins reach the script through `env`. Empty logins
+  and unknown users (404) refuse with a `::warning::`; any other lookup
+  failure fails the job red. The trigger is now `startsWith('@claude')`,
+  not `contains`, because the review routine posts as the admin owner and
+  its reviews mention `@claude`.
 - **Verified on GitHub** with a throwaway push-triggered probe (branch
   deleted after): the workflow token, at both `permissions: {}` and this
   job's write scopes, answers `admin` for praz-builds and `read` for
