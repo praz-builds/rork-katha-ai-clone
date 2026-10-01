@@ -1437,10 +1437,10 @@ zero, and the rewards restart at day 2. A day counts when either half lands:
 > **Limits worth knowing.** Dwell is client-measured: the server applies the
 > 60-second floor and the sum, but it cannot clock the reading itself. "A
 > chapter finished" is not a separate signal, because the server is never told
-> a chapter finished. A short chapter counts through the daily sum. A writing
-> day costs a generation, with one exception. The first re-prompt of a
-> chapter you created is free, so each paid chapter can buy at most one extra
-> free writing day. That is bounded by chapters already paid for.
+> a chapter finished. A short chapter counts through the daily sum. Every
+> writing day costs a credit: each counting endpoint charges from the first
+> call, `reimagine-chapter` included. The paragraph editor (`edit-story`) is
+> free and does not count.
 
 **Why day 2 is the right first rung.** Median mobile retention falls from **D1
 26% to D7 13%** ([Adjust 2026, via UXCam](https://uxcam.com/blog/mobile-app-retention-benchmarks/))

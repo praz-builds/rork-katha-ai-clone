@@ -60,7 +60,8 @@ Deno.test("a reading day needs someone else's story and 60 seconds today", () =>
   assertEquals(read({ durationSeconds: undefined }), false);
   // Five 40-second chapters: the fifth row is already in the day's sum.
   assertEquals(read({ durationSeconds: 40, dwellTodaySeconds: 200 }), true);
-  // A deduped request is not among the rows, so it is added on top.
+  // A deduped request whose earlier row is from yesterday (the dedup window
+  // is a rolling 24h) is not in today's sum, so it is added on top.
   assertEquals(
     read({ durationSeconds: 30, recorded: false, dwellTodaySeconds: 30 }),
     true,

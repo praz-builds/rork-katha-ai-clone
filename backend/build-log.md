@@ -53,11 +53,13 @@ Founder decision: a streak day is reading **or** writing.
   "Streak: N days".
 - Tests: the full backend suite passes (1199). Pricing doc §5, AGENTS.md and
   the ROADMAP row (now `[x]`) are rewritten to match.
-- **Deploy obligation:** `_shared/engagement.ts` is imported by `library`,
-  `follow-story`, `follow-user`, `like`, `record-read`, `feed`, `bookmark`
-  and `publish-story`, and now also by `generate-story`,
-  `generate-story-stream`, `continue-story` and `reimagine-chapter`. Redeploy
-  all twelve, then run `scripts/audit-function-drift.sh`.
+- **Deploy obligation:** twelve functions. Eleven import
+  `_shared/engagement.ts`: `library`, `follow-story`, `follow-user`, `like`,
+  `record-read`, `feed`, `bookmark`, `generate-story`,
+  `generate-story-stream`, `continue-story` and `reimagine-chapter`. The
+  twelfth is `publish-story`, whose own code changed (it no longer imports
+  the module). Redeploy all twelve, then run
+  `scripts/audit-function-drift.sh`.
 
 ## 2026-10-01 UTC — The cloud build had no Supabase key
 

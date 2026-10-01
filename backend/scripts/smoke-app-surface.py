@@ -334,7 +334,7 @@ finally:
             # is deleted, so its rows cannot block the delete below. Only
             # INSERT and SELECT are granted to service_role (00019), so a
             # delete here would be refused with 403 on every run.
-            # publish-story records a writing day (touch_streak, 00089), and
+            # A generated chapter records a writing day (touch_streak, 00089), and
             # streaks reference profiles with no cascade.
             (f"/rest/v1/streaks?user_id=eq.{uid}", "streaks"),
             (f"/rest/v1/profiles?id=eq.{uid}", "profile"),
