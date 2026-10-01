@@ -2856,9 +2856,9 @@ export async function registerPushToken(
  * deployed and correct since 00046, and **nothing has ever called them**, so
  * `story_reads` was empty in production. Two things depend on that table and
  * both were therefore dead: the feedback credit answers `not_read` to every
- * claim, and a reading streak never advances, because `touch_streak`'s only
- * other caller is `publish-story`. A reader who opened a story every day for
- * three weeks never reached day 2 of a ladder called "Keep a reading streak".
+ * claim, and the reading half of the streak never advances (its other callers
+ * are the chapter-generating functions, the writing half). A reader who opened
+ * a story every day for three weeks never reached day 2.
  *
  * THE SERVER DEDUPLICATES ON A 24-HOUR WINDOW, per user and per chapter, and
  * that shapes when this is allowed to be called. A second read of the same

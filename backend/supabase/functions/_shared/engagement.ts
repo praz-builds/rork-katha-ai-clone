@@ -217,16 +217,18 @@ export const STREAK_MIN_READ_SECONDS = 60;
  * among them. Summing is what lets five 40-second chapters count, which a
  * per-request floor refused.
  */
-export function readEarnsStreak(input: {
+export async function readEarnsStreak(input: {
   isOwnStory: boolean;
   durationSeconds: number | undefined;
   recorded: boolean;
-  dwellTodaySeconds: number;
-}): boolean {
+  /** Only awaited when this request alone falls short. */
+  dwellTodaySeconds: () => Promise<number>;
+}): Promise<boolean> {
   if (input.isOwnStory) return false;
   const thisRead = input.durationSeconds ?? 0;
   if (thisRead >= STREAK_MIN_READ_SECONDS) return true;
-  const total = input.dwellTodaySeconds + (input.recorded ? 0 : thisRead);
+  const dwell = await input.dwellTodaySeconds();
+  const total = dwell + (input.recorded ? 0 : thisRead);
   return total >= STREAK_MIN_READ_SECONDS;
 }
 
@@ -234,13 +236,19 @@ export function readEarnsStreak(input: {
  * Seconds of other people's stories this user has recorded since UTC
  * midnight -- the same day boundary `touch_streak` uses. Served by
  * `idx_story_reads_user (user_id, read_at desc)`. Best-effort: a failure
- * reads as zero, which can only withhold a day, never grant one.
+ * reads as zero, which can only withhold a day, never grant one -- and is
+ * logged to `error_events`, because a withheld day is a withheld credit.
+ *
+ * KNOWN GAP: `record_story_read` dedupes per chapter over a rolling 24h and
+ * keeps the first sitting's duration, so re-reading the SAME chapter adds only
+ * the latest sitting on top (see `readEarnsStreak`), not every sitting.
  */
-async function dwellTodaySeconds(
-  service: RpcClient,
+export async function dwellTodaySeconds(
+  service: Pick<RpcClient, "from">,
   userId: string,
+  now: Date = new Date(),
 ): Promise<number> {
-  const dayStart = new Date();
+  const dayStart = new Date(now);
   dayStart.setUTCHours(0, 0, 0, 0);
   const { data, error } = await service
     .from("story_reads")
@@ -252,7 +260,15 @@ async function dwellTodaySeconds(
     // never posts under 5s, so far fewer rows than this already answer it.
     .limit(200);
   if (error || !data) {
-    if (error) console.error("story_reads dwell sum failed", error);
+    console.error("story_reads dwell sum failed", error);
+    await logError({
+      bucket: "engagement",
+      severity: "low",
+      errorCode: "streak_dwell_sum",
+      error: error ?? new Error("no rows object"),
+      context: {},
+      userId,
+    });
     return 0;
   }
   return (data as { duration_seconds: number | null }[]).reduce(
@@ -343,15 +359,12 @@ export async function handleRecordRead(req: Request): Promise<Response> {
     // author's chapter while it is generated -- writing is counted where the
     // chapter is persisted (`countWritingDay`), not by reading it back. The
     // day's sum is only fetched when this request alone falls short.
-    const ownOrLong = row.is_own_story ||
-      (durationSeconds ?? 0) >= STREAK_MIN_READ_SECONDS;
-    const earns = readEarnsStreak({
+    const reader = userId;
+    const earns = await readEarnsStreak({
       isOwnStory: row.is_own_story,
       durationSeconds,
       recorded: row.recorded,
-      dwellTodaySeconds: ownOrLong
-        ? 0
-        : await dwellTodaySeconds(auth.service, userId),
+      dwellTodaySeconds: () => dwellTodaySeconds(auth.service, reader),
     });
     const streak = earns
       ? await touchStreak(auth.service, userId, { story_id: storyId })

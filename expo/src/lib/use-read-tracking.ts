@@ -10,8 +10,8 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * ever called `record-read`, and two shipped mechanics read that table: the
  * feedback credit (a claim needs 120 seconds of dwell recorded *before* the
  * comment, plus one server-written `read_at` at least a minute older than it)
- * and the streak ladder, whose only other trigger is publishing a story. Until
- * this existed, "Keep a reading streak" could not be kept by reading.
+ * and the streak ladder's reading half (its writing half is a generated
+ * chapter). Until this existed, a streak could not be kept by reading.
  *
  * ── WHY IT POSTS AT 120 SECONDS AND NOT ONLY ON THE WAY OUT ───────────────
  *
@@ -28,10 +28,11 @@ import { recordRead as defaultRecordRead } from "@/lib/api";
  * dedup means tomorrow's read cannot produce an earlier row, so that comment is
  * unclaimable for good. A one-chapter story could never qualify at all.
  *
- * `POST_AT_SECONDS` is 120 because **that is the only number anything reads**.
- * `story_reads.duration_seconds` has exactly one consumer in the whole repo —
- * the `sum(...) >= 120` in `comment_credit_block_reason`. Posting the moment
- * foreground dwell crosses it records precisely what the gate tests for.
+ * `POST_AT_SECONDS` is 120 because **that is the highest number anything
+ * reads**. `story_reads.duration_seconds` has two consumers: the
+ * `sum(...) >= 120` in `comment_credit_block_reason`, and the streak's 60-second
+ * daily sum (`readEarnsStreak`), which 120 already clears. Posting the moment
+ * foreground dwell crosses it records precisely what the comment gate tests for.
  *
  * The cleanup flush stays for chapters that never get that far: it is what
  * feeds `read_count`, and the day's streak sum, for a short read.

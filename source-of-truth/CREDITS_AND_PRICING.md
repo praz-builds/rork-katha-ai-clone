@@ -310,7 +310,7 @@ and not a free allowance by default.
 
 | | Credits |
 |---|---|
-| Keep a reading streak | **2** at day 2, **4** at day 5, **6** at day 10, **8** at day 15, **10** at day 21 |
+| Keep a streak (read or write) | **2** at day 2, **4** at day 5, **6** at day 10, **8** at day 15, **10** at day 21 |
 | Leave a thoughtful comment on a story you read, then claim it | **1** per comment — one a day, up to five a month |
 | Invite a friend who creates something | **10** to you, **5** to them |
 | Welcome bonus | **3**, once |
@@ -1333,7 +1333,7 @@ users — reading is free and unlimited, so it carries no consumption burden.
 
 | Source | Credits | Cadence | Cap | `reason` | Ship |
 |---|---|---|---|---|---|
-| **Reading streak** | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime — nothing repeats | `streak` | Launch |
+| **Streak (read or write)** | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime — nothing repeats | `streak` | Launch |
 | **Feedback — a claimed comment** | **1** | on claim in Credits, after a qualifying read of that story | 1 per story, 1 per UTC day, **5 per calendar month** | `feedback` | Launch |
 | **Welcome bonus** | **3** | once, on declining the paywall (§6) | once per authenticated account | `welcome` | Launch |
 | **Guest bootstrap** | **3** | once, on first guest bootstrap (§9) | once per anonymous account, 3 per network prefix / 24h | `guest_bootstrap` | Launch |
@@ -1649,17 +1649,16 @@ and it is left as designed.
 > load-bearing are all **projections of a mechanic that pays nobody yet**. Five
 > a month is a ceiling on a closed faucet, not a tightening of an open one.
 >
-> **The same root cause reaches one row further than it looks.** `touch_streak`
-> writes and pays a streak rung, and it had exactly two callers: `publish-story`
-> and the then-dead `record-read`. So in every installed build **a streak
-> advances only when you publish a story** — a reader who opens one every day
-> for three weeks never reaches day 2, while the earn table calls the mechanic
-> "Keep a reading streak". What *is* reachable in those builds: the welcome
-> bonus, the invite, the guest bootstrap (§9, and reachable enough that a day of
-> local testing exhausts its per-network window), and the streak ladder **for
-> writers only**. With the first build carrying the client half, reading
-> advances it too — on a five-second threshold rather than the sixty this
-> document specifies; see the note under *Streak* above.
+> **The same root cause reaches one row further than it looks.** In builds
+> without the client half, `record-read` is never called, so the streak
+> advances only through its **writing half**: once the 2026-10-01 functions are
+> deployed, that is a generated chapter (`countWritingDay`), and publishing no
+> longer counts. A reader who opens a story every day for three weeks never
+> reaches day 2 there. What *is* reachable in those builds: the welcome bonus,
+> the invite, the guest bootstrap (§9, and reachable enough that a day of local
+> testing exhausts its per-network window), and the streak ladder **for writers
+> only**. With the first build carrying the client half, reading advances it
+> too, on the 60-second daily sum described under *Streak* above.
 >
 > **Delete this block when a build carrying the client half is in readers'
 > hands**, not when it merges — the merge is done and changes nothing for
@@ -2645,7 +2644,7 @@ economy is tuned on evidence rather than argued about.
 
     | Source | Credits | Cadence | Cap | Ship |
     |---|---|---|---|---|
-    | Reading streak | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime, nothing repeats | Launch |
+    | Streak (read or write) | **2 / 4 / 6 / 8 / 10** | milestones at day 2, 5, 10, 15, 21 | 30 lifetime, nothing repeats | Launch |
     | Feedback — claimed comment | **1** | on claim, after a qualifying read | 1/story, 1/day, 5/month | Launch |
     | Streak repair | **0** — restores the streak | day after a missed day, on 30 min reading | 2/month | Launch |
     | Welcome bonus | **3** | on declining the paywall | once per authenticated account | Launch |

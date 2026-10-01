@@ -516,6 +516,9 @@ Deno.test("a refused publish does not count as a day's writing", async () => {
   // came after, so a writer whose publish the server turned down was still
   // credited with a writing day for work the server declined to do. The one
   // refusal left on the public path is the guest rule; it must not count.
+  // Since 2026-10-01 no exit here counts a day at all, so this is a
+  // regression guard: if a streak call ever comes back to this function, it
+  // must not come back above a refusal.
   const beforeEnv = setTestEnv();
   try {
     const { status, requests } = await publish(

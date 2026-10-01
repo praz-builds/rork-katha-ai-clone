@@ -31,6 +31,7 @@
   functions: `publish-story`, `library`, `follow-story`, `follow-user`,
   `like`, `record-read`, `feed`, `bookmark`. All eight redeploy from merged
   `main`, then rerun `scripts/audit-function-drift.sh`.
+
 ## 2026-10-01 UTC — The streak counts writing, and reading adds up across the day
 
 Founder decision: a streak day is reading **or** writing.
