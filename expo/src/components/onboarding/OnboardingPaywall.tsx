@@ -287,8 +287,9 @@ export function perDayPrice(amount: number, priceString: string, days: number): 
 
 /**
  * The trial the yearly card offers. Three days is the store configuration
- * (`CREDITS_AND_PRICING.md` §3, *The 3-day trial*); the store's own period
- * wins when it reports one. Ten credits is what the backend grants for a
+ * (`CREDITS_AND_PRICING.md` §3, *The 3-day trial*); with a store, its own
+ * reported period is what the card states. The fallback is only for the
+ * off-store review render (web, development). Ten credits is what the backend grants for a
  * TRIAL period (`_shared/revenuecat.ts` `trialCredits`); the plan's full grant
  * lands with the first charge.
  */
@@ -298,20 +299,19 @@ export const TRIAL_CREDITS = 10;
 /**
  * The trial this package can honestly be advertised with, in days, or null.
  *
- * Null when Play reports no eligible free-trial offer, AND when it reports one
- * in a unit this screen cannot state in days (a 1-month trial): advertising
- * "3 days free" for a month-long offer understates a store term, and an
- * unadvertised trial is simply not bought -- the base plan is. A free phase
- * with no period at all is the configured 3 days.
+ * Null when Play reports no eligible free-trial offer, AND whenever the
+ * screen cannot state its length truthfully: a period in months or years, no
+ * period at all, or a single day (the copy is plural). Advertising "3 days
+ * free" for an offer of another length misstates a store term, and an
+ * unadvertised trial is simply not bought -- the base plan is.
  */
 function advertisableTrial(
   pkg: Parameters<typeof freeTrialOption>[0],
 ): number | null {
   const option = freeTrialOption(pkg);
   if (!option) return null;
-  const iso = option.freePhase?.billingPeriod?.iso8601;
-  if (!iso) return TRIAL_DAYS_FALLBACK;
-  return trialDays(iso);
+  const days = trialDays(option.freePhase?.billingPeriod?.iso8601);
+  return days !== null && days >= 2 ? days : null;
 }
 
 const CTA_LABEL = "Unlock Katha";

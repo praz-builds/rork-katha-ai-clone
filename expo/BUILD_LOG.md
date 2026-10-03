@@ -16,8 +16,8 @@ Founder feedback on the W7 paywall screenshots. `source-of-truth/ONBOARDING_FLOW
 
 ### Verification
 
-- `onboarding-paywall.test.tsx`: 43 tests, plus trial-helper cases in `store-catalog.test.ts` and purchase cases in `revenuecat-service.test.ts`. The paywall tests are, rewritten for the above, including a trial offered and bought only when the store reports one, no trial in a release build with no offering, and the personalisation lines.
-- Full suite 1756/1756; typecheck clean; lint is the same 30 warnings as main.
+- `onboarding-paywall.test.tsx`: 43 tests, plus trial-helper cases in `store-catalog.test.ts` and purchase cases in `revenuecat-service.test.ts`. The paywall tests are rewritten for the above, including a trial offered and bought only when the store reports one, no trial in a release build with no offering, and the personalisation lines.
+- Full suite 1767/1767; typecheck clean; lint is the same 30 warnings as main.
 - Phone-size renders (390×844 @3x) of the reader and writer paywalls, top and bottom, through a throwaway uncommitted harness on :8092: `~/Desktop/Katha-Paywall-v2-*.png`.
 - **Not verified:** a real Play trial purchase. That needs the trial offer configured on the yearly base plan in Play Console and a device build.
 

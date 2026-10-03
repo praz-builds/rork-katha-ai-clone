@@ -685,7 +685,7 @@ describe("OnboardingPaywall", () => {
     expect(view.getByText("$59/yr")).toBeTruthy();
   });
 
-  it("advertises no trial it cannot state in days", async () => {
+  it.each([["P1M"], [undefined], ["P1D"]])("advertises no trial it cannot state truthfully (%s)", async (iso) => {
     mockRevenueCatState.available = true;
     mockGetOfferings.mockResolvedValue({
       current: {
@@ -696,7 +696,7 @@ describe("OnboardingPaywall", () => {
             priceString: "$59",
             subscriptionOptions: [
               { isBasePlan: true, freePhase: null },
-              { isBasePlan: false, freePhase: { billingPeriod: { iso8601: "P1M" } } },
+              { isBasePlan: false, freePhase: { billingPeriod: { iso8601: iso } } },
             ],
           },
         }],

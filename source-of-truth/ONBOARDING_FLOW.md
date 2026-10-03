@@ -1601,7 +1601,7 @@ are content here, not icon glyphs.
 
 | | Row | Second line |
 |---|---|---|
-| ✨ | **50 credits a month** | Writer: **About 16 full chapters, every month** · Reader: **About 16 chapters with you as the lead, every month** |
+| ✨ | **50 credits a month** | Writer: **Up to 50 new chapters *(2026-10-03; was "About 16 full chapters, every month")*** · Reader: **About 16 chapters with you as the lead, every month** |
 | 🎨 | **Unlimited portraits and reimagines** | Writer: **{name} looks the same in every chapter** · Reader: **You look the same in every chapter** |
 | 🎙️ | **Premium voices** | Writer: **Hear {name}'s story read aloud** · Reader: **Hear your story read aloud** |
 | 📄 | **Download as PDF** | **Your stories, off the app and in your hands** |
@@ -2302,11 +2302,11 @@ error logging contract and contain identifiers and enums only.
    accidental benefit of the screen's removal rather
    than a reason it was removed.
 5. **`CREDITS_AND_PRICING.md` §3 still describes a 3-day free trial on the yearly
-   plan, and a monthly plan at $12.99.** W7 shows neither (§12-13). Pricing wins
+   plan, and a monthly plan at $12.99.** ~~W7 shows neither (§12-13).~~ Pricing wins
    on whether those products exist and what they cost; **this file wins on what
-   the onboarding paywall renders**, and it renders two cards with no trial. If
-   pricing decides the trial must appear in onboarding, W7 changes in the same
-   commit that says so.
+   the onboarding paywall renders**. *(Resolved 2026-10-03, decision 73: W7 now
+   renders the yearly 3-day trial, in the same commit as the pricing note that
+   says so. Monthly is still not on W7.)*
 6. **The C0-C4 specification is superseded, on the same day it was written.**
    C0 Bridge, C1 Who, C2 Wait, C3 Reveal and C4 Plan bridge were specified and
    built on the morning of **2026-09-11**; W3-W7 replaced them the same

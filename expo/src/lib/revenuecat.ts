@@ -271,7 +271,8 @@ class RevenueCatService {
       // Play's default option is the longest free trial the user is eligible
       // for, so a plain `purchasePackage` on the yearly plan would start a
       // 3-day trial (10 credits) from a card that showed the price and no
-      // trial (weekly, or yearly when no trial is advertised). Where no base-plan option is reported
+      // trial (weekly, or yearly when no trial is advertised). Where no
+      // base-plan option is reported
       // (iOS, packs) the package is bought as it is.
       //
       // `freeTrial`: the yearly card advertised a trial, so buy exactly that
