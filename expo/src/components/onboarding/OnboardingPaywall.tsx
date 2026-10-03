@@ -11,9 +11,9 @@
  * WHAT CHANGED ON 2026-09-11 (the W7 hand-off). Three things came off this
  * screen and none of them are coming back by accident:
  *
- *   - **No free trial.** The yearly card used to lead with "Start my 3-day free
- *     trial", which sells the cancel button rather than the product. The card
- *     now sells the price.
+ *   - **No free trial.** *(Reversed 2026-10-03: yearly offers a 3-day trial
+ *     again, shown only when the store reports one the account can take --
+ *     see the 2026-10-03 note below.)*
  *   - **No monthly, and no More options.** Monthly is still a real SKU
  *     (`ai.katha.sub.monthly`, `CREDITS_AND_PRICING.md` §3) and still sells
  *     in-app; it is not offered here. A disclosure triangle on the one screen a
@@ -27,10 +27,10 @@
  *     of the scroll and into a pinned bottom sheet. Before this the screen was
  *     one long scroll, so on a 360pt phone with large type the user could be
  *     reading benefits with no visible price and no visible button, which is
- *     the state in which people leave. The scrolling body is padded by the
- *     sheet's MEASURED height (`onLayout`), never by a constant: the sheet
- *     grows with text scaling, and a hardcoded inset hides the last benefit row
- *     behind it at 200% type.
+ *     the state in which people leave. The sheet is laid out BELOW the scroll
+ *     view (a flex sibling, not an overlay), so the scroll needs only its own
+ *     end padding. *(Until 2026-10-03 it also added the sheet's measured
+ *     height, which counted the sheet twice and left a blank band.)*
  *   - **"Not now" is gone.** Two dismiss controls on one screen is one too
  *     many, and the quiet one sat directly under the CTA where it competed with
  *     it. The close in the top bar is the only way out, and it is there from
@@ -55,6 +55,14 @@
  *     screen that nothing keeps true: it survived unchanged through one
  *     pricing change already. The note is now the yearly price divided by 365,
  *     computed from the store's own number when there is an offering.
+ *
+ * WHAT CHANGED ON 2026-10-03 (founder feedback). The per-day cost leads each
+ * card (`perDayPrice`), with the period price under it. Yearly carries a
+ * 3-day free trial when Play reports an eligible offer (`advertisableTrial`),
+ * and the button says so; a tap never buys the base plan behind that label.
+ * The terms line moved to fine print under the links (it must stay on the
+ * screen for Play's policy). The benefit lines speak to the person, from the
+ * onboarding answers, not to the character.
  *
  * WHAT IT PROMISES. Four rows, each one either a real grant (credits) or a real
  * unlock we ship (portraits and reimagines, voices, PDF). Never "unlimited
@@ -160,9 +168,9 @@ export type OnboardingPlanId = "weekly" | "yearly";
 export type PaywallPersonalization = {
   /** Genre labels in the order they were tapped, e.g. ["Romance", "Fantasy"]. */
   genres?: readonly string[];
-  /** "When do you usually read" keys: sleep, commute, breaks, weekend, whenever. */
+  /** Moment keys: the reader's sleep/commute/breaks/weekend/whenever, and `unwind` (both). */
   moment?: readonly string[];
-  /** The refine answer keys; `listen` and `unwind` mean audio matters to them. */
+  /** The refine answer keys; `listen` means audio matters to them. */
   refine?: readonly string[];
 };
 
@@ -287,8 +295,27 @@ export function perDayPrice(amount: number, priceString: string, days: number): 
 const TRIAL_DAYS_FALLBACK = 3;
 export const TRIAL_CREDITS = 10;
 
+/**
+ * The trial this package can honestly be advertised with, in days, or null.
+ *
+ * Null when Play reports no eligible free-trial offer, AND when it reports one
+ * in a unit this screen cannot state in days (a 1-month trial): advertising
+ * "3 days free" for a month-long offer understates a store term, and an
+ * unadvertised trial is simply not bought -- the base plan is. A free phase
+ * with no period at all is the configured 3 days.
+ */
+function advertisableTrial(
+  pkg: Parameters<typeof freeTrialOption>[0],
+): number | null {
+  const option = freeTrialOption(pkg);
+  if (!option) return null;
+  const iso = option.freePhase?.billingPeriod?.iso8601;
+  if (!iso) return TRIAL_DAYS_FALLBACK;
+  return trialDays(iso);
+}
+
 const CTA_LABEL = "Unlock Katha";
-const trialCtaLabel = (days: number) => `Start ${days}-day free trial`;
+const trialCtaLabel = (days: number) => i18n.t("paywall.trialCta", { days });
 const PURCHASE_ERROR = "Purchase didn't go through. Try again.";
 
 /**
@@ -354,11 +381,14 @@ function voiceLine(personalization: PaywallPersonalization | undefined): string 
   if (moment.includes("commute")) return "Stories read aloud on your commute";
   if (moment.includes("breaks")) return "A chapter read aloud on a short break";
   if (moment.includes("weekend")) return "Long weekend stories, read aloud";
+  // `unwind` is the "both" path's moment ("Listen, then unwind"); `listen` is
+  // the reader's refine answer ("Listening to audio"). Writers' moments
+  // (draft, voice, chapters, publish) say nothing about listening.
   const refine = personalization?.refine ?? [];
-  if (refine.includes("listen") || refine.includes("unwind")) {
+  if (moment.includes("unwind") || refine.includes("listen")) {
     return "Listen without looking at a screen";
   }
-  return "Hear any story read aloud";
+  return "Hear stories read aloud";
 }
 
 /**
@@ -398,14 +428,19 @@ export function copyFor(
     ? "Unlock Katha and start reading tonight."
     : "Unlock Katha and start writing tonight.";
 
-  // 50 credits is "about 16 chapters" (the figure this screen has always
-  // used), scaled for the weekly grant rather than typed again.
-  const chapters = Math.floor((plan.credits * 16) / 50);
+  // A chapter is 1 credit (2 with art): `CREDITS_AND_PRICING.md` §1, *Every
+  // price, in one place*. So the grant is "up to" that many chapters -- the
+  // "about 16" this line used to say came from a retired price and undersold
+  // the plan threefold. ALWAYS PER MONTH: weekly's 20 a week is ~86 a month,
+  // and a per-week figure beside yearly's monthly one read as weekly giving
+  // less when it gives more. The yearly lead already says "a month".
+  const monthlyCredits = plan.id === "weekly" ? (plan.credits * 52) / 12 : plan.credits;
+  const chapters = Math.floor(monthlyCredits);
   const genres = genrePhrase(personalization?.genres);
-  // The lead already says "a month" / "a week"; the body does not repeat it.
+  const per = plan.id === "weekly" ? " a month" : "";
   const creditsLine = genres
-    ? `About ${chapters} chapters of ${genres}`
-    : `About ${chapters} new chapters`;
+    ? `Up to ${chapters} chapters of ${genres}${per}`
+    : `Up to ${chapters} new chapters${per}`;
 
   const rows: BenefitRow[] = [
     {
@@ -646,11 +681,7 @@ function PaywallOffer({
    */
   const yearlyTrialDays = useMemo((): number | null => {
     const yearly = packageFor(PLANS.yearly);
-    if (yearly) {
-      const option = freeTrialOption(yearly);
-      if (!option) return null;
-      return trialDays(option.freePhase?.billingPeriod?.iso8601) ?? TRIAL_DAYS_FALLBACK;
-    }
+    if (yearly) return advertisableTrial(yearly);
     return releaseNative ? null : TRIAL_DAYS_FALLBACK;
   }, [packageFor, releaseNative]);
   const trialDaysSelected = selected === "yearly" ? yearlyTrialDays : null;
@@ -714,6 +745,15 @@ function PaywallOffer({
       // reported an eligible offer) and the base plan otherwise -- never a
       // store default the screen did not describe (`revenuecat.ts`).
       const trial = Boolean(trialDaysSelected);
+      if (trial && !advertisableTrial(pkg)) {
+        // The trial was on screen, but the store's fresh answer has none this
+        // account can take (offer ended, eligibility changed). Never buy the
+        // base plan behind a button that says "free trial": refresh the cards
+        // to the price and say so, and let the person decide again.
+        setPackages(subscriptionPackages(offerings));
+        setError(i18n.t("paywall.trialGone"));
+        return;
+      }
       const profile = await revenueCatService.purchasePackage(
         pkg,
         trial ? { freeTrial: true } : { basePlanOnly: true },
@@ -967,7 +1007,9 @@ function PlanCard({
   onPress: () => void;
 }) {
   const periodPrice = `${price}${plan.period}`;
-  const second = trial ? `${trial} days free, then ${periodPrice}` : periodPrice;
+  const second = trial
+    ? i18n.t("paywall.trialCard", { days: trial, price: periodPrice })
+    : periodPrice;
   return (
     <Pressable
       onPress={onPress}

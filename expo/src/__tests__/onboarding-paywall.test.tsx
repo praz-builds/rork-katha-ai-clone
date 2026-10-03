@@ -177,7 +177,7 @@ describe("OnboardingPaywall", () => {
     // The credits row states the SELECTED plan's grant.
     await fireEvent.press(view.getByLabelText(/^weekly,/));
     expect(view.getByText("20 credits a week")).toBeTruthy();
-    expect(view.getByText("About 6 new chapters")).toBeTruthy();
+    expect(view.getByText("Up to 86 new chapters a month")).toBeTruthy();
     // The claims pricing struck out, and the trial-credit promise no grant issues.
     expect(view.queryByText(/Priority generation/)).toBeNull();
     expect(view.queryByText(/Trial gives you/)).toBeNull();
@@ -187,7 +187,7 @@ describe("OnboardingPaywall", () => {
     const { view } = await renderPaywall();
     expect(view.getByText("Mira is ready. Give them a story.")).toBeTruthy();
     // The benefit lines describe the plan, not the one character.
-    expect(view.getByText("Hear any story read aloud")).toBeTruthy();
+    expect(view.getByText("Hear stories read aloud")).toBeTruthy();
     expect(
       view.getByText("Give any character a face, or take a chapter another way"),
     ).toBeTruthy();
@@ -201,7 +201,7 @@ describe("OnboardingPaywall", () => {
     async (purpose) => {
       const { view } = await renderPaywall({ purpose });
       expect(view.getByText("Mira is ready. Step into the story.")).toBeTruthy();
-      expect(view.getByText("Hear any story read aloud")).toBeTruthy();
+      expect(view.getByText("Hear stories read aloud")).toBeTruthy();
     },
   );
 
@@ -211,13 +211,13 @@ describe("OnboardingPaywall", () => {
     // character-voiced string with an empty name behind it.
     const { view } = await renderPaywall({ characterName: "", purpose: "read" });
     expect(view.getByText("Katha is ready when you are.")).toBeTruthy();
-    expect(view.getByText("Hear any story read aloud")).toBeTruthy();
+    expect(view.getByText("Hear stories read aloud")).toBeTruthy();
     // No character means no onboarding purpose to speak in: the in-app entry
     // is opened by writers and readers alike, so the sub names neither.
     expect(view.getByText("Unlock Katha and start tonight.")).toBeTruthy();
     expect(view.queryByText(/start (reading|writing) tonight/)).toBeNull();
     // And no lead is promised on the credits line: there is no character.
-    expect(view.getByText("About 16 new chapters")).toBeTruthy();
+    expect(view.getByText("Up to 50 new chapters")).toBeTruthy();
     expect(view.queryByText(/with you as the lead/)).toBeNull();
   });
 
@@ -225,7 +225,7 @@ describe("OnboardingPaywall", () => {
     const { view } = await renderPaywall({ purpose: "read" });
     expect(view.queryByText(/look the same in every chapter/)).toBeNull();
     expect(view.queryByText(/with you as the lead/)).toBeNull();
-    expect(view.getByText("About 16 new chapters")).toBeTruthy();
+    expect(view.getByText("Up to 50 new chapters")).toBeTruthy();
     expect(view.getByText("Unlock Katha and start reading tonight.")).toBeTruthy();
     expect(view.queryByText(/start writing tonight/)).toBeNull();
   });
@@ -233,7 +233,7 @@ describe("OnboardingPaywall", () => {
   it("keeps the writer's sub for a writer", async () => {
     const { view } = await renderPaywall();
     expect(view.getByText("Unlock Katha and start writing tonight.")).toBeTruthy();
-    expect(view.getByText("About 16 new chapters")).toBeTruthy();
+    expect(view.getByText("Up to 50 new chapters")).toBeTruthy();
   });
 
   it("leaves by the close and only by the close", async () => {
@@ -646,6 +646,68 @@ describe("OnboardingPaywall", () => {
     );
   });
 
+  it("never charges behind the trial button when the store's fresh answer has no trial", async () => {
+    // Mount: the store reports a trial. Tap: it no longer does (offer ended,
+    // eligibility changed). The button said "free trial", so nothing is
+    // bought; the cards refresh to the price and the screen says why.
+    mockRevenueCatState.available = true;
+    const withTrial = {
+      packageType: "ANNUAL",
+      product: {
+        price: 59,
+        priceString: "$59",
+        subscriptionOptions: [
+          { isBasePlan: true, freePhase: null },
+          { isBasePlan: false, freePhase: { billingPeriod: { iso8601: "P3D" } } },
+        ],
+      },
+    };
+    const without = {
+      packageType: "ANNUAL",
+      product: {
+        price: 59,
+        priceString: "$59",
+        subscriptionOptions: [{ isBasePlan: true, freePhase: null }],
+      },
+    };
+    mockGetOfferings
+      .mockResolvedValueOnce({ current: { availablePackages: [withTrial] } })
+      .mockResolvedValue({ current: { availablePackages: [without] } });
+    const { view, onSubscribed } = await renderPaywall();
+    await waitFor(() => expect(view.getByText("3 days free, then $59/yr")).toBeTruthy());
+    await fireEvent.press(view.getByLabelText("Start 3-day free trial"));
+    await waitFor(() =>
+      expect(view.getByText(/free trial isn't available on this account/)).toBeTruthy()
+    );
+    expect(mockPurchasePackage).not.toHaveBeenCalled();
+    expect(onSubscribed).not.toHaveBeenCalled();
+    await waitFor(() => expect(view.getByText("Unlock Katha")).toBeTruthy());
+    expect(view.getByText("$59/yr")).toBeTruthy();
+  });
+
+  it("advertises no trial it cannot state in days", async () => {
+    mockRevenueCatState.available = true;
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [{
+          packageType: "ANNUAL",
+          product: {
+            price: 59,
+            priceString: "$59",
+            subscriptionOptions: [
+              { isBasePlan: true, freePhase: null },
+              { isBasePlan: false, freePhase: { billingPeriod: { iso8601: "P1M" } } },
+            ],
+          },
+        }],
+      },
+    });
+    const { view } = await renderPaywall();
+    await waitFor(() => expect(view.getByText("$59/yr")).toBeTruthy());
+    expect(view.queryByText(/days free/)).toBeNull();
+    expect(view.getByText("Unlock Katha")).toBeTruthy();
+  });
+
   it("shows no trial in a shipped build whose store answered with nothing", async () => {
     mockRevenueCatState.available = true;
     const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
@@ -666,14 +728,16 @@ describe("OnboardingPaywall", () => {
         moment: ["commute"],
       },
     });
-    expect(view.getByText("About 16 chapters of romance and fantasy")).toBeTruthy();
+    expect(view.getByText("Up to 50 chapters of romance and fantasy")).toBeTruthy();
     expect(view.getByText("Stories read aloud on your commute")).toBeTruthy();
   });
 
   it.each([
     [{ moment: ["sleep"] }, "Fall asleep to stories read aloud"],
     [{ refine: ["listen"] }, "Listen without looking at a screen"],
-    [{ moment: ["whenever"] }, "Hear any story read aloud"],
+    [{ moment: ["unwind"] }, "Listen without looking at a screen"],
+    [{ moment: ["draft"] }, "Hear stories read aloud"],
+    [{ moment: ["whenever"] }, "Hear stories read aloud"],
   ])("says the voices line for %j", async (personalization, line) => {
     const { view } = await renderPaywall({ personalization });
     expect(view.getByText(line)).toBeTruthy();

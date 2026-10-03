@@ -10,12 +10,13 @@ Founder feedback on the W7 paywall screenshots. `source-of-truth/ONBOARDING_FLOW
 - **Yearly 3-day free trial** (`freeTrialOption` / `trialDays` in `store-catalog.ts`; `purchasePackage(pkg, { freeTrial: true })` in `revenuecat.ts`). It is shown only when Play reports an eligible free-trial offer, or off-store for review. It is never shown in a shipped build with no offering. The button reads "Start 3-day free trial". `onSubscribed` reports 10 credits for a trial (backend `trialCredits`).
 - **Terms line:** moved from between the plans and the button to fine print under the links (Play Subscriptions policy). There is a translated trial line, `paywall.renews.yearlyTrial`, in EN/ES/PT.
 - **Benefit lines:** about the person, not the character. Genres and reading moment come from the onboarding answers (`personalization` prop, passed by `CharacterOnboarding`).
+- **Credits line:** "Up to 50 new chapters" / "Up to 86 new chapters a month" (weekly, normalised to a month). A chapter is 1 credit (§1); the old "about 16" undersold the plan threefold.
 - **Blank band under the reviews:** the scroll padded itself by the sheet's measured height although the sheet sits below it, not over it. The padding is now just `spacing.xl`, and the `onLayout` measurement is gone.
 - **"$0.16..." truncation:** fixed by stacking the label above the figure.
 
 ### Verification
 
-- `onboarding-paywall.test.tsx`: 39 tests, rewritten for the above, including a trial offered and bought only when the store reports one, no trial in a release build with no offering, and the personalisation lines.
+- `onboarding-paywall.test.tsx`: 43 tests, plus trial-helper cases in `store-catalog.test.ts` and purchase cases in `revenuecat-service.test.ts`. The paywall tests are, rewritten for the above, including a trial offered and bought only when the store reports one, no trial in a release build with no offering, and the personalisation lines.
 - Full suite 1756/1756; typecheck clean; lint is the same 30 warnings as main.
 - Phone-size renders (390×844 @3x) of the reader and writer paywalls, top and bottom, through a throwaway uncommitted harness on :8092: `~/Desktop/Katha-Paywall-v2-*.png`.
 - **Not verified:** a real Play trial purchase. That needs the trial offer configured on the yearly base plan in Play Console and a device build.

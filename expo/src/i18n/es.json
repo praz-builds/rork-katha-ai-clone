@@ -307,6 +307,9 @@
       "ios": "Cancela cuando quieras en los ajustes de la App Store.",
       "other": "Cancela cuando quieras en la tienda donde te suscribiste."
     },
+    "trialCta": "Empieza la prueba gratis de {{days}} días",
+    "trialCard": "{{days}} días gratis, luego {{price}}",
+    "trialGone": "La prueba gratis ya no está disponible en esta cuenta. Los planes muestran ahora su precio.",
     "restore": "Restaurar compras",
     "manage": "Gestionar suscripciones",
     "terms": "Términos",

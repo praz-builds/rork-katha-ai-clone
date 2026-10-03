@@ -25,7 +25,7 @@ import { motion } from "@/theme";
  * The welcome credits flight.
  *
  * The reader has just been granted credits -- three on the free path, or their
- * plan's twenty or fifty if they subscribed -- and is about to be handed to
+ * plan's twenty or fifty if they subscribed (ten on a yearly free trial) -- and is about to be handed to
  * Home, where the balance lives as a small gold pill in the top-right corner.
  * Nothing on the welcome screen points at that corner, so without this the
  * grant and the place it landed are two unrelated facts. The coins fly there:

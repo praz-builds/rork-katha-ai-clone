@@ -181,7 +181,7 @@ type OnboardingDraft = Pick<
 const WELCOME_CREDITS = 3;
 
 /**
- * How many coins fly, always. A subscriber's grant is twenty or fifty credits
+ * How many coins fly, always. A subscriber's grant is twenty or fifty credits (ten on a trial)
  * and neither is a number of coins anybody wants thrown at them.
  */
 const WELCOME_COINS = 3;

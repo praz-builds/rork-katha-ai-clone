@@ -300,7 +300,7 @@ S1-S3  name → genre interests → purpose        steps 1, 2, 3
                          │       🔄 Reimagine ──→ inline edit block
                          │                          └─ Redraw ×1 → loading
                          │
-              W7 PAYWALL         weekly · yearly, no trial         no row, × only
+              W7 PAYWALL         weekly · yearly + 3-day trial        no row, × only
                          │
           subscribe ─────┴───── decline → grant 3 credits
                          │
@@ -1499,8 +1499,9 @@ written down.
 > - **The benefit lines speak to the person, not the character.** People
 >   write and read without a character, so "Raya looks the same in every
 >   chapter" and "with you as the lead" are gone. The lines personalise from
->   the onboarding answers instead: the first two genres picked ("About 16
->   chapters of romance and fantasy") and when they read (the voices line).
+>   the onboarding answers instead: the first two genres picked ("Up to 50
+>   chapters of romance and fantasy"; a chapter is 1 credit, so the old "about
+>   16" undersold the plan) and when they read (the voices line).
 >   The heading still names the character. The in-app entry gets the general
 >   lines.
 > - **The blank band under the testimonials is gone.** The scroll used to

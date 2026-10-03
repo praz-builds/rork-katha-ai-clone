@@ -270,16 +270,19 @@ class RevenueCatService {
       // `basePlanOnly`: buy the plan at the price the screen showed. Google
       // Play's default option is the longest free trial the user is eligible
       // for, so a plain `purchasePackage` on the yearly plan would start a
-      // 3-day trial (10 credits) from a paywall that sells $59 and 50 credits
-      // and never mentions a trial. Where no base-plan option is reported
+      // 3-day trial (10 credits) from a card that showed the price and no
+      // trial (weekly, or yearly when no trial is advertised). Where no base-plan option is reported
       // (iOS, packs) the package is bought as it is.
       //
-      // `freeTrial`: the yearly card advertises the 3-day trial, so it buys the
-      // trial offer explicitly -- and only when Play reports one this account
-      // is eligible for. With none, it falls back to the base plan, which is
-      // the price the card then shows.
+      // `freeTrial`: the yearly card advertised a trial, so buy exactly that
+      // offer. If the package has none, REFUSE rather than fall back: a button
+      // that said "free trial" must never become a charge (the paywall checks
+      // first and refreshes the cards; this is the backstop).
       const trial = options.freeTrial ? freeTrialOption(pkg) : null;
-      const basePlan = options.basePlanOnly || options.freeTrial ? basePlanOption(pkg) : null;
+      if (options.freeTrial && !trial) {
+        throw new Error("No free-trial offer on this package for this account");
+      }
+      const basePlan = options.basePlanOnly ? basePlanOption(pkg) : null;
       const option = trial ?? basePlan;
       const { customerInfo } = option
         ? await Purchases.purchaseSubscriptionOption(option)

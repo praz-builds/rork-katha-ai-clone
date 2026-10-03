@@ -139,7 +139,7 @@ export type CharacterOnboardingResult = {
    * The credits the plan they just bought grants, or undefined when they did
    * not buy one. It is carried out of the flow because the welcome animation
    * counts up to it: a free user is counted up to the guest grant of three, a
-   * subscriber to their plan's twenty or fifty. Undefined rather than 0 or 3,
+   * subscriber to their plan's twenty or fifty (ten on a trial). Undefined rather than 0 or 3,
    * so the caller supplies the free grant from its own constant instead of
    * this screen owning a number that belongs to pricing.
    */

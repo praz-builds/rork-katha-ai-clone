@@ -5,6 +5,24 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-03 UTC — The paywall leads with the daily price, and yearly gets its 3-day trial
+
+Client-only, with no function, migration or `_shared` change, so there is
+nothing to deploy. The full record is in `expo/BUILD_LOG.md` (2026-10-03).
+The canonical changes are in `ONBOARDING_FLOW.md` §12-13 (decision 73) and the
+`CREDITS_AND_PRICING.md` §3 trial note.
+
+- The yearly trial relies on what the backend already does:
+  `_shared/revenuecat.ts` grants `trialCredits: 10` on `period_type TRIAL` and
+  the full 50 on the first NORMAL charge. The client reports 10 to the welcome
+  count-up.
+- **Store action outstanding:** Play Console needs a 3-day free-trial offer on
+  the yearly base plan. Without it the app shows the price and no trial,
+  correctly.
+- A button that says "free trial" can never charge. The paywall re-checks the
+  fresh offering and refuses with a message, and `purchasePackage({ freeTrial })`
+  throws rather than falling back to the base plan.
+
 ## 2026-10-01 UTC — The upload keystore is backed up
 
 - The EAS-generated Android upload keystore (JKS, created 2026-10-01 09:27
