@@ -299,7 +299,8 @@
   "paywall": {
     "renews": {
       "weekly": "{{price}} por semana, se renueva automáticamente hasta que canceles.",
-      "yearly": "{{price}} al año, se renueva automáticamente hasta que canceles."
+      "yearly": "{{price}} al año, se renueva automáticamente hasta que canceles.",
+      "yearlyTrial": "{{days}} días gratis con {{credits}} créditos, luego {{price}} al año. Se renueva automáticamente hasta que canceles."
     },
     "cancel": {
       "android": "Cancela cuando quieras en Google Play.",

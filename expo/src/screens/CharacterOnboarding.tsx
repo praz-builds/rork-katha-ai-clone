@@ -893,6 +893,12 @@ export default function CharacterOnboarding(
     return (
       <OnboardingPaywall
         purpose={purpose}
+        // What they told onboarding, so the benefit lines speak to it.
+        personalization={{
+          genres: entryContext?.genreInterests,
+          moment: entryContext?.moment,
+          refine: entryContext?.refine,
+        }}
         characterName={displayName}
         portraitUrl={isRenderablePortrait(portraitUrl) ? portraitUrl : null}
         onSubscribed={(grant) => {

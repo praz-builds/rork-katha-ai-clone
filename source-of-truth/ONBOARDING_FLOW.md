@@ -1476,6 +1476,37 @@ written down.
 
 ## 12-13. W7: the paywall
 
+> **Amended 2026-10-03 (founder feedback, decision 73).** Where this section
+> and the decision list below say otherwise, this wins:
+>
+> - **Each plan card leads with the per-day cost** (`$0.16/day`, `$0.86/day`,
+>   derived from the store's price), with the period price under it, small.
+>   The label sits above the figure. The weekly card no longer says
+>   "20 credits a week": the first benefit row states the **selected** plan's
+>   grant ("50 credits a month" or "20 credits a week").
+> - **The yearly plan offers a 3-day free trial**, and weekly never does. The
+>   yearly card reads "3 days free, then $59/yr", and the button reads
+>   **Start 3-day free trial** while yearly is selected (**Unlock Katha** on
+>   weekly). It is shown only when Google Play reports a free-trial offer this
+>   account is eligible for; off-store (web, dev) it is shown for review, and
+>   a shipped build with no offering shows no trial. The trial grants 10
+>   credits; the full 50 arrive with the first charge (`CREDITS_AND_PRICING.md`
+>   §3). The welcome count-up counts 10.
+> - **The terms line no longer sits between the plans and the button.** It is
+>   fine print under the Restore · Manage · Terms · Privacy row. It was moved,
+>   not deleted, because Play's Subscriptions policy requires the paywall
+>   itself to state the price after the trial, auto-renewal and how to cancel.
+> - **The benefit lines speak to the person, not the character.** People
+>   write and read without a character, so "Raya looks the same in every
+>   chapter" and "with you as the lead" are gone. The lines personalise from
+>   the onboarding answers instead: the first two genres picked ("About 16
+>   chapters of romance and fantasy") and when they read (the voices line).
+>   The heading still names the character. The in-app entry gets the general
+>   lines.
+> - **The blank band under the testimonials is gone.** The scroll used to
+>   pad itself by the pinned sheet's height, but the sheet is laid out below
+>   the scroll, not over it, so it was counted twice.
+
 **The Reader and Writer paywalls merged 2026-09-11**, one section per the pricing
 rebuild that left one product. The two-audience split was always a volume ladder
 wearing an identity label, and the character flow erased the line it assumed: a
@@ -1653,7 +1684,8 @@ confirmation-gated** dismiss, and the × is none of those: nothing about removin
 the link makes leaving harder, slower, or less obvious, and if it ever did, the
 link comes back rather than the × moving.
 
-**No free trial, anywhere on this screen. No monthly plan, and no More options
+~~**No free trial, anywhere on this screen.**~~ *(Superseded 2026-10-03,
+decision 73: yearly offers a 3-day trial.)* **No monthly plan, and no More options
 disclosure.** Both are deliberate removals from the C4-era paywall. A trial on a
 credits product hands out the thing being sold and then asks for the card back,
 and a third plan under a disclosure was a row nobody opened that still had to be
@@ -2688,3 +2720,12 @@ error logging contract and contain identifiers and enums only.
     the questionnaire (§3B's), because the design frames showed two and a
     person walking three screens reads a second treatment as a state they did
     not choose.
+73. **The yearly plan has a 3-day free trial; the cards lead with the per-day
+    cost (2026-10-03, founder).** This supersedes the "no trial" half of 47,
+    and the "free trial" entry in the §12-13 never-list. Weekly never has a
+    trial. The trial is offered only when the store reports one the account
+    can take, and grants 10 credits. The renewal terms move to fine print at
+    the bottom (still on the screen, for Play's policy). The benefit lines are
+    personalised from the onboarding answers rather than written about the
+    character, and the double-counted sheet padding is removed. Details are
+    in the amendment at the top of §12-13.

@@ -8,6 +8,7 @@ import RevenueCatUI from "react-native-purchases-ui";
 
 import {
   basePlanOption,
+  freeTrialOption,
   findPackageInOfferings,
   KATHA_ENTITLEMENT,
   resolveRevenueCatKey,
@@ -262,7 +263,7 @@ class RevenueCatService {
    */
   async purchasePackage(
     pkg: PurchasesPackage,
-    options: { basePlanOnly?: boolean } = {},
+    options: { basePlanOnly?: boolean; freeTrial?: boolean } = {},
   ): Promise<RevenueCatProfile | null> {
     if (Platform.OS === "web" || !this._ready) return null;
     try {
@@ -272,9 +273,16 @@ class RevenueCatService {
       // 3-day trial (10 credits) from a paywall that sells $59 and 50 credits
       // and never mentions a trial. Where no base-plan option is reported
       // (iOS, packs) the package is bought as it is.
-      const basePlan = options.basePlanOnly ? basePlanOption(pkg) : null;
-      const { customerInfo } = basePlan
-        ? await Purchases.purchaseSubscriptionOption(basePlan)
+      //
+      // `freeTrial`: the yearly card advertises the 3-day trial, so it buys the
+      // trial offer explicitly -- and only when Play reports one this account
+      // is eligible for. With none, it falls back to the base plan, which is
+      // the price the card then shows.
+      const trial = options.freeTrial ? freeTrialOption(pkg) : null;
+      const basePlan = options.basePlanOnly || options.freeTrial ? basePlanOption(pkg) : null;
+      const option = trial ?? basePlan;
+      const { customerInfo } = option
+        ? await Purchases.purchaseSubscriptionOption(option)
         : await Purchases.purchasePackage(pkg);
       this.setProfile(customerInfo);
       return customerInfo;

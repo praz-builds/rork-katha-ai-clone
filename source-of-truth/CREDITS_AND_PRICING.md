@@ -1086,12 +1086,14 @@ A 3-day trial that grants the full 50 credits is a **$3.69 giveaway with a cance
 button attached** at the worst story shape, and trial abuse is the most mechanical
 form of fraud available on a subscription app.
 
-> **Onboarding no longer offers the trial** *(2026-09-11, the W7 hand-off)*. The
-> onboarding paywall sells weekly and yearly at their prices; the trial remains
-> a store configuration on the yearly SKU for the in-app surfaces that use it,
-> so the grant rule below still governs wherever a trial is actually started.
-> The first cohort through the new onboarding will start no trials at all, which
-> is the intended reading of any drop in trial starts.
+> **The paywall offers the trial again, on yearly only** *(2026-10-03, founder;
+> it was removed from onboarding on 2026-09-11)*. The yearly card reads "3 days
+> free, then $59/yr" and the button "Start 3-day free trial", but only when
+> Google Play reports a free-trial offer the account is eligible for. Weekly
+> never has one. **Store action required:** the yearly base plan needs a
+> 3-day free-trial offer in Play Console, or the screen shows the price and
+> no trial. The 10-credit grant rule below is what bounds the giveaway, and
+> `_shared/revenuecat.ts` already enforces it (`trialCredits: 10`).
 
 **The trial grant is reduced to 10 credits. The full 50 lands on the first
 successful charge.** Ten credits is ten chapters, or three short illustrated

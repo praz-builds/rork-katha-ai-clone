@@ -119,7 +119,11 @@ export function storeProductMatches(storeIdentifier: string, productId: string):
  * so these rules are testable without loading the native module. The real
  * SDK types satisfy them.
  */
-type OptionLike = { isBasePlan: boolean };
+type OptionLike = {
+  isBasePlan: boolean;
+  /** Google Play's free phase of an offer, when the offer has one. */
+  freePhase?: { billingPeriod?: { iso8601?: string } | null } | null;
+};
 type PackageLike = {
   product: { identifier: string; subscriptionOptions?: readonly OptionLike[] | null };
 };
@@ -180,6 +184,27 @@ export function basePlanOption<O extends OptionLike>(
   pkg: { product: { subscriptionOptions?: readonly O[] | null } },
 ): O | null {
   return pkg.product.subscriptionOptions?.find((option) => option.isBasePlan) ?? null;
+}
+
+/**
+ * The package's free-trial offer, when Google Play reports one this user can
+ * take. Play only returns offers the account is eligible for, so a user who
+ * already had the trial gets null here and is sold the plan at its price.
+ * Null on iOS (no options) and when the store has no trial configured.
+ */
+export function freeTrialOption<O extends OptionLike>(
+  pkg: { product: { subscriptionOptions?: readonly O[] | null } } | null | undefined,
+): O | null {
+  return pkg?.product.subscriptionOptions?.find(
+    (option) => !option.isBasePlan && Boolean(option.freePhase),
+  ) ?? null;
+}
+
+/** Days in an ISO 8601 period such as "P3D" or "P1W"; null when it is neither. */
+export function trialDays(iso8601: string | null | undefined): number | null {
+  const match = /^P(?:(\d+)W)?(?:(\d+)D)?$/.exec(iso8601 ?? "");
+  if (!match || (!match[1] && !match[2])) return null;
+  return Number(match[1] ?? 0) * 7 + Number(match[2] ?? 0);
 }
 
 // ---------------------------------------------------------------------------

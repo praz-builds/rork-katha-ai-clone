@@ -103,9 +103,11 @@ import {
   type RevenueCatUnavailableReason,
 } from "@/lib/revenuecat";
 import {
+  freeTrialOption,
   manageSubscriptionsUrl,
   STORE_SUBSCRIPTIONS,
   subscriptionPackages,
+  trialDays,
 } from "@/lib/store-catalog";
 import {
   colors,
@@ -133,6 +135,12 @@ export type OnboardingPaywallProps = {
   /** Which voice the copy takes. `read` and `both` are both the reader's. */
   purpose: OnboardingPaywallPurpose;
   /**
+   * What the person told onboarding, so the benefit lines speak to it: their
+   * genres, when they read, and how. Absent from the in-app entry (Home,
+   * Credits), which then says the general thing.
+   */
+  personalization?: PaywallPersonalization;
+  /**
    * A real purchase completed, or a simulated one off-store.
    *
    * It hands back WHAT WAS BOUGHT, not just the fact of it, because the next
@@ -147,6 +155,16 @@ export type OnboardingPaywallProps = {
 };
 
 export type OnboardingPlanId = "weekly" | "yearly";
+
+/** The onboarding answers the paywall copy reads. All optional. */
+export type PaywallPersonalization = {
+  /** Genre labels in the order they were tapped, e.g. ["Romance", "Fantasy"]. */
+  genres?: readonly string[];
+  /** "When do you usually read" keys: sleep, commute, breaks, weekend, whenever. */
+  moment?: readonly string[];
+  /** The refine answer keys; `listen` and `unwind` mean audio matters to them. */
+  refine?: readonly string[];
+};
 
 /** What a completed purchase grants, handed to the caller by `onSubscribed`. */
 export type OnboardingSubscriptionGrant = {
@@ -179,16 +197,12 @@ type Plan = {
    * exists to save us from.
    */
   fallbackAmount?: number;
-  /** The unit, set beside the price at body size. */
+  /** The unit, set beside the period price on the card's second line. */
   period: string;
-  /**
-   * The line under the price, when it is a claim about the grant rather than
-   * about the price. Written as a function of `credits` so the card cannot
-   * disagree with the number the rest of the flow uses. The yearly card has
-   * none: its note is derived from the price (`dailyNote`), because a typed-out
-   * second figure is a figure nothing keeps in step.
-   */
-  note?: (credits: number) => string;
+  /** Days the price covers, for the per-day figure that leads the card. */
+  days: number;
+  /** The grant period as the benefit row's lead states it ("a week", "a month"). */
+  grantPeriod: string;
   /**
    * RevenueCat's `PackageType`, as a plain string.
    *
@@ -214,9 +228,11 @@ const PLANS: Record<PlanId, Plan> = {
     id: "weekly",
     eyebrow: "WEEKLY",
     fallbackPrice: "$5.99",
+    fallbackAmount: 5.99,
     period: "/wk",
+    days: 7,
     credits: 20,
-    note: (credits) => `${credits} credits a week`,
+    grantPeriod: "a week",
     packageType: packageTypeFor("weekly"),
   },
   yearly: {
@@ -226,6 +242,8 @@ const PLANS: Record<PlanId, Plan> = {
     credits: 50,
     fallbackAmount: 59,
     period: "/yr",
+    days: 365,
+    grantPeriod: "a month",
     packageType: packageTypeFor("yearly"),
     /**
      * Weekly annualises to $311.48 against $59 (`CREDITS_AND_PRICING.md` §3),
@@ -237,30 +255,40 @@ const PLANS: Record<PlanId, Plan> = {
 };
 
 /**
- * "$0.16 a day" from $59 a year.
+ * "$0.16" from $59 a year, "$0.86" from $5.99 a week: the figure that LEADS
+ * each card since 2026-10-03 (founder feedback: highlight the per-day cost,
+ * the period price underneath).
  *
- * WHY IT IS COMPUTED. The card used to carry "$4.92 a month, billed yearly" as
- * a literal string, and a literal is a second price that no pricing change
- * touches: it outlived one already. Divide the real number by 365 and the note
- * cannot disagree with the price above it.
+ * WHY IT IS COMPUTED. A typed-out daily figure is a second price no pricing
+ * change touches; "$4.92 a month, billed yearly" outlived one change already.
+ * Divide the real number and the card cannot disagree with itself.
  *
- * WHY THE SYMBOL COMES OUT OF `priceString`. RevenueCat gives us the amount as
- * a number and the currency only as part of the store's formatted string, so
- * the symbol is whatever is left of that string once the digits and the
- * separators are gone, placed on the side it was already on. A Japanese
- * storefront reading "¥8800" keeps its ¥ in front; a French one reading
- * "59,00 €" keeps its € behind. Two decimal places regardless: this is a
- * comparison, not a charge, and it is never the figure anybody is billed.
+ * WHY THE SYMBOL COMES OUT OF `priceString`. RevenueCat gives the amount as a
+ * number and the currency only inside the store's formatted string, so the
+ * symbol is what is left once digits and separators are gone, kept on the side
+ * it was on: "¥8800" keeps ¥ in front, "59,00 €" keeps € behind. Two decimals
+ * regardless: it is a comparison, never the figure anybody is billed.
  */
-function dailyNote(amount: number, priceString: string): string {
-  const perDay = (amount / 365).toFixed(2);
+export function perDayPrice(amount: number, priceString: string, days: number): string {
+  const perDay = (amount / days).toFixed(2);
   const symbol = priceString.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
-  if (!symbol) return `${perDay} a day`;
+  if (!symbol) return perDay;
   const leading = priceString.trimStart().startsWith(symbol);
-  return leading ? `${symbol}${perDay} a day` : `${perDay}${symbol} a day`;
+  return leading ? `${symbol}${perDay}` : `${perDay}${symbol}`;
 }
 
+/**
+ * The trial the yearly card offers. Three days is the store configuration
+ * (`CREDITS_AND_PRICING.md` §3, *The 3-day trial*); the store's own period
+ * wins when it reports one. Ten credits is what the backend grants for a
+ * TRIAL period (`_shared/revenuecat.ts` `trialCredits`); the plan's full grant
+ * lands with the first charge.
+ */
+const TRIAL_DAYS_FALLBACK = 3;
+export const TRIAL_CREDITS = 10;
+
 const CTA_LABEL = "Unlock Katha";
+const trialCtaLabel = (days: number) => `Start ${days}-day free trial`;
 const PURCHASE_ERROR = "Purchase didn't go through. Try again.";
 
 /**
@@ -275,6 +303,11 @@ const PURCHASE_ERROR = "Purchase didn't go through. Try again.";
  */
 export function renewalLine(plan: PlanId, price: string): string {
   return i18n.t(`paywall.renews.${plan}`, { price });
+}
+
+/** The yearly trial's terms: how long, what it grants, what it costs after. */
+export function trialLine(days: number, price: string): string {
+  return i18n.t("paywall.renews.yearlyTrial", { days, credits: TRIAL_CREDITS, price });
 }
 
 export function cancelLine(platform: string = Platform.OS): string {
@@ -302,67 +335,94 @@ function openStoreSubscriptions(): Promise<unknown> {
 type BenefitRow = { emoji: string; lead: string; body: string };
 
 /**
- * The copy, which is the whole difference between the three entries.
+ * "romance and fantasy" from the genres somebody tapped: the first two, in
+ * the order they were picked, lower-cased the way a sentence carries them.
+ */
+function genrePhrase(genres: readonly string[] | undefined): string | null {
+  const picked = (genres ?? []).map((genre) => genre.trim()).filter(Boolean).slice(0, 2);
+  if (!picked.length) return null;
+  return picked.map((genre) => genre.toLowerCase()).join(" and ");
+}
+
+/**
+ * The voices line, said for the moment they told us they read in. Premium
+ * voices are a listening feature, so the line meets them where they listen.
+ */
+function voiceLine(personalization: PaywallPersonalization | undefined): string {
+  const moment = personalization?.moment ?? [];
+  if (moment.includes("sleep")) return "Fall asleep to stories read aloud";
+  if (moment.includes("commute")) return "Stories read aloud on your commute";
+  if (moment.includes("breaks")) return "A chapter read aloud on a short break";
+  if (moment.includes("weekend")) return "Long weekend stories, read aloud";
+  const refine = personalization?.refine ?? [];
+  if (refine.includes("listen") || refine.includes("unwind")) {
+    return "Listen without looking at a screen";
+  }
+  return "Hear any story read aloud";
+}
+
+/**
+ * The copy: the heading speaks to the character when there is one, and the
+ * benefit lines speak to the PERSON, from what they told onboarding.
+ *
+ * 2026-10-03 (founder feedback): the benefit lines used to be about the
+ * character ("Raya looks the same in every chapter", "with you as the lead"),
+ * but a subscription is not about one character -- people write and read
+ * stories with no character at all. The lines now describe what the plan
+ * does for any story, and personalise from the answers instead: the genres
+ * they picked, when they read, whether they listen. The credits row follows
+ * the SELECTED plan, which is why the weekly card no longer repeats its grant.
  *
  * The emoji are content, not icons: the hand-off draws them, and an Ionicon in
- * their place makes the card read as a settings list instead of a list of
- * things you get.
+ * their place makes the card read as a settings list.
  */
-function copyFor(name: string, purpose: OnboardingPaywallPurpose) {
+export function copyFor(
+  name: string,
+  purpose: OnboardingPaywallPurpose,
+  plan: Plan,
+  personalization?: PaywallPersonalization,
+) {
   const reader = purpose !== "write";
   const named = name.trim();
 
-  // The in-app entry (Home, Credits) has no character to promise anything
-  // about, so the promises are made about the user's own, in the plural.
   const heading = named
     ? reader
       ? `${named} is ready. Step into the story.`
       : `${named} is ready. Give them a story.`
     : "Katha is ready when you are.";
-  // A reader came to read. "Start writing tonight" under a heading that just
-  // invited them into a story is the writer's line, not theirs. With no
-  // character there is no onboarding purpose to speak in either: the in-app
-  // entry from Home or Credits is opened by readers and writers alike.
+  // A reader came to read; "Start writing tonight" is the writer's line. The
+  // in-app entry has no onboarding purpose to speak in, so it names neither.
   const sub = !named
     ? "Unlock Katha and start tonight."
     : reader
     ? "Unlock Katha and start reading tonight."
     : "Unlock Katha and start writing tonight.";
-  const voiceLine = named
-    ? reader ? "Hear your story read aloud" : `Hear ${named}'s story read aloud`
-    : "Hear your stories read aloud";
-  // The named reader IS the character, so the promise is about them, not
-  // about a third person with their name.
-  const portraitLine = named
-    ? reader
-      ? "You look the same in every chapter"
-      : `${named} looks the same in every chapter`
-    : "Your characters look the same in every chapter";
-  // What a reader spends credits on is being written into a story; what a
-  // writer spends them on is chapters. Same number, said for each -- and only
-  // when there is a character to be the lead: the in-app entry has none, so
-  // it gets the plain figure rather than a promise about a lead that does
-  // not exist.
-  const creditsLine = named && reader
-    ? "About 16 chapters with you as the lead, every month"
-    : "About 16 full chapters, every month";
+
+  // 50 credits is "about 16 chapters" (the figure this screen has always
+  // used), scaled for the weekly grant rather than typed again.
+  const chapters = Math.floor((plan.credits * 16) / 50);
+  const genres = genrePhrase(personalization?.genres);
+  // The lead already says "a month" / "a week"; the body does not repeat it.
+  const creditsLine = genres
+    ? `About ${chapters} chapters of ${genres}`
+    : `About ${chapters} new chapters`;
 
   const rows: BenefitRow[] = [
     {
       emoji: "✨",
-      lead: `${PLANS.yearly.credits} credits a month`,
+      lead: `${plan.credits} credits ${plan.grantPeriod}`,
       body: creditsLine,
     },
     {
       emoji: "🎨",
       lead: "Unlimited portraits and reimagines",
-      body: portraitLine,
+      body: "Give any character a face, or take a chapter another way",
     },
-    { emoji: "🎙️", lead: "Premium voices", body: voiceLine },
+    { emoji: "🎙️", lead: "Premium voices", body: voiceLine(personalization) },
     {
       emoji: "📄",
       lead: "Download as PDF",
-      body: "Your stories, off the app and in your hands",
+      body: "Your stories as a file to print or share",
     },
   ];
 
@@ -373,6 +433,7 @@ export function OnboardingPaywall({
   characterName,
   portraitUrl = null,
   purpose,
+  personalization,
   onSubscribed,
   onDismiss,
 }: OnboardingPaywallProps) {
@@ -383,6 +444,7 @@ export function OnboardingPaywall({
       characterName={characterName}
       portraitUrl={portraitUrl}
       purpose={purpose}
+      personalization={personalization}
       onSubscribed={onSubscribed}
       onDismiss={onDismiss}
     />
@@ -483,6 +545,7 @@ function PaywallOffer({
   characterName,
   portraitUrl = null,
   purpose,
+  personalization,
   onSubscribed,
   onDismiss,
 }: OnboardingPaywallProps) {
@@ -491,14 +554,6 @@ function PaywallOffer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [packages, setPackages] = useState<RevenueCatPaywallProduct[] | null>(null);
-  /**
-   * How far the body has to stop short of the bottom.
-   *
-   * Measured, because the sheet holds two cards of text that grow with the
-   * system type size. Starts at zero: the first frame is one layout pass early
-   * and the scroll corrects itself on the next.
-   */
-  const [sheetHeight, setSheetHeight] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   /**
    * Whether the store can be talked to. Read live, because RevenueCat
@@ -553,36 +608,57 @@ function PaywallOffer({
     };
   }, [storeAvailable]);
 
-  const priceFor = useCallback(
-    (plan: Plan) => {
-      const match = packages?.find(
-        (candidate) => String(candidate.packageType) === plan.packageType,
-      );
-      return match?.product.priceString ?? plan.fallbackPrice;
-    },
+  const packageFor = useCallback(
+    (plan: Plan) =>
+      packages?.find((candidate) => String(candidate.packageType) === plan.packageType) ??
+        null,
     [packages],
+  );
+
+  /** The period price as the store formats it, or the canonical fallback. */
+  const priceFor = useCallback(
+    (plan: Plan) => packageFor(plan)?.product.priceString ?? plan.fallbackPrice,
+    [packageFor],
   );
 
   /**
-   * The line under the price. Fixed for weekly, derived for yearly, and
-   * derived from the STORE's number when there is one, so a non-US storefront
-   * gets its own currency in its own daily figure rather than ours.
+   * The per-day figure that leads each card, from the STORE's number when there
+   * is one, so a non-US storefront gets its own currency in it.
    */
-  const noteFor = useCallback(
+  const perDayFor = useCallback(
     (plan: Plan) => {
-      if (plan.note) return plan.note(plan.credits);
-      const match = packages?.find(
-        (candidate) => String(candidate.packageType) === plan.packageType,
-      );
+      const match = packageFor(plan);
       const amount = match?.product.price ?? plan.fallbackAmount ?? 0;
-      return dailyNote(amount, match?.product.priceString ?? plan.fallbackPrice);
+      return perDayPrice(amount, match?.product.priceString ?? plan.fallbackPrice, plan.days);
     },
-    [packages],
+    [packageFor],
   );
 
+  /**
+   * The yearly free trial, in days, or null when there is none to offer.
+   *
+   * With a store: only when Google Play reports a free-trial offer this account
+   * is eligible for -- a user who already had one is shown the price, never a
+   * trial the store will not give them. Without one (web, development) the
+   * trial is shown so the design can be reviewed, and the off-store purchase
+   * simulates it. A shipped native build with no offerings shows no trial: a
+   * claim the store cannot back is worse than no claim.
+   */
+  const yearlyTrialDays = useMemo((): number | null => {
+    const yearly = packageFor(PLANS.yearly);
+    if (yearly) {
+      const option = freeTrialOption(yearly);
+      if (!option) return null;
+      return trialDays(option.freePhase?.billingPeriod?.iso8601) ?? TRIAL_DAYS_FALLBACK;
+    }
+    return releaseNative ? null : TRIAL_DAYS_FALLBACK;
+  }, [packageFor, releaseNative]);
+  const trialDaysSelected = selected === "yearly" ? yearlyTrialDays : null;
+
+
   const { heading, sub, rows } = useMemo(
-    () => copyFor(characterName, purpose),
-    [characterName, purpose],
+    () => copyFor(characterName, purpose, PLANS[selected], personalization),
+    [characterName, purpose, selected, personalization],
   );
 
   const choose = useCallback((plan: PlanId) => {
@@ -624,16 +700,24 @@ function PaywallOffer({
         if (__DEV__ || Platform.OS === "web") {
           await new Promise((resolve) => setTimeout(resolve, motion.slow));
           if (!mounted.current) return;
-          onSubscribed({ credits: plan.credits, plan: plan.id });
+          onSubscribed({
+            credits: trialDaysSelected ? TRIAL_CREDITS : plan.credits,
+            plan: plan.id,
+          });
           return;
         }
         if (mounted.current) setError(PURCHASE_ERROR);
         return;
       }
-      // The base plan, never an introductory offer: this screen shows a price
-      // and no trial, so a store default that starts a free trial would sell
-      // something other than what the card says (`revenuecat.ts`).
-      const profile = await revenueCatService.purchasePackage(pkg, { basePlanOnly: true });
+      // Exactly what the card says. Weekly is the base plan, never an offer.
+      // Yearly takes the free trial when the card is showing one (the store
+      // reported an eligible offer) and the base plan otherwise -- never a
+      // store default the screen did not describe (`revenuecat.ts`).
+      const trial = Boolean(trialDaysSelected);
+      const profile = await revenueCatService.purchasePackage(
+        pkg,
+        trial ? { freeTrial: true } : { basePlanOnly: true },
+      );
       if (!mounted.current) return;
       // A cancel resolves with null rather than throwing, and it is a cancel
       // even for someone who was already premium: reading `isPremium` here
@@ -641,14 +725,16 @@ function PaywallOffer({
       // line for a cancel: the user knows what they just did.
       if (profile === null) return;
       if (revenueCatService.isPremium) {
-        onSubscribed({ credits: plan.credits, plan: plan.id });
+        // A trial grants TRIAL_CREDITS now and the plan's full grant at the
+        // first charge, so the welcome count-up says what actually arrived.
+        onSubscribed({ credits: trial ? TRIAL_CREDITS : plan.credits, plan: plan.id });
       }
     } catch {
       if (mounted.current) setError(PURCHASE_ERROR);
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [busy, onSubscribed, releaseNative, selected, storeMissing]);
+  }, [busy, onSubscribed, releaseNative, selected, storeMissing, trialDaysSelected]);
 
   /**
    * Restore. A restored plan needs no navigation: `useIsSubscribed` hears the
@@ -712,11 +798,11 @@ function PaywallOffer({
         // `flex: 1` explicitly: without it the scroll view sizes to its content
         // and pushes the pinned sheet off the bottom of a long screen.
         style={styles.body}
-        contentContainerStyle={[
-          styles.scroll,
-          // The sheet's measured height, not a constant: see the header note.
-          { paddingBottom: sheetHeight + spacing.xl },
-        ]}
+        // The sheet is laid out BELOW this scroll view, not over it, so the
+        // body needs only its own breathing room at the end. It used to add
+        // the sheet's measured height as well, which counted the sheet twice
+        // and left a sheet-sized blank under the reviews (2026-10-03).
+        contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -777,38 +863,24 @@ function PaywallOffer({
         the decision this screen asks for cannot be made from a screenful of
         benefits with no figure on it.
       */}
-      <View
-        style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}
-        onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}
-      >
+      <View style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}>
         <View style={styles.planRow}>
           <PlanCard
             plan={PLANS.weekly}
+            perDay={perDayFor(PLANS.weekly)}
             price={priceFor(PLANS.weekly)}
-            note={noteFor(PLANS.weekly)}
+            trialDays={null}
             selected={selected === "weekly"}
             onPress={() => choose("weekly")}
           />
           <PlanCard
             plan={PLANS.yearly}
+            perDay={perDayFor(PLANS.yearly)}
             price={priceFor(PLANS.yearly)}
-            note={noteFor(PLANS.yearly)}
+            trialDays={yearlyTrialDays}
             selected={selected === "yearly"}
             onPress={() => choose("yearly")}
           />
-        </View>
-
-        {/*
-          The Subscriptions-policy disclosure: the selected plan's price and
-          period, that it renews by itself, and where to cancel. It replaced
-          "Cancel anytime, no commitments", which said nothing about renewal
-          and was not true of a year paid up front.
-        */}
-        <View style={styles.cancelLine} testID="paywall-renewal-terms">
-          <IconCheck size={14} color={colors.onboardingSuccess} />
-          <Text style={styles.cancelText}>
-            {`${renewalLine(selected, priceFor(PLANS[selected]))} ${cancelLine()}`}
-          </Text>
         </View>
 
         {storeMissing ? <Text style={styles.memberNotice}>{i18n.t("paywall.unavailable")}</Text> : null}
@@ -819,7 +891,7 @@ function PaywallOffer({
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
-          label={CTA_LABEL}
+          label={trialDaysSelected ? trialCtaLabel(trialDaysSelected) : CTA_LABEL}
           onPress={purchase}
           loading={busy}
           disabled={storeMissing}
@@ -841,6 +913,23 @@ function PaywallOffer({
             onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)}
           />
         </View>
+
+        {/*
+          The Subscriptions-policy terms, as fine print at the very bottom.
+
+          2026-10-03: the founder asked for the explanatory line between the
+          plans and the button to go. It is moved here, smaller, rather than
+          deleted, because Google Play's Subscriptions policy requires the
+          paywall itself to state the price after any trial, that it renews,
+          and how to cancel -- and a free trial makes that stricter, not looser.
+        */}
+        <Text style={styles.finePrint} testID="paywall-renewal-terms">
+          {`${
+            trialDaysSelected
+              ? trialLine(trialDaysSelected, priceFor(PLANS.yearly))
+              : renewalLine(selected, priceFor(PLANS[selected]))
+          } ${cancelLine()}`}
+        </Text>
       </View>
     </View>
   );
@@ -849,40 +938,42 @@ function PaywallOffer({
 /**
  * One duration, in about 92 points.
  *
- * THE SHAPE. Eyebrow and price share one line, the note goes under it. The
- * card used to stack a badge, an eyebrow, a 30pt price and a note in four rows,
- * which made the pinned sheet a third of a 390pt screen and pushed the benefits
- * out of the first viewport on every phone.
+ * THE FIGURES (2026-10-03, founder feedback). The per-day cost leads -- it is
+ * the comparable number, and "$0.16/day" against "$0.86/day" makes the yearly
+ * case on its own -- and the price the store charges sits under it, small.
+ * When the yearly plan carries a free trial, that second line says so and
+ * what comes after it. The weekly card no longer repeats its credit grant:
+ * the first benefit row states the selected plan's grant.
  *
- * THE BADGE IS ABSOLUTE. Top left, straddling the border. In the flow it cost
- * a row on the yearly card and an invisible spacer of exactly the same height
- * on the weekly one, only so the two prices would line up; out of the flow it
- * costs neither card anything and nothing has to be kept in sync.
+ * THE BADGE IS ABSOLUTE. Top left, straddling the border, so it costs neither
+ * card a row and nothing has to be kept in sync.
  *
- * `flex: 1`, never a width. Two fixed-width cards that fit a 390pt screen wrap
- * their price onto a second line at 360, and the price is the one thing on the
- * card that must survive the narrowest phone — hence `adjustsFontSizeToFit`
- * over a single line rather than a smaller type size for everybody.
+ * `flex: 1`, never a width, and the lead figure is `adjustsFontSizeToFit` on
+ * one line: it is the thing on the card that must survive a 360pt phone.
  */
 function PlanCard({
   plan,
+  perDay,
   price,
-  note,
+  trialDays: trial,
   selected,
   onPress,
 }: {
   plan: Plan;
+  perDay: string;
   price: string;
-  note: string;
+  trialDays: number | null;
   selected: boolean;
   onPress: () => void;
 }) {
+  const periodPrice = `${price}${plan.period}`;
+  const second = trial ? `${trial} days free, then ${periodPrice}` : periodPrice;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${plan.eyebrow.toLowerCase()}, ${price} ${plan.period}, ${note}`}
+      accessibilityLabel={`${plan.eyebrow.toLowerCase()}, ${perDay} a day, ${second}`}
       style={[styles.planCard, selected && styles.planCardSelected]}
     >
       {plan.badge
@@ -905,11 +996,13 @@ function PlanCard({
           adjustsFontSizeToFit
           minimumFontScale={0.7}
         >
-          {price}
-          <Text style={styles.planPeriod}>{` ${plan.period}`}</Text>
+          {perDay}
+          <Text style={styles.planPeriod}>/day</Text>
         </Text>
       </View>
-      <Text style={styles.planNote} numberOfLines={2}>{note}</Text>
+      <Text style={[styles.planNote, trial ? styles.planNoteTrial : null]} numberOfLines={2}>
+        {second}
+      </Text>
     </Pressable>
   );
 }
@@ -1067,11 +1160,15 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.surface,
   },
+  /**
+   * Stacked since 2026-10-03: the label (and the tick) on one line, the
+   * per-day figure under it. On one row, "YEARLY ✓ $0.16/day" did not fit a
+   * half-width card on a 390pt phone and the figure was cut to "$0.16...".
+   */
   planHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.xs,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: spacing.tight,
   },
   /** Never shrinks: the price is what gives way on a narrow card, not the label. */
   planEyebrowGroup: {
@@ -1100,7 +1197,6 @@ const styles = StyleSheet.create({
     // into; without it the price lays out at its natural width and pushes the
     // eyebrow off a 360pt card instead of scaling down.
     flexShrink: 1,
-    textAlign: "right",
   },
   planPeriod: {
     fontFamily: fonts.ui,
@@ -1115,18 +1211,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: spacing.xs,
   },
-  cancelLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  cancelText: {
-    flexShrink: 1,
+  planNoteTrial: { color: colors.accent, fontWeight: "600" },
+  finePrint: {
+    marginTop: spacing.sm,
     fontFamily: fonts.ui,
-    fontSize: 12.5,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.muted,
     textAlign: "center",
   },

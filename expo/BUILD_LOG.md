@@ -2,6 +2,24 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-10-03: The paywall leads with the daily price, and yearly gets its trial back
+
+Founder feedback on the W7 paywall screenshots. `source-of-truth/ONBOARDING_FLOW.md` §12-13 carries the amendment (decision 73); `CREDITS_AND_PRICING.md` §3 records the trial.
+
+- **Price cards:** the label on top, then the per-day figure (`perDayPrice`, from the store's amount and currency), then the period price, small. "20 credits a week" left the weekly card; the first benefit row now states the selected plan's grant.
+- **Yearly 3-day free trial** (`freeTrialOption` / `trialDays` in `store-catalog.ts`; `purchasePackage(pkg, { freeTrial: true })` in `revenuecat.ts`). It is shown only when Play reports an eligible free-trial offer, or off-store for review. It is never shown in a shipped build with no offering. The button reads "Start 3-day free trial". `onSubscribed` reports 10 credits for a trial (backend `trialCredits`).
+- **Terms line:** moved from between the plans and the button to fine print under the links (Play Subscriptions policy). There is a translated trial line, `paywall.renews.yearlyTrial`, in EN/ES/PT.
+- **Benefit lines:** about the person, not the character. Genres and reading moment come from the onboarding answers (`personalization` prop, passed by `CharacterOnboarding`).
+- **Blank band under the reviews:** the scroll padded itself by the sheet's measured height although the sheet sits below it, not over it. The padding is now just `spacing.xl`, and the `onLayout` measurement is gone.
+- **"$0.16..." truncation:** fixed by stacking the label above the figure.
+
+### Verification
+
+- `onboarding-paywall.test.tsx`: 39 tests, rewritten for the above, including a trial offered and bought only when the store reports one, no trial in a release build with no offering, and the personalisation lines.
+- Full suite 1756/1756; typecheck clean; lint is the same 30 warnings as main.
+- Phone-size renders (390×844 @3x) of the reader and writer paywalls, top and bottom, through a throwaway uncommitted harness on :8092: `~/Desktop/Katha-Paywall-v2-*.png`.
+- **Not verified:** a real Play trial purchase. That needs the trial offer configured on the yearly base plan in Play Console and a device build.
+
 ## 2026-09-29: The intro rehearses the flow again — Character, Story, Read and listen
 
 The three animated screens before **Get started** were Create → Publish → Read. That was true when they were built and had stopped being true: the first thing a new user does after Get started is make a **character** — a name and an appearance — and watch a portrait get drawn (`CharacterOnboarding` W3–W6). The story brief comes after that, community after that. The intro was rehearsing a flow the app no longer has. Merged as PR #169.
