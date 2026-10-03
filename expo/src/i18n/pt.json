@@ -299,13 +299,17 @@
   "paywall": {
     "renews": {
       "weekly": "{{price}} por semana, renovação automática até você cancelar.",
-      "yearly": "{{price}} por ano, renovação automática até você cancelar."
+      "yearly": "{{price}} por ano, renovação automática até você cancelar.",
+      "yearlyTrial": "{{days}} dias grátis com {{credits}} créditos, depois {{price}} por ano. Renova automaticamente até você cancelar."
     },
     "cancel": {
       "android": "Cancele quando quiser no Google Play.",
       "ios": "Cancele quando quiser nos ajustes da App Store.",
       "other": "Cancele quando quiser na loja em que você assinou."
     },
+    "trialCta": "Começar teste grátis de {{days}} dias",
+    "trialCard": "{{days}} dias grátis, depois {{price}}",
+    "trialGone": "O teste grátis não está mais disponível nesta conta. Os planos agora mostram o preço.",
     "restore": "Restaurar compras",
     "manage": "Gerenciar assinaturas",
     "terms": "Termos",

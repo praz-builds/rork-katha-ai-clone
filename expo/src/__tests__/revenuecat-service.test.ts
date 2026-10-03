@@ -12,6 +12,8 @@
 const mockConfigure = jest.fn();
 const mockLogIn = jest.fn();
 const mockGetCustomerInfo = jest.fn();
+const mockPurchaseOption = jest.fn();
+const mockPurchasePkg = jest.fn();
 
 jest.mock("react-native-purchases", () => ({
   __esModule: true,
@@ -19,6 +21,8 @@ jest.mock("react-native-purchases", () => ({
     configure: (...args: unknown[]) => mockConfigure(...args),
     logIn: (...args: unknown[]) => mockLogIn(...args),
     getCustomerInfo: (...args: unknown[]) => mockGetCustomerInfo(...args),
+    purchaseSubscriptionOption: (...args: unknown[]) => mockPurchaseOption(...args),
+    purchasePackage: (...args: unknown[]) => mockPurchasePkg(...args),
     addCustomerInfoUpdateListener: jest.fn(),
     removeCustomerInfoUpdateListener: jest.fn(),
   },
@@ -44,6 +48,40 @@ beforeEach(() => {
   mockConfigure.mockReset();
   mockLogIn.mockReset().mockResolvedValue({ customerInfo: PROFILE });
   mockGetCustomerInfo.mockReset().mockResolvedValue(PROFILE);
+  mockPurchaseOption.mockReset().mockResolvedValue({ customerInfo: PROFILE });
+  mockPurchasePkg.mockReset().mockResolvedValue({ customerInfo: PROFILE });
+});
+
+describe("what a purchase buys", () => {
+  const base = { isBasePlan: true, freePhase: null };
+  const trial = { isBasePlan: false, freePhase: { billingPeriod: { iso8601: "P3D" } } };
+  const pkg = (options: unknown[]) =>
+    ({ product: { identifier: "ai.katha.sub.yearly", subscriptionOptions: options } }) as never;
+
+  it("buys the free-trial offer when the card advertised one", async () => {
+    const service = freshService();
+    await service.activate();
+    await service.purchasePackage(pkg([base, trial]), { freeTrial: true });
+    expect(mockPurchaseOption).toHaveBeenCalledWith(trial);
+    expect(mockPurchasePkg).not.toHaveBeenCalled();
+  });
+
+  it("refuses, rather than charging, when a trial was asked for and none is offered", async () => {
+    const service = freshService();
+    await service.activate();
+    await expect(
+      service.purchasePackage(pkg([base]), { freeTrial: true }),
+    ).rejects.toThrow(/free-trial/);
+    expect(mockPurchaseOption).not.toHaveBeenCalled();
+    expect(mockPurchasePkg).not.toHaveBeenCalled();
+  });
+
+  it("buys the base plan, never a trial, when asked for the base plan", async () => {
+    const service = freshService();
+    await service.activate();
+    await service.purchasePackage(pkg([trial, base]), { basePlanOnly: true });
+    expect(mockPurchaseOption).toHaveBeenCalledWith(base);
+  });
 });
 
 it("configures as the Katha user when the id is known before activation", async () => {

@@ -300,7 +300,7 @@ S1-S3  name → genre interests → purpose        steps 1, 2, 3
                          │       🔄 Reimagine ──→ inline edit block
                          │                          └─ Redraw ×1 → loading
                          │
-              W7 PAYWALL         weekly · yearly, no trial         no row, × only
+              W7 PAYWALL         weekly · yearly + 3-day trial        no row, × only
                          │
           subscribe ─────┴───── decline → grant 3 credits
                          │
@@ -1476,6 +1476,38 @@ written down.
 
 ## 12-13. W7: the paywall
 
+> **Amended 2026-10-03 (founder feedback, decision 73).** Where this section
+> and the decision list below say otherwise, this wins:
+>
+> - **Each plan card leads with the per-day cost** (`$0.16/day`, `$0.86/day`,
+>   derived from the store's price), with the period price under it, small.
+>   The label sits above the figure. The weekly card no longer says
+>   "20 credits a week": the first benefit row states the **selected** plan's
+>   grant ("50 credits a month" or "20 credits a week").
+> - **The yearly plan offers a 3-day free trial**, and weekly never does. The
+>   yearly card reads "3 days free, then $59/yr", and the button reads
+>   **Start 3-day free trial** while yearly is selected (**Unlock Katha** on
+>   weekly). It is shown only when Google Play reports a free-trial offer this
+>   account is eligible for; off-store (web, dev) it is shown for review, and
+>   a shipped build with no offering shows no trial. The trial grants 10
+>   credits; the full 50 arrive with the first charge (`CREDITS_AND_PRICING.md`
+>   §3). The welcome count-up counts 10.
+> - **The terms line no longer sits between the plans and the button.** It is
+>   fine print under the Restore · Manage · Terms · Privacy row. It was moved,
+>   not deleted, because Play's Subscriptions policy requires the paywall
+>   itself to state the price after the trial, auto-renewal and how to cancel.
+> - **The benefit lines speak to the person, not the character.** People
+>   write and read without a character, so "Raya looks the same in every
+>   chapter" and "with you as the lead" are gone. The lines personalise from
+>   the onboarding answers instead: the first two genres picked ("Up to 50
+>   chapters of romance and fantasy"; a chapter is 1 credit, so the old "about
+>   16" undersold the plan) and when they read (the voices line).
+>   The heading still names the character. The in-app entry gets the general
+>   lines.
+> - **The blank band under the testimonials is gone.** The scroll used to
+>   pad itself by the pinned sheet's height, but the sheet is laid out below
+>   the scroll, not over it, so it was counted twice.
+
 **The Reader and Writer paywalls merged 2026-09-11**, one section per the pricing
 rebuild that left one product. The two-audience split was always a volume ladder
 wearing an identity label, and the character flow erased the line it assumed: a
@@ -1569,7 +1601,7 @@ are content here, not icon glyphs.
 
 | | Row | Second line |
 |---|---|---|
-| ✨ | **50 credits a month** | Writer: **About 16 full chapters, every month** · Reader: **About 16 chapters with you as the lead, every month** |
+| ✨ | **50 credits a month** | Writer: **Up to 50 new chapters *(2026-10-03; was "About 16 full chapters, every month")*** · Reader: **About 16 chapters with you as the lead, every month** |
 | 🎨 | **Unlimited portraits and reimagines** | Writer: **{name} looks the same in every chapter** · Reader: **You look the same in every chapter** |
 | 🎙️ | **Premium voices** | Writer: **Hear {name}'s story read aloud** · Reader: **Hear your story read aloud** |
 | 📄 | **Download as PDF** | **Your stories, off the app and in your hands** |
@@ -1653,7 +1685,8 @@ confirmation-gated** dismiss, and the × is none of those: nothing about removin
 the link makes leaving harder, slower, or less obvious, and if it ever did, the
 link comes back rather than the × moving.
 
-**No free trial, anywhere on this screen. No monthly plan, and no More options
+~~**No free trial, anywhere on this screen.**~~ *(Superseded 2026-10-03,
+decision 73: yearly offers a 3-day trial.)* **No monthly plan, and no More options
 disclosure.** Both are deliberate removals from the C4-era paywall. A trial on a
 credits product hands out the thing being sold and then asks for the card back,
 and a third plan under a disclosure was a row nobody opened that still had to be
@@ -2269,11 +2302,11 @@ error logging contract and contain identifiers and enums only.
    accidental benefit of the screen's removal rather
    than a reason it was removed.
 5. **`CREDITS_AND_PRICING.md` §3 still describes a 3-day free trial on the yearly
-   plan, and a monthly plan at $12.99.** W7 shows neither (§12-13). Pricing wins
+   plan, and a monthly plan at $12.99.** ~~W7 shows neither (§12-13).~~ Pricing wins
    on whether those products exist and what they cost; **this file wins on what
-   the onboarding paywall renders**, and it renders two cards with no trial. If
-   pricing decides the trial must appear in onboarding, W7 changes in the same
-   commit that says so.
+   the onboarding paywall renders**. *(Resolved 2026-10-03, decision 73: W7 now
+   renders the yearly 3-day trial, in the same commit as the pricing note that
+   says so. Monthly is still not on W7.)*
 6. **The C0-C4 specification is superseded, on the same day it was written.**
    C0 Bridge, C1 Who, C2 Wait, C3 Reveal and C4 Plan bridge were specified and
    built on the morning of **2026-09-11**; W3-W7 replaced them the same
@@ -2688,3 +2721,12 @@ error logging contract and contain identifiers and enums only.
     the questionnaire (§3B's), because the design frames showed two and a
     person walking three screens reads a second treatment as a state they did
     not choose.
+73. **The yearly plan has a 3-day free trial; the cards lead with the per-day
+    cost (2026-10-03, founder).** This supersedes the "no trial" half of 47,
+    and the "free trial" entry in the §12-13 never-list. Weekly never has a
+    trial. The trial is offered only when the store reports one the account
+    can take, and grants 10 credits. The renewal terms move to fine print at
+    the bottom (still on the screen, for Play's policy). The benefit lines are
+    personalised from the onboarding answers rather than written about the
+    character, and the double-counted sheet padding is removed. Details are
+    in the amendment at the top of §12-13.

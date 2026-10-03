@@ -299,13 +299,17 @@
   "paywall": {
     "renews": {
       "weekly": "{{price}} a week, renews automatically until you cancel.",
-      "yearly": "{{price}} a year, renews automatically until you cancel."
+      "yearly": "{{price}} a year, renews automatically until you cancel.",
+      "yearlyTrial": "{{days}} days free with {{credits}} credits, then {{price}} a year. Renews automatically until you cancel."
     },
     "cancel": {
       "android": "Cancel anytime in Google Play.",
       "ios": "Cancel anytime in your App Store settings.",
       "other": "Cancel anytime from the store you subscribed on."
     },
+    "trialCta": "Start {{days}}-day free trial",
+    "trialCard": "{{days}} days free, then {{price}}",
+    "trialGone": "The free trial isn't available on this account any more. The plans now show their price.",
     "restore": "Restore purchases",
     "manage": "Manage subscriptions",
     "terms": "Terms",

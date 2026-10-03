@@ -55,7 +55,7 @@ note in §3 (*Character images*).
 
 One product, three durations. There is no separate reader tier.
 
-| | Weekly | Monthly | Yearly (no trial at launch, §3 *Store SKUs*) |
+| | Weekly | Monthly | Yearly (3-day free trial, 10 credits, from 2026-10-03) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -602,7 +602,7 @@ flagged rather than quietly carried.
 > credits, which is not how you price a different *product* — and the created-flow
 > work erased the line it assumed: a reader who reimagines a chapter is creating.
 
-| | Weekly | Monthly | Yearly (no trial at launch, see *Store SKUs*) |
+| | Weekly | Monthly | Yearly (3-day free trial, 10 credits, from 2026-10-03) |
 |---|---|---|---|
 | **Katha** | **$5.99** · 20 credits | **$12.99** · 50/mo | **$59** · 50/mo |
 
@@ -627,8 +627,9 @@ user who wants it but is not the plan we lead with. Yearly is selected by
 default; weekly has no trial.
 
 > **The onboarding paywall shows two cards and nothing else** *(decided
-> 2026-09-11, the W7 hand-off)*. Weekly and yearly, yearly selected by default,
-> **no trial offered and no monthly disclosure** — not even behind a "More
+> 2026-09-11, the W7 hand-off; the trial half reversed 2026-10-03: yearly
+> offers a 3-day free trial when the store reports one)*. Weekly and yearly, yearly selected by default,
+> **~~no trial offered~~ and no monthly disclosure** — not even behind a "More
 > options" control. **Monthly stays a live SKU** (`ai.katha.sub.monthly`, below)
 > and sells in-app from Home and Credits; it is removed from the one screen a
 > new user cannot skip past, because a disclosure triangle there is a third
@@ -1086,12 +1087,14 @@ A 3-day trial that grants the full 50 credits is a **$3.69 giveaway with a cance
 button attached** at the worst story shape, and trial abuse is the most mechanical
 form of fraud available on a subscription app.
 
-> **Onboarding no longer offers the trial** *(2026-09-11, the W7 hand-off)*. The
-> onboarding paywall sells weekly and yearly at their prices; the trial remains
-> a store configuration on the yearly SKU for the in-app surfaces that use it,
-> so the grant rule below still governs wherever a trial is actually started.
-> The first cohort through the new onboarding will start no trials at all, which
-> is the intended reading of any drop in trial starts.
+> **The paywall offers the trial again, on yearly only** *(2026-10-03, founder;
+> it was removed from onboarding on 2026-09-11)*. The yearly card reads "3 days
+> free, then $59/yr" and the button "Start 3-day free trial", but only when
+> Google Play reports a free-trial offer the account is eligible for. Weekly
+> never has one. **Store action required:** the yearly base plan needs a
+> 3-day free-trial offer in Play Console, or the screen shows the price and
+> no trial. The 10-credit grant rule below is what bounds the giveaway, and
+> `_shared/revenuecat.ts` already enforces it (`trialCredits: 10`).
 
 **The trial grant is reduced to 10 credits. The full 50 lands on the first
 successful charge.** Ten credits is ten chapters, or three short illustrated
@@ -1903,7 +1906,8 @@ before any purchase and before any grant
 │
 │              Two cards, nothing else. Yearly selected by default, badged
 │              SAVE 80% (weekly annualised, §3) and noted "$0.16 a day"
-│              (59 / 365, derived in code). No trial offered here, no
+│              (59 / 365, derived in code). [2026-10-03: per-day leads;
+│              yearly 3-day trial when the store has one.] No
 │              monthly, no More options: monthly stays an in-app SKU, and
 │              no monthly-equivalent price appears on the yearly card.
 │              Four benefit rows: 50 credits a month, unlimited portraits ⚠
@@ -2527,7 +2531,8 @@ economy is tuned on evidence rather than argued about.
 12. **Presentation:** weekly and yearly upfront, yearly selected by default,
     weekly without a trial.
 12a. **The onboarding paywall shows weekly and yearly only** *(2026-09-11, the
-    W7 hand-off)*: **no trial offered, no monthly, no More options disclosure.**
+    W7 hand-off)*: ~~**no trial offered**~~ *(reversed 2026-10-03: yearly offers a
+    3-day free trial, 10 credits, when the store reports one)*, **no monthly, no More options disclosure.**
     Monthly stays a live SKU sold in-app; the trial stays a store configuration
     on the yearly SKU. The yearly card's **SAVE 80%** badge is the weekly
     annualised comparison ($311.48 vs $59 = 81%, rounded down), never the 62%
@@ -2717,7 +2722,8 @@ economy is tuned on evidence rather than argued about.
     and there is no one-time offer.
 30a. **The onboarding paywall sells two durations and four benefits**
     *(2026-09-11, the W7 hand-off)*. Weekly and yearly, yearly selected by
-    default and badged SAVE 80%; **no trial, no monthly, no More options**. The
+    default and badged SAVE 80%; ~~no trial~~ *(yearly 3-day trial from
+    2026-10-03)*, **no monthly, no More options**. The
     benefit rows are 50 credits a month, unlimited portraits ⚠ *(see 18f)* and
     reimagines,
     premium voices, download as PDF — the character's name is in the portrait

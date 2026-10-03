@@ -14,6 +14,8 @@ import {
   ANDROID_PACKAGE_NAME,
   basePlanOption,
   canonicalProductId,
+  freeTrialOption,
+  trialDays,
   CREDIT_PACK_OFFERING_ID,
   creditPackPackageId,
   findPackageInOfferings,
@@ -187,6 +189,26 @@ describe("Android product identifiers", () => {
     const trial = { id: "yearly:yearly-trial-3d", isBasePlan: false };
     expect(basePlanOption({ product: { subscriptionOptions: [trial, base] } })).toBe(base);
     expect(basePlanOption({ product: { subscriptionOptions: null } })).toBeNull();
+  });
+
+  it("finds the free-trial offer only when one has a free phase", () => {
+    const base = { isBasePlan: true, freePhase: null };
+    const trial = { isBasePlan: false, freePhase: { billingPeriod: { iso8601: "P3D" } } };
+    const intro = { isBasePlan: false, freePhase: null }; // a discount, not free
+    expect(freeTrialOption({ product: { subscriptionOptions: [base, trial] } })).toBe(trial);
+    // An ineligible account: Play reports the base plan and nothing free.
+    expect(freeTrialOption({ product: { subscriptionOptions: [base, intro] } })).toBeNull();
+    expect(freeTrialOption({ product: { subscriptionOptions: null } })).toBeNull();
+    expect(freeTrialOption(null)).toBeNull();
+  });
+
+  it("reads a trial's length in days, and refuses units it cannot state in days", () => {
+    expect(trialDays("P3D")).toBe(3);
+    expect(trialDays("P1W")).toBe(7);
+    expect(trialDays("P1W2D")).toBe(9);
+    expect(trialDays("P1M")).toBeNull();
+    expect(trialDays("P1Y")).toBeNull();
+    expect(trialDays(undefined)).toBeNull();
   });
 });
 
