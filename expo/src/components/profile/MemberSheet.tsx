@@ -1,6 +1,7 @@
 import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, Crown, X } from "lucide-react-native";
 import i18n from "@/i18n";
+import { memberPlanSummary, type MemberProfileLike, useStoreProfile } from "@/lib/member-plan";
 import { revenueCatService } from "@/lib/revenuecat";
 import { manageSubscriptionsUrl } from "@/lib/store-catalog";
 import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
@@ -15,28 +16,30 @@ import { Button } from "@/components/Button";
  * says they have it. Sending them to the paywall, which is what the row did
  * before, is the app asking a paying customer to pay.
  *
- * It states the plan's facts and nothing it cannot deliver: the four
- * promises are the paywall's four rows, so a member reads here exactly what
- * they read when they bought. Managing the subscription is the store's job:
+ * It states the plan's facts and nothing it cannot deliver: the paywall's
+ * promises, with the credit grant of the plan actually held (10 during a
+ * trial, none when the store has no record), plus which plan it is and when
+ * it renews, ends or leaves its free trial (`member-plan.ts`, 2026-10-04). Managing the subscription is the store's job:
  * on a phone the line at the bottom is a link to that store's subscriptions
  * page (Play's Subscriptions policy wants a working manage/cancel path for a
  * member, and this sheet is where Profile and Credits land when the Customer
  * Center cannot open). On web there is no store to link, so it stays a line.
  */
-export const PLAN_FACTS: readonly string[] = [
-  "50 credits a month",
-  "Unlimited portraits and reimagines",
-  "Premium voices",
-  "Download as PDF",
-];
 
 export default function MemberSheet({
   visible,
   onClose,
+  profile,
 }: {
   visible: boolean;
   onClose: () => void;
+  /** The store record to describe; RevenueCat's own by default. */
+  profile?: MemberProfileLike;
 }) {
+  // Their plan, as the store records it: which plan, trial or paid, and the
+  // date it renews or ends. The general summary when there is no record.
+  const live = useStoreProfile<MemberProfileLike>(revenueCatService);
+  const summary = memberPlanSummary(profile ?? live);
   const store = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
   const openStore = () => {
     const held = revenueCatService?.profile?.activeSubscriptions?.[0] ?? null;
@@ -72,9 +75,12 @@ export default function MemberSheet({
             </Pressable>
           </View>
           <Text style={styles.title}>You're a Katha member</Text>
-          <Text style={styles.sub}>Your plan is active. Here is what it includes.</Text>
+          {summary.planLabel
+            ? <Text style={styles.plan} testID="member-sheet-plan">{summary.planLabel}</Text>
+            : null}
+          <Text style={styles.sub} testID="member-sheet-status">{summary.status}</Text>
           <View style={styles.facts}>
-            {PLAN_FACTS.map((fact) => (
+            {summary.facts.map((fact) => (
               <View key={fact} style={styles.factRow}>
                 <Check size={16} color={colors.accent} strokeWidth={3} />
                 <Text style={styles.fact}>{fact}</Text>
@@ -153,6 +159,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   sub: { fontFamily: fonts.ui, color: colors.muted, fontSize: 14, lineHeight: 20 },
+  plan: {
+    fontFamily: fonts.ui,
+    fontWeight: "700",
+    color: colors.accent,
+    fontSize: 13,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   facts: {
     marginTop: spacing.md,
     borderRadius: radius.lg,

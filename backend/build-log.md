@@ -5,6 +5,16 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-04 UTC — The yearly free trial is in the setup guide; members see their own plan
+
+Client and docs only, with no function or migration change, so there is
+nothing to deploy. `backend/PLAY_BILLING_SETUP.md` now instructs creating the
+`yearly-trial-3d` offer (P3D free phase, new customers, yearly base plan only)
+and testing it with a fresh license tester (+10 credits, not +50). The
+webhook's TRIAL grant (`trialCredits: 10`) is unchanged and already correct.
+The member screens read the plan, trial and renewal date from RevenueCat
+(`expo/src/lib/member-plan.ts`). See `expo/BUILD_LOG.md` 2026-10-04.
+
 ## 2026-10-03 UTC — The paywall leads with the daily price, and yearly gets its 3-day trial
 
 Client-only, with no function, migration or `_shared` change, so there is

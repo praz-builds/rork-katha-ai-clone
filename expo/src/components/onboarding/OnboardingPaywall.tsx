@@ -101,7 +101,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TestimonialRail } from "@/components/onboarding/TestimonialRail";
-import { PLAN_FACTS } from "@/components/profile/MemberSheet";
+import { memberPlanSummary, useStoreProfile } from "@/lib/member-plan";
 import i18n from "@/i18n";
 import { useIsSubscribed } from "@/lib/entitlements";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
@@ -271,18 +271,69 @@ const PLANS: Record<PlanId, Plan> = {
  * change touches; "$4.92 a month, billed yearly" outlived one change already.
  * Divide the real number and the card cannot disagree with itself.
  *
- * WHY THE SYMBOL COMES OUT OF `priceString`. RevenueCat gives the amount as a
- * number and the currency only inside the store's formatted string, so the
- * symbol is what is left once digits and separators are gone, kept on the side
- * it was on: "¥8800" keeps ¥ in front, "59,00 €" keeps € behind. Two decimals
- * regardless: it is a comparison, never the figure anybody is billed.
+ * IT SPEAKS THE STORE'S CURRENCY, IN THE STORE'S OWN STYLE (2026-10-04).
+ * RevenueCat gives the amount as a number and the currency two ways: the
+ * store's formatted `priceString` and an ISO `currencyCode`. The figure takes
+ * its SYMBOL, the symbol's side and spacing, and the decimal mark from
+ * `priceString`, so it always matches the period price printed under it
+ * ("₹4,990/yr" → "₹13.67"; "59,00 €" → "0,16 €"). It takes only the number of
+ * DECIMALS from the currency code, so a zero-decimal currency stays whole
+ * (¥8,800 → ¥24, never ¥24.11). Formatting the whole figure with
+ * `Intl.NumberFormat` in the device locale was tried and rejected: a Spanish
+ * phone printed "USD 0,16" above a store string reading "$59". Never a charge,
+ * only a comparison.
  */
-export function perDayPrice(amount: number, priceString: string, days: number): string {
-  const perDay = (amount / days).toFixed(2);
-  const symbol = priceString.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
-  if (!symbol) return perDay;
-  const leading = priceString.trimStart().startsWith(symbol);
-  return leading ? `${symbol}${perDay}` : `${perDay}${symbol}`;
+export function perDayPrice(
+  amount: number,
+  priceString: string,
+  days: number,
+  currencyCode?: string | null,
+): string {
+  const digits = currencyDecimals(currencyCode);
+  const trimmed = priceString.trim();
+  // The symbol is what is left once the NUMBER is removed (not every dot and
+  // comma), so "449,00 kr." keeps its "kr.".
+  const symbol = trimmed.replace(/\d(?:[\d.,\s\u00A0\u202F']*\d)?/, "").trim();
+  const { decimal, grouping } = separatorsOf(trimmed);
+  const [whole, fraction] = (amount / days).toFixed(digits).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, grouping);
+  const figure = fraction ? `${grouped}${decimal}${fraction}` : grouped;
+  if (!symbol) return figure;
+  const leading = trimmed.startsWith(symbol);
+  const spaced = leading
+    ? /^[\s\u00A0\u202F]/.test(trimmed.slice(symbol.length))
+    : /[\s\u00A0\u202F]$/.test(trimmed.slice(0, trimmed.length - symbol.length));
+  const gap = spaced ? " " : "";
+  return leading ? `${symbol}${gap}${figure}` : `${figure}${gap}${symbol}`;
+}
+
+/**
+ * The store string's decimal mark and thousands separator. The LAST separator
+ * between digits decides: followed by exactly three digits it groups
+ * thousands ("₹4,990", "Rp 899.000"), so the decimal mark is the other one;
+ * followed by one or two it is the decimal mark ("$5.99", "59,00 €"). A
+ * string with no separator ("$59") gives the dot and comma.
+ */
+function separatorsOf(priceString: string): { decimal: string; grouping: string } {
+  const match = /\d([.,\s\u00A0\u202F'])(\d+)\D*$/.exec(priceString);
+  if (!match) return { decimal: ".", grouping: "," };
+  const [, separator, tail] = match;
+  if (tail.length === 3) {
+    return { decimal: separator === "," ? "." : ",", grouping: separator };
+  }
+  return { decimal: separator, grouping: separator === "." ? "," : "." };
+}
+
+/** Minor-unit digits of an ISO currency (JPY 0, USD 2); 2 when unknown. */
+function currencyDecimals(code?: string | null): number {
+  if (!code) return 2;
+  try {
+    const digits = new Intl.NumberFormat("en", { style: "currency", currency: code })
+      .resolvedOptions().maximumFractionDigits;
+    return typeof digits === "number" ? digits : 2;
+  } catch {
+    return 2;
+  }
 }
 
 /**
@@ -491,14 +542,17 @@ export function OnboardingPaywall({
  *
  * A subscriber who reaches the paywall -- from Credits, from Home, or a
  * tester account holding the entitlement override -- is shown that they have
- * the plan, not a screen selling it to them. The four facts are the offer's
- * four rows, so what a member reads here is what they read when they bought.
+ * the plan, not a screen selling it to them: which plan, its status and date,
+ * and the offer's rows with the grant they actually hold (`member-plan.ts`).
  * "Manage subscription" opens the Customer Center where it exists; on web and
  * in an unconfigured build it cannot, and the line under the facts says
  * where the store keeps it instead.
  */
 function MemberState({ onDismiss }: { onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
+  // Their plan as the store records it (`member-plan.ts`): the same summary
+  // the Profile sheet shows, so a member reads one story everywhere.
+  const summary = memberPlanSummary(useStoreProfile(revenueCatService));
   const [notice, setNotice] = useState<string | null>(null);
   const manage = useCallback(() => {
     // The store's own page is the fallback for BOTH failures: Customer Center
@@ -547,15 +601,18 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
           <Text style={styles.heading} accessibilityRole="header">
             You're a Katha member
           </Text>
-          <Text style={styles.sub}>Your plan is active. Here is what it includes.</Text>
+          {summary.planLabel
+            ? <Text style={styles.memberPlan}>{summary.planLabel}</Text>
+            : null}
+          <Text style={styles.sub}>{summary.status}</Text>
         </View>
         <View style={styles.benefits}>
-          {PLAN_FACTS.map((fact, index) => (
+          {summary.facts.map((fact, index) => (
             <View
               key={fact}
               style={[
                 styles.benefitRow,
-                index < PLAN_FACTS.length - 1 && styles.benefitRowDivided,
+                index < summary.facts.length - 1 && styles.benefitRowDivided,
               ]}
             >
               <IconCheck size={16} color={colors.accent} />
@@ -664,7 +721,12 @@ function PaywallOffer({
     (plan: Plan) => {
       const match = packageFor(plan);
       const amount = match?.product.price ?? plan.fallbackAmount ?? 0;
-      return perDayPrice(amount, match?.product.priceString ?? plan.fallbackPrice, plan.days);
+      return perDayPrice(
+        amount,
+        match?.product.priceString ?? plan.fallbackPrice,
+        plan.days,
+        match?.product.currencyCode,
+      );
     },
     [packageFor],
   );
@@ -1301,6 +1363,15 @@ const styles = StyleSheet.create({
   },
   /** Layout only; the recipe is `Button`'s. */
   primary: { marginTop: spacing.md },
+  memberPlan: {
+    fontFamily: fonts.ui,
+    fontWeight: "700",
+    fontSize: 13,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: colors.accent,
+    marginTop: spacing.related,
+  },
 });
 
 export default OnboardingPaywall;

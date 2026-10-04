@@ -2,6 +2,19 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-10-04: Katha Plus for a member says which plan, and when; the daily price speaks the store's currency
+
+- **Member screens read the store's record** (`src/lib/member-plan.ts`, `memberPlanSummary`). The Profile sheet (`MemberSheet`) and the paywall's member state now show the plan held ("Yearly plan"), a status line ("Free trial until Oct 7, 2026…", "Renews on…", "Ends on… It won't renew."), and that plan's own grant: a weekly member reads "20 credits a week", not the yearly "50 credits a month". A member with no store record (a tester override, or the web build) gets the general summary. `PLAN_FACTS` is gone.
+- **Where a member lands:** on a phone, Profile → Katha Plus opens RevenueCat's Customer Center when it is configured in the dashboard, and this sheet otherwise; on web, always this sheet. A non-member gets the paywall.
+- **Per-day price in the store's currency:** `perDayPrice` takes the symbol, its side and spacing, and the decimal mark from the store's `priceString`, and only the number of decimals from `currencyCode` (₹4,990/yr → ₹13.67/day; ¥8,800 → ¥24/day; 59,00 € → 0,16 €; Rp 899.000 → Rp 2.463, grouped, because there the dot separates thousands). Whole-figure `Intl` formatting in the device locale was rejected in review: a Spanish phone printed "USD 0,16" above "$59". Every other price on the screen was already the store's `priceString`.
+- **Member screens stay current** (`useStoreProfile`): they re-read RevenueCat's profile on every update, so a cancel in Play turns "Renews on…" into "Ends on…" without reopening. A trial member's grant row reads "10 credits during your trial". An unrecognised product shows no grant row rather than the yearly one.
+- **Docs for whoever sets up the products:** `backend/PLAY_BILLING_SETUP.md` now says to create the `yearly-trial-3d` offer (3 days free, new customers, yearly only) and how to test it, and the policy table describes the trial disclosure. `CREDITS_AND_PRICING.md` §3 *Store SKUs* records the trial and the per-day computation. `AGENTS.md` has a pointer in the RevenueCat row, and `ONBOARDING_FLOW.md` decision 47 is marked superseded.
+
+### Verification
+
+- New: `member-plan.test.ts` (7, including the live update), member-sheet trial and weekly cases, and paywall INR/JPY/BRL/EUR daily-figure cases. Full suite 1782/1782. The store-catalog and backend `revenuecat_test.ts` checks of the setup guide still pass.
+- Phone-size renders of the three member states (trial, yearly, weekly) through an uncommitted harness: `~/Desktop/Katha-Plus-PAID-*.png`. The non-member paywall is `~/Desktop/Katha-Plus-NOT-PAID.png`.
+
 ## 2026-10-03: The paywall leads with the daily price, and yearly gets its trial back
 
 Founder feedback on the W7 paywall screenshots. `source-of-truth/ONBOARDING_FLOW.md` §12-13 carries the amendment (decision 73); `CREDITS_AND_PRICING.md` §3 records the trial.

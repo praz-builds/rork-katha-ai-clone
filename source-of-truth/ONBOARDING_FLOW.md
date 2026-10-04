@@ -2452,7 +2452,8 @@ error logging contract and contain identifiers and enums only.
     hold still **and the status text keeps rotating**, because a frozen sentence
     during a thirty second wait reads as a hang. W3's hero card swells to 1.08
     over two seconds and **holds there**: no settle-back, no spring, no overshoot.
-47. **W7 has no free trial and no monthly plan.** Two cards, weekly $5.99 and
+47. **W7 has ~~no free trial and~~ no monthly plan.** *(The trial half is
+    superseded by decision 73, 2026-10-03: yearly offers a 3-day trial.)* Two cards, weekly $5.99 and
     yearly $59 selected by default with a **SAVE 80%** badge, four benefit rows,
     **Cancel anytime, no commitments**, **Unlock Katha**, ~~**Not now**~~ and a
     close × from frame one. *(Amended 2026-09-12 by decision 57: **Not now** is
