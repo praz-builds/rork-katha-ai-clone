@@ -1107,7 +1107,7 @@ downside at **$0.74**.
 |---|---|
 | `ai.katha.sub.weekly` | Weekly — $5.99 · 20 credits |
 | `ai.katha.sub.monthly` | Monthly — $12.99 · 50/mo |
-| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo. A 3-day trial offer exists on paper only: **not created for launch** (below) |
+| `ai.katha.sub.yearly` | Yearly — $59 · 50/mo, **with a 3-day free-trial offer `yearly-trial-3d`** (10 credits during the trial; 2026-10-03, below) |
 | `ai.katha.credits.2` | 2 credits — $0.99 |
 | `ai.katha.credits.10` | 10 credits — $3.49 |
 | `ai.katha.credits.50` | 50 credits — $15.99 |
@@ -1123,9 +1123,28 @@ carry this list.
 steps — is in [`backend/PLAY_BILLING_SETUP.md`](../backend/PLAY_BILLING_SETUP.md).
 That file repeats the prices above only as a checklist convenience; tests fail
 if its prices or ids drift from this table or from the code, and this table
-wins. The app buys the yearly **base plan**, never an offer, so the 3-day
-trial is not created for launch: no surface discloses a trial today
-(2026-09-25).
+wins.
+
+**The yearly free trial (decided 2026-10-03, founder).** The yearly plan
+carries one offer: id **`yearly-trial-3d`**, on the `yearly` base plan, **3
+days free**, eligibility **new customers only** (never held this subscription).
+Weekly and monthly have **no** offers. What the app does with it:
+
+- The paywall advertises the trial ("3 days free, then $59/yr", "Start 3-day
+  free trial", and the terms in the fine print) **only when Google Play reports
+  that offer as available to this account**. An account that already had a
+  trial, or a store with the offer missing, sees the price and buys the base
+  plan. A trial the app cannot state truthfully in days (one month, one day, no
+  period) is not advertised.
+- A "free trial" button never charges: if the offer disappears between screen
+  and tap, nothing is bought (`OnboardingPaywall.tsx`, `revenuecat.ts`).
+- The trial grants **10 credits** (`trialCredits` in `_shared/revenuecat.ts`,
+  on `period_type TRIAL`); the plan's full 50 arrive with the first charge,
+  and the monthly top-ups follow as usual.
+- The member screens say "Free trial until <date>" while it runs
+  (`expo/src/lib/member-plan.ts`).
+
+The Play Console steps are in `backend/PLAY_BILLING_SETUP.md`.
 
 > **The `reader.*` and `writer.*` SKU families are retired** with the two-audience
 > grid, and **`ai.katha.credits.{5,30,100,300}` are retired with the six-pack
@@ -1146,9 +1165,13 @@ package to read — the web preview, where purchases are disabled outright.
 > 2026-09-16)*. The USD prices above are the base. Google Play's automatic
 > conversion sets every other country's price from them, and the one manual
 > override is **India, set by hand to a local figure ending in 9**. The client
-> never converts a currency, never applies a rate, and never formats a price
-> from a number: it renders the `priceString` the store hands it, or the USD
-> fallback copy, and nothing else. There is no conversion code anywhere in the
+> never converts a currency and never applies a rate: every price it shows is
+> the `priceString` the store hands it, in the user's own currency, or the USD
+> fallback copy. **The one figure it computes is the paywall's per-day
+> comparison** ("$0.16/day", "₹13.67/day"): the store's own amount divided by
+> the period's days, formatted in the store's own currency code
+> (`perDayPrice`, 2026-10-04), so an Indian user sees rupees and a yen price
+> stays whole. It is a comparison, never a charge. There is no conversion code anywhere in the
 > product, and adding any would be the wrong fix for a wrong price — the fix is
 > in the console. Apple's price tiers, when the iOS listing exists, are set the
 > same way.

@@ -56,15 +56,19 @@ Things the table implies that are easy to get wrong:
   50 on each following calendar month, once per month: the store's yearly
   renewal does not refill a month the cron has already paid. Weekly and
   monthly are topped up by their own renewals.
-- **No free trial for launch.** The pricing doc keeps a 3-day trial as store
-  configuration on the yearly plan, but no screen in the app discloses a trial
-  today (the onboarding paywall removed it on 2026-09-11), and a trial the
-  screen does not mention breaks the Subscriptions policy. The app always buys
-  the base plan (`basePlanOnly` in `expo/src/lib/revenuecat.ts`), so an offer
-  created by accident is never applied from the app. If a trial is wanted
-  later, it is an offer with id `yearly-trial-3d` on the `yearly` base plan
-  (3 days free, "new customer acquisition"), and it needs a paywall that says
-  so first.
+- **The yearly plan has a 3-day free trial; weekly and monthly have none**
+  *(decided 2026-10-03; `CREDITS_AND_PRICING.md` §3, Store SKUs)*. It is ONE
+  offer on the `yearly` base plan: id **`yearly-trial-3d`**, a single
+  **free-trial phase of 3 days** (P3D), eligibility **New customer acquisition
+  → Never had this subscription**. The paywall advertises it only when Play
+  reports it as available to the signed-in account, and buys exactly that
+  offer when it does (`freeTrial` in `expo/src/lib/revenuecat.ts`). Weekly is
+  always bought as its base plan. Without the offer the app shows the price
+  and no trial, so a missing offer is safe but loses the trial. A trial grants
+  10 credits; the full 50 come with the first charge (webhook
+  `trialCredits`). **Do not give the offer a different length, or a
+  discounted phase after the free one:** the app states "3 days free, then
+  $59/yr", and that has to stay true.
 - **Packs are not in the entitlement.** Only the three subscriptions unlock
   `katha`. Packs only add credits.
 
@@ -91,7 +95,17 @@ qualifies.
       / "Katha Yearly". Then in each: *Add base plan* → base plan ID exactly as
       in the table → *Auto-renewing* → billing period from the table → price in
       USD from the table → keep Google's default grace period and account hold
-      → *Activate*. **Do not add offers** (see *No free trial for launch*).
+      → *Activate*. **Offers:** none on weekly or monthly. On **yearly**
+      only: *Add offer* → offer ID `yearly-trial-3d` → eligibility *New
+      customer acquisition* → *Never had this subscription* → phase *Free
+      trial* → **3 days** → no other phases → *Activate*. (See *The yearly
+      plan has a 3-day free trial* above.)
+- [ ] **Test the trial with a license tester** who has never subscribed: the
+      paywall shows "3 days free, then …" and "Start 3-day free trial"; the
+      purchase sheet says the trial; Profile → Katha Plus then says "Free trial
+      until …"; the balance rises by 10, not 50. A tester who already had the
+      trial sees the price and no trial. Test-track trials run in minutes, not
+      days.
 - [ ] **Country prices.** For every product: USD base, let Google convert every
       other country, and set **India by hand to a local figure ending in 9**
       (`CREDITS_AND_PRICING.md` §3, decision 54). No other overrides. The app
@@ -277,11 +291,12 @@ For the record, so nobody re-derives it before review:
 
 | Requirement | Where |
 |---|---|
-| Price and billing period of the plan being bought, next to the button | The renewal line under the plan cards, from the store's `priceString` (`OnboardingPaywall.tsx`) |
+| Price and billing period of the plan being bought | On each plan card (period price under the per-day figure) and in the fine print under the links, from the store's `priceString` (`OnboardingPaywall.tsx`) |
 | States that it renews automatically | Same line |
 | How to cancel | "Cancel anytime in Google Play." on the same line |
 | Manage / cancel link | "Manage subscriptions" → `play.google.com/store/account/subscriptions` (with the product and package when the user holds a plan) |
 | Restore purchases | "Restore purchases" under the button |
 | Terms and Privacy | Linked under the button |
-| No undisclosed trial | The app buys the base plan only; no offer is created |
+| Trial terms disclosed | Yearly card "3 days free, then {price}/yr", the button "Start 3-day free trial", and the fine print "3 days free with 10 credits, then {price} a year. Renews automatically until you cancel." plus how to cancel, all from the store's own offer and price (`OnboardingPaywall.tsx`) |
+| No undisclosed trial | A trial is shown only when Play reports the offer for this account, and only that offer is bought; weekly always buys the base plan |
 | Languages | The policy lines are in EN, PT and ES (`expo/src/i18n/*.json`, `paywall.*`) |

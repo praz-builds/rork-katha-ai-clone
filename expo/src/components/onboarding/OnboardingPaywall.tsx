@@ -101,7 +101,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TestimonialRail } from "@/components/onboarding/TestimonialRail";
-import { PLAN_FACTS } from "@/components/profile/MemberSheet";
+import { memberPlanSummary } from "@/lib/member-plan";
 import i18n from "@/i18n";
 import { useIsSubscribed } from "@/lib/entitlements";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
@@ -277,7 +277,28 @@ const PLANS: Record<PlanId, Plan> = {
  * it was on: "¥8800" keeps ¥ in front, "59,00 €" keeps € behind. Two decimals
  * regardless: it is a comparison, never the figure anybody is billed.
  */
-export function perDayPrice(amount: number, priceString: string, days: number): string {
+export function perDayPrice(
+  amount: number,
+  priceString: string,
+  days: number,
+  currencyCode?: string | null,
+): string {
+  // THE STORE'S CURRENCY, FORMATTED PROPERLY (2026-10-04). When the store
+  // reports its ISO currency code, format the daily figure as that currency in
+  // the device's locale: an Indian storefront at ₹4,990 a year reads ₹13.67,
+  // and a zero-decimal currency stays whole (¥8,800 → ¥24, never ¥24.11).
+  // The symbol-stripping fallback below is for stores or runtimes that give
+  // no code or no Intl.
+  if (currencyCode) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currencyCode,
+      }).format(amount / days);
+    } catch {
+      // An unknown code, or no Intl: fall through to the string's own symbol.
+    }
+  }
   const perDay = (amount / days).toFixed(2);
   const symbol = priceString.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
   if (!symbol) return perDay;
@@ -499,6 +520,9 @@ export function OnboardingPaywall({
  */
 function MemberState({ onDismiss }: { onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
+  // Their plan as the store records it (`member-plan.ts`): the same summary
+  // the Profile sheet shows, so a member reads one story everywhere.
+  const summary = memberPlanSummary(revenueCatService.profile);
   const [notice, setNotice] = useState<string | null>(null);
   const manage = useCallback(() => {
     // The store's own page is the fallback for BOTH failures: Customer Center
@@ -547,15 +571,18 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
           <Text style={styles.heading} accessibilityRole="header">
             You're a Katha member
           </Text>
-          <Text style={styles.sub}>Your plan is active. Here is what it includes.</Text>
+          {summary.planLabel
+            ? <Text style={styles.memberPlan}>{summary.planLabel}</Text>
+            : null}
+          <Text style={styles.sub}>{summary.status}</Text>
         </View>
         <View style={styles.benefits}>
-          {PLAN_FACTS.map((fact, index) => (
+          {summary.facts.map((fact, index) => (
             <View
               key={fact}
               style={[
                 styles.benefitRow,
-                index < PLAN_FACTS.length - 1 && styles.benefitRowDivided,
+                index < summary.facts.length - 1 && styles.benefitRowDivided,
               ]}
             >
               <IconCheck size={16} color={colors.accent} />
@@ -664,7 +691,12 @@ function PaywallOffer({
     (plan: Plan) => {
       const match = packageFor(plan);
       const amount = match?.product.price ?? plan.fallbackAmount ?? 0;
-      return perDayPrice(amount, match?.product.priceString ?? plan.fallbackPrice, plan.days);
+      return perDayPrice(
+        amount,
+        match?.product.priceString ?? plan.fallbackPrice,
+        plan.days,
+        match?.product.currencyCode,
+      );
     },
     [packageFor],
   );
@@ -1301,6 +1333,15 @@ const styles = StyleSheet.create({
   },
   /** Layout only; the recipe is `Button`'s. */
   primary: { marginTop: spacing.md },
+  memberPlan: {
+    fontFamily: fonts.ui,
+    fontWeight: "700",
+    fontSize: 13,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: colors.accent,
+    marginTop: spacing.related,
+  },
 });
 
 export default OnboardingPaywall;

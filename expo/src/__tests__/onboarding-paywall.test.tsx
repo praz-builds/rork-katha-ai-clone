@@ -278,6 +278,24 @@ describe("OnboardingPaywall", () => {
     expect(view.getByText("0.20€/day")).toBeTruthy();
   });
 
+  it.each([
+    // India: the store's rupee price, never dollars.
+    ["INR", 4990, "₹4,990", "₹13.67/day"],
+    // A zero-decimal currency stays whole.
+    ["JPY", 8800, "¥8,800", "¥24/day"],
+  ])("formats the daily figure in the store's own currency (%s)", async (code, price, priceString, expected) => {
+    mockGetOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { packageType: "ANNUAL", product: { price, priceString, currencyCode: code } },
+        ],
+      },
+    });
+    const { view } = await renderPaywall();
+    await waitFor(() => expect(view.getByText(expected)).toBeTruthy());
+    expect(view.queryByText(/^\$0\.16/)).toBeNull();
+  });
+
   it("shows all eight testimonials, after the benefits", async () => {
     const { view } = await renderPaywall();
     // One visible card per persona. Counting the names is what catches a

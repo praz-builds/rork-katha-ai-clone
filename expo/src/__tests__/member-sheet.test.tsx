@@ -61,3 +61,52 @@ it("keeps web to a line, with no link to a store it is not running in", async ()
     restore();
   }
 });
+
+it("shows a trial member their plan, that it is a trial, and when it ends", async () => {
+  const view = await render(
+    <MemberSheet
+      visible
+      onClose={() => undefined}
+      profile={{
+        entitlements: {
+          active: {
+            katha: {
+              productIdentifier: "ai.katha.sub.yearly:yearly",
+              periodType: "TRIAL",
+              expirationDate: "2026-10-07T10:00:00Z",
+              willRenew: true,
+            },
+          },
+        },
+      }}
+    />,
+  );
+  expect(view.getByTestId("member-sheet-plan")).toBeTruthy();
+  expect(view.getByText("Yearly plan")).toBeTruthy();
+  expect(view.getByTestId("member-sheet-status").props.children).toMatch(/^Free trial until /);
+  expect(view.getByText("50 credits a month")).toBeTruthy();
+});
+
+it("gives a weekly member the weekly grant", async () => {
+  const view = await render(
+    <MemberSheet
+      visible
+      onClose={() => undefined}
+      profile={{
+        entitlements: {
+          active: {
+            katha: {
+              productIdentifier: "ai.katha.sub.weekly:weekly",
+              periodType: "NORMAL",
+              expirationDate: "2026-10-11T10:00:00Z",
+              willRenew: true,
+            },
+          },
+        },
+      }}
+    />,
+  );
+  expect(view.getByText("Weekly plan")).toBeTruthy();
+  expect(view.getByText("20 credits a week")).toBeTruthy();
+  expect(view.queryByText("50 credits a month")).toBeNull();
+});
