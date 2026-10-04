@@ -108,3 +108,20 @@ it("re-reads the store record when RevenueCat pushes an update", async () => {
   await act(async () => push({ renews: false }));
   expect(result.current).toEqual({ renews: false });
 });
+
+it("reads the legacy Test Store entitlement too", () => {
+  const summary = memberPlanSummary({
+    entitlements: {
+      active: {
+        katha_ai_pro: {
+          productIdentifier: "ai.katha.sub.weekly",
+          periodType: "NORMAL",
+          expirationDate: "2026-10-11T10:00:00Z",
+          willRenew: true,
+        },
+      },
+    },
+  }, "en-US");
+  expect(summary.planLabel).toBe("Weekly plan");
+  expect(summary.status).toBe("Renews on Oct 11, 2026.");
+});

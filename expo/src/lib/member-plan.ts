@@ -26,6 +26,9 @@ import { KATHA_ENTITLEMENT, STORE_SUBSCRIPTIONS, storeProductMatches } from "./s
 
 export type MemberPlanId = "weekly" | "monthly" | "yearly";
 
+/** Kept while the RevenueCat Test Store configuration is migrated. */
+const LEGACY_ENTITLEMENT = "katha_ai_pro";
+
 /** The slice of RevenueCat's `CustomerInfo` this reads. */
 export type MemberProfileLike = {
   entitlements?: {
@@ -91,7 +94,11 @@ export function memberPlanSummary(
   profile: MemberProfileLike,
   locale?: string,
 ): MemberPlanSummary {
-  const entitlement = profile?.entitlements?.active?.[KATHA_ENTITLEMENT];
+  // `katha`, or the legacy Test Store id the service still honours
+  // (`ENTITLEMENT_TIER_MAP` in `revenuecat.ts`), so those members get their
+  // plan and date too.
+  const active = profile?.entitlements?.active;
+  const entitlement = active?.[KATHA_ENTITLEMENT] ?? active?.[LEGACY_ENTITLEMENT];
   const plan = memberPlanId(entitlement?.productIdentifier);
   const trial = entitlement?.periodType === "TRIAL";
   // The grant row is THIS plan's, and only when we know the plan: an
