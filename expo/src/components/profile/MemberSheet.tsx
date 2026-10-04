@@ -1,7 +1,7 @@
 import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, Crown, X } from "lucide-react-native";
 import i18n from "@/i18n";
-import { memberPlanSummary, type MemberProfileLike } from "@/lib/member-plan";
+import { memberPlanSummary, type MemberProfileLike, useStoreProfile } from "@/lib/member-plan";
 import { revenueCatService } from "@/lib/revenuecat";
 import { manageSubscriptionsUrl } from "@/lib/store-catalog";
 import { colors, fonts, profileHeading, radius, spacing } from "@/theme";
@@ -38,7 +38,8 @@ export default function MemberSheet({
 }) {
   // Their plan, as the store records it: which plan, trial or paid, and the
   // date it renews or ends. The general summary when there is no record.
-  const summary = memberPlanSummary(profile ?? revenueCatService?.profile);
+  const live = useStoreProfile<MemberProfileLike>(revenueCatService);
+  const summary = memberPlanSummary(profile ?? live);
   const store = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
   const openStore = () => {
     const held = revenueCatService?.profile?.activeSubscriptions?.[0] ?? null;

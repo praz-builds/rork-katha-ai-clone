@@ -1,4 +1,6 @@
-import { memberPlanId, memberPlanSummary } from "@/lib/member-plan";
+import { act, renderHook } from "@testing-library/react-native";
+
+import { memberPlanId, memberPlanSummary, useStoreProfile } from "@/lib/member-plan";
 
 const profile = (entitlement: Record<string, unknown> | undefined) => ({
   entitlements: { active: entitlement ? { katha: entitlement as never } : {} },
@@ -39,6 +41,7 @@ describe("what a member is told about their plan", () => {
     );
     expect(summary.trial).toBe(true);
     expect(summary.planLabel).toBe("Yearly plan");
+    expect(summary.facts[0]).toBe("10 credits during your trial");
     expect(summary.status).toBe(
       "Free trial until Oct 7, 2026. Your plan starts then, with its full credits, unless you cancel.",
     );
@@ -76,4 +79,31 @@ describe("what a member is told about their plan", () => {
     expect(summary.facts).toHaveLength(4);
     expect(memberPlanSummary(null).planLabel).toBeNull();
   });
+});
+
+it("never guesses a grant for a product it does not recognise", () => {
+  const summary = memberPlanSummary({
+    entitlements: { active: { katha: { productIdentifier: "ai.katha.reader.yearly" } } },
+  });
+  expect(summary.planLabel).toBeNull();
+  expect(summary.facts).toEqual([
+    "Unlimited portraits and reimagines",
+    "Premium voices",
+    "Download as PDF",
+  ]);
+});
+
+it("re-reads the store record when RevenueCat pushes an update", async () => {
+  let push: (profile: unknown) => void = () => undefined;
+  const service = {
+    profile: { renews: true },
+    subscribe: (listener: (profile: unknown) => void) => {
+      push = listener;
+      return () => undefined;
+    },
+  };
+  const { result } = await renderHook(() => useStoreProfile(service));
+  expect(result.current).toEqual({ renews: true });
+  await act(async () => push({ renews: false }));
+  expect(result.current).toEqual({ renews: false });
 });

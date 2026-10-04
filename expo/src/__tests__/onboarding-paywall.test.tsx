@@ -275,7 +275,7 @@ describe("OnboardingPaywall", () => {
     });
     const { view } = await renderPaywall();
     await waitFor(() => expect(view.getAllByText(/73,00/)[0]).toBeTruthy());
-    expect(view.getByText("0.20€/day")).toBeTruthy();
+    expect(view.getByText("0,20 €/day")).toBeTruthy();
   });
 
   it.each([
@@ -283,6 +283,10 @@ describe("OnboardingPaywall", () => {
     ["INR", 4990, "₹4,990", "₹13.67/day"],
     // A zero-decimal currency stays whole.
     ["JPY", 8800, "¥8,800", "¥24/day"],
+    // The store's own style wins over the device locale's: comma decimals and
+    // a trailing symbol stay as the store writes them.
+    ["BRL", 299.9, "R$ 299,90", "R$ 0,82/day"],
+    ["EUR", 59, "59,00 €", "0,16 €/day"],
   ])("formats the daily figure in the store's own currency (%s)", async (code, price, priceString, expected) => {
     mockGetOfferings.mockResolvedValue({
       current: {

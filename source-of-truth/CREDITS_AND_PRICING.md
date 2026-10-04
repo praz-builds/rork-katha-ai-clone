@@ -1169,9 +1169,11 @@ package to read — the web preview, where purchases are disabled outright.
 > the `priceString` the store hands it, in the user's own currency, or the USD
 > fallback copy. **The one figure it computes is the paywall's per-day
 > comparison** ("$0.16/day", "₹13.67/day"): the store's own amount divided by
-> the period's days, formatted in the store's own currency code
-> (`perDayPrice`, 2026-10-04), so an Indian user sees rupees and a yen price
-> stays whole. It is a comparison, never a charge. There is no conversion code anywhere in the
+> the period's days, written with the symbol, position and decimal mark of the
+> store's own `priceString`, and with the number of decimals the store's
+> currency uses (`perDayPrice`, 2026-10-04). An Indian user sees rupees, a yen
+> price stays whole, and "59,00 €" gives "0,16 €". It is a comparison, never a
+> charge. There is no conversion code anywhere in the
 > product, and adding any would be the wrong fix for a wrong price — the fix is
 > in the console. Apple's price tiers, when the iOS listing exists, are set the
 > same way.

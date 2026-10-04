@@ -84,7 +84,9 @@ it("shows a trial member their plan, that it is a trial, and when it ends", asyn
   expect(view.getByTestId("member-sheet-plan")).toBeTruthy();
   expect(view.getByText("Yearly plan")).toBeTruthy();
   expect(view.getByTestId("member-sheet-status").props.children).toMatch(/^Free trial until /);
-  expect(view.getByText("50 credits a month")).toBeTruthy();
+  // What the trial actually granted, not the plan's monthly 50.
+  expect(view.getByText("10 credits during your trial")).toBeTruthy();
+  expect(view.queryByText("50 credits a month")).toBeNull();
 });
 
 it("gives a weekly member the weekly grant", async () => {

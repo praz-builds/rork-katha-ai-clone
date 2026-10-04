@@ -101,7 +101,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TestimonialRail } from "@/components/onboarding/TestimonialRail";
-import { memberPlanSummary } from "@/lib/member-plan";
+import { memberPlanSummary, useStoreProfile } from "@/lib/member-plan";
 import i18n from "@/i18n";
 import { useIsSubscribed } from "@/lib/entitlements";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal-links";
@@ -271,11 +271,17 @@ const PLANS: Record<PlanId, Plan> = {
  * change touches; "$4.92 a month, billed yearly" outlived one change already.
  * Divide the real number and the card cannot disagree with itself.
  *
- * WHY THE SYMBOL COMES OUT OF `priceString`. RevenueCat gives the amount as a
- * number and the currency only inside the store's formatted string, so the
- * symbol is what is left once digits and separators are gone, kept on the side
- * it was on: "¥8800" keeps ¥ in front, "59,00 €" keeps € behind. Two decimals
- * regardless: it is a comparison, never the figure anybody is billed.
+ * IT SPEAKS THE STORE'S CURRENCY, IN THE STORE'S OWN STYLE (2026-10-04).
+ * RevenueCat gives the amount as a number and the currency two ways: the
+ * store's formatted `priceString` and an ISO `currencyCode`. The figure takes
+ * its SYMBOL, the symbol's side and spacing, and the decimal mark from
+ * `priceString`, so it always matches the period price printed under it
+ * ("₹4,990/yr" → "₹13.67"; "59,00 €" → "0,16 €"). It takes only the number of
+ * DECIMALS from the currency code, so a zero-decimal currency stays whole
+ * (¥8,800 → ¥24, never ¥24.11). Formatting the whole figure with
+ * `Intl.NumberFormat` in the device locale was tried and rejected: a Spanish
+ * phone printed "USD 0,16" above a store string reading "$59". Never a charge,
+ * only a comparison.
  */
 export function perDayPrice(
   amount: number,
@@ -283,27 +289,33 @@ export function perDayPrice(
   days: number,
   currencyCode?: string | null,
 ): string {
-  // THE STORE'S CURRENCY, FORMATTED PROPERLY (2026-10-04). When the store
-  // reports its ISO currency code, format the daily figure as that currency in
-  // the device's locale: an Indian storefront at ₹4,990 a year reads ₹13.67,
-  // and a zero-decimal currency stays whole (¥8,800 → ¥24, never ¥24.11).
-  // The symbol-stripping fallback below is for stores or runtimes that give
-  // no code or no Intl.
-  if (currencyCode) {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currencyCode,
-      }).format(amount / days);
-    } catch {
-      // An unknown code, or no Intl: fall through to the string's own symbol.
-    }
+  const digits = currencyDecimals(currencyCode);
+  const trimmed = priceString.trim();
+  const symbol = trimmed.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
+  // A comma followed by one or two final digits is a decimal comma ("59,00 €",
+  // "R$ 299,90"); a comma before three digits is grouping ("₹4,990").
+  const decimalComma = /\d,\d{1,2}\D*$/.test(trimmed);
+  let figure = (amount / days).toFixed(digits);
+  if (decimalComma) figure = figure.replace(".", ",");
+  if (!symbol) return figure;
+  const leading = trimmed.startsWith(symbol);
+  const spaced = leading
+    ? /^\S+?[\s\u00A0\u202F]\d/.test(trimmed.slice(trimmed.indexOf(symbol)))
+    : /\d[\s\u00A0\u202F]+\S+$/.test(trimmed);
+  const gap = spaced ? " " : "";
+  return leading ? `${symbol}${gap}${figure}` : `${figure}${gap}${symbol}`;
+}
+
+/** Minor-unit digits of an ISO currency (JPY 0, USD 2); 2 when unknown. */
+function currencyDecimals(code?: string | null): number {
+  if (!code) return 2;
+  try {
+    const digits = new Intl.NumberFormat("en", { style: "currency", currency: code })
+      .resolvedOptions().maximumFractionDigits;
+    return typeof digits === "number" ? digits : 2;
+  } catch {
+    return 2;
   }
-  const perDay = (amount / days).toFixed(2);
-  const symbol = priceString.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
-  if (!symbol) return perDay;
-  const leading = priceString.trimStart().startsWith(symbol);
-  return leading ? `${symbol}${perDay}` : `${perDay}${symbol}`;
 }
 
 /**
@@ -522,7 +534,7 @@ function MemberState({ onDismiss }: { onDismiss: () => void }) {
   const insets = useSafeAreaInsets();
   // Their plan as the store records it (`member-plan.ts`): the same summary
   // the Profile sheet shows, so a member reads one story everywhere.
-  const summary = memberPlanSummary(revenueCatService.profile);
+  const summary = memberPlanSummary(useStoreProfile(revenueCatService));
   const [notice, setNotice] = useState<string | null>(null);
   const manage = useCallback(() => {
     // The store's own page is the fallback for BOTH failures: Customer Center
