@@ -1135,7 +1135,10 @@ Weekly and monthly have **no** offers. What the app does with it:
   that offer as available to this account**. An account that already had a
   trial, or a store with the offer missing, sees the price and buys the base
   plan. A trial the app cannot state truthfully in days (one month, one day, no
-  period) is not advertised.
+  period) is not advertised. The one exception is a build with no store at all
+  (the web preview, development), which shows the trial so the design can be
+  reviewed and simulates the purchase; a shipped phone build with no offering
+  shows no trial.
 - A "free trial" button never charges: if the offer disappears between screen
   and tap, nothing is bought (`OnboardingPaywall.tsx`, `revenuecat.ts`).
 - The trial grants **10 credits** (`trialCredits` in `_shared/revenuecat.ts`,

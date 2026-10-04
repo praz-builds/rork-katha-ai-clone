@@ -10,13 +10,15 @@
  *
  * This reads the plan off RevenueCat's own record of the `katha` entitlement,
  * so the screen says what the store says: which plan, trial or paid, and the
- * date it renews, ends, or turns into a paid year. Pure, so it is tested
- * without the SDK; the screens pass `revenueCatService.profile`.
+ * date it renews, ends, or turns into a paid year. `memberPlanSummary` is
+ * pure and tested without the SDK; the screens feed it
+ * `useStoreProfile(revenueCatService)`, which re-reads on every update.
  *
  * A member with no RevenueCat entitlement (a tester holding the server-side
  * override, or the web build, where RevenueCat is off) gets the general
- * summary: no plan name and no date, because there is no store record to read
- * one from.
+ * summary: no plan name, no date and no credit grant, because there is no
+ * store record to read any of them from -- only the three facts every plan
+ * shares.
  */
 import { useEffect, useState } from "react";
 
@@ -103,10 +105,8 @@ export function memberPlanSummary(
     return {
       planLabel: null,
       status: "Your plan is active. Here is what it includes.",
-      trial: false,
-      // No store record at all (a tester override, the web build): the
-      // general summary, which is the default plan's four rows.
-      facts: entitlement ? facts : [GRANTS.yearly, ...SHARED_FACTS],
+      trial,
+      facts,
     };
   }
 

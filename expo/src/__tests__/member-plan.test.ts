@@ -76,7 +76,8 @@ describe("what a member is told about their plan", () => {
     const summary = memberPlanSummary(profile(undefined));
     expect(summary.planLabel).toBeNull();
     expect(summary.status).toBe("Your plan is active. Here is what it includes.");
-    expect(summary.facts).toHaveLength(4);
+    // No store record, so no grant to state: only what every plan shares.
+    expect(summary.facts).toHaveLength(3);
     expect(memberPlanSummary(null).planLabel).toBeNull();
   });
 });

@@ -287,6 +287,9 @@ describe("OnboardingPaywall", () => {
     // a trailing symbol stay as the store writes them.
     ["BRL", 299.9, "R$ 299,90", "R$ 0,82/day"],
     ["EUR", 59, "59,00 €", "0,16 €/day"],
+    // Dots group thousands here, so the figure must not read as 2.46.
+    ["IDR", 899000, "Rp 899.000", "Rp 2.463/day"],
+    ["DKK", 449, "449,00 kr.", "1,23 kr./day"],
   ])("formats the daily figure in the store's own currency (%s)", async (code, price, priceString, expected) => {
     mockGetOfferings.mockResolvedValue({
       current: {

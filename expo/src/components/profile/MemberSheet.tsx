@@ -16,10 +16,10 @@ import { Button } from "@/components/Button";
  * says they have it. Sending them to the paywall, which is what the row did
  * before, is the app asking a paying customer to pay.
  *
- * It states the plan's facts and nothing it cannot deliver: the four
- * promises are the paywall's four rows, with the credit grant of the plan
- * actually held, plus which plan it is and when it renews, ends or leaves its
- * free trial (`member-plan.ts`, 2026-10-04). Managing the subscription is the store's job:
+ * It states the plan's facts and nothing it cannot deliver: the paywall's
+ * promises, with the credit grant of the plan actually held (10 during a
+ * trial, none when the store has no record), plus which plan it is and when
+ * it renews, ends or leaves its free trial (`member-plan.ts`, 2026-10-04). Managing the subscription is the store's job:
  * on a phone the line at the bottom is a link to that store's subscriptions
  * page (Play's Subscriptions policy wants a working manage/cancel path for a
  * member, and this sheet is where Profile and Credits land when the Customer

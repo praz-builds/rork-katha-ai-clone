@@ -291,19 +291,37 @@ export function perDayPrice(
 ): string {
   const digits = currencyDecimals(currencyCode);
   const trimmed = priceString.trim();
-  const symbol = trimmed.replace(/[\d\s.,\u00A0\u202F]/g, "").trim();
-  // A comma followed by one or two final digits is a decimal comma ("59,00 €",
-  // "R$ 299,90"); a comma before three digits is grouping ("₹4,990").
-  const decimalComma = /\d,\d{1,2}\D*$/.test(trimmed);
-  let figure = (amount / days).toFixed(digits);
-  if (decimalComma) figure = figure.replace(".", ",");
+  // The symbol is what is left once the NUMBER is removed (not every dot and
+  // comma), so "449,00 kr." keeps its "kr.".
+  const symbol = trimmed.replace(/\d(?:[\d.,\s\u00A0\u202F']*\d)?/, "").trim();
+  const { decimal, grouping } = separatorsOf(trimmed);
+  const [whole, fraction] = (amount / days).toFixed(digits).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, grouping);
+  const figure = fraction ? `${grouped}${decimal}${fraction}` : grouped;
   if (!symbol) return figure;
   const leading = trimmed.startsWith(symbol);
   const spaced = leading
-    ? /^\S+?[\s\u00A0\u202F]\d/.test(trimmed.slice(trimmed.indexOf(symbol)))
-    : /\d[\s\u00A0\u202F]+\S+$/.test(trimmed);
+    ? /^[\s\u00A0\u202F]/.test(trimmed.slice(symbol.length))
+    : /[\s\u00A0\u202F]$/.test(trimmed.slice(0, trimmed.length - symbol.length));
   const gap = spaced ? " " : "";
   return leading ? `${symbol}${gap}${figure}` : `${figure}${gap}${symbol}`;
+}
+
+/**
+ * The store string's decimal mark and thousands separator. The LAST separator
+ * between digits decides: followed by exactly three digits it groups
+ * thousands ("₹4,990", "Rp 899.000"), so the decimal mark is the other one;
+ * followed by one or two it is the decimal mark ("$5.99", "59,00 €"). A
+ * string with no separator ("$59") gives the dot and comma.
+ */
+function separatorsOf(priceString: string): { decimal: string; grouping: string } {
+  const match = /\d([.,\s\u00A0\u202F'])(\d+)\D*$/.exec(priceString);
+  if (!match) return { decimal: ".", grouping: "," };
+  const [, separator, tail] = match;
+  if (tail.length === 3) {
+    return { decimal: separator === "," ? "." : ",", grouping: separator };
+  }
+  return { decimal: separator, grouping: separator === "." ? "," : "." };
 }
 
 /** Minor-unit digits of an ISO currency (JPY 0, USD 2); 2 when unknown. */
@@ -524,8 +542,8 @@ export function OnboardingPaywall({
  *
  * A subscriber who reaches the paywall -- from Credits, from Home, or a
  * tester account holding the entitlement override -- is shown that they have
- * the plan, not a screen selling it to them. The four facts are the offer's
- * four rows, so what a member reads here is what they read when they bought.
+ * the plan, not a screen selling it to them: which plan, its status and date,
+ * and the offer's rows with the grant they actually hold (`member-plan.ts`).
  * "Manage subscription" opens the Customer Center where it exists; on web and
  * in an unconfigured build it cannot, and the line under the facts says
  * where the store keeps it instead.
