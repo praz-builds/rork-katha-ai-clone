@@ -581,6 +581,56 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 
 ## Play Store go-live — one-week push (2026-09-24 → 2026-10-01)
 
+> **Status on 2026-10-05: what is done and what is left.** This block is the
+> current answer; the dated plan below is history.
+>
+> **Done:**
+> - The EAS project is linked, and the first production AAB is built
+>   (versionCode 3). The upload keystore is backed up to `~/Katha-Secrets/`.
+> - The edge functions are deployed with zero drift (`scripts/audit-function-drift.sh`
+>   on main `c6a9b6c`, 2026-10-05: 360/360 files identical). This closes the
+>   deploy obligations in the 10-01 build-log entries.
+> - The OTP is 6 digits, and **login emails go out through Resend with the code
+>   in them** (2026-10-05; they had never contained a code).
+> - The paywall has the daily price and the yearly 3-day trial (#180), and
+>   members see their own plan (#181).
+> - The streak (#172, #174), the faith-layer write paths (#176) and the
+>   `@claude` author gate (#175) are **closed in code**. Still open: the faith
+>   section's portrait render check and the idea-classifier name bug (Phase B
+>   above), and a first end-to-end `@claude` run (the variable is unset).
+> - Firebase config for push is in EAS (#179).
+>
+> **Left, founder (blocks the closed test):**
+> 1. Merge `katha-legal-v2` on `thetractionlabs-site`, for the privacy URL and
+>    the site, after deciding what the privacy row still asks: the legal
+>    entity, governing law and contact address.
+> 2. Create the app in Play Console and upload an AAB to internal testing.
+> 3. Paste the listing and answer the forms from `store/android/`. That means
+>    deciding the three Data Safety questions first, and making sure the
+>    listing says All-ages, never Kids.
+> 4. Name the report-queue owner.
+> 5. Line up 12 testers.
+> 6a. Walk the real-device checks on an Android phone (background audio with
+>    the screen locked, ambient music, report/block, sign-in, the intro on a
+>    small screen). There is no device or emulator on this Mac, so the agent
+>    writes the checklist and the founder walks it.
+>
+> **Left, founder (before production, not before testing):**
+> 6. Create the 8 Play products, the `yearly-trial-3d` offer and the
+>    RevenueCat setup (`PLAY_BILLING_SETUP.md`), then send the `goog_` key.
+> 7. The FCM V1 service-account key for EAS.
+> 8. Sentry.
+> 9. Top up OpenRouter.
+>
+> **Left, agent:**
+> - A new build (versionCode 4: paywall, trial and push config) the moment
+>   the founder wants it.
+> - Set the RevenueCat key, the FCM key and the Sentry variables as they
+>   arrive.
+> - Capture frames 3 and 4.
+> - A real-device checklist.
+> - Submit to Play once a service account exists.
+
 **Goal:** by Thursday 2026-10-01 the Android build is in a Play closed test with every
 pre-push item done, so nothing is left except Google's clock. Production access itself
 cannot land inside the week: the 12-tester × 14-day closed test runs from the day the
@@ -609,7 +659,7 @@ wording is kept in the Item column so the two can be ticked together.
 | Unjustified Android permissions (audit finding) | Pre-push, day 1 | [x] | **Done (#138)**, confirmed on a locally built release AAB's merged manifest (build-log 2026-09-25); `CAMERA` blocked too. Android no longer asks for photo permission before the picker. Was: | The merged manifest carries `RECORD_AUDIO` (expo-av), `SYSTEM_ALERT_WINDOW`, `READ/WRITE_EXTERNAL_STORAGE`, and `AD_ID` (Firebase). None is used. Add `android.blockedPermissions` in `app.json`; confirm against the first build's merged manifest, since the local `expo/android` folder is generated and untracked |
 | Decent looking website (katha.thetractionlabs.com) | Pre-push | [~] | **Drafted, founder to merge.** A product landing page (hero, how it works, features, pricing in words, the Originals covers) is up for review on `thetractionlabs-site` branch `katha-legal-v2`, with the legal rewrite below. Merging to that repo's `main` deploys it. The Play listing links it as the developer website |
 | Privacy Policy + Terms (Katha's own) | Pre-push | [~] | **Drafted, founder to merge** (`thetractionlabs-site` branch `katha-legal-v2`, same PR as the site). Rewritten for the real stack: 18+, email is required past onboarding, photos to OpenRouter / Gemini (the reference photo is not stored), the OpenRouter training tier, Brave grounding, PostHog EU, Sentry, RevenueCat, published work surviving deletion anonymised. Open: legal entity, governing law, contact address — see the PR |
-| Play Console listing | Pre-push, day 2 | [~] | **Drafted, founder to paste** — all in `store/android/` (see its README). Listing copy EN / PT-BR / ES-419 within limits (`check-listing.mjs`), 512 icon and 1024×500 feature graphic per language rendered from HTML, Data Safety answers with code citations (`data-safety.md` — **three decisions first**: OpenRouter training tier makes story text "shared" until turned off, PostHog GeoIP, partial deletion), IARC answers + target audience 18+ + ads none + App access paste text (`content-rating.md`; top up the reviewer account's credits, it earns none). **Still open: the 4–8 phone screenshots** — `screenshot-plan.md` lists the eight to capture after the final UI round. **Fixtures seeded 2026-09-27** (`backend/scripts/seed-screenshot-fixtures.ts`, idempotent, `--teardown`): two house reader accounts and their comments on *A Bridge by Cockcrow*, since the `comments` table was empty project-wide and frame 7 was not capturable, plus a 3-day streak row for the house account. Frames 1, 2, 5, 6 and 8 are capturable now. **Frames 3 and 4 are blocked on the paid provider** — a live generation and a house character portrait cannot be faked. Frame 7 ships with the two reader comments only: a comment renders `profiles.username`, so the house author's reply would read `vivid_lantern_51` and the nice handles are reserved by 00060 |
+| Play Console listing | Pre-push, day 2 | [~] | **Drafted, founder to paste** — all in `store/android/` (see its README). Listing copy EN / PT-BR / ES-419 within limits (`check-listing.mjs`), 512 icon and 1024×500 feature graphic per language rendered from HTML, Data Safety answers with code citations (`data-safety.md` — **three decisions first**: OpenRouter training tier makes story text "shared" until turned off, PostHog GeoIP, partial deletion), IARC answers + target audience 18+ + ads none + App access paste text (`content-rating.md`; top up the reviewer account's credits, it earns none). **Still open: the 4–8 phone screenshots** — `screenshot-plan.md` lists the eight to capture after the final UI round. **Fixtures seeded 2026-09-27** (`backend/scripts/seed-screenshot-fixtures.ts`, idempotent, `--teardown`): two house reader accounts and their comments on *A Bridge by Cockcrow*, since the `comments` table was empty project-wide and frame 7 was not capturable, plus a 3-day streak row for the house account. Frames 1, 2, 5, 6 and 8 are capturable now. ~~**Frames 3 and 4 are blocked on the paid provider**~~ — unblocked: OpenRouter is funded again (2026-10-01), so the live generation and the house portrait can now be captured. Still to do. Frame 7 ships with the two reader comments only: a comment renders `profiles.username`, so the house author's reply would read `vivid_lantern_51` and the nice handles are reserved by 00060 |
 | 12 testers for 14 days | Pre-push, **start day 2** | [ ] | Google's gate for new personal developer accounts. The two `tester_accounts` rows do not count. Line the twelve up now so the opt-in link goes out the hour the AAB is live |
 | Generative AI content reporting | Pre-push | [~] | Shipped 2026-09-16: report sheet from the story page and the reader's ⋮ menu, `content_reports` reasons extended in 00089. The queue view exists since 2026-09-25 (`content_reports_open`, migration 00097, **applied** — verified in the ledger 2026-09-27, this row previously said it still needed `supabase db push`); the query and the resolve step are in `backend/MONITORING.md` § *The report queue*. **Open: the founder must name the owner** who works the queue; until then Play's UGC policy (action, not just intake) is not met |
 | Block author (audit finding) | Pre-push | [x] | 2026-09-25. Block was already on the story and reader ⋮ sheets; it is now on every comment's ⋮ menu too, confirmed in-sheet, guests asked to sign in (as Report does). A block hides that writer's stories and comments at once, app-wide (`lib/blocks.ts`: Home, Explore, Starred, their profile, open threads), and server-side in `comments`, `feed`, search, `library` (new) and `profile`'s public read (new). Undo: Profile › Blocked accounts, or Unblock on the blocked writer's page. **`library` and `profile` are deployed** — both matched main byte for byte in the 2026-09-27 full-surface audit, so the server half of block-author is live |

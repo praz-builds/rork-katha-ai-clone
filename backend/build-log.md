@@ -5,6 +5,19 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-05 UTC — Go-live status recorded in one place
+
+- `backend/ROADMAP.md`, *Play Store go-live*, now opens with a dated status
+  block: what is done, what is left for the founder (split by "blocks the
+  closed test" and "before production"), and what is left for the agent.
+  The one-week plan under it stays as history.
+- The listing row's "frames 3 and 4 are blocked on the paid provider" is
+  struck out: OpenRouter is funded again, so both are capturable, though not
+  yet captured.
+- **Edge drift audit, 2026-10-05, main `c6a9b6c`: 360/360 files identical,
+  0 drifted.** This closes the deploy obligations in the #172, #174 and #176
+  entries of 2026-10-01.
+
 ## 2026-10-05 UTC — Login codes go out through Resend, and the email now contains the code
 
 - Supabase Auth custom SMTP was set through the Management API: Resend
