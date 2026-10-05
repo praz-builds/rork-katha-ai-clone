@@ -618,6 +618,12 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 > **Left, founder (before production, not before testing):**
 > 6. Create the 8 Play products, the `yearly-trial-3d` offer and the
 >    RevenueCat setup (`PLAY_BILLING_SETUP.md`), then send the `goog_` key.
+> 6b. Give that Google Cloud service account **release** permission in Play
+>    Console (*Users and permissions*) and send its JSON key file path. Keep
+>    it in `~/Katha-Secrets/`, never the repo. `eas submit` reads it as
+>    `expo/google-service-account.json` (gitignored; `eas.json`
+>    `submit.production.android.serviceAccountKeyPath`). Without it, AABs are
+>    uploaded to Play Console by hand.
 > 7. The FCM V1 service-account key for EAS.
 > 8. Sentry.
 > 9. Top up OpenRouter.
