@@ -5,6 +5,27 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-05 UTC — Login codes go out through Resend, and the email now contains the code
+
+- Supabase Auth custom SMTP was set through the Management API: Resend
+  (`smtp.resend.com:465`, user `resend`, a send-only key), sender **Katha
+  <login@katha.thetractionlabs.com>**. DNS was already in place: DKIM at
+  `resend._domainkey.katha…`, and SPF/MX on `send.katha…`.
+- **Found while doing it: no login email had ever contained a code.** The
+  magic-link, confirmation and change-email templates were all link-only,
+  with no `{{ .Token }}`, while the client (`EmailCodeAuth`, `OTP_LENGTH = 6`)
+  asks for a 6-digit code. Change-email is the guest-to-account path
+  (`updateUser({ email })` → `verifyOtp({ type: "email_change" })`), found
+  in review. All three now show the code, and the subject carries it.
+- `rate_limit_email_sent` was raised from 2 to 60 an hour (2 is Supabase's
+  default without custom SMTP).
+- Verified that Supabase handed both paths to Resend: an existing-account
+  sign-in (`recovery_sent_at` 10:09:02 UTC) and a guest converting to an
+  alias address (`email_change_sent_at` 10:13:50 UTC). Delivery to the inbox
+  is for the founder to confirm.
+- Credentials are kept locally in `~/Katha-Secrets/resend-smtp.json` (0600,
+  outside the repo); none are in the repository or this log.
+
 ## 2026-10-04 UTC — The yearly free trial is in the setup guide; members see their own plan
 
 Client and docs only, with no function or migration change, so there is
