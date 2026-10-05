@@ -14,6 +14,9 @@
 - The listing row's "frames 3 and 4 are blocked on the paid provider" is
   struck out: OpenRouter is funded again, so both are capturable, though not
   yet captured.
+- **Edge drift audit, 2026-10-05, main `c6a9b6c`: 360/360 files identical,
+  0 drifted.** This closes the deploy obligations in the #172, #174 and #176
+  entries of 2026-10-01.
 
 ## 2026-10-05 UTC — Login codes go out through Resend, and the email now contains the code
 

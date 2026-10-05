@@ -587,23 +587,33 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 > **Done:**
 > - The EAS project is linked, and the first production AAB is built
 >   (versionCode 3). The upload keystore is backed up to `~/Katha-Secrets/`.
-> - The edge functions are deployed with zero drift.
+> - The edge functions are deployed with zero drift (`scripts/audit-function-drift.sh`
+>   on main `c6a9b6c`, 2026-10-05: 360/360 files identical). This closes the
+>   deploy obligations in the 10-01 build-log entries.
 > - The OTP is 6 digits, and **login emails go out through Resend with the code
 >   in them** (2026-10-05; they had never contained a code).
 > - The paywall has the daily price and the yearly 3-day trial (#180), and
 >   members see their own plan (#181).
-> - Streak, faith-layer and `@claude` gaps are closed (#172–#176).
+> - The streak (#172, #174), the faith-layer write paths (#176) and the
+>   `@claude` author gate (#175) are **closed in code**. Still open: the faith
+>   section's portrait render check and the idea-classifier name bug (Phase B
+>   above), and a first end-to-end `@claude` run (the variable is unset).
 > - Firebase config for push is in EAS (#179).
 >
 > **Left, founder (blocks the closed test):**
 > 1. Merge `katha-legal-v2` on `thetractionlabs-site`, for the privacy URL and
->    the site.
+>    the site, after deciding what the privacy row still asks: the legal
+>    entity, governing law and contact address.
 > 2. Create the app in Play Console and upload an AAB to internal testing.
 > 3. Paste the listing and answer the forms from `store/android/`. That means
 >    deciding the three Data Safety questions first, and making sure the
 >    listing says All-ages, never Kids.
 > 4. Name the report-queue owner.
 > 5. Line up 12 testers.
+> 6a. Walk the real-device checks on an Android phone (background audio with
+>    the screen locked, ambient music, report/block, sign-in, the intro on a
+>    small screen). There is no device or emulator on this Mac, so the agent
+>    writes the checklist and the founder walks it.
 >
 > **Left, founder (before production, not before testing):**
 > 6. Create the 8 Play products, the `yearly-trial-3d` offer and the
