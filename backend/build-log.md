@@ -11,15 +11,17 @@
   (`smtp.resend.com:465`, user `resend`, a send-only key), sender **Katha
   <login@katha.thetractionlabs.com>**. DNS was already in place: DKIM at
   `resend._domainkey.katha…`, and SPF/MX on `send.katha…`.
-- **Found while doing it: no login email had ever contained a code.** Both
-  the magic-link and confirmation templates were link-only, with no
-  `{{ .Token }}`, while the client (`EmailCodeAuth`, `OTP_LENGTH = 6`) asks
-  for a 6-digit code. Both templates now show the code, and the subject
-  carries it.
+- **Found while doing it: no login email had ever contained a code.** The
+  magic-link, confirmation and change-email templates were all link-only,
+  with no `{{ .Token }}`, while the client (`EmailCodeAuth`, `OTP_LENGTH = 6`)
+  asks for a 6-digit code. Change-email is the guest-to-account path
+  (`updateUser({ email })` → `verifyOtp({ type: "email_change" })`), found
+  in review. All three now show the code, and the subject carries it.
 - `rate_limit_email_sent` was raised from 2 to 60 an hour (2 is Supabase's
   default without custom SMTP).
-- Verified: OTP request for the founder's existing account → HTTP 200, and
-  `auth.users.recovery_sent_at` stamped 10:09:02 UTC. Delivery to the inbox
+- Verified that Supabase handed both paths to Resend: an existing-account
+  sign-in (`recovery_sent_at` 10:09:02 UTC) and a guest converting to an
+  alias address (`email_change_sent_at` 10:13:50 UTC). Delivery to the inbox
   is for the founder to confirm.
 - Credentials are kept locally in `~/Katha-Secrets/resend-smtp.json` (0600,
   outside the repo); none are in the repository or this log.

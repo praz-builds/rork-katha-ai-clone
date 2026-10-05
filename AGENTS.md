@@ -425,7 +425,7 @@ Neither is set today. A missing value is a hard no-op on that side -- the backen
 | Service | Purpose | Key / Config | Status |
 |---------|---------|-------------|--------|
 | **Supabase** | DB, Auth, Storage, Edge Functions | Project `iafeuxgoiknncgyjmugd`, Seoul (ap-northeast-2) | Live |
-| **Resend** | Login-code emails (Supabase Auth custom SMTP) | `smtp.resend.com:465`, sender Katha <login@katha.thetractionlabs.com>; the send-only key is in Supabase Auth SMTP settings and locally in `~/Katha-Secrets/resend-smtp.json`, never in the repo. Templates must contain `{{ .Token }}`: the app asks for a 6-digit code, not a link | Live 2026-10-05 |
+| **Resend** | Login-code emails (Supabase Auth custom SMTP) | `smtp.resend.com:465`, sender Katha <login@katha.thetractionlabs.com>; the send-only key is in Supabase Auth SMTP settings and locally in `~/Katha-Secrets/resend-smtp.json`, never in the repo. The magic-link, confirmation and change-email templates must all contain `{{ .Token }}`: the app asks for a 6-digit code, not a link, and change-email is the guest-to-account path | Live 2026-10-05 |
 | **Gemini** | Story generation fallback (Gemini 3.1 Pro Preview) | `GEMINI_API_KEY` in Supabase secrets | Set, currently quota-blocked (`429 RESOURCE_EXHAUSTED`) |
 | **OpenRouter** | Story generation primary (Muse Spark) + free-router last resort | `OPENROUTER_API_KEY` in Supabase secrets | Set, serving all generation |
 | **RunPod** | Audio narration (MiniMax Speech 02 HD) | `RUNPOD_API_KEY` in Supabase secrets; public endpoint `minimax-speech-02-hd` | Set |
