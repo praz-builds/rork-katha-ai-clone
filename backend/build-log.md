@@ -36,6 +36,22 @@
   lapse leaving no ledger row for the yearly coverage check), and the §3
   carry-over callout put in the past tense.
 
+## 2026-10-06 UTC — Website and legal pages are live, and checked against the app
+
+- Live and answering 200: `katha.thetractionlabs.com`, `/privacy/`,
+  `/terms/`, `/delete-account/`, `/support/`. `expo/src/lib/legal-links.ts`
+  URLs resolve (trailing-slash redirect). The founder confirmed that login
+  emails arrive from "Katha".
+- **Terms:** consistent with `CREDITS_AND_PRICING.md`.
+- **Privacy:** accurate on sign-in, data collected, approximate location
+  (PostHog GeoIP), deletion with anonymised published stories, 18+, and the
+  Grievance Officer. **One gap:** it says Katha does not train its own models
+  but does not say a provider may. `OPENROUTER_MODEL` is the
+  `-contributor` training tier (`_shared/llm.ts`).
+- **Home page:** marketing copy claims 40 starting credits, 8 credits per
+  story, offline downloads and a named-writer community with read counts.
+  None of these match the app. Recorded in the ROADMAP status block.
+
 ## 2026-10-05 UTC — Go-live status recorded in one place
 
 - `backend/ROADMAP.md`, *Play Store go-live*, now opens with a dated status
