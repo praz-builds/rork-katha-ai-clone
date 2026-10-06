@@ -1075,9 +1075,7 @@ top pack is what pays for that difference. **Do not close the gap further.**
 > lapse indefensible** — we would be advertising permanence and then removing it,
 > which is the exact failure the entitlements section above was written to avoid.
 > **Recommendation: packs survive lapse; subscription grants and earned credits do
-> not.** The bucket separation to implement it already exists. **Not yet
-> decided** — it is §8's call, and it needs the App Review confirmation §12 item 8
-> already asks for.
+> not.** **Decided and shipped 2026-10-06** (migration 00102, §8).
 
 **Do not resize a pack without re-running the inversion check** (§4).
 
@@ -2144,16 +2142,19 @@ across every credit-based creative tool. **It replaces the old "carry-over cappe
 at 2×" rule**, which could not be enforced correctly against a single-balance
 ledger without silently penalizing subscribers who also bought packs.
 
-### Credits lapse with the subscription
+### Plan and earned credits lapse with the subscription; pack credits do not
 
-**When a subscription ends, the credit balance goes to zero.** Not just the
-current period's grant — the whole balance, including earned credits and credits
-bought as packs while subscribed.
+**When a subscription ends, the plan's credits and earned credits go to zero.
+Credits bought as packs stay.** *(Founder decision 2026-10-06, migration 00102.
+Before that the whole balance was voided, packs included.)*
 
-The rationale is that a credit is an entitlement of an active plan rather than a
-stored-value token. It removes the win-back liability of a lapsed user sitting on
-a bankable balance, and it makes "use them before you cancel" a real reason to
-stay subscribed.
+The rationale is that a plan credit is an entitlement of an active plan rather
+than a stored-value token. It removes the win-back liability of a lapsed user
+sitting on a bankable balance, and it makes "use them before you cancel" a real
+reason to stay subscribed. A pack is a separate purchase sold as "Credit packs
+that never expire", so it outlives the plan: voiding it would break the promise
+the pack screen makes, and the never-subscribed pack buyer and the ex-subscriber
+who bought the same pack are now treated the same.
 
 **What survives, permanently, on any plan or none:**
 
@@ -2165,26 +2166,20 @@ So a lapsed user loses spending power, never their library. That distinction has
 to be explicit in the cancellation flow and in the "How Credits Work" page — see
 §1, which states it plainly rather than burying it.
 
-**⚠ Two consequences that need a decision before launch** (§12, item 8):
-
-1. **Purchased pack credits are a separate consumable IAP.** Voiding them because
-   a *different* product lapsed is a plausible App Store guideline problem and a
-   direct refund and chargeback trigger. This needs confirming with App Review
-   before the SKUs ship, and it may force a carve-out where packs survive lapse
-   even though grants do not.
-2. **It creates an asymmetry.** A user who never subscribes and only buys packs
-   has no subscription to lapse, so their credits last forever — while an
-   ex-subscriber who bought the identical pack loses theirs. That is hard to
-   explain at a support desk and should be surfaced at purchase time if the rule
-   stands.
+**Resolved 2026-10-06:** packs are carved out. The two problems this section
+used to flag (voiding a separate consumable IAP, and the never-subscribed versus
+ex-subscriber asymmetry on the same pack) no longer arise. Earned credits still
+lapse; an ex-subscriber's earned balance is the one remaining asymmetry against a
+never-subscribed user, and §11's win-back trigger is the place to revisit it.
 
 ### Warning before the balance is voided
 
 Lapse must never be silent. Required:
 
 - **A push and an in-app notice 3 days before** a subscription expires, stating
-  the exact balance at risk: *"Your 14 credits expire when your plan ends on the
-  9th."*
+  the exact plan and earned balance at risk, and that pack credits are kept:
+  *"14 plan credits expire when your plan ends on the 9th. Your pack credits
+  stay."*
 - **The same number in the cancellation flow**, before the cancel is confirmed.
 - **A post-lapse notice** stating what was kept: library, unlocked audio, free
   reading.
@@ -2323,7 +2318,7 @@ the abuse.
 | Layer | Change | Why |
 |---|---|---|
 | **Schema** | **None to `credit_ledger.amount`** — stays `integer` | 1 credit = 1 action needs no new representation |
-| Schema | Balance zeroing on subscription lapse, plus the 3-day pre-expiry warning job | §8 |
+| Schema | Plan-grant and earned balance zeroing on subscription lapse (packs kept, 00102), plus the 3-day pre-expiry warning job | §8 |
 | Schema | Per-chapter free-reimagine counter (author-owned stories only) and cover regens used. **The AI-redraft and paragraph-edit counters are cancelled** — those actions do not exist (§1a) | Enforce §1's free caps |
 | Schema | `audio_unlocks (user_id, chapter_id)` — the permanent listen entitlement | §1 |
 | **RPC `deduct_credit`** | Extend the reason allowlist beyond `'generation'`; add `'chargeback'` clamped to available balance | **Blocks every spend path in this document today** |
@@ -2374,7 +2369,7 @@ economy is tuned on evidence rather than argued about.
 | **Feedback claims per user per month, distribution** | The only recurring earn, capped at 5 against a ceiling of 10 (§5) | > 20% of claimants at the cap (5 claims in a calendar month) → the mechanic is being farmed, audit the read records; median at 0 → the second tap is too hidden |
 | **Every metric above excludes `tester_accounts`** | Two allowlisted accounts walk the whole app on a premium override and never pay (§9) | Any dashboard that cannot filter them is wrong by two users |
 | **Free → paid conversion at D35** | Benchmark is 2.1% freemium median ([RevenueCat](https://www.revenuecat.com/blog/growth/subscription-app-trends-benchmarks-2026)) | < 1% → the paywall sequence is wrong before the earn table is; the free tier earns nothing in steady state, so the paywall is the only lever |
-| **Refund/chargeback rate after lapse** | Voiding a purchased balance is the highest-risk rule in this document | Any measurable lift over baseline → carve packs out of the lapse rule |
+| **Refund/chargeback rate after lapse** | Packs were carved out of the lapse on 2026-10-06, which removed the highest-risk version of this rule | Any measurable lift over baseline → revisit lapsing earned credits |
 | **Win-back rate on lapsed users** | Lapsing credits removes the strongest win-back hook we had | Below 5% reactivation at 90 days → reconsider zeroing earned credits |
 | **Reader → Writer upgrade rate** | Validates that the price list makes upgrading obvious rather than buying packs | Pack purchases by Readers > upgrades → re-run the §4 inversion check |
 | **Partial-balance actions** ("text now, cover later") | Validates the core benefit of unbundling | < 10% of blocked users → the sheet's option 1 is not readable |
@@ -2410,11 +2405,8 @@ economy is tuned on evidence rather than argued about.
    almost nothing, is standard (Midjourney fast hours, ChatGPT priority) and gives
    the subscription a reason to exist that a pack cannot replicate. **Decide
    before the RevenueCat SKUs are created**, since it changes paywall copy.
-5. **Confirm with App Review that voiding purchased pack credits on subscription
-   lapse is permitted.** Packs are consumable IAPs; voiding them because a
-   separate subscription ended is a plausible guideline problem and a direct
-   refund trigger. If it is not permitted, packs are carved out of §8 and only
-   granted and earned credits lapse. **Decide before the SKUs ship.**
+5. **Resolved 2026-10-06: packs survive lapse** (migration 00102). Only the
+   plan's grant and earned credits lapse, so nothing here needs App Review.
 6. **Create the Supabase `covers` bucket.** Still outstanding, and every
    cover-related price assumes it exists.
 7. **Resolved (2026-09-03): no ads of any kind ship in the MVP.** Reading stays
@@ -2801,10 +2793,10 @@ economy is tuned on evidence rather than argued about.
 36. **Subscription grants do not roll over.** Each period delivers a fresh 20 or
     50; unused grant credits expire with the period. This replaces the 2×
     carry-over cap and is what bounds the yearly plan's exposure.
-37. **Credits lapse with the subscription.** When a plan ends the credit balance
-    goes to zero — the whole balance, including earned credits and credits bought
-    as packs while subscribed. A credit is an entitlement of an active plan, not a
-    stored-value token.
+37. **Plan and earned credits lapse with the subscription; pack credits do not.**
+    When a plan ends, its grant and earned credits go to zero. Credits bought as
+    packs stay, because a pack is sold as never expiring. *(Amended 2026-10-06;
+    it voided the whole balance before, migration 00102.)*
 38. **What survives lapse, permanently:** every story and chapter the user
     created, every chapter of audio they unlocked, and free unlimited reading. A
     lapsed user loses spending power, never their library, and the cancellation
@@ -2813,11 +2805,8 @@ economy is tuned on evidence rather than argued about.
     stating the exact balance at risk, the same number shown in the cancellation
     flow before the cancel is confirmed, and a post-lapse notice stating what was
     kept.
-40. **Open, blocking:** confirm with App Review that voiding **purchased pack**
-    credits on subscription lapse is permitted (§12, item 5). Packs are consumable
-    IAPs; if it is not permitted, packs are carved out and only granted and earned
-    credits lapse. Note the asymmetry either way — a user who never subscribes
-    keeps pack credits forever, while an ex-subscriber loses the identical pack.
+40. **Resolved 2026-10-06:** packs are carved out of the lapse (§12, item 5).
+    Only granted and earned credits lapse.
 41. **Add a `'chargeback'` deduction reason clamped to the available balance**, so
     a RevenueCat refund can be reversed. This is impossible today.
 

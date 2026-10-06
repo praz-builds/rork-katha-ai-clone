@@ -167,10 +167,12 @@ Deno.test("expiration writes one negative lapse ledger entry and is idempotent",
       "select amount, reason, balance_after from credit_ledger where user_id = $1 order by created_at, ledger_sequence",
       [userId],
     );
+    // Since 00102 the 10-credit pack survives the lapse: only the plan's 20
+    // are voided, and the balance left is the pack.
     assertEquals(ledger.rows.at(-1), {
-      amount: -30,
+      amount: -20,
       reason: "lapse",
-      balance_after: 0,
+      balance_after: 10,
     });
     const lapses = await db.query<{ count: number }>(
       "select count(*)::integer as count from credit_lapse_operations where user_id = $1",

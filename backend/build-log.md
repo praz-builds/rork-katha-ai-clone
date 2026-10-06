@@ -5,6 +5,29 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-06 UTC — Credit packs survive a subscription lapse
+
+- **Founder decision (2026-10-06):** credits bought as packs carry over when a
+  subscription ends. The app already sold them as "Credit packs that never
+  expire" (`CreditPacksSheet.tsx`, `PaidOptions.tsx`); `lapse_credits` voided
+  them anyway.
+- **Migration 00102** replaces `lapse_credits` with the same signature, lock
+  and supersession check as 00068. On lapse it zeroes
+  `subscription_grant_balance` and `earned_balance` only. The ledger row and
+  `credit_lapse_operations.lapsed_amount` record what was voided, and
+  `balance_after` / the return value are the pack balance that remains.
+- Tests: `00102_packs_survive_lapse_test.ts` (3 cases) fails on the old body
+  and passes on the new; the 00026 lapse test's expectation moves from
+  `-30 / 0` to `-20 / 10`. All 323 migration tests pass.
+- Docs: `CREDITS_AND_PRICING.md` §8, §3's carry-over note, §10/§11 rows, §12
+  item 5 and decisions 37 and 40; `AGENTS.md` credits summary; comments in
+  `_shared/credits.ts` and `revenuecat-webhook`.
+- **Deploy:** migration 00102 first, then every function that bundles
+  `_shared/credits.ts`: `bootstrap-user`, `refresh-subscription-grants`,
+  `revenuecat-webhook`, `reviewer-signin`, `seed-voice-previews` (from
+  `deno info --json`). The function change is comments only; the deploy is
+  so the drift audit stays clean.
+
 ## 2026-10-05 UTC — Go-live status recorded in one place
 
 - `backend/ROADMAP.md`, *Play Store go-live*, now opens with a dated status

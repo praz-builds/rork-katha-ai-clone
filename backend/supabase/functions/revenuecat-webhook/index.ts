@@ -65,9 +65,9 @@ serve(async (req) => {
 
       // Only the expiration that actually won gets to zero the balance.
       //
-      // `lapse_credits` empties every bucket -- subscription grant, purchased
-      // packs and earned credits alike (decision 37, pending App Review) --
-      // and it ran on any EXPIRATION at all, keyed only on the event id being
+      // `lapse_credits` empties the subscription-grant and earned buckets
+      // (decision 37; since 00102 purchased packs survive) -- and it ran on
+      // any EXPIRATION at all, keyed only on the event id being
       // new. Two ordinary sequences made that destructive:
       //
       //   * A retry or a straggler. RevenueCat redelivers, and events arrive
