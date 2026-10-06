@@ -205,7 +205,8 @@ export function isDuplicateCreditOperationError(error: unknown): boolean {
 }
 
 /**
- * Atomically zero every credit bucket at subscription lapse.
+ * Atomically zero the plan-grant and earned buckets at subscription lapse.
+ * Credits bought as packs are kept (migration 00102).
  *
  * `requireEventId`, when given, makes the RPC verify -- under the same
  * per-user advisory lock it does the zeroing in -- that this RevenueCat event
