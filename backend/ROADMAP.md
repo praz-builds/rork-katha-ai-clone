@@ -591,7 +591,7 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 
 ## Play Store go-live — one-week push (2026-09-24 → 2026-10-01)
 
-> **Status on 2026-10-05: what is done and what is left.** This block is the
+> **Status on 2026-10-06: what is done and what is left.** This block is the
 > current answer; the dated plan below is history.
 >
 > **Done:**
@@ -601,7 +601,14 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 >   on main `c6a9b6c`, 2026-10-05: 360/360 files identical). This closes the
 >   deploy obligations in the 10-01 build-log entries.
 > - The OTP is 6 digits, and **login emails go out through Resend with the code
->   in them** (2026-10-05; they had never contained a code).
+>   in them** (2026-10-05; they had never contained a code). **Delivery is
+>   confirmed by the founder** (2026-10-06: they arrive from "Katha").
+> - **The website, Privacy Policy and Terms are live** (2026-10-06):
+>   `katha.thetractionlabs.com`, `/privacy/`, `/terms/`, `/delete-account/` and
+>   `/support/` all answer 200, and the app's `PRIVACY_URL` / `TERMS_URL`
+>   resolve to them. The Terms match `CREDITS_AND_PRICING.md`: 18+, Play
+>   billing, renewal and trial wording, cancel path, credits lapse with the
+>   plan, packs never expire, India law, Grievance Officer.
 > - The paywall has the daily price and the yearly 3-day trial (#180), and
 >   members see their own plan (#181).
 > - The streak (#172, #174), the faith-layer write paths (#176) and the
@@ -611,9 +618,21 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 > - Firebase config for push is in EAS (#179).
 >
 > **Left, founder (blocks the closed test):**
-> 1. Merge `katha-legal-v2` on `thetractionlabs-site`, for the privacy URL and
->    the site, after deciding what the privacy row still asks: the legal
->    entity, governing law and contact address.
+> 1. ~~Merge `katha-legal-v2`~~ **Done 2026-10-06.** Two follow-ups found
+>    on review:
+>    - **(a) AI training disclosure.** The Privacy Policy says "we do not use your
+>      content to train our own AI models", but the buffered chain's leader
+>      `meta/muse-spark-1.3-contributor` is a training tier: the provider
+>      keeps story ideas and prose (`_shared/llm.ts`). Either turn training off
+>      at openrouter.ai/settings/privacy (the streamed Create path already
+>      leads with the standard tier) or disclose it in the policy and the Data
+>      Safety form. This is the same decision as Data Safety D1.
+>    - **(b) Home-page claims the app does not make:** "you start with 40
+>      credits" (the welcome bonus is 3), "8 credits per story" (a story start
+>      is 1), "Offline reading / Downloads" (there is no offline download; the
+>      Library tabs are Created, Starred and Characters), and a "Community"
+>      strip of named writers with read counts that are not real users. The
+>      Play listing links this site.
 > 2. Create the app in Play Console and upload an AAB to internal testing.
 > 3. Paste the listing and answer the forms from `store/android/`. That means
 >    deciding the three Data Safety questions first, and making sure the
