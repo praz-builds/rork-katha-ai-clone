@@ -27,6 +27,14 @@
   `revenuecat-webhook`, `reviewer-signin`, `seed-voice-previews` (from
   `deno info --json`). The function change is comments only; the deploy is
   so the drift audit stays clean.
+- **Deployed 2026-10-06:** `supabase db push` applied 00102 (dry run listed
+  only 00102; `pg_proc.prosrc` for `lapse_credits` now contains `v_voided`);
+  the five functions above redeployed. **Edge drift audit, main `9a051a3`:
+  360/360 files identical, 0 drifted.**
+- Review follow-ups (PR #185, Fable): two edge cases recorded as ROADMAP rows
+  (a subscription chargeback after EXPIRATION drawing on packs; a zero-void
+  lapse leaving no ledger row for the yearly coverage check), and the §3
+  carry-over callout put in the past tense.
 
 ## 2026-10-05 UTC — Go-live status recorded in one place
 
