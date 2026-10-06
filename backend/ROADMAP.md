@@ -607,8 +607,12 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 >   `katha.thetractionlabs.com`, `/privacy/`, `/terms/`, `/delete-account/` and
 >   `/support/` all answer 200, and the app's `PRIVACY_URL` / `TERMS_URL`
 >   resolve to them. The Terms match `CREDITS_AND_PRICING.md`: 18+, Play
->   billing, renewal and trial wording, cancel path, credits lapse with the
->   plan, packs never expire, India law, Grievance Officer.
+>   billing, renewal and trial wording, cancel path, plan and earned credits
+>   lapse with the plan, and **packs never expire** (true since #185 /
+>   migration 00102, deployed per #186; before that, `lapse_credits` emptied
+>   packs too). Also India law and the Grievance Officer. The operator is
+>   recorded as "Traction Labs, based in India", with no entity form or postal
+>   address on the pages.
 > - The paywall has the daily price and the yearly 3-day trial (#180), and
 >   members see their own plan (#181).
 > - The streak (#172, #174), the faith-layer write paths (#176) and the
@@ -629,8 +633,9 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 >      Safety form. This is the same decision as Data Safety D1.
 >    - **(b) Home-page claims the app does not make:** "you start with 40
 >      credits" (the welcome bonus is 3), "8 credits per story" (a story start
->      is 1), "Offline reading / Downloads" (there is no offline download; the
->      Library tabs are Created, Starred and Characters), and a "Community"
+>      is 1), "Offline reading / Downloads" (there is no offline chapter download, only
+>      the subscriber PDF export; the Library tabs are Created, Starred and
+>      Characters), and a "Community"
 >      strip of named writers with read counts that are not real users. The
 >      Play listing links this site.
 > 2. Create the app in Play Console and upload an AAB to internal testing.
