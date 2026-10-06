@@ -219,10 +219,20 @@ here is dashboard work, not code — the client and webhook are complete and dep
       subscribers receive their allowance monthly, and the store emits only one
       `RENEWAL` per year, so without this scheduler annual plans grant once and
       then stop.
-- [ ] **Confirm with App Review that voiding purchased pack credits on subscription
-      lapse is permitted** (`../source-of-truth/CREDITS_AND_PRICING.md` §12 item 5). Packs are
-      consumable IAPs. If it is not permitted, carve packs out of the lapse rule so
-      only granted and earned credits expire.
+- [x] ~~Confirm with App Review that voiding purchased pack credits on subscription
+      lapse is permitted.~~ Moot since 2026-10-06: packs survive lapse (migration 00102,
+      `../source-of-truth/CREDITS_AND_PRICING.md` §12 item 5).
+- [ ] **A subscription refund after its EXPIRATION can draw on pack credits.**
+      `deduct_credit` draws grant → purchased → earned, and the webhook charges a
+      store refund back with it. If EXPIRATION lands first (grant already voided by
+      00102), the chargeback for the plan's credits takes them from the pack. Bound a
+      subscription chargeback by the grant bucket, or skip it when
+      `credit_lapse_operations` already voided that period (PR #185 review, finding 1).
+- [ ] **A lapse that voids nothing writes no ledger row**, so
+      `yearlyGrantCoveredThisMonth` (`_shared/subscription-grants.ts`) can treat a
+      same-month yearly re-subscribe as already granted. Since 00102 this also hits a
+      user whose only balance is a pack. Have the coverage check read
+      `credit_lapse_operations` instead of `lapse` ledger rows (PR #185 review, finding 2).
 - [ ] **Ship a development build** — RevenueCat uses native modules, so Expo Go
       cannot validate purchases, restores, Paywalls or Customer Center.
       `expo-dev-client` is installed; the commands are in `expo/README.md`.
@@ -451,7 +461,7 @@ Each is a simple POST with auth + upsert/delete + count update:
 ### Cron Jobs
 
 - [ ] **Streak warning** — daily at 8 PM per user's timezone: "Your N-day streak needs saving"
-- [ ] **Lapse warning** — 3 days before subscription expiry, stating the exact balance at risk: "Your N credits expire when your plan ends on the Xth" (`../source-of-truth/CREDITS_AND_PRICING.md` §8)
+- [ ] **Lapse warning** — 3 days before subscription expiry, stating the plan and earned balance at risk and that pack credits stay: "N plan credits expire when your plan ends on the Xth. Your pack credits stay." (`../source-of-truth/CREDITS_AND_PRICING.md` §8)
 - [ ] **Weekly digest** — Sunday morning: "Katha's picks for [date]"
 - [ ] **Streak freeze reset** — 1st of each month: reset `freezesAvailable = 2` for Premium users
 

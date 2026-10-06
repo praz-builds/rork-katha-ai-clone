@@ -1064,15 +1064,15 @@ than a grant credit that does, so at anything approaching parity the pack become
 the better buy for a user who does not consume 50/month. The 1.2× floor on the
 top pack is what pays for that difference. **Do not close the gap further.**
 
-> ⚠ **This forces §8's open item, and the answer is now clear.** §8 currently
-> voids the *entire* balance on lapse, including purchased packs, and flags two
-> problems with that: voiding a separate consumable IAP because a *different*
+> ⚠ **This forced §8's open item, and the answer was clear.** Until 2026-10-06
+> §8 voided the *entire* balance on lapse, including purchased packs, and flagged
+> two problems with that: voiding a separate consumable IAP because a *different*
 > product lapsed is a plausible App Store guideline issue, and it produces an
-> asymmetry where a never-subscribed pack buyer keeps credits forever while an
-> ex-subscriber who bought the identical pack loses theirs.
+> asymmetry where a never-subscribed pack buyer kept credits forever while an
+> ex-subscriber who bought the identical pack lost theirs.
 >
-> **Selling carry-over as the pack's headline feature makes voiding packs on
-> lapse indefensible** — we would be advertising permanence and then removing it,
+> **Selling carry-over as the pack's headline feature made voiding packs on
+> lapse indefensible** — we would have been advertising permanence and removing it,
 > which is the exact failure the entitlements section above was written to avoid.
 > **Recommendation: packs survive lapse; subscription grants and earned credits do
 > not.** **Decided and shipped 2026-10-06** (migration 00102, §8).
