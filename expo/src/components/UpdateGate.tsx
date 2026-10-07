@@ -3,25 +3,34 @@
  * "New version available" prompt, from the remote switch in `app_config`
  * (`src/lib/app-version.ts`, migration 00103).
  *
- * Rendered once, last, at the app's root (`App.tsx`), over everything: the
- * blocking screen sits above onboarding and the tabs alike, and swallows the
- * Android Back button, so there is no way past it but the store. It checks at
- * launch and again whenever the app returns to the foreground.
+ * Rendered once, last, at the app's root (`App.tsx`). The blocking screen is a
+ * full-screen `Modal`, not a view: on Android a `Modal` is its own window, so
+ * a plain view (however high its zIndex) would sit UNDER any sheet a screen
+ * had open, and the user could keep using an unsupported build behind it.
+ * Presented last, the gate's Modal stacks above those, and its
+ * `onRequestClose` swallows Back, so there is no way past it but the store.
+ * It checks at launch and again whenever the app returns to the foreground.
+ *
+ * The OPTIONAL prompt waits for `promptAllowed` (the app passes "the user is in
+ * the tabs"), so a first launch never opens on an update nag over onboarding
+ * or a paywall. The forced screen ignores it: a build below the minimum is
+ * blocked wherever it is.
  *
  * It never shows a spinner and never delays the app: until the check answers,
  * nothing is drawn, and a check that cannot answer leaves the app running
  * (unless this device already knows the build is below the minimum).
  *
- * Skipped on web and in development, which have no store build to compare.
+ * Android only for now: there is no iOS build or `app_config` row yet, and the
+ * store-link fallback below is Play's. Off on web and in development.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
-  BackHandler,
   Linking,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -39,7 +48,7 @@ import {
   type UpdateStatus,
 } from "@/lib/app-version";
 import { supabase } from "@/lib/supabase";
-import { colors, fonts, radius, spacing } from "@/theme";
+import { colors, radius, spacing, type } from "@/theme";
 
 const STORE_FAILED =
   "Couldn't open the store. Open Google Play and search for Katha to update.";
@@ -76,24 +85,33 @@ export type UpdateGateProps = {
   installedVersion?: string | null;
   /** Injected in tests; `app_config` through Supabase by default. */
   fetchRow?: (platform: string) => Promise<unknown>;
-  /** Injected in tests; skips web and development builds by default. */
+  /** Injected in tests; Android store builds only by default. */
   enabled?: boolean;
+  /** Whether the optional prompt may show now (the app passes "in the tabs"). */
+  promptAllowed?: boolean;
 };
 
 export function UpdateGate({
   installedVersion = Application.nativeApplicationVersion,
   fetchRow = fetchConfigRow,
-  enabled = !__DEV__ && (Platform.OS === "android" || Platform.OS === "ios"),
+  enabled = !__DEV__ && Platform.OS === "android",
+  promptAllowed = true,
 }: UpdateGateProps) {
   const [status, setStatus] = useState<UpdateStatus>("ok");
   const [config, setConfig] = useState<AppVersionConfig | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [storeError, setStoreError] = useState(false);
 
+  // Launch and foreground can both start a check. Only the newest may write
+  // state, so a slow, older answer can never undo a newer one.
+  const latestCheck = useRef(0);
+
   const check = useCallback(async () => {
+    const ticket = ++latestCheck.current;
     const loaded = await loadAppVersionConfig(Platform.OS, fetchRow);
     const next = statusFrom(loaded, installedVersion ?? null);
     const seen = await dismissedLatest();
+    if (ticket !== latestCheck.current) return;
     setConfig(loaded.config);
     setDismissed(seen);
     setStatus(next);
@@ -108,13 +126,6 @@ export function UpdateGate({
     return () => subscription.remove();
   }, [check, enabled]);
 
-  // The blocking screen has no way out: Android Back is consumed while it shows.
-  useEffect(() => {
-    if (status !== "required") return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => true);
-    return () => subscription.remove();
-  }, [status]);
-
   const update = useCallback(async () => {
     if (!config) return;
     setStoreError(!(await openStore(config.storeUrl)));
@@ -124,23 +135,36 @@ export function UpdateGate({
 
   if (status === "required") {
     return (
-      <View style={styles.blocking} testID="update-required" accessibilityViewIsModal>
-        <View style={styles.blockingBody}>
-          <Text style={styles.title} accessibilityRole="header">
-            Update required
-          </Text>
-          <Text style={styles.body}>
-            This version of Katha is no longer supported. Update to keep reading
-            and writing. Your stories and credits are safe and waiting for you.
-          </Text>
-          {storeError ? <Text style={styles.error}>{STORE_FAILED}</Text> : null}
+      <Modal
+        visible
+        testID="update-required-modal"
+        animationType="none"
+        statusBarTranslucent
+        // Back does nothing: the only way past this screen is the store.
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.blocking} testID="update-required" accessibilityViewIsModal>
+          {/* Scrolls at large text sizes so the button below can never be
+              pushed off the screen that has no other exit. */}
+          <ScrollView contentContainerStyle={styles.blockingBody}>
+            <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={1.3}>
+              Update required
+            </Text>
+            <Text style={styles.body} maxFontSizeMultiplier={1.3}>
+              This version of Katha is no longer supported. Update to keep reading
+              and writing. Your stories and credits are safe and waiting for you.
+            </Text>
+            {storeError
+              ? <Text style={styles.error} maxFontSizeMultiplier={1.3}>{STORE_FAILED}</Text>
+              : null}
+          </ScrollView>
+          <Button label="Update Now" onPress={() => void update()} testID="update-now" />
         </View>
-        <Button label="Update Now" onPress={() => void update()} testID="update-now" />
-      </View>
+      </Modal>
     );
   }
 
-  if (status === "recommended" && dismissed !== config.latestVersion) {
+  if (status === "recommended" && promptAllowed && dismissed !== config.latestVersion) {
     const dismiss = () => {
       setDismissed(config.latestVersion);
       void rememberDismissed(config.latestVersion);
@@ -177,25 +201,16 @@ export function UpdateGate({
 
 const styles = StyleSheet.create({
   blocking: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-    elevation: 1000,
+    flex: 1,
     backgroundColor: colors.onboardingBg,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.huge * 2,
     paddingBottom: spacing.huge,
-    justifyContent: "space-between",
   },
-  blockingBody: { gap: spacing.md },
-  title: {
-    fontFamily: fonts.display,
-    fontWeight: "700",
-    fontSize: 28,
-    lineHeight: 32,
-    color: colors.ink,
-  },
-  body: { fontFamily: fonts.ui, fontSize: 15, lineHeight: 22, color: colors.muted },
-  error: { fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.ink },
+  blockingBody: { gap: spacing.md, paddingBottom: spacing.xl },
+  title: { ...type.title, color: colors.ink },
+  body: { ...type.body, lineHeight: 22, color: colors.muted },
+  error: { ...type.bodySmall, color: colors.ink },
   scrim: {
     flex: 1,
     justifyContent: "flex-end",
@@ -209,12 +224,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxxl,
     gap: spacing.md,
   },
-  sheetTitle: {
-    fontFamily: fonts.display,
-    fontWeight: "700",
-    fontSize: 22,
-    color: colors.ink,
-  },
+  sheetTitle: { ...type.headline, color: colors.ink },
   notNow: { alignSelf: "center", paddingVertical: spacing.sm },
-  notNowText: { fontFamily: fonts.ui, fontSize: 15, color: colors.muted },
+  notNowText: { ...type.body, color: colors.muted },
 });

@@ -102,13 +102,15 @@ export async function loadAppVersionConfig(
   fetchRow: ConfigFetcher,
   timeoutMs: number = CONFIG_TIMEOUT_MS,
 ): Promise<{ config: AppVersionConfig | null; fresh: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const row = await Promise.race([
       fetchRow(platform),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("app config timed out")), timeoutMs)
-      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("app config timed out")), timeoutMs);
+      }),
     ]);
+    clearTimeout(timer);
     const config = parseAppConfigRow(row);
     if (config) {
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(config)).catch(() => undefined);
@@ -116,6 +118,8 @@ export async function loadAppVersionConfig(
     }
   } catch {
     // Offline, timed out, or the table is unreachable: fall back below.
+  } finally {
+    clearTimeout(timer);
   }
   try {
     const cached = await AsyncStorage.getItem(CACHE_KEY);

@@ -3,7 +3,7 @@
  * the two screens it can put up.
  */
 import React from "react";
-import { BackHandler, Linking } from "react-native";
+import { Linking } from "react-native";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -119,21 +119,54 @@ describe("the gate", () => {
   afterEach(() => openURL.mockRestore());
 
   it("blocks a build below the minimum, with no way past but the store", async () => {
-    const back = jest.spyOn(BackHandler, "addEventListener");
     const view = await render(
       <UpdateGate enabled installedVersion="1.0.1" fetchRow={async () => row("1.2.0", "1.4.0")} />,
     );
     await waitFor(() => expect(view.getByTestId("update-required")).toBeTruthy());
     expect(view.getByText("Update required")).toBeTruthy();
     expect(view.queryByText("Not now")).toBeNull();
-    // Android Back is consumed while it shows.
-    const handler = back.mock.calls.at(-1)?.[1] as () => boolean;
-    expect(handler()).toBe(true);
+    // A Modal, so it stacks above any sheet a screen had open; Back is swallowed.
+    await fireEvent(view.getByTestId("update-required-modal"), "requestClose");
+    expect(view.getByTestId("update-required")).toBeTruthy();
     await fireEvent.press(view.getByTestId("update-now"));
     expect(openURL).toHaveBeenCalledWith(
       "https://play.google.com/store/apps/details?id=ai.katha.createstories",
     );
-    back.mockRestore();
+  });
+
+  it("holds the optional prompt until the user is past onboarding, never the forced one", async () => {
+    const optional = await render(
+      <UpdateGate
+        enabled
+        promptAllowed={false}
+        installedVersion="1.2.0"
+        fetchRow={async () => row("1.0.0", "1.4.0")}
+      />,
+    );
+    await waitFor(() => expect(optional.toJSON()).toBeNull());
+    const forced = await render(
+      <UpdateGate
+        enabled
+        promptAllowed={false}
+        installedVersion="1.0.0"
+        fetchRow={async () => row("1.2.0", "1.4.0")}
+      />,
+    );
+    await waitFor(() => expect(forced.getByTestId("update-required")).toBeTruthy());
+  });
+
+  it("stays blocked offline when this device last saw a minimum above it", async () => {
+    await loadAppVersionConfig("android", async () => row("2.0.0", "2.0.0"));
+    const view = await render(
+      <UpdateGate
+        enabled
+        installedVersion="1.0.1"
+        fetchRow={async () => {
+          throw new Error("offline");
+        }}
+      />,
+    );
+    await waitFor(() => expect(view.getByTestId("update-required")).toBeTruthy());
   });
 
   it("falls back to Play's app link, and says so when nothing opens", async () => {

@@ -1664,7 +1664,7 @@ export default function App() {
       {/* Last, over everything: the remote "update required / available"
           switch (`app_config`, `src/lib/app-version.ts`). Renders nothing
           until it has something to say, and never on web or in dev. */}
-      <UpdateGate />
+      <UpdateGate promptAllowed={screen.name === "tabs"} />
     </SafeAreaProvider>
   );
 }
