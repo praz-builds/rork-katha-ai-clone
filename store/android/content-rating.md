@@ -103,7 +103,7 @@ Sign-in is by emailed one-time code, which a reviewer cannot receive. The `revie
 Paste into Play Console (name: **Katha reviewer account**):
 
 - **Username / email:** `reviewer@thetractionlabs.com`
-- **Password:** the six-digit code from `backend/.reviewer-code.local` on your machine (git-ignored; never paste it anywhere else, and never into this repo).
+- **Password:** the six-digit code from `~/Katha-Secrets/reviewer-signin.json` on the founder's machine (never paste it anywhere else, and never into this repo).
 - **Any other information required to access the app:**
 
 ```text

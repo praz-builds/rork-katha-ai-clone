@@ -8,7 +8,7 @@
 ## 2026-10-08 UTC — Play closed test submitted: 1.0.1 (4) is in Google review
 
 Play Console app "Create Stories - Katha AI" (`ai.katha.createstories`),
-developer account Traction labs (prazbuilds@gmail.com). Release **1.0.1
+developer account Traction labs. Release **1.0.1
 (versionCode 4)** on **Closed testing - Alpha** was sent for review on
 2026-10-08; the dashboard shows "In review". Managed publishing is **off**, so
 approval publishes to testers with no further click.
@@ -24,7 +24,8 @@ approval publishes to testers with no further click.
 - The 14 days count from when at least 12 testers are opted in, continuously.
   A new build during the window does not restart it. Production access is
   applied for from the dashboard after day 14.
-- The AAB (`~/Desktop/Katha-AI-1.0.1-vc4.aab`, 93 MB) was uploaded by hand.
+- The AAB (EAS build `ce8d51ef-9d9d-444e-a32b-471ccd008242`, local copy
+  `~/Desktop/Katha-AI-1.0.1-vc4.aab`, 93 MB) was uploaded by hand.
   Google requires the first bundle of a new app to go through Play Console, so
   `eas submit` can only take over from the next build.
 
@@ -63,22 +64,26 @@ approval publishes to testers with no further click.
 - Data safety: per `store/android/data-safety.md`, with **Name and Other
   user-generated content declared shared** (the OpenRouter training tier, D1).
   Approximate location is collected for analytics (PostHog GeoIP, D2). Partial
-  deletion "Yes", via the delete-account page. Account creation: username +
-  other authentication. The delete URL is
+  deletion "Yes", via the delete-account page. Account creation: "Username and
+  other authentication" (email + one-time code). `data-safety.md` says "Other";
+  the submitted option is the closer fit to Google's own definitions, so update
+  the sheet. The delete URL is
   `https://katha.thetractionlabs.com/delete-account/`.
 - Sign-in details: `reviewer@thetractionlabs.com` plus the fixed code. **The
   reviewer code was rotated** with a new `REVIEWER_CODE_PEPPER` secret and a
   new `tester_accounts.code_hmac`. A live `reviewer-signin` call returned a
   session. The plaintext is only in `~/Katha-Secrets/reviewer-signin.json`
-  (and its Desktop backup); `backend/.reviewer-code.local` no longer exists.
+  (and its Desktop backup); `backend/.reviewer-code.local` no longer exists,
+  and `AGENTS.md`, `expo/CLAUDE.md` and `content-rating.md` now point at the
+  secrets file.
   The account holds 197 earned credits.
 - **Content rating, open risk:** the submitted IARC questionnaire (founder,
-  2026-10-08 02:13) answers "primarily a news or educational product", with no
+  2026-10-07 20:43 UTC) answers "primarily a news or educational product", with no
   violence, fear or language and no user interaction. It is rated Everyone /
   PEGI 3. That contradicts the listing ("mature themes"), the 16+ audience
-  and live comments. If review bounces, or for production, resubmit honestly:
-  implied violence, scary elements, suggestive, mild language, users
-  interact, not news or educational.
+  and live comments. If review bounces, or before
+  production, resubmit using the answers in `store/android/content-rating.md`
+  (with the category questionnaire for "All Other App Types").
 
 **Follow-ups**
 
@@ -88,7 +93,10 @@ approval publishes to testers with no further click.
 - Bug seen during capture: a "What's next?" direction card on "Hello From Up
   There" reads "Write it so Whether Kijana's...", so the direction wording is
   mangled.
-- Sync `store/android/metadata/en-US/*` and the screenshot set into the repo.
+- Sync `store/android/metadata/en-US/*` and the screenshot set into the repo,
+  and move the docs that still say the audience is 18+ only to 16+:
+  `store/android/README.md` (the "No kids" rule and the 18+ line) and
+  `store/android/content-rating.md` (the expected-rating note).
 
 ## 2026-10-07 UTC — `app_config`: force or offer an app update without a build
 
