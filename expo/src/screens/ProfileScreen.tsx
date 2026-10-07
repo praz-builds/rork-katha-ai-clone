@@ -548,7 +548,7 @@ export default function ProfileScreen({
           </Pressable>
         </View>
 
-        <Text style={styles.version}>v{APP_VERSION}</Text>
+        {APP_VERSION ? <Text style={styles.version}>v{APP_VERSION}</Text> : null}
       </ScrollView>
 
       <IdentityEditor

@@ -11,7 +11,8 @@
 
 ### Verification
 
-- `app-version.test.tsx` (23: semver, decisions, offline/cached/timeout, both screens, the Back button, the store fallback); `release-config` pins 1.0.1 and `fallbackToCacheTimeout: 0`; migration `00103_app_config_test.ts` (4). Full suite 1803/1803; typecheck clean; lint unchanged; expo-doctor 18/18.
+- `app-version.test.tsx` (23: semver, decisions, offline/cached/timeout, both screens, the Back button, the store fallback); `release-config` pins 1.0.1 and `fallbackToCacheTimeout: 0`; migration `00103_app_config_test.ts` (4). Full suite 1805/1805; typecheck clean; lint unchanged; expo-doctor 18/18.
+- **Follow-up before ever raising `latest_version`:** the optional prompt waits for the tabs, but not for a sheet open inside them (Create's craft modal, a pack purchase). It is a `Modal`, so it would stack over that sheet. Hold the prompt while any sheet is open first; the forced screen should keep stacking over everything.
 
 ## 2026-10-04: Katha Plus for a member says which plan, and when; the daily price speaks the store's currency
 
