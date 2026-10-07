@@ -76,14 +76,14 @@ approval publishes to testers with no further click.
   (and its Desktop backup); `backend/.reviewer-code.local` no longer exists,
   and `AGENTS.md`, `expo/CLAUDE.md` and `content-rating.md` now point at the
   secrets file.
-  The account holds 197 earned credits.
+  The account holds 197 hand-seeded credits.
 - **Content rating, open risk:** the submitted IARC questionnaire (founder,
   2026-10-07 20:43 UTC) answers "primarily a news or educational product", with no
   violence, fear or language and no user interaction. It is rated Everyone /
   PEGI 3. That contradicts the listing ("mature themes"), the 16+ audience
   and live comments. If review bounces, or before
   production, resubmit using the answers in `store/android/content-rating.md`
-  (with the category questionnaire for "All Other App Types").
+  (category "All Other App Types"; Play's form no longer offers Entertainment).
 
 **Follow-ups**
 
@@ -93,6 +93,8 @@ approval publishes to testers with no further click.
 - Bug seen during capture: a "What's next?" direction card on "Hello From Up
   There" reads "Write it so Whether Kijana's...", so the direction wording is
   mangled.
+- Update `data-safety.md` account creation from "Other" to "Username and
+  other authentication", as submitted.
 - Sync `store/android/metadata/en-US/*` and the screenshot set into the repo,
   and move the docs that still say the audience is 18+ only to 16+:
   `store/android/README.md` (the "No kids" rule and the 18+ line) and

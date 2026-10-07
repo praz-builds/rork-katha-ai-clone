@@ -9,7 +9,7 @@ The questionnaire is answered for **what a user can meet in the app**, which inc
 
 ## 1. Content rating (IARC questionnaire)
 
-**Email for IARC:** the developer account email. **Category:** **Entertainment** (the app's purpose is making and reading stories). "Social networking / UGC" is also defensible because of public publishing and comments; if the form offers only that for apps with UGC, pick it — the answers below do not change.
+**Email for IARC:** the developer account email. **Category:** **All Other App Types** (2026-10-08: Play's form now offers only Game, Social or Communication, and All Other App Types; the app's purpose is making and reading stories). "Social networking / UGC" is also defensible because of public publishing and comments; if the form offers only that for apps with UGC, pick it — the answers below do not change.
 
 Google's wording shifts between questionnaire versions; match on meaning.
 
