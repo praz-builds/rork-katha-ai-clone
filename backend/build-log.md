@@ -5,6 +5,91 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-08 UTC — Play closed test submitted: 1.0.1 (4) is in Google review
+
+Play Console app "Create Stories - Katha AI" (`ai.katha.createstories`),
+developer account Traction labs (prazbuilds@gmail.com). Release **1.0.1
+(versionCode 4)** on **Closed testing - Alpha** was sent for review on
+2026-10-08; the dashboard shows "In review". Managed publishing is **off**, so
+approval publishes to testers with no further click.
+
+**Closed test track**
+
+- Countries: all 178. Testers: Google Group
+  `testers-community@googlegroups.com` (Testers Community, Starter plan, 15
+  testers; submitted on their dashboard, credit spent). Feedback address
+  `hi@thetractionlabs.com`. Opt-in link:
+  `https://play.google.com/apps/testing/ai.katha.createstories` (works only
+  after approval).
+- The 14 days count from when at least 12 testers are opted in, continuously.
+  A new build during the window does not restart it. Production access is
+  applied for from the dashboard after day 14.
+- The AAB (`~/Desktop/Katha-AI-1.0.1-vc4.aab`, 93 MB) was uploaded by hand.
+  Google requires the first bundle of a new app to go through Play Console, so
+  `eas submit` can only take over from the next build.
+
+**Store listing (default en-US, saved and "Ready to send for review")**
+
+- Name **Create Stories - Katha AI**. Short description: "Read & write AI
+  stories. Turn one idea into a story you can read, hear & share". The full
+  description (3,336 characters) was rewritten for search, using terms from
+  the Okudu keyword research (AI stories, create stories, story ideas, story
+  generator, interactive stories, audio stories, fanfiction). It says "ages
+  16 and up". `store/android/metadata/en-US/` is **stale** against the live
+  copy and still says 18+.
+- **15 translations** were imported with Play's "Import translations with AI":
+  pt-BR, es-419, fr-FR, hi-IN, de-DE, ja-JP, ko-KR, it-IT, id, ru-RU, tr-TR,
+  ar, zh-CN, vi, pl-PL. The source file is
+  `~/Desktop/Katha-store-listing-translations.txt`.
+- **Six ASO screenshots** (1080x1920): CREATE stories from one idea, READ
+  free stories every day, CAST your own characters, CHOOSE what happens next,
+  LISTEN to every chapter, PUBLISH and find readers. Each has an orange
+  #FF6B1A background, a Bricolage 800 headline, a CSS phone frame and an
+  enlarged breakout card. They were rendered from web-preview captures with
+  headless Chrome. Finals are in `~/Desktop/Katha-store-screenshots/aso-final/`.
+  Shots 2 and 6 show **sample-data read and like counts**, and shot 4 was staged
+  (raised chapter count, browser-only), so recapture them on a real device
+  before production.
+- Icon `store/android/graphics/icon-512.png`, feature graphic
+  `feature-graphic-en.png`. AI asset declaration: "Don't label".
+- Store settings: category Books & Reference, email `hi@thetractionlabs.com`,
+  website `https://katha.thetractionlabs.com/`.
+
+**App content (all declarations complete)**
+
+- Privacy policy URL set. Ads: no. Government, financial and health: none.
+  Advertising ID: **No** (AD_ID is blocked in this build).
+- Target audience: 16-17 and 18+.
+- Data safety: per `store/android/data-safety.md`, with **Name and Other
+  user-generated content declared shared** (the OpenRouter training tier, D1).
+  Approximate location is collected for analytics (PostHog GeoIP, D2). Partial
+  deletion "Yes", via the delete-account page. Account creation: username +
+  other authentication. The delete URL is
+  `https://katha.thetractionlabs.com/delete-account/`.
+- Sign-in details: `reviewer@thetractionlabs.com` plus the fixed code. **The
+  reviewer code was rotated** with a new `REVIEWER_CODE_PEPPER` secret and a
+  new `tester_accounts.code_hmac`. A live `reviewer-signin` call returned a
+  session. The plaintext is only in `~/Katha-Secrets/reviewer-signin.json`
+  (and its Desktop backup); `backend/.reviewer-code.local` no longer exists.
+  The account holds 197 earned credits.
+- **Content rating, open risk:** the submitted IARC questionnaire (founder,
+  2026-10-08 02:13) answers "primarily a news or educational product", with no
+  violence, fear or language and no user interaction. It is rated Everyone /
+  PEGI 3. That contradicts the listing ("mature themes"), the 16+ audience
+  and live comments. If review bounces, or for production, resubmit honestly:
+  implied violence, scary elements, suggestive, mild language, users
+  interact, not news or educational.
+
+**Follow-ups**
+
+- **Paid ads (Meta, Google, TikTok) are planned.** The release that adds an
+  attribution SDK must unblock AD_ID, flip the Advertising ID declaration and
+  add shared device IDs and app activity to Data safety.
+- Bug seen during capture: a "What's next?" direction card on "Hello From Up
+  There" reads "Write it so Whether Kijana's...", so the direction wording is
+  mangled.
+- Sync `store/android/metadata/en-US/*` and the screenshot set into the repo.
+
 ## 2026-10-07 UTC — `app_config`: force or offer an app update without a build
 
 - Migration **00103** creates `public.app_config`: one row per platform with
