@@ -24,6 +24,10 @@ const mockFetchOwnProfile = jest.fn();
 const mockFetchProfileComments = jest.fn();
 const mockFetchActivityCalendar = jest.fn();
 
+// A store build reports app.json's version as its own native version.
+jest.mock("expo-application", () => ({
+  nativeApplicationVersion: require("../../app.json").expo.version,
+}));
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");

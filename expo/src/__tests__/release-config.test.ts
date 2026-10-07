@@ -15,9 +15,19 @@ import type { ExpoConfig } from "expo/config";
 const expo = appJson.expo as unknown as ExpoConfig;
 
 describe("app.json", () => {
-  it("ships as 1.0.0 with the runtime version following it", () => {
-    expect(expo.version).toBe("1.0.0");
+  // 1.0.1: the first build with the native modules that make later sign-in
+  // and the update gate OTA-able (2026-10-07). The runtime follows the
+  // version, so an update published for 1.0.1 can never reach the
+  // never-distributed 1.0.0 build (vc3), which lacks those modules.
+  it("ships as 1.0.1 with the runtime version following it", () => {
+    expect(expo.version).toBe("1.0.1");
     expect(expo.runtimeVersion).toEqual({ policy: "appVersion" });
+  });
+
+  it("never holds launch for an update check", () => {
+    // 0: start from the cached bundle at once (offline included); an update
+    // downloaded in the background applies on the next launch.
+    expect(expo.updates?.fallbackToCacheTimeout).toBe(0);
   });
 
   it("blocks every Android permission the app does not use", () => {

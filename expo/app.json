@@ -2,7 +2,7 @@
   "expo": {
     "name": "Katha AI",
     "slug": "katha-ai",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -33,7 +33,7 @@
     ],
     "updates": {
       "url": "https://u.expo.dev/UPDATE_PROJECT_ID",
-      "fallbackToCacheTimeout": 10000
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"

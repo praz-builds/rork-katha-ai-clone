@@ -663,6 +663,12 @@ Price testing goes through RevenueCat (it owns store products and localized pric
 > 8. Sentry.
 > 9. Top up OpenRouter.
 >
+> - **Update readiness (2026-10-07):** the next build is **1.0.1**. It carries
+>   the native modules for later Google/Apple sign-in and the binary-version
+>   read, a remote version switch (`app_config`, 00103: forced or optional
+>   update with no build), and OTA that never delays launch. A new build
+>   during the closed test does **not** restart Google's 14 days.
+>
 > **Left, agent:**
 > - A new build (versionCode 4: paywall, trial and push config) the moment
 >   the founder wants it.

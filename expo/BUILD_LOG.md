@@ -2,6 +2,18 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
+
+- **1.0.1** (`app.json`) is the first build anyone installs. It adds the native modules later features need, so those features can ship by OTA: `expo-application`, `expo-web-browser`, `expo-auth-session`, `expo-crypto`, `@react-native-google-signin/google-signin` (no plugin until iOS). `runtimeVersion` stays `appVersion`; `fingerprint` was rejected because it hashes the contents of the Firebase file, which only exists on EAS builders. `updates.fallbackToCacheTimeout` is `0`, so launch never waits on the network.
+- **The update gate** (`src/lib/app-version.ts`, `src/components/UpdateGate.tsx`, mounted last in `App.tsx`) reads `app_config` (migration 00103) at launch and on foreground. Below the minimum, it puts up a blocking full-screen `Modal`, which stacks above any open sheet and where Back does nothing, with **Update Now**, which opens the Play listing, falls back to `market://`, and says so when neither opens. Below the latest, it shows a dismissable sheet, remembered per version and held until the user is in the tabs. Only the newest of overlapping checks writes state. It is Android-only for now. Versions are compared numerically (`1.10.0 > 1.9.0`). Offline or on error, it uses the cache: it may block, but never nags. A 4s timeout means it never spins. It is off on web and in dev.
+- **Profile's version** now reads the installed binary (`expo-application`), then `app.json`, instead of a `"1.0.0"` literal that the version bump exposed as stale.
+- Manifest check (`expo prebuild --platform android`): no new permissions, and the 6 blocked ones are still removed.
+
+### Verification
+
+- `app-version.test.tsx` (23: semver, decisions, offline/cached/timeout, both screens, the Back button, the store fallback); `release-config` pins 1.0.1 and `fallbackToCacheTimeout: 0`; migration `00103_app_config_test.ts` (4). Full suite 1805/1805; typecheck clean; lint unchanged; expo-doctor 18/18.
+- **Follow-up before ever raising `latest_version`:** the optional prompt waits for the tabs, but not for a sheet open inside them (Create's craft modal, a pack purchase). It is a `Modal`, so it would stack over that sheet. Hold the prompt while any sheet is open first; the forced screen should keep stacking over everything.
+
 ## 2026-10-04: Katha Plus for a member says which plan, and when; the daily price speaks the store's currency
 
 - **Member screens read the store's record** (`src/lib/member-plan.ts`, `memberPlanSummary`). The Profile sheet (`MemberSheet`) and the paywall's member state now show the plan held ("Yearly plan"), a status line ("Free trial until Oct 7, 2026…", "Renews on…", "Ends on… It won't renew."), and that plan's own grant: a weekly member reads "20 credits a week", not the yearly "50 credits a month". A member with no store record (a tester override, or the web build) gets the general summary. `PLAN_FACTS` is gone.

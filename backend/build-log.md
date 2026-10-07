@@ -5,6 +5,20 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-07 UTC — `app_config`: force or offer an app update without a build
+
+- Migration **00103** creates `public.app_config`: one row per platform with
+  `minimum_supported_version`, `latest_version` and `store_url`. RLS gives
+  everyone select (anon included, because the app checks before sign-in);
+  writes are service-role only. Checks refuse malformed versions and
+  non-https links. A trigger keeps `updated_at` current. The android row is
+  seeded at 1.0.1/1.0.1, so nothing is forced or offered.
+- **To force an update:** `update public.app_config set
+  minimum_supported_version = 'X.Y.Z' where platform = 'android';` (or use
+  the table editor). It takes effect at the next launch of every installed app.
+- **Deploy obligation:** `supabase db push` for 00103 after merge. There is
+  no function change.
+
 ## 2026-10-06 UTC — Credit packs survive a subscription lapse
 
 - **Founder decision (2026-10-06):** credits bought as packs carry over when a

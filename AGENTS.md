@@ -1486,11 +1486,45 @@ Node v22.23.0 for typecheck (v24 has tsc shim issues).
 What the store binary bakes in, and so cannot be changed by an OTA update.
 `expo/src/__tests__/release-config.test.ts` pins all of it.
 
-- **Version and runtime.** `expo.version` is the versionName users see (1.0.0 at
-  launch); `versionCode` is EAS's (`appVersionSource: remote`, `autoIncrement`).
-  `runtimeVersion` is `{ "policy": "appVersion" }`: an OTA reaches only binaries
-  of the same `version`, so **bump `version` for any native change** (a new
-  native module, a permission, a plugin option) and never for a JS-only one.
+- **Version and runtime.** `expo.version` is the versionName users see (**1.0.1**
+  is the first build anyone installs; 1.0.0 / versionCode 3 was never
+  distributed). `versionCode` is EAS's (`appVersionSource: remote`,
+  `autoIncrement`). `runtimeVersion` is `{ "policy": "appVersion" }`: an OTA
+  reaches only binaries of the same `version`, so **bump `version` for any
+  native change** (a new native module, a permission, a plugin option) and
+  never for a JS-only one. `fingerprint` was considered and rejected:
+  `@expo/fingerprint` hashes the CONTENTS of `android.googleServicesFile`,
+  which `app.config.ts` sets only when the EAS file variable
+  `GOOGLE_SERVICES_JSON` exists. A build hashes the file, and a publishing
+  machine without it does not, so the runtimes would never match.
+- **Three kinds of update, kept apart (2026-10-07).**
+  - **Store updates** are the stores' job. The app never downloads a binary.
+  - **OTA (JS only)** is `expo-updates`, already in the build. Publish with
+    `eas update --channel production` from a checkout with a filled
+    `expo/.env` (see below). `fallbackToCacheTimeout: 0` means launch never
+    waits on the network: an update downloads in the background and applies
+    on the next launch.
+  - **Remote version switch** is `public.app_config` (migration 00103),
+    read at launch and on foreground by `src/components/UpdateGate.tsx`.
+    Raising `minimum_supported_version` puts up a blocking "Update required"
+    screen on every older build. It is a full-screen `Modal`, so it stacks
+    above any sheet a screen has open, and Back does nothing. Raising
+    `latest_version` offers a dismissable prompt, held until the user is in
+    the tabs (never over onboarding or a paywall). No deploy, no build, no
+    review. Offline, it blocks only if the device last read a minimum above
+    itself. **Android only for now:** there is no `ios` row, and the fallback
+    store link is Play's.
+- **Native modules already in 1.0.1, so these can arrive later by OTA:**
+  `expo-application` (binary version), `expo-web-browser` +
+  `expo-auth-session` + `expo-crypto` (Google/Apple sign-in through Supabase
+  OAuth in the browser), and `@react-native-google-signin/google-signin`
+  (native Google button). The last has **no config plugin yet**. On Android it
+  autolinks and needs no `google-services.json`: the web client id is passed
+  to `GoogleSignin.configure()` at runtime, so it is OTA-configurable. Its
+  plugin is iOS-only in effect (an `iosUrlScheme` from an iOS OAuth client),
+  so add it with the iOS build. Verified: none of these modules adds an
+  Android permission. Anything not listed here (a new SDK, a new permission) still needs a
+  new build.
 - **Two values `eas init` fills, one of them for you.** `eas init` writes
   `extra.eas.projectId` into `app.json` (Expo edits `app.json` when the
   function-style `app.config.ts` spreads it, then re-reads to check). The second,

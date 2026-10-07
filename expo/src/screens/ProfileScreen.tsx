@@ -36,6 +36,7 @@ import {
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import BlockedAccountsSheet from "@/components/profile/BlockedAccountsSheet";
 import Constants from "expo-constants";
+import * as Application from "expo-application";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import FeedbackSheet from "@/components/profile/FeedbackSheet";
 import FeatureVoteSheet from "@/components/profile/FeatureVoteSheet";
@@ -547,7 +548,7 @@ export default function ProfileScreen({
           </Pressable>
         </View>
 
-        <Text style={styles.version}>v{APP_VERSION}</Text>
+        {APP_VERSION ? <Text style={styles.version}>v{APP_VERSION}</Text> : null}
       </ScrollView>
 
       <IdentityEditor
@@ -644,8 +645,13 @@ const AVATAR = 56;
 /**
  * The version the build was made with. It read a literal "v0.1.0" long after
  * the app became 1.0.0, which is the one number a bug report most needs right.
+ * The installed binary's own version comes first: after an OTA update the JS
+ * bundle is newer than the build, and the update gate compares the binary.
+ * The resolved app config is the fallback (web, and the dev client). Never a
+ * typed literal: one went stale once already.
  */
-const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const APP_VERSION =
+  Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "";
 
 const styles = {
   ...sharedStyles,
