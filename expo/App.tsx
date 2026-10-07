@@ -3,6 +3,7 @@ import * as Font from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSharedValue } from "react-native-reanimated";
 import { captureError, initPostHog, initSentry } from "@/lib/analytics";
+import { UpdateGate } from "@/components/UpdateGate";
 import { initRevenueCat, revenueCatService } from "@/lib/revenuecat";
 import { fetchCreatedShelf, fetchCuratedStories } from "@/lib/api";
 import {
@@ -1660,6 +1661,10 @@ export default function App() {
           </>
         )}
       </ScreenScaffold>
+      {/* Last, over everything: the remote "update required / available"
+          switch (`app_config`, `src/lib/app-version.ts`). Renders nothing
+          until it has something to say, and never on web or in dev. */}
+      <UpdateGate />
     </SafeAreaProvider>
   );
 }

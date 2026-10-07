@@ -24,6 +24,9 @@ const mockFetchOwnProfile = jest.fn();
 const mockFetchProfileComments = jest.fn();
 const mockFetchActivityCalendar = jest.fn();
 
+// No installed binary in tests: the version falls through to app.json,
+// which is what a store build reports for itself anyway.
+jest.mock("expo-application", () => ({ nativeApplicationVersion: null }));
 jest.mock("@/lib/session", () => ({ bootstrapUser: jest.fn() }));
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");

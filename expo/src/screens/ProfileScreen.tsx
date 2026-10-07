@@ -36,6 +36,8 @@ import {
 import { TAB_BAR_CLEARANCE } from "@/components/BottomTabs";
 import BlockedAccountsSheet from "@/components/profile/BlockedAccountsSheet";
 import Constants from "expo-constants";
+import * as Application from "expo-application";
+import appJson from "../../app.json";
 import DeleteAccountSheet from "@/components/profile/DeleteAccountSheet";
 import FeedbackSheet from "@/components/profile/FeedbackSheet";
 import FeatureVoteSheet from "@/components/profile/FeatureVoteSheet";
@@ -644,8 +646,13 @@ const AVATAR = 56;
 /**
  * The version the build was made with. It read a literal "v0.1.0" long after
  * the app became 1.0.0, which is the one number a bug report most needs right.
+ * The installed binary's own version comes first: after an OTA update the JS
+ * bundle is newer than the build, and the update gate compares the binary.
+ * `app.json` is the last fallback (never a typed literal, which went stale
+ * once already).
  */
-const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const APP_VERSION =
+  Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? appJson.expo.version;
 
 const styles = {
   ...sharedStyles,
