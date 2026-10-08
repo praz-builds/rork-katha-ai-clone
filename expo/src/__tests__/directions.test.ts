@@ -61,26 +61,34 @@ describe("frames", () => {
 
   it("frames an indirect whether-question instead of gluing a frame to it", () => {
     // Shipped on a live Original as "Write it so Whether Kijana's ...".
-    expect(toDirection("Whether Kijana's signal ever reaches the station"))
+    expect(toDirection("Whether Kijana's signal ever reaches the station?"))
       .toBe("Find out whether Kijana's signal ever reaches the station.");
   });
 
   it("turns a bare condition into a what-happens direction", () => {
-    expect(toDirection("If the bridge gives way under them"))
+    expect(toDirection("If the bridge gives way under them?"))
       .toBe("Show what happens if the bridge gives way under them.");
   });
 
   it("frames whether/if/subordinator lines before the modal frame can grab them", () => {
     // Each of these used to come back as "Have Whether ...", "Have If ...",
     // "Have Because ...": the modal frame ran first.
-    expect(toDirection("Whether Anjali must burn the letters before dawn"))
+    expect(toDirection("Whether Anjali must burn the letters before dawn?"))
       .toBe("Find out whether Anjali must burn the letters before dawn.");
-    expect(toDirection("If Kijana must choose between the dish and the school"))
+    expect(toDirection("If Kijana must choose between the dish and the school?"))
       .toBe("Show what happens if Kijana must choose between the dish and the school.");
+    // Unmarked, they cannot be told from whole sentences, so they are dropped,
+    // never framed and never handed to the modal frame.
+    expect(toDirection("Whether Anjali must burn the letters before dawn")).toBeNull();
+    expect(toDirection("Because the lamp went out, Anjali must find the notes in the dark"))
+      .toBe("Because the lamp went out, Anjali must find the notes in the dark.");
     expect(toDirection("Because Divya must leave before the wedding")).toBeNull();
   });
 
   it("refuses a whole conditional sentence rather than framing it", () => {
+    expect(toDirection("If Anjali opens the last sheet she learns who wrote them")).toBeNull();
+    expect(toDirection("If she reads it she will know")).toBeNull();
+    expect(toDirection("Whether she stays or goes the house will burn")).toBeNull();
     expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
       .toBeNull();
     expect(toDirection("Whether she stays or goes, the house will burn")).toBeNull();
@@ -111,9 +119,9 @@ describe("frames", () => {
   });
 
   it("lower-cases a sentence-opening word after the whether/if frames, never a name", () => {
-    expect(toDirection("Whether The notes were hers all along"))
+    expect(toDirection("Whether The notes were hers all along?"))
       .toBe("Find out whether the notes were hers all along.");
-    expect(toDirection("Whether Anjali knew")).toBe("Find out whether Anjali knew.");
+    expect(toDirection("Whether Anjali knew?")).toBe("Find out whether Anjali knew.");
   });
 
   it("never opens a card with the old Write it so frame", () => {

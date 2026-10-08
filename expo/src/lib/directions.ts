@@ -226,13 +226,16 @@ export function toDirection(source: string | undefined | null): string | null {
   // be-question and needs no re-ordering. Before this it fell through to the
   // statement frame and shipped as "Write it so Whether Kijana's ..." on a
   // live Original (2026-10-08).
-  const whether = text.match(/^whether\s+([^,;]{4,})$/i);
+  const whether = wasQuestion ? text.match(/^whether\s+([^,;]{4,})$/i) : null;
   if (whether) return finish(`Find out whether ${decapitalise(whether[1])}`);
 
   // "If the bridge gives way" is the condition of a what-happens question.
-  // Both this and the whether frame refuse a comma or semicolon: "If she reads
-  // it, she will know" is a whole sentence, and framing it is broken English.
-  const condition = text.match(/^if\s+([^,;]{4,})$/i);
+  // Both this and the whether frame convert ONLY a line that ends in "?" and has
+  // no comma or semicolon. Without the question mark there is no cheap way to
+  // tell "If the bridge gives way" from "If she reads it she will know", and
+  // framing the second is broken English, so an unmarked whether/if line is
+  // dropped: it costs a chip, never mangles one.
+  const condition = wasQuestion ? text.match(/^if\s+([^,;]{4,})$/i) : null;
   if (condition) return finish(`Show what happens if ${decapitalise(condition[1])}`);
   if (/^(whether|if)\b/i.test(text)) return null;
 
@@ -250,8 +253,11 @@ export function toDirection(source: string | undefined | null): string | null {
   // arriving"). A comma is the one cheap, reliable sign of a main clause, so
   // with one the line falls through and goes on the card as the story's own
   // sentence; without one it cannot be told from a fragment and is dropped.
-  if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text) && !/,/.test(text)) {
-    return null;
+  if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
+    // Returned here, never passed on: the modal frame below would otherwise
+    // turn "Because the lamp went out, Anjali must find them" into
+    // "Have Because the lamp went out, Anjali find them".
+    return /,/.test(text) ? finish(text) : null;
   }
 
   const modal = text.match(MODAL_CLAUSE);

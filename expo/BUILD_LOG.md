@@ -9,18 +9,20 @@
   unframed: "Anjali confronts her mother about the notes." The old "Write it
   so ..." prefix opened most cards with the same three words and read like an
   instruction to a machine.
-- "Whether X ..." clauses now become "Find out whether X ...". One shipped on a
+- "Whether X ...?" hooks now become "Find out whether X ...". One shipped on a
   live Original as "Write it so Whether Kijana's ...".
-- "If X ..." becomes "Show what happens if X ...". Half-sentences that open with
+- "If X ...?" becomes "Show what happens if X ...". Half-sentences that open with
   a subordinator ("Because ...", "Although ...") are dropped, as unconvertible
   questions already were. Nothing is invented: every card is still the story's
   own words plus, for questions only, a fixed frame.
 - Affects the chapter-end chips and the create flow's opening cards (both call
   `toDirection`); the intro's three sample cards are hard-coded converter output
   on paths this change does not touch. It is JS only, so it ships by OTA to 1.0.1.
-- Whether/if hooks convert even when they end in "?" (a hook is a question),
-  and a subordinator-led line with a comma is kept as a whole sentence; without
-  one it is dropped as a fragment.
+- Whether/if lines convert only when they end in "?" and have no comma (an
+  unmarked one cannot be told from a whole sentence like "If she reads it she
+  will know", so it is dropped). A subordinator-led line with a comma goes on
+  the card unframed and never reaches the modal frame; without one it is
+  dropped as a fragment.
 - The whether, if and subordinator checks run BEFORE the modal frame (otherwise
   "Whether Anjali must burn..." became "Have Whether Anjali burn..."), and
   whether/if refuse a comma or semicolon, because a whole conditional sentence
