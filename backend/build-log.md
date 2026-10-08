@@ -76,14 +76,21 @@ approval publishes to testers with no further click.
   (and its Desktop backup); `backend/.reviewer-code.local` no longer exists,
   and `AGENTS.md`, `expo/CLAUDE.md` and `content-rating.md` now point at the
   secrets file.
-  The account holds 197 hand-seeded credits.
-- **Content rating, open risk:** the submitted IARC questionnaire (founder,
-  2026-10-07 20:43 UTC) answers "primarily a news or educational product", with no
-  violence, fear or language and no user interaction. It is rated Everyone /
-  PEGI 3. That contradicts the listing ("mature themes"), the 16+ audience
-  and live comments. If review bounces, or before
-  production, resubmit using the answers in `store/android/content-rating.md`
-  (category "All Other App Types"; Play's form no longer offers Entertainment).
+  The account holds 197 hand-seeded credits. The pepper is global to the
+  function, but the reviewer's is the only `tester_accounts` row with a
+  non-null `code_hmac` (the owner's row is null and signs in by real OTP), so
+  the rotation broke no other sign-in.
+- **Content rating, open risk, founder's decision:** the submitted IARC
+  questionnaire (founder, 2026-10-07 20:43 UTC, resubmitted with the same
+  answers) says "primarily a news or educational product", with no violence,
+  fear or language and **no user interaction**. It is rated Everyone / PEGI 3.
+  That contradicts the listing ("mature themes"), the 16+ audience and live
+  public comments. Nothing gates it: managed publishing is off, so approval
+  ships this rating to testers. The founder asked that it not be edited. The
+  fix is to resubmit from `store/android/content-rating.md` (category "All
+  Other App Types"; Play's form no longer offers Entertainment), and that
+  sheet's own rule applies: a result lower than PEGI 16 means the violence and
+  sexuality answers need a second look before accepting.
 
 **Follow-ups**
 
@@ -100,8 +107,16 @@ approval publishes to testers with no further click.
   other authentication", as submitted.
 - Sync `store/android/metadata/en-US/*` and the screenshot set into the repo,
   and move the docs that still say the audience is 18+ only to 16+:
-  `store/android/README.md` (the "No kids" rule and the 18+ line) and
-  `store/android/content-rating.md` (the expected-rating note).
+  `store/android/README.md` (the "No kids" rule and the 18+ line),
+  `store/android/content-rating.md` (the expected-rating note),
+  `store/android/data-safety.md` ("Target audience is 18+ only") and the
+  comment in `check-listing.mjs`. Then run `node store/android/check-listing.mjs`
+  over all 16 live locales: the 15 AI-imported ones and the rewritten en-US
+  were never run through its length limits or its banned-word list.
+- `data-safety.md` P1 can be closed: `@react-native-firebase/analytics` is gone
+  from `expo/package.json`, and `release-config.test.ts` keeps it out.
+- `backend/.gitignore` still lists `.reviewer-code.local`. It is harmless,
+  and it keeps the old file out if it ever reappears.
 
 ## 2026-10-07 UTC — `app_config`: force or offer an app update without a build
 

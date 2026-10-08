@@ -82,8 +82,8 @@ Probably **ESRB Mature 17+**, **PEGI 16** (possibly 18 for the combination of vi
 
 | Question | Answer |
 |---|---|
-| Target age groups | **18 and over** only. Leave every younger band unticked. |
-| Could your app unintentionally appeal to children? | **No.** The store listing, feature graphic and screenshots contain no child-directed art or wording, and the listing states "for adults 18 and over". (The in-app "For kids" audience toggle is a tone setting a grown-up applies to what they write; the P0 row "Kids mode wording" renames it to *All-ages* before the build — land that first so the reviewer never sees a "Kids" label.) |
+| Target age groups | **16-17 and 18 and over** (as submitted 2026-10-08). Leave every younger band unticked. |
+| Could your app unintentionally appeal to children? | **No.** The store listing, feature graphic and screenshots contain no child-directed art or wording, and the listing states "Katha is for ages 16 and up". (The in-app "For kids" audience toggle is a tone setting a grown-up applies to what they write; the P0 row "Kids mode wording" renames it to *All-ages* before the build — land that first so the reviewer never sees a "Kids" label.) |
 | Store listing presence in the "Teacher approved" / Kids sections | Not applicable. |
 
 ## 3. Ads
