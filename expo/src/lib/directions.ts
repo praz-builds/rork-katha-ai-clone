@@ -169,6 +169,19 @@ function finish(value: string): string {
 }
 
 /**
+ * Whether a whether/if clause carries a second clause of its own.
+ *
+ * "If she reads it will she know" and "If she reads it she will know" are
+ * whole conditional sentences even with no comma, and putting a frame in front
+ * of them is broken English. Two cheap signs: an auxiliary followed by a
+ * subject pronoun (an inverted main clause), or a subject pronoun anywhere
+ * after the first word (a second subject). Either one drops the line, which
+ * costs a chip and never mangles one.
+ */
+const SECOND_CLAUSE =
+  /\b(will|would|can|could|must|shall|should|do|does|did|is|are|was|were)\s+(he|she|they|it|we|i|you)\b|\s(he|she|they|we|i|you)\s/i;
+
+/**
  * One line of story state as an imperative direction, or `null` when it cannot
  * be made into one without inventing words.
  */
@@ -227,7 +240,9 @@ export function toDirection(source: string | undefined | null): string | null {
   // statement frame and shipped as "Write it so Whether Kijana's ..." on a
   // live Original (2026-10-08).
   const whether = wasQuestion ? text.match(/^whether\s+([^,;]{4,})$/i) : null;
-  if (whether) return finish(`Find out whether ${decapitalise(whether[1])}`);
+  if (whether && !SECOND_CLAUSE.test(whether[1])) {
+    return finish(`Find out whether ${decapitalise(whether[1])}`);
+  }
 
   // "If the bridge gives way" is the condition of a what-happens question.
   // Both this and the whether frame convert ONLY a line that ends in "?" and has
@@ -236,11 +251,13 @@ export function toDirection(source: string | undefined | null): string | null {
   // framing the second is broken English, so an unmarked whether/if line is
   // dropped: it costs a chip, never mangles one.
   const condition = wasQuestion ? text.match(/^if\s+([^,;]{4,})$/i) : null;
-  if (condition) return finish(`Show what happens if ${decapitalise(condition[1])}`);
+  if (condition && !SECOND_CLAUSE.test(condition[1])) {
+    return finish(`Show what happens if ${decapitalise(condition[1])}`);
+  }
   if (/^(whether|if)\b/i.test(text)) return null;
 
-  // Whether/if are question frames too, so they sit above this guard: the
-  // punctuation mark alone must not decide between a good chip and no chip.
+  // Whether/if are question frames, so they sit above this guard; for them the
+  // "?" is required, not refused (see the comment on the whether frame).
   // Anything still ending in a question mark, or opening with an auxiliary this
   // file will not un-invert, is dropped rather than guessed at.
   if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
@@ -251,8 +268,8 @@ export function toDirection(source: string | undefined | null): string | null {
   // A clause that opens with a subordinator may be half a sentence ("Because
   // the lamp went out") or a whole one ("As the monsoon breaks, the notes stop
   // arriving"). A comma is the one cheap, reliable sign of a main clause, so
-  // with one the line falls through and goes on the card as the story's own
-  // sentence; without one it cannot be told from a fragment and is dropped.
+  // with one the line is returned as the story's own sentence; without one it
+  // cannot be told from a fragment and is dropped.
   if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
     // Returned here, never passed on: the modal frame below would otherwise
     // turn "Because the lamp went out, Anjali must find them" into

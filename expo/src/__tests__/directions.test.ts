@@ -89,6 +89,11 @@ describe("frames", () => {
     expect(toDirection("If Anjali opens the last sheet she learns who wrote them")).toBeNull();
     expect(toDirection("If she reads it she will know")).toBeNull();
     expect(toDirection("Whether she stays or goes the house will burn")).toBeNull();
+    // A "?" does not make a whole sentence a clause.
+    expect(toDirection("If she reads it will she know?")).toBeNull();
+    expect(toDirection("If she reads it she will know?")).toBeNull();
+    expect(toDirection("If the bridge gives way under them?"))
+      .toBe("Show what happens if the bridge gives way under them.");
     expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
       .toBeNull();
     expect(toDirection("Whether she stays or goes, the house will burn")).toBeNull();
