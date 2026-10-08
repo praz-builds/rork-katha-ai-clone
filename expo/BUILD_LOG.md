@@ -2,6 +2,25 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-10-08: "What's next?" choices read as story events, not "Write it so..."
+
+- `src/lib/directions.ts`: a plain statement from the story (a planned beat, a
+  payoff, a closing hook) now goes on the card as the story's own words,
+  unframed: "Anjali confronts her mother about the notes." The old "Write it
+  so ..." prefix opened most cards with the same three words and read like an
+  instruction to a machine.
+- "Whether X ..." clauses now become "Find out whether X ...". One shipped on a
+  live Original as "Write it so Whether Kijana's ...".
+- "If X ..." becomes "Show what happens if X ...". Half-sentences that open with
+  a subordinator ("Because ...", "Although ...") are dropped, as unconvertible
+  questions already were. Nothing is invented: every card is still the story's
+  own words plus, for questions only, a fixed frame.
+- Affects the chapter-end chips, the create flow's opening cards and the intro
+  (all three call `toDirection`). It is JS only, so it ships by OTA to 1.0.1.
+- Verification: `directions.test.ts` updated and extended (whether, if,
+  subordinator, a never-"Write it so" guard). Full Jest suite **163 suites /
+  1809 tests passed**, `pnpm typecheck` and ESLint clean.
+
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
 
 - **1.0.1** (`app.json`) is the first build anyone installs. It adds the native modules later features need, so those features can ship by OTA: `expo-application`, `expo-web-browser`, `expo-auth-session`, `expo-crypto`, `@react-native-google-signin/google-signin` (no plugin until iOS). `runtimeVersion` stays `appVersion`; `fingerprint` was rejected because it hashes the contents of the Firebase file, which only exists on EAS builders. `updates.fallbackToCacheTimeout` is `0`, so launch never waits on the network.

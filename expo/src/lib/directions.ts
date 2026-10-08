@@ -20,8 +20,8 @@
  *     Find out whether the casualty girl Divya is lying about having no brother
  *
  * THE RULE THAT GOVERNS THIS FILE: nothing is invented. Every word of a
- * direction comes from the story's own sentence plus a fixed English frame in
- * front of it. There is no template pool, no generic filler, and no
+ * direction comes from the story's own sentence, plus a fixed English frame in
+ * front of it when the sentence is a question. There is no template pool, no generic filler, and no
  * paraphrasing. A sentence this file cannot convert GRAMMATICALLY returns
  * `null` and the caller drops it, because a chip that could sit under any story
  * in the app advertises that the app read none of them -- the same reason
@@ -228,14 +228,35 @@ export function toDirection(source: string | undefined | null): string | null {
     return null;
   }
 
+  // "Whether Kijana's signal reaches the station" is an indirect question with
+  // its question word already in place, so it takes the same frame as a
+  // be-question and needs no re-ordering. Before this it fell through to the
+  // statement frame and shipped as "Write it so Whether Kijana's ..." on a
+  // live Original (2026-10-08).
+  const whether = text.match(/^whether\s+(.{4,})$/i);
+  if (whether) return finish(`Find out whether ${whether[1]}`);
+
+  // "If the bridge gives way" is the condition of a what-happens question.
+  const condition = text.match(/^if\s+(.{4,})$/i);
+  if (condition) return finish(`Show what happens if ${condition[1]}`);
+
+  // A clause that opens with a subordinator is half a sentence ("Because the
+  // lamp went out", "Although she promised"). No fixed frame completes it
+  // without inventing the missing half, so it is dropped.
+  if (/^(because|although|though|unless|until|since|while|as|so)\b/i.test(text)) {
+    return null;
+  }
+
   /*
     A plain declarative clause -- a planned beat ("Anjali confronts her mother
     about the notes"), a promised payoff, a closing hook written as a statement.
 
-    "Write it so ..." is the one frame that turns ANY third-person clause into
-    an instruction without touching a verb, a tense or a pronoun. It is not
-    filler: every word after it is the story's own, and without it the chip
-    would be a description of the chapter rather than a request for it.
+    Under the "What's next?" heading a statement already reads as a proposed
+    next event, which is how every branching-story choice is written: "Anjali
+    confronts her mother about the notes." It goes on the card as the story's
+    own words, unframed. The old "Write it so ..." prefix made every third
+    card open with the same three words and read like an instruction to a
+    machine rather than a choice for a reader (founder feedback, 2026-10-08).
   */
-  return finish(`Write it so ${decapitalise(text)}`);
+  return finish(text);
 }

@@ -52,12 +52,37 @@ describe("frames", () => {
       .toBe("Have Divya admit she has a brother.");
   });
 
-  it("wraps a plain statement without touching a single word of it", () => {
+  it("puts a plain statement on the card as the story's own words, unframed", () => {
     expect(toDirection("The storm is closing in on the fort"))
-      .toBe("Write it so the storm is closing in on the fort.");
-    // Every word after the frame is the story's own.
+      .toBe("The storm is closing in on the fort.");
     expect(toDirection("Anjali confronts her mother about the notes"))
-      .toBe("Write it so Anjali confronts her mother about the notes.");
+      .toBe("Anjali confronts her mother about the notes.");
+  });
+
+  it("frames an indirect whether-question instead of gluing a frame to it", () => {
+    // Shipped on a live Original as "Write it so Whether Kijana's ...".
+    expect(toDirection("Whether Kijana's signal ever reaches the station"))
+      .toBe("Find out whether Kijana's signal ever reaches the station.");
+  });
+
+  it("turns a bare condition into a what-happens direction", () => {
+    expect(toDirection("If the bridge gives way under them"))
+      .toBe("Show what happens if the bridge gives way under them.");
+  });
+
+  it("drops half a sentence that opens with a subordinator", () => {
+    expect(toDirection("Because the lamp went out at midnight")).toBeNull();
+    expect(toDirection("Although she promised never to return")).toBeNull();
+  });
+
+  it("never opens a card with the old Write it so frame", () => {
+    [
+      "The storm is closing in on the fort",
+      "Whether the notes were hers all along",
+      "Anjali leaves tomorrow morning",
+    ].forEach((source) => {
+      expect(toDirection(source) ?? "").not.toMatch(/^Write it so/);
+    });
   });
 });
 
@@ -112,7 +137,7 @@ describe("shape", () => {
 
   it("always starts with a capital", () => {
     expect(toDirection("the storm is closing in on the fort")).toBe(
-      "Write it so the storm is closing in on the fort.",
+      "The storm is closing in on the fort.",
     );
   });
 
@@ -127,7 +152,7 @@ describe("a question mark is a question, whatever the words look like", () => {
     The drop used to test `/[?]$/` against the TIDIED text -- and `tidy` strips
     the trailing `?` before the test runs, so it could never be true. A
     declarative-looking question sailed past every frame above and came back
-    wrapped in "Write it so ...", turning something the story ASKED into
+    wrapped in the old "Write it so ..." frame, turning something the story ASKED into
     something it apparently stated.
   */
   it("drops a declarative-looking question instead of asserting it", () => {
@@ -146,7 +171,7 @@ describe("a question mark is a question, whatever the words look like", () => {
 
   it("leaves an unmarked statement alone", () => {
     expect(toDirection("Anjali leaves tomorrow morning"))
-      .toBe("Write it so Anjali leaves tomorrow morning.");
+      .toBe("Anjali leaves tomorrow morning.");
   });
 });
 

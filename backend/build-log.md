@@ -90,9 +90,10 @@ approval publishes to testers with no further click.
 - **Paid ads (Meta, Google, TikTok) are planned.** The release that adds an
   attribution SDK must unblock AD_ID, flip the Advertising ID declaration and
   add shared device IDs and app activity to Data safety.
-- Bug seen during capture: a "What's next?" direction card on "Hello From Up
-  There" reads "Write it so Whether Kijana's...", so the direction wording is
-  mangled.
+- **Fixed in this PR:** a "What's next?" direction card on "Hello From Up
+  There" read "Write it so Whether Kijana's..." (see `expo/BUILD_LOG.md`).
+  It is client JS, so it reaches 1.0.1 by OTA (`eas update --channel
+  production`) and every later build from main.
 - Update `data-safety.md` account creation from "Other" to "Username and
   other authentication", as submitted.
 - Sync `store/android/metadata/en-US/*` and the screenshot set into the repo,
