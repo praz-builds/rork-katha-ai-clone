@@ -169,6 +169,14 @@ function finish(value: string): string {
 }
 
 /**
+ * A comma line whose second half is an inverted question ("If she leaves, will
+ * he follow") is a question the model left without its "?". It cannot go on
+ * the card as a statement, so the comma rule below drops it.
+ */
+const INVERTED_AFTER_COMMA =
+  /,\s*(is|are|was|were|am|do|does|did|will|would|can|could|should|shall|may|might|must|has|have|had)\s/i;
+
+/**
  * One line of story state as an imperative direction, or `null` when it cannot
  * be made into one without inventing words.
  */
@@ -232,7 +240,7 @@ export function toDirection(source: string | undefined | null): string | null {
   // 2026-10-08 these fell through to the statement frame and shipped as
   // "Write it so Whether Kijana's ..." on a live Original.
   if (/^(whether|if)\b/i.test(text)) {
-    return /,/.test(text) && !wasQuestion ? finish(text) : null;
+    return /,/.test(text) && !wasQuestion && !INVERTED_AFTER_COMMA.test(text) ? finish(text) : null;
   }
 
   // A clause that opens with a subordinator may be half a sentence ("Because
@@ -242,7 +250,7 @@ export function toDirection(source: string | undefined | null): string | null {
   // cannot be told from a fragment and is dropped. Returned here, so the modal
   // frame never sees "Because the lamp went out, Anjali must find them".
   if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
-    return /,/.test(text) && !wasQuestion ? finish(text) : null;
+    return /,/.test(text) && !wasQuestion && !INVERTED_AFTER_COMMA.test(text) ? finish(text) : null;
   }
 
   // The modal frame is a deletion, not a conjugation, so it is safe on a line

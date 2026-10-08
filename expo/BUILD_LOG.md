@@ -16,7 +16,9 @@
   dropped. That costs a chip but never mangles one.
 - Subordinator-led lines ("As ...", "Although ...") follow the same comma rule:
   with a comma they are kept unframed, without one they are dropped as
-  fragments. Both rules return before the modal frame, which used to produce
+  fragments. A comma line whose second half is an inverted question ("If she
+  leaves, will he follow") is dropped too. Both rules return before the modal
+  frame, which used to produce
   "Have Whether ..." and "Have Because ...". The modal frame still converts a
   line the model punctuated as a question, as on main.
 - Affects the chapter-end chips and the create flow's opening cards (both call

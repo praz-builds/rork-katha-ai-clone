@@ -79,6 +79,9 @@ describe("frames", () => {
       .toBe("Whether she stays or goes, the house will burn.");
     // A comma'd conditional QUESTION cannot be put on a card as a statement.
     expect(toDirection("If she leaves, will he follow?")).toBeNull();
+    // ... and the same question with its "?" missing.
+    expect(toDirection("If she leaves, will he follow")).toBeNull();
+    expect(toDirection("Although she promised, will she return")).toBeNull();
   });
 
   it("keeps whether/if/subordinator lines away from the modal frame", () => {
