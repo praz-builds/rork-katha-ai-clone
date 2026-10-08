@@ -23,7 +23,7 @@ The metadata folders follow fastlane's `supply` layout (`metadata/<locale>/…`)
 |---|---|---|
 | The website PR (`praz-builds/thetractionlabs-site#1`) is merged and deployed | Every listing links `/privacy/`, which still serves the 10 September policy. That page contradicts the Data Safety form (for example, it says guests never give an email) | Open, waiting on the founder's legal decisions |
 | Firebase is removed from the build | Data Safety answers "no advertising ID" | Done in #138 |
-| The in-app "Kids" toggle is renamed to All-ages | The target audience is declared 18+ only | #141 |
+| The in-app "Kids" toggle is renamed to All-ages | The target audience is declared 16-17 and 18+ (2026-10-08) | #141 |
 | The eight SKUs exist in Play Console and RevenueCat, or the "credit packs" / "weekly, monthly or yearly" sentence is taken out of all three full descriptions | A reviewer who taps a pack and gets nothing reports it as broken | See `backend/PLAY_BILLING_SETUP.md` once the paywall PR lands |
 | Sentry DSN set, if the crash-data rows stay "collected" | `data-safety.md` | Founder |
 
@@ -55,6 +55,6 @@ La primera versión de Katha. Empieza una historia con una idea, elige a tus per
 ## Rules this pack follows
 
 - **Accuracy over marketing.** Every feature in the descriptions exists on `main`. No counts of stories or users, no "best", no prices (they vary by country and come from Google Play).
-- **No "kids" anywhere.** The target audience is 18+ only; `check-listing.mjs` fails on the word in any language.
+- **No "kids" anywhere.** The target audience is 16-17 and 18+ (declared 2026-10-08); `check-listing.mjs` fails on the word in any language.
 - **English app, translated listing.** The app UI and story generation are English-only today (`CreateBriefFlow.tsx`, `LANGUAGE_OPTIONS`; `expo/src/i18n` is not wired to components). The PT-BR and ES descriptions say so in their "good to know" section. Remove that line in the release that ships the translated UI.
 - **When a feature changes, change the listing in the same PR**, and re-run `data-safety.md`'s checks when anything that collects or sends data changes.

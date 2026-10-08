@@ -20,8 +20,8 @@
  *     Find out whether the casualty girl Divya is lying about having no brother
  *
  * THE RULE THAT GOVERNS THIS FILE: nothing is invented. Every word of a
- * direction comes from the story's own sentence plus a fixed English frame in
- * front of it. There is no template pool, no generic filler, and no
+ * direction comes from the story's own sentence, plus a fixed English frame in
+ * front of it when the sentence is a question. There is no template pool, no generic filler, and no
  * paraphrasing. A sentence this file cannot convert GRAMMATICALLY returns
  * `null` and the caller drops it, because a chip that could sit under any story
  * in the app advertises that the app read none of them -- the same reason
@@ -169,6 +169,14 @@ function finish(value: string): string {
 }
 
 /**
+ * A comma line whose second half is an inverted question ("If she leaves, will
+ * he follow") is a question the model left without its "?". It cannot go on
+ * the card as a statement, so the comma rule below drops it.
+ */
+const INVERTED_AFTER_COMMA =
+  /,\s*(is|are|was|were|am|do|does|did|will|would|can|could|should|shall|may|might|must|has|have|had)\s/i;
+
+/**
  * One line of story state as an imperative direction, or `null` when it cannot
  * be made into one without inventing words.
  */
@@ -180,9 +188,9 @@ export function toDirection(source: string | undefined | null): string | null {
   // `/[?]$/` against `tidy(source)`, which removes the very mark it was
   // looking for, so the test could never be true: a declarative-looking
   // question ("Anjali leaves tomorrow?") sailed past it and came back as the
-  // direction "Write it so Anjali leaves tomorrow." -- a thing the story never
-  // said. Only the wh- and be- frames above are allowed to convert a question;
-  // anything they decline is dropped.
+  // direction "Write it so Anjali leaves tomorrow." (the statement frame of the
+  // time) -- a thing the story never said. Only the wh- and be- frames convert a
+  // question (the modal frame merely deletes a word); anything else is dropped.
   const wasQuestion = /[?]\s*$/.test(source ?? "");
 
   if (ALREADY_IMPERATIVE.test(text)) return finish(text);
@@ -219,6 +227,36 @@ export function toDirection(source: string | undefined | null): string | null {
     return null;
   }
 
+  // These run BEFORE the modal frame, and return: "Whether Anjali must burn
+  // the letters" would otherwise come back as "Have Whether Anjali burn ...".
+  //
+  // Whether/if lines are NOT framed. A "Find out whether ..." / "Show what
+  // happens if ..." frame needs the line to be exactly one clause, and there is
+  // no cheap test for that: "If the bridge gives way the convoy is lost" and
+  // "If she reads it she will know" are whole sentences that any frame turns
+  // into broken English. So a whether/if line with a comma (a whole sentence,
+  // "If the bridge gives way, they lose the only road out") goes on the card as
+  // the story's own words, and every other whether/if line is dropped. Before
+  // 2026-10-08 these fell through to the statement frame and shipped as
+  // "Write it so Whether Kijana's ..." on a live Original.
+  if (/^(whether|if)\b/i.test(text)) {
+    return /,/.test(text) && !wasQuestion && !INVERTED_AFTER_COMMA.test(text) ? finish(text) : null;
+  }
+
+  // A clause that opens with a subordinator may be half a sentence ("Because
+  // the lamp went out") or a whole one ("As the monsoon breaks, the notes stop
+  // arriving"). A comma is the one cheap, reliable sign of a main clause, so
+  // with one the line is returned as the story's own sentence; without one it
+  // cannot be told from a fragment and is dropped. Returned here, so the modal
+  // frame never sees "Because the lamp went out, Anjali must find them".
+  if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
+    return /,/.test(text) && !wasQuestion && !INVERTED_AFTER_COMMA.test(text) ? finish(text) : null;
+  }
+
+  // The modal frame is a deletion, not a conjugation, so it is safe on a line
+  // the model punctuated as a question: "Anjali must burn the letters by
+  // dawn?" -> "Have Anjali burn the letters by dawn." (as on main before
+  // 2026-10-08), which is why it sits above the question guard.
   const modal = text.match(MODAL_CLAUSE);
   if (modal) return finish(`Have ${decapitalise(modal[1])} ${modal[2]}`);
 
@@ -232,10 +270,12 @@ export function toDirection(source: string | undefined | null): string | null {
     A plain declarative clause -- a planned beat ("Anjali confronts her mother
     about the notes"), a promised payoff, a closing hook written as a statement.
 
-    "Write it so ..." is the one frame that turns ANY third-person clause into
-    an instruction without touching a verb, a tense or a pronoun. It is not
-    filler: every word after it is the story's own, and without it the chip
-    would be a description of the chapter rather than a request for it.
+    Under the "What's next?" heading a statement already reads as a proposed
+    next event, which is how every branching-story choice is written: "Anjali
+    confronts her mother about the notes." It goes on the card as the story's
+    own words, unframed. The old "Write it so ..." prefix made every third
+    card open with the same three words and read like an instruction to a
+    machine rather than a choice for a reader (founder feedback, 2026-10-08).
   */
-  return finish(`Write it so ${decapitalise(text)}`);
+  return finish(text);
 }

@@ -29,7 +29,7 @@ These change answers below. Each is marked **[D1]**–**[D3]** or **[P1]**–**[
 | Delete account URL | `https://katha.thetractionlabs.com/delete-account/` | Live page with a request form (thetractionlabs-site `sites/katha/delete-account/`). |
 | Can users delete their account in the app? | Yes: **You** tab → **Delete account** (bottom of the screen) → reason → **Delete my account**. | `expo/src/screens/ProfileScreen.tsx:424`, `DeleteAccountSheet.tsx:290`, `deleteAccount()` in `expo/src/lib/profile.ts:770` → `profile` function `action: "delete"` → `delete_account()` (migration `00070_account_deletion.sql`). |
 | Do you provide a way for users to request that some or all of their data is deleted, without requiring them to delete their account? | **Yes** **[D3]** | Saved characters in-app; anything else by email to the support inbox. |
-| Committed to the Play Families Policy? | Not applicable — do not select. Target audience is 18+ only. | See `content-rating.md`. |
+| Committed to the Play Families Policy? | Not applicable — do not select. Target audience is 16-17 and 18+ (2026-10-08). | See `content-rating.md`. |
 | Independent security review (MASA)? | **No** — leave unticked. | None has been done. |
 
 ## Section 2 — Data types

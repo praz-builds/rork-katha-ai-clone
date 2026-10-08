@@ -5,6 +5,125 @@
 > Chronological record of all changes made across sessions.
 > Every session that modifies code, schema, config, or infrastructure MUST append an entry here.
 
+## 2026-10-08 UTC — Play closed test submitted: 1.0.1 (4) is in Google review
+
+Play Console app "Create Stories - Katha AI" (`ai.katha.createstories`),
+developer account Traction labs. Release **1.0.1
+(versionCode 4)** on **Closed testing - Alpha** was sent for review on
+2026-10-08; the dashboard shows "In review". Managed publishing is **off**, so
+approval publishes to testers with no further click.
+
+**Closed test track**
+
+- Countries: all 178. Testers: Google Group
+  `testers-community@googlegroups.com` (Testers Community, Starter plan, 15
+  testers; submitted on their dashboard, credit spent). Feedback address
+  `hi@thetractionlabs.com`. Opt-in link:
+  `https://play.google.com/apps/testing/ai.katha.createstories` (works only
+  after approval).
+- The 14 days count from when at least 12 testers are opted in, continuously.
+  A new build during the window does not restart it. Production access is
+  applied for from the dashboard after day 14.
+- The AAB (EAS build `ce8d51ef-9d9d-444e-a32b-471ccd008242`, local copy
+  `~/Desktop/Katha-AI-1.0.1-vc4.aab`, 93 MB) was uploaded by hand.
+  Google requires the first bundle of a new app to go through Play Console, so
+  `eas submit` can only take over from the next build.
+
+**Store listing (default en-US, saved and "Ready to send for review")**
+
+- Name **Create Stories - Katha AI**. Short description: "Read & write AI
+  stories. Turn one idea into a story you can read, hear & share". The full
+  description (3,336 characters) was rewritten for search, using terms from
+  the Okudu keyword research (AI stories, create stories, story ideas, story
+  generator, interactive stories, audio stories, fanfiction). It says "ages
+  16 and up". `store/android/metadata/en-US/` is **stale** against the live
+  copy and still says 18+.
+- **15 translations** were imported with Play's "Import translations with AI":
+  pt-BR, es-419, fr-FR, hi-IN, de-DE, ja-JP, ko-KR, it-IT, id, ru-RU, tr-TR,
+  ar, zh-CN, vi, pl-PL. The source file is
+  `~/Desktop/Katha-store-listing-translations.txt`.
+- **Six ASO screenshots** (1080x1920): CREATE stories from one idea, READ
+  free stories every day, CAST your own characters, CHOOSE what happens next,
+  LISTEN to every chapter, PUBLISH and find readers. Each has an orange
+  #FF6B1A background, a Bricolage 800 headline, a CSS phone frame and an
+  enlarged breakout card. They were rendered from web-preview captures with
+  headless Chrome. Finals are in `~/Desktop/Katha-store-screenshots/aso-final/`.
+  Shots 2 and 6 show **sample-data read and like counts**, and shot 4 was staged
+  (raised chapter count, browser-only), so recapture them on a real device
+  before production.
+- Icon `store/android/graphics/icon-512.png`, feature graphic
+  `feature-graphic-en.png`. AI asset declaration: "Don't label".
+- Store settings: category Books & Reference, email `hi@thetractionlabs.com`,
+  website `https://katha.thetractionlabs.com/`.
+
+**App content (all declarations complete)**
+
+- Privacy policy URL set. Ads: no. Government, financial and health: none.
+  Advertising ID: **No** (AD_ID is blocked in this build).
+- Target audience: 16-17 and 18+.
+- Data safety: per `store/android/data-safety.md`, with **Name and Other
+  user-generated content declared shared** (the OpenRouter training tier, D1).
+  Approximate location is collected for analytics (PostHog GeoIP, D2). Partial
+  deletion "Yes", via the delete-account page. Account creation: "Username and
+  other authentication" (email + one-time code). `data-safety.md` says "Other";
+  the submitted option is the closer fit to Google's own definitions, so update
+  the sheet. The delete URL is
+  `https://katha.thetractionlabs.com/delete-account/`.
+- Sign-in details: `reviewer@thetractionlabs.com` plus the fixed code. **The
+  reviewer code was rotated** with a new `REVIEWER_CODE_PEPPER` secret and a
+  new `tester_accounts.code_hmac`. A live `reviewer-signin` call returned a
+  session. The plaintext is only in `~/Katha-Secrets/reviewer-signin.json`
+  (and its Desktop backup); `backend/.reviewer-code.local` no longer exists,
+  and `AGENTS.md`, `expo/CLAUDE.md` and `content-rating.md` now point at the
+  secrets file.
+  The account holds 197 hand-seeded credits. The pepper is global to the
+  function, but the reviewer's is the only `tester_accounts` row with a
+  non-null `code_hmac` (the owner's row is null and signs in by real OTP), so
+  the rotation broke no other sign-in.
+- **Content rating, open risk, founder's decision:** the submitted IARC
+  questionnaire (founder, 2026-10-07 20:43 UTC, resubmitted with the same
+  answers) says "primarily a news or educational product", with no violence,
+  fear or language and **no user interaction**. It is rated Everyone / PEGI 3.
+  That contradicts the listing ("mature themes"), the 16+ audience and live
+  public comments. Nothing gates it: managed publishing is off, so approval
+  ships this rating to testers. The founder asked that it not be edited. The
+  fix is to resubmit from `store/android/content-rating.md` (category "All
+  Other App Types"; Play's form no longer offers Entertainment), and that
+  sheet's own rule applies: a result lower than PEGI 16 means the violence and
+  sexuality answers need a second look before accepting.
+
+**Follow-ups**
+
+- `toDirection` still turns a time clause ("When the lamp goes out") into
+  "Show when the lamp goes out" (pre-existing). Treat it like the new "if" frame.
+- `toDirection` follow-ups (pre-existing or deliberate trades):
+  - `MODAL_CLAUSE` matches inside a possessive noun phrase:
+    "Anjali's need to confront her mother before the wedding" becomes
+    "Have Anjali's confront her mother before the wedding". That is the shape
+    `next_chapter_pressure` is prompted to take.
+  - Comma-less subordinator sentences ("Until the wedding Anjali keeps the notes
+    hidden") are dropped, and a plan whose beats all open that way leaves the
+    create flow with "no opening to suggest".
+- **Paid ads (Meta, Google, TikTok) are planned.** The release that adds an
+  attribution SDK must unblock AD_ID, flip the Advertising ID declaration and
+  add shared device IDs and app activity to Data safety.
+- **Fixed in this PR:** a "What's next?" direction card on "Hello From Up
+  There" read "Write it so Whether Kijana's..." (see `expo/BUILD_LOG.md`).
+  It is client JS, so it reaches 1.0.1 by OTA (`eas update --channel
+  production`) and every later build from main.
+- Update `data-safety.md` account creation from "Other" to "Username and
+  other authentication", as submitted.
+- Sync `store/android/metadata/en-US/*` (still 18+) and the screenshot set into
+  the repo. Then run `node store/android/check-listing.mjs` over all 16 live
+  locales: the 15 AI-imported ones and the rewritten en-US were never run
+  through its length limits or its banned-word list. (The other 18+ lines in
+  `README.md`, `data-safety.md`, `content-rating.md` and `check-listing.mjs`
+  were moved to 16-17 and 18+ in this PR.)
+- `data-safety.md` P1 can be closed: `@react-native-firebase/analytics` is gone
+  from `expo/package.json`, and `release-config.test.ts` keeps it out.
+- `backend/.gitignore` still lists `.reviewer-code.local`. It is harmless,
+  and it keeps the old file out if it ever reappears.
+
 ## 2026-10-07 UTC — `app_config`: force or offer an app update without a build
 
 - Migration **00103** creates `public.app_config`: one row per platform with

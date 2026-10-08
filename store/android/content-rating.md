@@ -9,7 +9,7 @@ The questionnaire is answered for **what a user can meet in the app**, which inc
 
 ## 1. Content rating (IARC questionnaire)
 
-**Email for IARC:** the developer account email. **Category:** **Entertainment** (the app's purpose is making and reading stories). "Social networking / UGC" is also defensible because of public publishing and comments; if the form offers only that for apps with UGC, pick it — the answers below do not change.
+**Email for IARC:** the developer account email. **Category:** **All Other App Types** (2026-10-08: Play's form now offers only Game, Social or Communication, and All Other App Types; the app's purpose is making and reading stories). "Social networking / UGC" is also defensible because of public publishing and comments; if the form offers only that for apps with UGC, pick it — the answers below do not change.
 
 Google's wording shifts between questionnaire versions; match on meaning.
 
@@ -76,14 +76,14 @@ Google's wording shifts between questionnaire versions; match on meaning.
 
 ### What to expect back
 
-Probably **ESRB Mature 17+**, **PEGI 16** (possibly 18 for the combination of violence and sexual themes), **USK 16**, **ClassInd 16**, with interactive-element notes "Users Interact" and "In-App Purchases". That is consistent with an 18+ target audience. If IARC returns *lower* than PEGI 16, re-read the sexuality and violence answers before accepting: the listing says romance and horror include mature themes, and the two should agree.
+Probably **ESRB Mature 17+**, **PEGI 16** (possibly 18 for the combination of violence and sexual themes), **USK 16**, **ClassInd 16**, with interactive-element notes "Users Interact" and "In-App Purchases". That is consistent with the declared 16-17 and 18+ target audience. If IARC returns *lower* than PEGI 16, re-read the sexuality and violence answers before accepting: the listing says romance and horror include mature themes, and the two should agree.
 
 ## 2. Target audience and content
 
 | Question | Answer |
 |---|---|
-| Target age groups | **18 and over** only. Leave every younger band unticked. |
-| Could your app unintentionally appeal to children? | **No.** The store listing, feature graphic and screenshots contain no child-directed art or wording, and the listing states "for adults 18 and over". (The in-app "For kids" audience toggle is a tone setting a grown-up applies to what they write; the P0 row "Kids mode wording" renames it to *All-ages* before the build — land that first so the reviewer never sees a "Kids" label.) |
+| Target age groups | **16-17 and 18 and over** (as submitted 2026-10-08). Leave every younger band unticked. |
+| Could your app unintentionally appeal to children? | **No.** The store listing, feature graphic and screenshots contain no child-directed art or wording, and the listing states "Katha is for ages 16 and up". (The in-app "For kids" audience toggle is a tone setting a grown-up applies to what they write; the P0 row "Kids mode wording" renames it to *All-ages* before the build — land that first so the reviewer never sees a "Kids" label.) |
 | Store listing presence in the "Teacher approved" / Kids sections | Not applicable. |
 
 ## 3. Ads
@@ -103,7 +103,7 @@ Sign-in is by emailed one-time code, which a reviewer cannot receive. The `revie
 Paste into Play Console (name: **Katha reviewer account**):
 
 - **Username / email:** `reviewer@thetractionlabs.com`
-- **Password:** the six-digit code from `backend/.reviewer-code.local` on your machine (git-ignored; never paste it anywhere else, and never into this repo).
+- **Password:** the six-digit code from `~/Katha-Secrets/reviewer-signin.json` on the founder's machine (never paste it anywhere else, and never into this repo).
 - **Any other information required to access the app:**
 
 ```text

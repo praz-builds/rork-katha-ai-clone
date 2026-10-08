@@ -2,6 +2,32 @@
 
 <!-- markdownlint-disable MD013 -->
 
+## 2026-10-08: "What's next?" choices read as story events, not "Write it so..."
+
+- `src/lib/directions.ts`: a plain statement from the story (a planned beat, a
+  payoff, a closing hook) now goes on the card as the story's own words,
+  unframed: "Anjali confronts her mother about the notes." The old "Write it
+  so ..." prefix opened most cards with the same three words and read like an
+  instruction to a machine.
+- Whether/if lines are never framed. A live Original showed "Write it so
+  Whether Kijana's ...". No cheap test tells one clause from two ("If the
+  bridge gives way the convoy is lost"), so a whether/if line with a comma and
+  no "?" goes on the card as the story's own sentence, and every other one is
+  dropped. That costs a chip but never mangles one.
+- Subordinator-led lines ("As ...", "Although ...") follow the same comma rule:
+  with a comma they are kept unframed, without one they are dropped as
+  fragments. A comma line whose second half is an inverted question ("If she
+  leaves, will he follow") is dropped too. Both rules return before the modal
+  frame, which used to produce
+  "Have Whether ..." and "Have Because ...". The modal frame still converts a
+  line the model punctuated as a question, as on main.
+- Affects the chapter-end chips and the create flow's opening cards (both call
+  `toDirection`). The intro's three sample cards are hard-coded converter
+  output on paths this change does not touch. It is JS only, so it ships to
+  1.0.1 by OTA.
+- Verification: `directions.test.ts` updated and extended. Full Jest suite
+  **163 suites / 1813 tests passed**, `pnpm typecheck` and ESLint clean.
+
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
 
 - **1.0.1** (`app.json`) is the first build anyone installs. It adds the native modules later features need, so those features can ship by OTA: `expo-application`, `expo-web-browser`, `expo-auth-session`, `expo-crypto`, `@react-native-google-signin/google-signin` (no plugin until iOS). `runtimeVersion` stays `appVersion`; `fingerprint` was rejected because it hashes the contents of the Firebase file, which only exists on EAS builders. `updates.fallbackToCacheTimeout` is `0`, so launch never waits on the network.

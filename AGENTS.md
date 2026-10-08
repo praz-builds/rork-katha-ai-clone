@@ -249,11 +249,13 @@ first playable chunk came at 45.8s and the whole chapter at 67.3s, and
 `purpose: "prefetch"` answers 503 while `NARRATION_PREFETCH_ENABLED` is unset.
 Re-run `backend/originals/verify-narration-deploy.ts` to check again.
 
-**No client build has shipped yet.** The app is linked to EAS project
-`traction-labs/katha-ai` (`22595b84-…`), and the first production AAB built on
-2026-10-01 (versionCode 3), but nothing is in users' hands. Until a build is
-installed, client changes merged to main are live on nothing, and
-`scripts/preview.sh` is the only way to see them. **The Play upload keystore**
+**The first client build is in closed-test review (2026-10-08).** The app is
+linked to EAS project `traction-labs/katha-ai` (`22595b84-…`). Build 1.0.1
+(versionCode 4, built from #188) was sent to Google Play's closed test on
+2026-10-08; managed publishing is off, so approval puts it in testers' hands
+with no further click. From then on, a client change merged to main reaches
+installed apps only by OTA (`eas update --channel production`, JS only) or in
+the next build. Before approval, `scripts/preview.sh` is the only way to see it. **The Play upload keystore**
 is held by EAS (Credentials > Android > `ai.katha.createstories`) and was
 backed up on 2026-10-01 to the founder's Mac at
 `~/Katha-Secrets/android-upload-keystore/` (the `.jks`, a `credentials.json`
@@ -835,7 +837,7 @@ All in `backend/supabase/functions/`. Each is a Deno/TypeScript handler.
 | `app-feedback` | POST | Profile's "Send feedback" sheet: files `{message, category?, app_version?, platform?, screen?, request_id}` into `app_feedback` | Any session, named or anonymous. `submit_app_feedback` (00098) bounds it to 5 an hour and 20 a day per user and answers 429 past that; a repeated `request_id` replays the first row. Not the `feedback` function above |
 | `credit-claims` | POST | `action: "list"` returns the caller's claimable comments with their block reasons; `action: "claim"` pays one | Verifies the JWT, then calls `comment_credit_claims` / `claim_comment_credit` as service role. Every rule (40 characters, somebody else's story, a read recorded before the comment, the per-story / per-day / per-month caps) is re-derived in SQL under a lock; the function checks none of them |
 | `referral` | POST | `action: "code"` returns the caller's invite code and standing; `action: "claim"` records a code entered by an account under 7 days old | Pays nothing. `claim_referral_code` records the relationship, `settle_referrals` grants both halves under `referral:referrer:{id}` and `referral:invitee:{id}` once the invitee has generated and is 24h old |
-| `reviewer-signin` | POST | Exchanges the store reviewer's fixed six-digit code for a magic-link `token_hash` the client verifies | **The only new `verify_jwt = false` function** -- the reviewer has no session to present, so the protections are inside it: one allowlisted address, a peppered HMAC, a constant-time compare, an identical `401 {"error":"invalid"}` for every failure, and a per-email/per-IP lockout. `tester_accounts.user_id` is authoritative for which account the link may resolve to. **The plaintext code lives in `backend/.reviewer-code.local`, which is git-ignored, and is never written into the repository** |
+| `reviewer-signin` | POST | Exchanges the store reviewer's fixed six-digit code for a magic-link `token_hash` the client verifies | **The only new `verify_jwt = false` function** -- the reviewer has no session to present, so the protections are inside it: only a `tester_accounts` row with a non-null `code_hmac` can sign in this way (today, only the reviewer's), a peppered HMAC, a constant-time compare, an identical `401 {"error":"invalid"}` for every failure, and a per-email/per-IP lockout. `tester_accounts.user_id` is authoritative for which account the link may resolve to. **The plaintext code lives only in `~/Katha-Secrets/reviewer-signin.json` on the founder's machine (rotated 2026-10-08; Desktop backup copy); the pepper is the `REVIEWER_CODE_PEPPER` function secret. Neither is ever written into the repository** |
 | `revenuecat-webhook` | POST | Idempotent subscription/purchase credits | Needs dashboard secret + product IDs |
 | `refresh-subscription-grants` | POST | Monthly annual-plan grant refresh | Invoked by a protected scheduler |
 | `generate-audio` | POST | Cached narration lookup | Fresh RunPod generation is blocked until the durable 1-credit audio unlock exists |

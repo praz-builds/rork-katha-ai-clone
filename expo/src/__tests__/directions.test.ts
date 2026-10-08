@@ -52,12 +52,81 @@ describe("frames", () => {
       .toBe("Have Divya admit she has a brother.");
   });
 
-  it("wraps a plain statement without touching a single word of it", () => {
+  it("puts a plain statement on the card as the story's own words, unframed", () => {
     expect(toDirection("The storm is closing in on the fort"))
-      .toBe("Write it so the storm is closing in on the fort.");
-    // Every word after the frame is the story's own.
+      .toBe("The storm is closing in on the fort.");
     expect(toDirection("Anjali confronts her mother about the notes"))
-      .toBe("Write it so Anjali confronts her mother about the notes.");
+      .toBe("Anjali confronts her mother about the notes.");
+  });
+
+  it("never frames a whether/if line, so it can never mangle one", () => {
+    // Shipped on a live Original as "Write it so Whether Kijana's ...". It is
+    // now dropped: no frame can tell one clause from two, and these are two.
+    expect(toDirection("Whether Kijana's signal ever reaches the station?")).toBeNull();
+    expect(toDirection("Whether Kijana's signal ever reaches the station")).toBeNull();
+    expect(toDirection("If the bridge gives way the convoy is lost?")).toBeNull();
+    expect(toDirection("If Divya tells the truth her brother is found?")).toBeNull();
+    expect(toDirection("Whether Anjali burns the letters her mother keeps the secret?"))
+      .toBeNull();
+    expect(toDirection("If she reads it she will know")).toBeNull();
+    expect(toDirection("If she reads it will she know?")).toBeNull();
+  });
+
+  it("keeps a comma'd whether/if statement as the story's own sentence", () => {
+    expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
+      .toBe("If Anjali reads the last sheet, she will know who wrote them.");
+    expect(toDirection("Whether she stays or goes, the house will burn"))
+      .toBe("Whether she stays or goes, the house will burn.");
+    // A comma'd conditional QUESTION cannot be put on a card as a statement.
+    expect(toDirection("If she leaves, will he follow?")).toBeNull();
+    // ... and the same question with its "?" missing.
+    expect(toDirection("If she leaves, will he follow")).toBeNull();
+    expect(toDirection("Although she promised, will she return")).toBeNull();
+  });
+
+  it("keeps whether/if/subordinator lines away from the modal frame", () => {
+    // Each of these used to come back as "Have Whether ...", "Have If ...",
+    // "Have Because ...".
+    expect(toDirection("Whether Anjali must burn the letters before dawn")).toBeNull();
+    expect(toDirection("If the bridge gives way, Anjali must cross the river"))
+      .toBe("If the bridge gives way, Anjali must cross the river.");
+    expect(toDirection("Because the lamp went out, Anjali must find the notes in the dark"))
+      .toBe("Because the lamp went out, Anjali must find the notes in the dark.");
+    expect(toDirection("Because Divya must leave before the wedding")).toBeNull();
+  });
+
+  it("still converts a modal line the model punctuated as a question", () => {
+    // As on main before this change: the modal frame only deletes a word.
+    expect(toDirection("Anjali must burn the letters by dawn?"))
+      .toBe("Have Anjali burn the letters by dawn.");
+    expect(toDirection("Raya has to decide whether to tell Praz?"))
+      .toBe("Have Raya decide whether to tell Praz.");
+  });
+
+  it("does not mistake a hyphenated name for a subordinator", () => {
+    expect(toDirection("As-yet unnamed courier reaches the gate")).not.toBeNull();
+  });
+
+  it("drops half a sentence that opens with a subordinator", () => {
+    expect(toDirection("Because the lamp went out at midnight")).toBeNull();
+    expect(toDirection("Although she promised never to return")).toBeNull();
+  });
+
+  it("keeps a whole subordinator-led sentence as the story's own words", () => {
+    expect(toDirection("As the monsoon breaks, the notes stop arriving"))
+      .toBe("As the monsoon breaks, the notes stop arriving.");
+    expect(toDirection("Although she promised never to return, she is at the gate by dawn"))
+      .toBe("Although she promised never to return, she is at the gate by dawn.");
+  });
+
+  it("never opens a card with the old Write it so frame", () => {
+    [
+      "The storm is closing in on the fort",
+      "Whether the notes were hers all along",
+      "Anjali leaves tomorrow morning",
+    ].forEach((source) => {
+      expect(toDirection(source) ?? "").not.toMatch(/^Write it so/);
+    });
   });
 });
 
@@ -112,7 +181,7 @@ describe("shape", () => {
 
   it("always starts with a capital", () => {
     expect(toDirection("the storm is closing in on the fort")).toBe(
-      "Write it so the storm is closing in on the fort.",
+      "The storm is closing in on the fort.",
     );
   });
 
@@ -127,7 +196,7 @@ describe("a question mark is a question, whatever the words look like", () => {
     The drop used to test `/[?]$/` against the TIDIED text -- and `tidy` strips
     the trailing `?` before the test runs, so it could never be true. A
     declarative-looking question sailed past every frame above and came back
-    wrapped in "Write it so ...", turning something the story ASKED into
+    wrapped in the old "Write it so ..." frame, turning something the story ASKED into
     something it apparently stated.
   */
   it("drops a declarative-looking question instead of asserting it", () => {
@@ -146,7 +215,7 @@ describe("a question mark is a question, whatever the words look like", () => {
 
   it("leaves an unmarked statement alone", () => {
     expect(toDirection("Anjali leaves tomorrow morning"))
-      .toBe("Write it so Anjali leaves tomorrow morning.");
+      .toBe("Anjali leaves tomorrow morning.");
   });
 });
 
