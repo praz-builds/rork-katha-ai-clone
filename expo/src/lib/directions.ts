@@ -254,7 +254,14 @@ export function toDirection(source: string | undefined | null): string | null {
   if (condition && !SECOND_CLAUSE.test(condition[1])) {
     return finish(`Show what happens if ${decapitalise(condition[1])}`);
   }
-  if (/^(whether|if)\b/i.test(text)) return null;
+  // A whether/if line with a comma and no question mark is a whole sentence
+  // ("If the bridge gives way, they lose the only road out"): it goes on the
+  // card as the story's own words, exactly as the comma rule for "As/Although"
+  // lines below does. Returned here so the modal frame never sees it. Anything
+  // else that opens with whether/if is dropped.
+  if (/^(whether|if)\b/i.test(text)) {
+    return /,/.test(text) && !wasQuestion ? finish(text) : null;
+  }
 
   // Whether/if are question frames, so they sit above this guard; for them the
   // "?" is required, not refused (see the comment on the whether frame).

@@ -96,9 +96,14 @@ approval publishes to testers with no further click.
 
 - `toDirection` still turns a time clause ("When the lamp goes out") into
   "Show when the lamp goes out" (pre-existing). Treat it like the new "if" frame.
-- `toDirection`'s modal frame keeps a possessive subject as is: "Anjali's
-  sister must confront her mother" is fine, but "Anjali's must ..." style
-  model slips come back as "Have Anjali's confront ..." (pre-existing).
+- `toDirection` follow-ups (pre-existing or deliberate trades):
+  - `MODAL_CLAUSE` matches inside a possessive noun phrase:
+    "Anjali's need to confront her mother before the wedding" becomes
+    "Have Anjali's confront her mother before the wedding". That is the shape
+    `next_chapter_pressure` is prompted to take.
+  - Comma-less subordinator sentences ("Until the wedding Anjali keeps the notes
+    hidden") are dropped, and a plan whose beats all open that way leaves the
+    create flow with "no opening to suggest".
 - **Paid ads (Meta, Google, TikTok) are planned.** The release that adds an
   attribution SDK must unblock AD_ID, flip the Advertising ID declaration and
   add shared device IDs and app activity to Data safety.

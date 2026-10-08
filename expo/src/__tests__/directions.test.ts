@@ -94,9 +94,15 @@ describe("frames", () => {
     expect(toDirection("If she reads it she will know?")).toBeNull();
     expect(toDirection("If the bridge gives way under them?"))
       .toBe("Show what happens if the bridge gives way under them.");
+    // With a comma (and no "?") the whole sentence goes on the card unframed.
     expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
-      .toBeNull();
-    expect(toDirection("Whether she stays or goes, the house will burn")).toBeNull();
+      .toBe("If Anjali reads the last sheet, she will know who wrote them.");
+    expect(toDirection("Whether she stays or goes, the house will burn"))
+      .toBe("Whether she stays or goes, the house will burn.");
+    expect(toDirection("If the bridge gives way, Anjali must cross the river"))
+      .toBe("If the bridge gives way, Anjali must cross the river.");
+    // A comma'd conditional QUESTION cannot be put on a card as a statement.
+    expect(toDirection("If she leaves, will he follow?")).toBeNull();
   });
 
   it("does not mistake a hyphenated name for a subordinator", () => {

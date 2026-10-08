@@ -18,9 +18,11 @@
 - Affects the chapter-end chips and the create flow's opening cards (both call
   `toDirection`); the intro's three sample cards are hard-coded converter output
   on paths this change does not touch. It is JS only, so it ships by OTA to 1.0.1.
-- Whether/if lines convert only when they end in "?" and have no comma (an
-  unmarked one cannot be told from a whole sentence like "If she reads it she
-  will know", so it is dropped). A subordinator-led line with a comma goes on
+- Whether/if lines convert only when they end in "?", have no comma and carry
+  no second clause. With a comma and no "?" they are whole sentences and go on
+  the card unframed ("If the bridge gives way, they lose the only road out.").
+  Any other whether/if line is dropped, since "If she reads it she will know"
+  cannot be framed. A subordinator-led line with a comma goes on
   the card unframed and never reaches the modal frame; without one it is
   dropped as a fragment.
 - The whether, if and subordinator checks run BEFORE the modal frame (otherwise
