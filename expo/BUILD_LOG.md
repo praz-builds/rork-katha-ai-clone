@@ -15,15 +15,19 @@
   a subordinator ("Because ...", "Although ...") are dropped, as unconvertible
   questions already were. Nothing is invented: every card is still the story's
   own words plus, for questions only, a fixed frame.
-- Affects the chapter-end chips, the create flow's opening cards and the intro
-  (all three call `toDirection`). It is JS only, so it ships by OTA to 1.0.1.
+- Affects the chapter-end chips and the create flow's opening cards (both call
+  `toDirection`); the intro's three sample cards are hard-coded converter output
+  on paths this change does not touch. It is JS only, so it ships by OTA to 1.0.1.
+- Whether/if hooks convert even when they end in "?" (a hook is a question),
+  and a subordinator-led line with a comma is kept as a whole sentence; without
+  one it is dropped as a fragment.
 - The whether, if and subordinator checks run BEFORE the modal frame (otherwise
   "Whether Anjali must burn..." became "Have Whether Anjali burn..."), and
   whether/if refuse a comma or semicolon, because a whole conditional sentence
   is not a clause to frame.
 - Verification: `directions.test.ts` updated and extended (whether, if,
   subordinator, modal ordering, whole sentences, a never-"Write it so" guard). Full Jest suite **163 suites /
-  1809 tests passed**, `pnpm typecheck` and ESLint clean.
+  1809 tests passed** (re-run after the final review round below), `pnpm typecheck` and ESLint clean.
 
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
 

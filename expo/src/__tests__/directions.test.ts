@@ -95,6 +95,27 @@ describe("frames", () => {
     expect(toDirection("Although she promised never to return")).toBeNull();
   });
 
+  it("keeps a whole subordinator-led sentence as the story's own words", () => {
+    expect(toDirection("As the monsoon breaks, the notes stop arriving"))
+      .toBe("As the monsoon breaks, the notes stop arriving.");
+    expect(toDirection("Although she promised never to return, she is at the gate by dawn"))
+      .toBe("Although she promised never to return, she is at the gate by dawn.");
+  });
+
+  it("converts a whether/if hook that carries a question mark", () => {
+    // A hook is a question by definition; the "?" must not cost the chip.
+    expect(toDirection("Whether Kijana's signal ever reaches the station?"))
+      .toBe("Find out whether Kijana's signal ever reaches the station.");
+    expect(toDirection("If the bridge gives way under them?"))
+      .toBe("Show what happens if the bridge gives way under them.");
+  });
+
+  it("lower-cases a sentence-opening word after the whether/if frames, never a name", () => {
+    expect(toDirection("Whether The notes were hers all along"))
+      .toBe("Find out whether the notes were hers all along.");
+    expect(toDirection("Whether Anjali knew")).toBe("Find out whether Anjali knew.");
+  });
+
   it("never opens a card with the old Write it so frame", () => {
     [
       "The storm is closing in on the fort",

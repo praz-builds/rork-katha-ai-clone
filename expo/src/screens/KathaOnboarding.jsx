@@ -212,12 +212,11 @@ const STORY_IDEA =
  *      takes the modal frame and comes back as "Have Raya decide...";
  *   3. is a "what happens when" beat, which takes the whatHappens frame.
  *
- * The first draft of this screen used three plain declarative beats. Every one
- * of them came back through the one frame that fits any third-person clause,
- * so the card read "Write it so... / Have... / Write it so..." — real output,
- * and repetitive enough that the founder read the screen as broken. Beats that
- * vary in shape produce directions that vary in shape, which is also what the
- * live screen looks like on a real idea.
+ * The first draft of this screen used three plain declarative beats, which
+ * then came back through a "Write it so ..." frame (removed 2026-10-08; plain
+ * statements now go on the card unframed). Beats that vary in shape still
+ * produce directions that vary in shape, which is also what the live screen
+ * looks like on a real idea.
  */
 const DIRECTIONS = [
   'Open with Raya stopping on the dark trail when the forest suddenly falls completely silent.',

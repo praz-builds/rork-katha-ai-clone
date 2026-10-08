@@ -181,9 +181,8 @@ export function toDirection(source: string | undefined | null): string | null {
   // looking for, so the test could never be true: a declarative-looking
   // question ("Anjali leaves tomorrow?") sailed past it and came back as the
   // direction "Write it so Anjali leaves tomorrow." (the statement frame of the
-  // time) -- a thing the story never said. Only the wh- and be- frames are
-  // allowed to convert a question; anything they decline is dropped, and that
-  // includes whether/if lines that end in "?".
+  // time) -- a thing the story never said. Only the question frames (wh-, be-,
+  // whether, if) may convert a question; anything they decline is dropped.
   const wasQuestion = /[?]\s*$/.test(source ?? "");
 
   if (ALREADY_IMPERATIVE.test(text)) return finish(text);
@@ -220,12 +219,6 @@ export function toDirection(source: string | undefined | null): string | null {
     return null;
   }
 
-  // Anything still ending in a question mark, or opening with an auxiliary this
-  // file will not un-invert, is dropped rather than guessed at.
-  if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
-    return null;
-  }
-
   // These run BEFORE the modal frame: "Whether Anjali must burn the letters"
   // would otherwise come back as "Have Whether Anjali burn the letters".
   // "Whether Kijana's signal reaches the station" is an indirect question with
@@ -234,19 +227,30 @@ export function toDirection(source: string | undefined | null): string | null {
   // statement frame and shipped as "Write it so Whether Kijana's ..." on a
   // live Original (2026-10-08).
   const whether = text.match(/^whether\s+([^,;]{4,})$/i);
-  if (whether) return finish(`Find out whether ${whether[1]}`);
+  if (whether) return finish(`Find out whether ${decapitalise(whether[1])}`);
 
   // "If the bridge gives way" is the condition of a what-happens question.
   // Both this and the whether frame refuse a comma or semicolon: "If she reads
   // it, she will know" is a whole sentence, and framing it is broken English.
   const condition = text.match(/^if\s+([^,;]{4,})$/i);
-  if (condition) return finish(`Show what happens if ${condition[1]}`);
+  if (condition) return finish(`Show what happens if ${decapitalise(condition[1])}`);
   if (/^(whether|if)\b/i.test(text)) return null;
 
-  // A clause that opens with a subordinator is half a sentence ("Because the
-  // lamp went out", "Although she promised"). No fixed frame completes it
-  // without inventing the missing half, so it is dropped.
-  if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
+  // Whether/if are question frames too, so they sit above this guard: the
+  // punctuation mark alone must not decide between a good chip and no chip.
+  // Anything still ending in a question mark, or opening with an auxiliary this
+  // file will not un-invert, is dropped rather than guessed at.
+  if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
+    return null;
+  }
+
+
+  // A clause that opens with a subordinator may be half a sentence ("Because
+  // the lamp went out") or a whole one ("As the monsoon breaks, the notes stop
+  // arriving"). A comma is the one cheap, reliable sign of a main clause, so
+  // with one the line falls through and goes on the card as the story's own
+  // sentence; without one it cannot be told from a fragment and is dropped.
+  if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text) && !/,/.test(text)) {
     return null;
   }
 
