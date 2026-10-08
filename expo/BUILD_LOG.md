@@ -26,8 +26,7 @@
   whether/if refuse a comma or semicolon, because a whole conditional sentence
   is not a clause to frame.
 - Verification: `directions.test.ts` updated and extended (whether, if,
-  subordinator, modal ordering, whole sentences, a never-"Write it so" guard). Full Jest suite **163 suites /
-  1809 tests passed** (re-run after the final review round below), `pnpm typecheck` and ESLint clean.
+  subordinator, modal ordering, whole sentences, a never-"Write it so" guard). Full Jest suite **163 suites / 1815 tests passed**, `pnpm typecheck` and ESLint clean.
 
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
 
