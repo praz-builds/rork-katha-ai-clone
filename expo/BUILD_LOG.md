@@ -17,8 +17,12 @@
   own words plus, for questions only, a fixed frame.
 - Affects the chapter-end chips, the create flow's opening cards and the intro
   (all three call `toDirection`). It is JS only, so it ships by OTA to 1.0.1.
+- The whether, if and subordinator checks run BEFORE the modal frame (otherwise
+  "Whether Anjali must burn..." became "Have Whether Anjali burn..."), and
+  whether/if refuse a comma or semicolon, because a whole conditional sentence
+  is not a clause to frame.
 - Verification: `directions.test.ts` updated and extended (whether, if,
-  subordinator, a never-"Write it so" guard). Full Jest suite **163 suites /
+  subordinator, modal ordering, whole sentences, a never-"Write it so" guard). Full Jest suite **163 suites /
   1809 tests passed**, `pnpm typecheck` and ESLint clean.
 
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch

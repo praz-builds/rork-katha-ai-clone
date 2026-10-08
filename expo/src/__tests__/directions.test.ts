@@ -70,6 +70,26 @@ describe("frames", () => {
       .toBe("Show what happens if the bridge gives way under them.");
   });
 
+  it("frames whether/if/subordinator lines before the modal frame can grab them", () => {
+    // Each of these used to come back as "Have Whether ...", "Have If ...",
+    // "Have Because ...": the modal frame ran first.
+    expect(toDirection("Whether Anjali must burn the letters before dawn"))
+      .toBe("Find out whether Anjali must burn the letters before dawn.");
+    expect(toDirection("If Kijana must choose between the dish and the school"))
+      .toBe("Show what happens if Kijana must choose between the dish and the school.");
+    expect(toDirection("Because Divya must leave before the wedding")).toBeNull();
+  });
+
+  it("refuses a whole conditional sentence rather than framing it", () => {
+    expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
+      .toBeNull();
+    expect(toDirection("Whether she stays or goes, the house will burn")).toBeNull();
+  });
+
+  it("does not mistake a hyphenated name for a subordinator", () => {
+    expect(toDirection("As-yet unnamed courier reaches the gate")).not.toBeNull();
+  });
+
   it("drops half a sentence that opens with a subordinator", () => {
     expect(toDirection("Because the lamp went out at midnight")).toBeNull();
     expect(toDirection("Although she promised never to return")).toBeNull();

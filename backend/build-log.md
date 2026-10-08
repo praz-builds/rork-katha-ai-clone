@@ -87,6 +87,8 @@ approval publishes to testers with no further click.
 
 **Follow-ups**
 
+- `toDirection` still turns a time clause ("When the lamp goes out") into
+  "Show when the lamp goes out" (pre-existing). Treat it like the new "if" frame.
 - **Paid ads (Meta, Google, TikTok) are planned.** The release that adds an
   attribution SDK must unblock AD_ID, flip the Advertising ID declaration and
   add shared device IDs and app activity to Data safety.
