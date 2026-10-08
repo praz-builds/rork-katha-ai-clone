@@ -76,7 +76,7 @@ Google's wording shifts between questionnaire versions; match on meaning.
 
 ### What to expect back
 
-Probably **ESRB Mature 17+**, **PEGI 16** (possibly 18 for the combination of violence and sexual themes), **USK 16**, **ClassInd 16**, with interactive-element notes "Users Interact" and "In-App Purchases". That is consistent with an 18+ target audience. If IARC returns *lower* than PEGI 16, re-read the sexuality and violence answers before accepting: the listing says romance and horror include mature themes, and the two should agree.
+Probably **ESRB Mature 17+**, **PEGI 16** (possibly 18 for the combination of violence and sexual themes), **USK 16**, **ClassInd 16**, with interactive-element notes "Users Interact" and "In-App Purchases". That is consistent with the declared 16-17 and 18+ target audience. If IARC returns *lower* than PEGI 16, re-read the sexuality and violence answers before accepting: the listing says romance and horror include mature themes, and the two should agree.
 
 ## 2. Target audience and content
 

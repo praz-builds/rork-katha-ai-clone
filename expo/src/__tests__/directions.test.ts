@@ -59,50 +59,45 @@ describe("frames", () => {
       .toBe("Anjali confronts her mother about the notes.");
   });
 
-  it("frames an indirect whether-question instead of gluing a frame to it", () => {
-    // Shipped on a live Original as "Write it so Whether Kijana's ...".
-    expect(toDirection("Whether Kijana's signal ever reaches the station?"))
-      .toBe("Find out whether Kijana's signal ever reaches the station.");
+  it("never frames a whether/if line, so it can never mangle one", () => {
+    // Shipped on a live Original as "Write it so Whether Kijana's ...". It is
+    // now dropped: no frame can tell one clause from two, and these are two.
+    expect(toDirection("Whether Kijana's signal ever reaches the station?")).toBeNull();
+    expect(toDirection("Whether Kijana's signal ever reaches the station")).toBeNull();
+    expect(toDirection("If the bridge gives way the convoy is lost?")).toBeNull();
+    expect(toDirection("If Divya tells the truth her brother is found?")).toBeNull();
+    expect(toDirection("Whether Anjali burns the letters her mother keeps the secret?"))
+      .toBeNull();
+    expect(toDirection("If she reads it she will know")).toBeNull();
+    expect(toDirection("If she reads it will she know?")).toBeNull();
   });
 
-  it("turns a bare condition into a what-happens direction", () => {
-    expect(toDirection("If the bridge gives way under them?"))
-      .toBe("Show what happens if the bridge gives way under them.");
+  it("keeps a comma'd whether/if statement as the story's own sentence", () => {
+    expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
+      .toBe("If Anjali reads the last sheet, she will know who wrote them.");
+    expect(toDirection("Whether she stays or goes, the house will burn"))
+      .toBe("Whether she stays or goes, the house will burn.");
+    // A comma'd conditional QUESTION cannot be put on a card as a statement.
+    expect(toDirection("If she leaves, will he follow?")).toBeNull();
   });
 
-  it("frames whether/if/subordinator lines before the modal frame can grab them", () => {
+  it("keeps whether/if/subordinator lines away from the modal frame", () => {
     // Each of these used to come back as "Have Whether ...", "Have If ...",
-    // "Have Because ...": the modal frame ran first.
-    expect(toDirection("Whether Anjali must burn the letters before dawn?"))
-      .toBe("Find out whether Anjali must burn the letters before dawn.");
-    expect(toDirection("If Kijana must choose between the dish and the school?"))
-      .toBe("Show what happens if Kijana must choose between the dish and the school.");
-    // Unmarked, they cannot be told from whole sentences, so they are dropped,
-    // never framed and never handed to the modal frame.
+    // "Have Because ...".
     expect(toDirection("Whether Anjali must burn the letters before dawn")).toBeNull();
+    expect(toDirection("If the bridge gives way, Anjali must cross the river"))
+      .toBe("If the bridge gives way, Anjali must cross the river.");
     expect(toDirection("Because the lamp went out, Anjali must find the notes in the dark"))
       .toBe("Because the lamp went out, Anjali must find the notes in the dark.");
     expect(toDirection("Because Divya must leave before the wedding")).toBeNull();
   });
 
-  it("refuses a whole conditional sentence rather than framing it", () => {
-    expect(toDirection("If Anjali opens the last sheet she learns who wrote them")).toBeNull();
-    expect(toDirection("If she reads it she will know")).toBeNull();
-    expect(toDirection("Whether she stays or goes the house will burn")).toBeNull();
-    // A "?" does not make a whole sentence a clause.
-    expect(toDirection("If she reads it will she know?")).toBeNull();
-    expect(toDirection("If she reads it she will know?")).toBeNull();
-    expect(toDirection("If the bridge gives way under them?"))
-      .toBe("Show what happens if the bridge gives way under them.");
-    // With a comma (and no "?") the whole sentence goes on the card unframed.
-    expect(toDirection("If Anjali reads the last sheet, she will know who wrote them"))
-      .toBe("If Anjali reads the last sheet, she will know who wrote them.");
-    expect(toDirection("Whether she stays or goes, the house will burn"))
-      .toBe("Whether she stays or goes, the house will burn.");
-    expect(toDirection("If the bridge gives way, Anjali must cross the river"))
-      .toBe("If the bridge gives way, Anjali must cross the river.");
-    // A comma'd conditional QUESTION cannot be put on a card as a statement.
-    expect(toDirection("If she leaves, will he follow?")).toBeNull();
+  it("still converts a modal line the model punctuated as a question", () => {
+    // As on main before this change: the modal frame only deletes a word.
+    expect(toDirection("Anjali must burn the letters by dawn?"))
+      .toBe("Have Anjali burn the letters by dawn.");
+    expect(toDirection("Raya has to decide whether to tell Praz?"))
+      .toBe("Have Raya decide whether to tell Praz.");
   });
 
   it("does not mistake a hyphenated name for a subordinator", () => {
@@ -119,20 +114,6 @@ describe("frames", () => {
       .toBe("As the monsoon breaks, the notes stop arriving.");
     expect(toDirection("Although she promised never to return, she is at the gate by dawn"))
       .toBe("Although she promised never to return, she is at the gate by dawn.");
-  });
-
-  it("converts a whether/if hook that carries a question mark", () => {
-    // A hook is a question by definition; the "?" must not cost the chip.
-    expect(toDirection("Whether Kijana's signal ever reaches the station?"))
-      .toBe("Find out whether Kijana's signal ever reaches the station.");
-    expect(toDirection("If the bridge gives way under them?"))
-      .toBe("Show what happens if the bridge gives way under them.");
-  });
-
-  it("lower-cases a sentence-opening word after the whether/if frames, never a name", () => {
-    expect(toDirection("Whether The notes were hers all along?"))
-      .toBe("Find out whether the notes were hers all along.");
-    expect(toDirection("Whether Anjali knew?")).toBe("Find out whether Anjali knew.");
   });
 
   it("never opens a card with the old Write it so frame", () => {

@@ -9,28 +9,22 @@
   unframed: "Anjali confronts her mother about the notes." The old "Write it
   so ..." prefix opened most cards with the same three words and read like an
   instruction to a machine.
-- "Whether X ...?" hooks now become "Find out whether X ...". One shipped on a
-  live Original as "Write it so Whether Kijana's ...".
-- "If X ...?" becomes "Show what happens if X ...". Half-sentences that open with
-  a subordinator ("Because ...", "Although ...") are dropped, as unconvertible
-  questions already were. Nothing is invented: every card is still the story's
-  own words plus, for questions only, a fixed frame.
+- Whether/if lines are never framed. A live Original showed "Write it so
+  Whether Kijana's ...". No cheap test tells one clause from two ("If the
+  bridge gives way the convoy is lost"), so a whether/if line with a comma and
+  no "?" goes on the card as the story's own sentence, and every other one is
+  dropped. That costs a chip but never mangles one.
+- Subordinator-led lines ("As ...", "Although ...") follow the same comma rule:
+  with a comma they are kept unframed, without one they are dropped as
+  fragments. Both rules return before the modal frame, which used to produce
+  "Have Whether ..." and "Have Because ...". The modal frame still converts a
+  line the model punctuated as a question, as on main.
 - Affects the chapter-end chips and the create flow's opening cards (both call
-  `toDirection`); the intro's three sample cards are hard-coded converter output
-  on paths this change does not touch. It is JS only, so it ships by OTA to 1.0.1.
-- Whether/if lines convert only when they end in "?", have no comma and carry
-  no second clause. With a comma and no "?" they are whole sentences and go on
-  the card unframed ("If the bridge gives way, they lose the only road out.").
-  Any other whether/if line is dropped, since "If she reads it she will know"
-  cannot be framed. A subordinator-led line with a comma goes on
-  the card unframed and never reaches the modal frame; without one it is
-  dropped as a fragment.
-- The whether, if and subordinator checks run BEFORE the modal frame (otherwise
-  "Whether Anjali must burn..." became "Have Whether Anjali burn..."), and
-  whether/if refuse a comma or semicolon, because a whole conditional sentence
-  is not a clause to frame.
-- Verification: `directions.test.ts` updated and extended (whether, if,
-  subordinator, modal ordering, whole sentences, a never-"Write it so" guard). Full Jest suite **163 suites / 1815 tests passed**, `pnpm typecheck` and ESLint clean.
+  `toDirection`). The intro's three sample cards are hard-coded converter
+  output on paths this change does not touch. It is JS only, so it ships to
+  1.0.1 by OTA.
+- Verification: `directions.test.ts` updated and extended. Full Jest suite
+  **163 suites / 1813 tests passed**, `pnpm typecheck` and ESLint clean.
 
 ## 2026-10-07: One build that can grow by OTA, and a remote "update required" switch
 

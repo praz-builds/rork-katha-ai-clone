@@ -20,7 +20,7 @@ const LIMITS = {
   "full_description.txt": 4000,
 };
 
-// The target audience is 18+ only. A "kids" claim in the listing invites a
+// The target audience is 16-17 and 18+ (2026-10-08). A "kids" claim in the listing invites a
 // Families-policy review and contradicts the target-audience declaration.
 // Pricing claims are also banned: prices vary by country and come from Play.
 const BANNED = [/\bkids?\b/i, /\bchild(ren)?\b/i, /\bcrian[çc]as?\b/i, /\bni[ñn]os?\b/i, /[$€£₹¥]\s?\d/, /\bR\$/, /\d\s?(USD|EUR|GBP|BRL|MXN|INR|US\$)\b/i, /\b(USD|EUR|GBP|BRL|MXN|INR)\s?\d/i];

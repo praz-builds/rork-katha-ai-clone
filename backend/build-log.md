@@ -113,14 +113,12 @@ approval publishes to testers with no further click.
   production`) and every later build from main.
 - Update `data-safety.md` account creation from "Other" to "Username and
   other authentication", as submitted.
-- Sync `store/android/metadata/en-US/*` and the screenshot set into the repo,
-  and move the docs that still say the audience is 18+ only to 16+:
-  `store/android/README.md` (the "No kids" rule and the 18+ line),
-  `store/android/content-rating.md` (the expected-rating note),
-  `store/android/data-safety.md` ("Target audience is 18+ only") and the
-  comment in `check-listing.mjs`. Then run `node store/android/check-listing.mjs`
-  over all 16 live locales: the 15 AI-imported ones and the rewritten en-US
-  were never run through its length limits or its banned-word list.
+- Sync `store/android/metadata/en-US/*` (still 18+) and the screenshot set into
+  the repo. Then run `node store/android/check-listing.mjs` over all 16 live
+  locales: the 15 AI-imported ones and the rewritten en-US were never run
+  through its length limits or its banned-word list. (The other 18+ lines in
+  `README.md`, `data-safety.md`, `content-rating.md` and `check-listing.mjs`
+  were moved to 16-17 and 18+ in this PR.)
 - `data-safety.md` P1 can be closed: `@react-native-firebase/analytics` is gone
   from `expo/package.json`, and `release-config.test.ts` keeps it out.
 - `backend/.gitignore` still lists `.reviewer-code.local`. It is harmless,

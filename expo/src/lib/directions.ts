@@ -169,19 +169,6 @@ function finish(value: string): string {
 }
 
 /**
- * Whether a whether/if clause carries a second clause of its own.
- *
- * "If she reads it will she know" and "If she reads it she will know" are
- * whole conditional sentences even with no comma, and putting a frame in front
- * of them is broken English. Two cheap signs: an auxiliary followed by a
- * subject pronoun (an inverted main clause), or a subject pronoun anywhere
- * after the first word (a second subject). Either one drops the line, which
- * costs a chip and never mangles one.
- */
-const SECOND_CLAUSE =
-  /\b(will|would|can|could|must|shall|should|do|does|did|is|are|was|were)\s+(he|she|they|it|we|i|you)\b|\s(he|she|they|we|i|you)\s/i;
-
-/**
  * One line of story state as an imperative direction, or `null` when it cannot
  * be made into one without inventing words.
  */
@@ -194,8 +181,8 @@ export function toDirection(source: string | undefined | null): string | null {
   // looking for, so the test could never be true: a declarative-looking
   // question ("Anjali leaves tomorrow?") sailed past it and came back as the
   // direction "Write it so Anjali leaves tomorrow." (the statement frame of the
-  // time) -- a thing the story never said. Only the question frames (wh-, be-,
-  // whether, if) may convert a question; anything they decline is dropped.
+  // time) -- a thing the story never said. Only the wh- and be- frames convert a
+  // question (the modal frame merely deletes a word); anything else is dropped.
   const wasQuestion = /[?]\s*$/.test(source ?? "");
 
   if (ALREADY_IMPERATIVE.test(text)) return finish(text);
@@ -232,60 +219,44 @@ export function toDirection(source: string | undefined | null): string | null {
     return null;
   }
 
-  // These run BEFORE the modal frame: "Whether Anjali must burn the letters"
-  // would otherwise come back as "Have Whether Anjali burn the letters".
-  // "Whether Kijana's signal reaches the station" is an indirect question with
-  // its question word already in place, so it takes the same frame as a
-  // be-question and needs no re-ordering. Before this it fell through to the
-  // statement frame and shipped as "Write it so Whether Kijana's ..." on a
-  // live Original (2026-10-08).
-  const whether = wasQuestion ? text.match(/^whether\s+([^,;]{4,})$/i) : null;
-  if (whether && !SECOND_CLAUSE.test(whether[1])) {
-    return finish(`Find out whether ${decapitalise(whether[1])}`);
-  }
-
-  // "If the bridge gives way" is the condition of a what-happens question.
-  // Both this and the whether frame convert ONLY a line that ends in "?" and has
-  // no comma or semicolon. Without the question mark there is no cheap way to
-  // tell "If the bridge gives way" from "If she reads it she will know", and
-  // framing the second is broken English, so an unmarked whether/if line is
-  // dropped: it costs a chip, never mangles one.
-  const condition = wasQuestion ? text.match(/^if\s+([^,;]{4,})$/i) : null;
-  if (condition && !SECOND_CLAUSE.test(condition[1])) {
-    return finish(`Show what happens if ${decapitalise(condition[1])}`);
-  }
-  // A whether/if line with a comma and no question mark is a whole sentence
-  // ("If the bridge gives way, they lose the only road out"): it goes on the
-  // card as the story's own words, exactly as the comma rule for "As/Although"
-  // lines below does. Returned here so the modal frame never sees it. Anything
-  // else that opens with whether/if is dropped.
+  // These run BEFORE the modal frame, and return: "Whether Anjali must burn
+  // the letters" would otherwise come back as "Have Whether Anjali burn ...".
+  //
+  // Whether/if lines are NOT framed. A "Find out whether ..." / "Show what
+  // happens if ..." frame needs the line to be exactly one clause, and there is
+  // no cheap test for that: "If the bridge gives way the convoy is lost" and
+  // "If she reads it she will know" are whole sentences that any frame turns
+  // into broken English. So a whether/if line with a comma (a whole sentence,
+  // "If the bridge gives way, they lose the only road out") goes on the card as
+  // the story's own words, and every other whether/if line is dropped. Before
+  // 2026-10-08 these fell through to the statement frame and shipped as
+  // "Write it so Whether Kijana's ..." on a live Original.
   if (/^(whether|if)\b/i.test(text)) {
     return /,/.test(text) && !wasQuestion ? finish(text) : null;
   }
-
-  // Whether/if are question frames, so they sit above this guard; for them the
-  // "?" is required, not refused (see the comment on the whether frame).
-  // Anything still ending in a question mark, or opening with an auxiliary this
-  // file will not un-invert, is dropped rather than guessed at.
-  if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
-    return null;
-  }
-
 
   // A clause that opens with a subordinator may be half a sentence ("Because
   // the lamp went out") or a whole one ("As the monsoon breaks, the notes stop
   // arriving"). A comma is the one cheap, reliable sign of a main clause, so
   // with one the line is returned as the story's own sentence; without one it
-  // cannot be told from a fragment and is dropped.
+  // cannot be told from a fragment and is dropped. Returned here, so the modal
+  // frame never sees "Because the lamp went out, Anjali must find them".
   if (/^(because|although|though|unless|until|since|while|as)\b(?![-'])/i.test(text)) {
-    // Returned here, never passed on: the modal frame below would otherwise
-    // turn "Because the lamp went out, Anjali must find them" into
-    // "Have Because the lamp went out, Anjali find them".
-    return /,/.test(text) ? finish(text) : null;
+    return /,/.test(text) && !wasQuestion ? finish(text) : null;
   }
 
+  // The modal frame is a deletion, not a conjugation, so it is safe on a line
+  // the model punctuated as a question: "Anjali must burn the letters by
+  // dawn?" -> "Have Anjali burn the letters by dawn." (as on main before
+  // 2026-10-08), which is why it sits above the question guard.
   const modal = text.match(MODAL_CLAUSE);
   if (modal) return finish(`Have ${decapitalise(modal[1])} ${modal[2]}`);
+
+  // Anything still ending in a question mark, or opening with an auxiliary this
+  // file will not un-invert, is dropped rather than guessed at.
+  if (wasQuestion || /^(do|does|did|will|would|can|could|should|has|have|had|am)\b/i.test(text)) {
+    return null;
+  }
 
   /*
     A plain declarative clause -- a planned beat ("Anjali confronts her mother
